@@ -1,0 +1,783 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v12.94 (user order 2026-11-06 ~22:46 +07: rebuilt to the worldwide
+     music-streaming-app standard — flat sections with small headers,
+     Switch rows, value/nav rows with hairline dividers; the 6 cards,
+     the wall of raised buttons, the big Back button, the long note
+     paragraphs, the duplicate source credit and 2 of the 3 clear
+     buttons are gone; every function stays, only the shape changed).
+     v3.76: Settings regrouped per user order 2026-10-30 ~22:24 +07 — Theme card
+     and Speed card REMOVED (day/night lives on Main; speed is not needed);
+     Language card added (font / language / playback / history / downloads).
+     v9.11 (user order 2026-11-02 ~21:12 +07): font + language cards are ONE row
+     each (label + current value + ›) opening a single-choice dialog — the
+     12 inline language buttons + 3 font buttons were the clutter he named. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg"
+    android:orientation="vertical">
+<ScrollView
+    android:layout_width="match_parent"
+    android:layout_height="0dp"
+    android:layout_weight="1"
+    android:fillViewport="true">
+<LinearLayout
+    android:id="@+id/content"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/bg"
+    android:orientation="vertical"
+    android:padding="16dp">
+    <TextView
+        android:id="@+id/titleText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="⚙ ဆက်တင်"
+        android:textColor="@color/maroon"
+        android:textSize="26sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/secAppearance"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:letterSpacing="0.06"
+        android:paddingVertical="4dp"
+        android:text="အသံနှင့် အမြင်"
+        android:textColor="@color/muted"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+
+<LinearLayout
+            android:id="@+id/rowFont"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingVertical="14dp">
+            <TextView
+                android:id="@+id/labelFont"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="စာလုံးအရွယ်အစား"
+                android:textColor="@color/ink"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+            <TextView
+                android:id="@+id/fontValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ပုံမှန်"
+                android:textColor="@color/muted"
+                android:textSize="16sp" />
+            <TextView
+                android:id="@+id/fontChevron"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingStart="8dp"
+                android:text="›"
+                android:textColor="@color/muted"
+                android:textSize="20sp" />
+        </LinearLayout>
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#26C9A227" />
+
+<LinearLayout
+            android:id="@+id/rowLanguage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingVertical="14dp">
+            <TextView
+                android:id="@+id/labelLanguage"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="ဘာသာစကား"
+                android:textColor="@color/ink"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+            <TextView
+                android:id="@+id/langValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="မြန်မာ"
+                android:textColor="@color/muted"
+                android:textSize="16sp" />
+            <TextView
+                android:id="@+id/langChevron"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingStart="8dp"
+                android:text="›"
+                android:textColor="@color/muted"
+                android:textSize="20sp" />
+        </LinearLayout>
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#26C9A227" />
+
+    <Switch
+        android:id="@+id/btnThemeAuto"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:ellipsize="end"
+        android:focusable="true"
+        android:maxLines="1"
+        android:paddingVertical="12dp"
+        android:showText="false"
+        android:text="ဘုရားစင်ပုံ အလိုအလျောက် ပြောင်းခြင်း"
+        android:textColor="@color/ink"
+        android:textOff=""
+        android:textOn=""
+        android:textSize="16sp" />
+
+    <TextView
+        android:id="@+id/secPlayback"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:letterSpacing="0.06"
+        android:paddingVertical="4dp"
+        android:text="ဖွင့်ခြင်း"
+        android:textColor="@color/muted"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+
+    <Switch
+        android:id="@+id/btnAutoplay"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:ellipsize="end"
+        android:focusable="true"
+        android:maxLines="1"
+        android:paddingVertical="12dp"
+        android:showText="false"
+        android:text="တရားအလိုအလျောက် ဆက်ဖွင့်ခြင်း"
+        android:textColor="@color/ink"
+        android:textOff=""
+        android:textOn=""
+        android:textSize="16sp" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#26C9A227" />
+
+    <LinearLayout
+        android:id="@+id/rowRepeat"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingVertical="14dp">
+        <TextView
+            android:id="@+id/lblRepeat"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="↻ ထပ်ဖွင့်ခြင်း"
+            android:textColor="@color/ink"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/btnRepeat"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="အားလုံး"
+            android:textColor="@color/muted"
+            android:textSize="16sp" />
+        <TextView
+            android:id="@+id/repeatChevron"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="8dp"
+            android:text="›"
+            android:textColor="@color/muted"
+            android:textSize="20sp" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#26C9A227" />
+
+    <Switch
+        android:id="@+id/btnShuffle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:ellipsize="end"
+        android:focusable="true"
+        android:maxLines="1"
+        android:paddingVertical="12dp"
+        android:showText="false"
+        android:text="🔀 ကျပန်း ဖွင့်ခြင်း"
+        android:textColor="@color/ink"
+        android:textOff=""
+        android:textOn=""
+        android:textSize="16sp" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#26C9A227" />
+
+    <Switch
+        android:id="@+id/btnBackground"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:ellipsize="end"
+        android:focusable="true"
+        android:maxLines="1"
+        android:paddingVertical="12dp"
+        android:showText="false"
+        android:text="app မှ ထွက်လည်း ဆက်ဖွင့်ခြင်း"
+        android:textColor="@color/ink"
+        android:textOff=""
+        android:textOn=""
+        android:textSize="16sp" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#26C9A227" />
+
+    <Switch
+        android:id="@+id/btnKeepScreen"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:ellipsize="end"
+        android:focusable="true"
+        android:maxLines="1"
+        android:paddingVertical="12dp"
+        android:showText="false"
+        android:text="ဖွင့်နေစဉ် မျက်နှာပြင် မပိတ်စေရ"
+        android:textColor="@color/ink"
+        android:textOff=""
+        android:textOn=""
+        android:textSize="16sp" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#26C9A227" />
+
+    <LinearLayout
+        android:id="@+id/rowSleep"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingVertical="14dp">
+        <TextView
+            android:id="@+id/lblSleep"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="အိပ်ချိန်"
+            android:textColor="@color/ink"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/btnSleep"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ပိတ်"
+            android:textColor="@color/muted"
+            android:textSize="16sp" />
+        <TextView
+            android:id="@+id/sleepChevron"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="8dp"
+            android:text="›"
+            android:textColor="@color/muted"
+            android:textSize="20sp" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#26C9A227" />
+
+    <Switch
+        android:id="@+id/btnFx"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:ellipsize="end"
+        android:focusable="true"
+        android:maxLines="1"
+        android:paddingVertical="12dp"
+        android:showText="false"
+        android:text="အသံနှင့် တုန်ခါမှု"
+        android:textColor="@color/ink"
+        android:textOff=""
+        android:textOn=""
+        android:textSize="16sp" />
+
+    <TextView
+        android:id="@+id/secNoti"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:letterSpacing="0.06"
+        android:paddingVertical="4dp"
+        android:text="အကြောင်းကြားစာ"
+        android:textColor="@color/muted"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+    <Switch
+        android:id="@+id/btnNoti"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:ellipsize="end"
+        android:focusable="true"
+        android:maxLines="1"
+        android:paddingVertical="12dp"
+        android:showText="false"
+        android:text="အကြောင်းကြားချက်"
+        android:textColor="@color/ink"
+        android:textOff=""
+        android:textOn=""
+        android:textSize="16sp" />
+        <TextView
+            android:id="@+id/notiNote"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingBottom="8dp"
+            android:paddingStart="2dp"
+            android:text=""
+            android:textColor="@color/muted"
+            android:textSize="13sp"
+        android:visibility="gone" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/secData"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:letterSpacing="0.06"
+        android:paddingVertical="4dp"
+        android:text="ဒေတာ"
+        android:textColor="@color/muted"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+    <Switch
+        android:id="@+id/btnDataSaver"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:ellipsize="end"
+        android:focusable="true"
+        android:maxLines="1"
+        android:paddingVertical="12dp"
+        android:showText="false"
+        android:text="ဒေတာ ချွေတာခြင်း"
+        android:textColor="@color/ink"
+        android:textOff=""
+        android:textOn=""
+        android:textSize="16sp" />
+        <TextView
+            android:id="@+id/dataSaverNote"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingBottom="8dp"
+            android:paddingStart="2dp"
+            android:text=""
+            android:textColor="@color/muted"
+            android:textSize="13sp"
+        android:visibility="gone" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#26C9A227" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+    <Switch
+        android:id="@+id/btnAutoDl"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:ellipsize="end"
+        android:focusable="true"
+        android:maxLines="1"
+        android:paddingVertical="12dp"
+        android:showText="false"
+        android:text="📶 Wi-Fi အလိုအလျောက် ဒေါင်းလုဒ်"
+        android:textColor="@color/ink"
+        android:textOff=""
+        android:textOn=""
+        android:textSize="16sp" />
+        <TextView
+            android:id="@+id/autoDlNote"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingBottom="8dp"
+            android:paddingStart="2dp"
+            android:text="မစစ်ဆေးရသေးပါ"
+            android:textColor="@color/muted"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#26C9A227" />
+
+    <LinearLayout
+        android:id="@+id/rowDownloaded"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingVertical="14dp">
+        <TextView
+            android:id="@+id/btnDownloaded"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="⬇ ဒေါင်းလုဒ်လုပ်ပြီးသားများ"
+            android:textColor="@color/ink"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/downloadedChevron"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="8dp"
+            android:text="›"
+            android:textColor="@color/muted"
+            android:textSize="20sp" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#26C9A227" />
+
+    <LinearLayout
+        android:id="@+id/rowClearData"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingVertical="14dp">
+        <TextView
+            android:id="@+id/lblClearData"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="မှတ်တမ်း ရှင်းလင်းခြင်း"
+            android:textColor="@color/ink"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/clearChevron"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="8dp"
+            android:text="›"
+            android:textColor="@color/muted"
+            android:textSize="20sp" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/secAbout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:letterSpacing="0.06"
+        android:paddingVertical="4dp"
+        android:text="အကြောင်း"
+        android:textColor="@color/muted"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/aboutSrc"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingVertical="10dp"
+        android:text="တရားများ ရင်းမြစ်: dhammadownload.com"
+        android:textColor="@color/muted"
+        android:textSize="13sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingVertical="14dp">
+        <TextView
+            android:id="@+id/lblVersion"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="ဗားရှင်း"
+            android:textColor="@color/ink"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/versionValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="v12.93"
+            android:textColor="@color/muted"
+            android:textSize="16sp" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#26C9A227" />
+
+    <LinearLayout
+        android:id="@+id/rowTeam"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingVertical="14dp">
+        <TextView
+            android:id="@+id/btnTeam"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="👥 Team"
+            android:textColor="@color/ink"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/teamChevron"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="8dp"
+            android:text="›"
+            android:textColor="@color/muted"
+            android:textSize="20sp" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#26C9A227" />
+
+    <LinearLayout
+        android:id="@+id/rowPolicy"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingVertical="14dp">
+        <TextView
+            android:id="@+id/btnPolicy"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="📜 Policy"
+            android:textColor="@color/ink"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/policyChevron"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="8dp"
+            android:text="›"
+            android:textColor="@color/muted"
+            android:textSize="20sp" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/btnResetAll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:paddingVertical="14dp"
+        android:text="↺ ဆက်တင်အားလုံး ပြန်စသတ်မှတ်မယ်"
+        android:textColor="#C0392B"
+        android:textSize="16sp" />
+</LinearLayout>
+</ScrollView>
+    <!-- v4.41: real mini-player, the same strip as Main (v4.15/v4.30),
+         Talks (v4.31) and the library (v4.40) — Settings was the last
+         screen without one, so a listener tuning sleep or data
+         saver mid-talk had only the notification card to pause
+         with. Fixed footer below the scroll, same ids, same
+         title-over-sub split, same routes. -->
+    <LinearLayout
+        android:id="@+id/nowStrip"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="16dp"
+        android:layout_marginRight="16dp"
+        android:layout_marginBottom="16dp"
+        android:background="@drawable/nav_glass"
+        android:orientation="vertical"
+        android:padding="10dp"
+        android:visibility="gone">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <com.h2h.dhamma.CircleImageView
+                android:id="@+id/nowStripPhoto"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginEnd="10dp"
+                android:scaleType="centerCrop"
+                android:visibility="gone" />
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/nowStripText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/gold"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/nowStripSub"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/muted"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </LinearLayout>
+        
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_horizontal"
+                android:orientation="horizontal">
+            <TextView
+                android:id="@+id/nowStripPrev"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:layout_margin="2dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="⏮"
+                android:textColor="#FFFFFF"
+                android:textSize="24sp" />
+            <TextView
+                android:id="@+id/nowStripToggle"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:layout_margin="2dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="▶"
+                android:textColor="#FFFFFF"
+                android:textSize="24sp" />
+            <TextView
+                android:id="@+id/nowStripNext"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:layout_margin="2dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="⏭"
+                android:textColor="#FFFFFF"
+                android:textSize="24sp" />
+
+            
+            
+            
+            <!-- v5.28: Settings strip parity — Main, Talks and the
+                 library went two-row in v5.27; Settings was the one
+                 strip left as a single squeezed row (9 x 40dp buttons
+                 against the title). Same two rows + repeat/shuffle
+                 after speed, same 36dp buttons, same glyphs. -->
+            </LinearLayout>
+        
+        <ProgressBar
+            android:id="@+id/nowStripProgress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            android:layout_marginTop="6dp"
+            android:max="1000"
+            android:progress="0"
+            android:progressBackgroundTint="#40C9A227"
+            android:progressTint="#C9A227" />
+    </LinearLayout>
+</LinearLayout>

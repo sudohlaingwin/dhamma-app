@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v12.92: playing drawer row tile — same embossed shape as drawer_row.xml, but gold-tinted so the sounding talk stands out as a raised gold card. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Bottom shadow: dark layer, tile inset above it. -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#33000000" />
+            <corners android:radius="16dp" />
+        </shape>
+    </item>
+    <!-- Raised gold tile: bright gold top to deep gold bottom. -->
+    <item android:bottom="2dp">
+        <shape android:shape="rectangle">
+            <gradient android:angle="270" android:startColor="#66C9A227" android:centerColor="#33C9A227" android:centerY="0.5" android:endColor="#1AC9A227" android:type="linear" />
+            <stroke android:width="2dp" android:color="#E6C9A227" />
+            <corners android:radius="14dp" />
+        </shape>
+    </item>
+    <!-- Top bevel light. -->
+    <item android:bottom="2dp">
+        <shape android:shape="rectangle">
+            <gradient android:angle="270" android:startColor="#66FFFFFF" android:centerColor="#1AFFFFFF" android:centerY="0.35" android:endColor="#00FFFFFF" android:type="linear" />
+            <corners android:radius="14dp" />
+        </shape>
+    </item>
+</layer-list>

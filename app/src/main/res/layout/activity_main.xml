@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg"
+    android:orientation="vertical"
+    android:padding="16dp">
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+        <TextView
+            android:id="@+id/titleText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerHorizontal="true"
+            android:text="☸ တရားတော်"
+            android:shadowColor="#40000000"
+            android:shadowDx="0"
+            android:shadowDy="2"
+            android:shadowRadius="4"
+            android:textColor="@color/maroon"
+            android:textSize="28sp"
+            android:textStyle="bold" />
+        <!-- v5.55: themeToggle carries glass_icon_3d (was flat circle_gold) —
+             the last interactive control on Main without the Liquid Glass
+             language (Room v5.51, strips v5.52, row menus v5.53, grid star
+             v5.54). 48dp size, glyph and click/long-press wiring untouched;
+             the drawable's own shadow layer gives the depth, no elevation
+             needed in the static header. -->
+        <Button
+            android:id="@+id/themeToggle"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_alignParentRight="true"
+            android:layout_centerVertical="true"
+            android:background="@drawable/glass_icon_3d"
+            android:text="🌙"
+            android:contentDescription="နေ့/ည ပြောင်းရန်"
+            android:textColor="@color/maroon"
+            android:textSize="20sp" />
+    </RelativeLayout>
+    <EditText
+        android:id="@+id/search"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/search_bg"
+        android:hint="Search..."
+        android:padding="10dp"
+        android:textColor="@color/ink"
+        android:textColorHint="@color/muted"
+        android:textSize="16sp" />
+    <GridView
+        android:id="@+id/grid"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="12dp"
+        android:layout_weight="1"
+        android:fastScrollEnabled="true"
+        android:horizontalSpacing="12dp"
+        android:numColumns="4"
+        android:stretchMode="columnWidth"
+        android:verticalSpacing="12dp" />
+    <LinearLayout
+        android:id="@+id/nowStrip"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/nav_glass"
+        android:orientation="vertical"
+        android:padding="10dp"
+        android:visibility="gone">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <com.h2h.dhamma.CircleImageView
+                android:id="@+id/nowStripPhoto"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginEnd="10dp"
+                android:scaleType="centerCrop"
+                android:visibility="gone" />
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/nowStripText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/gold"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/nowStripSub"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/muted"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </LinearLayout>
+        
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_horizontal"
+                android:orientation="horizontal">
+            <TextView
+                android:id="@+id/nowStripPrev"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:layout_margin="2dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="⏮"
+                android:textColor="#FFFFFF"
+                android:textSize="24sp" />
+            <TextView
+                android:id="@+id/nowStripToggle"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:layout_margin="2dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="▶"
+                android:textColor="#FFFFFF"
+                android:textSize="24sp" />
+            <TextView
+                android:id="@+id/nowStripNext"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:layout_margin="2dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="⏭"
+                android:textColor="#FFFFFF"
+                android:textSize="24sp" />
+
+            
+            
+            
+            </LinearLayout>
+        
+        <ProgressBar
+            android:id="@+id/nowStripProgress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            android:layout_marginTop="6dp"
+            android:max="1000"
+            android:progress="0"
+            android:progressBackgroundTint="#40C9A227"
+            android:progressTint="#C9A227" />
+    </LinearLayout>
+    <LinearLayout
+        android:id="@+id/navBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/nav_glass"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="4dp"
+        android:elevation="8dp"
+        android:orientation="horizontal"
+        android:padding="6dp">
+        <LinearLayout
+            android:id="@+id/navMainItem"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical">
+            <!-- v9.08 (user order 2026-11-02 ~20:59 +07): nav glass circles REMOVED —
+                 his circled screenshot asked for the badges off the nav icons
+                 (the strip circles went in v9.07; these are the nav ones he meant).
+                 Icons keep their glyphs/sizes; code still sets their colours. -->
+            <TextView
+                android:id="@+id/navMainIcon"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:gravity="center"
+                android:text="🏠"
+                android:textColor="@color/gold"
+                android:textSize="22sp" />
+            <TextView
+                android:id="@+id/navMainLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ပင်မ"
+                android:textColor="@color/gold"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+        <LinearLayout
+            android:id="@+id/navPlayerItem"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical">
+            <TextView
+                android:id="@+id/navPlayerIcon"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:gravity="center"
+                android:text="▶"
+                android:textSize="22sp" />
+            <TextView
+                android:id="@+id/navPlayerLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Mp3 Player"
+                android:textSize="12sp" />
+        </LinearLayout>
+        <LinearLayout
+            android:id="@+id/navSettingsItem"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical">
+            <TextView
+                android:id="@+id/navSettingsIcon"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:gravity="center"
+                android:text="⚙"
+                android:textSize="22sp" />
+            <TextView
+                android:id="@+id/navSettingsLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ဆက်တင်"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

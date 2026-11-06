@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v2.43 Liquid Glass: floating glass card (outer padding = gap). -->
+<!-- v5.53: queueMenu carries glass_icon_3d (was transparent) — same visual-system completion; delete button untouched (destructive action keeps its own look). -->
+
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingLeft="12dp"
+    android:paddingRight="12dp"
+    android:paddingTop="4dp"
+    android:paddingBottom="4dp">
+    <LinearLayout
+        android:id="@+id/cardInner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:elevation="4dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="12dp">
+        <!-- v6.05: shelf-row portrait — the library rows name their
+             sayadaw in the sub line (v5.47) but were the last rows
+             naming a sayadaw with no face, unlike the grid, the
+             chooser header (v6.04) and all four strips. 44dp, the
+             strip portrait size; GONE when no sayadaw is recorded
+             for the file, so unrecorded files keep today's layout. -->
+        <com.h2h.dhamma.CircleImageView
+            android:id="@+id/dlPhoto"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_gravity="center_vertical"
+            android:layout_marginEnd="12dp"
+            android:scaleType="centerCrop" />
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+            <TextView
+                android:id="@+id/dlTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/ink"
+                android:textSize="16sp" />
+            <TextView
+                android:id="@+id/dlSize"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="@color/muted"
+                android:textSize="13sp" />
+        </LinearLayout>
+        <TextView
+            android:id="@+id/dlState"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="▶"
+            android:textColor="@color/maroon"
+            android:textSize="22sp" />
+        <Button
+            android:id="@+id/queueMenu"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="center_vertical"
+            android:background="@drawable/glass_icon_3d"
+            android:focusable="false"
+            android:focusableInTouchMode="false"
+            android:minWidth="48dp"
+            android:text="⋮"
+            android:textColor="#C9A227"
+            android:textSize="20sp" />
+        <Button
+            android:id="@+id/btnDlDelete"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="8dp"
+            android:text="🗑" />
+    </LinearLayout>
+</LinearLayout>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v7.28: real sleep-timer icon for the Room main row (replaces the 😴 emoji, user order
+     2026-11-01 ~19:07 +07): a crescent moon with a Z beside it. The moon is the standard
+     feather-moon path scaled to the left half of the viewport so the Z has its own space. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 15.65 13.31 A 5.85 5.85 0 1 1 9.29 6.95 A 4.55 4.55 0 0 0 15.65 13.31 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 17 7 H 21 L 17 11 H 21" />
+</vector>

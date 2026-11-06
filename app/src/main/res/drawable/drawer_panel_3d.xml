@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v12.92 (user order 2026-11-06 ~21:32 +07: the Play List drawer "သိပ်မကြိုက်ဘူး" — altar + Room panel bled through, bottom unfinished, flat): opaque embossed panel in the glass_icon_3d (v5.51) language — dark shadow peeking at the bottom edge, opaque body bright at the top, gold rim, top bevel light. OPAQUE on purpose: the old glass_panel_side was 60% transparent (#991E140E) and the altar + Room bottom panel showed through the list. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Bottom shadow: dark layer, body inset above it. -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#CC000000" />
+            <corners android:topLeftRadius="24dp" android:bottomLeftRadius="24dp" android:topRightRadius="0dp" android:bottomRightRadius="0dp" />
+        </shape>
+    </item>
+    <!-- Opaque raised body: warm dark brown, bright top to darker bottom. -->
+    <item android:bottom="3dp">
+        <shape android:shape="rectangle">
+            <gradient android:angle="270" android:startColor="#3A2A18" android:centerColor="#241809" android:centerY="0.45" android:endColor="#120B04" android:type="linear" />
+            <stroke android:width="2dp" android:color="#B3C9A227" />
+            <corners android:topLeftRadius="24dp" android:bottomLeftRadius="24dp" android:topRightRadius="0dp" android:bottomRightRadius="0dp" />
+        </shape>
+    </item>
+    <!-- Top bevel light: thin bright band across the top. -->
+    <item android:bottom="3dp">
+        <shape android:shape="rectangle">
+            <gradient android:angle="270" android:startColor="#59FFFFFF" android:centerColor="#1AFFFFFF" android:centerY="0.30" android:endColor="#00FFFFFF" android:type="linear" />
+            <corners android:topLeftRadius="24dp" android:bottomLeftRadius="24dp" android:topRightRadius="0dp" android:bottomRightRadius="0dp" />
+        </shape>
+    </item>
+</layer-list>

@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.51: Talks is ONLY a list for choosing a talk — no buttons, no
+     filters, nothing else. Tapping a row opens it in the Room.
+     (Retry appears only when loading fails; progress only while loading.
+     v4.93: a title search box sits under the title — see talkSearchRow.) -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg"
+    android:orientation="vertical"
+    android:padding="16dp">
+    <!-- v6.04: chooser header portrait — the album-art mirror of the
+         Room sayadaw row (v5.38) and the four strip portraits
+         (v6.00–v6.03): the chooser header was the last now-playing
+         surface naming a sayadaw with text alone. -->
+    <LinearLayout
+        android:id="@+id/talksHeaderRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+        <com.h2h.dhamma.CircleImageView
+            android:id="@+id/talksHeaderPhoto"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_marginEnd="12dp"
+            android:scaleType="centerCrop" />
+        <TextView
+            android:id="@+id/title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@color/maroon"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+        <!-- v6.07: header download-all — the chooser could queue a
+             whole sayadaw in one tap (v4.49–v4.52 bulk queue verbs)
+             but downloading one meant opening each talk in the Room
+             for its strip ⬇; this is the album-download mirror.
+             GONE until a list lands, like the search row below, so
+             loading/empty states stay exactly as before. -->
+    </LinearLayout>
+    <!-- v4.93: talk search — a sayadaw's list can run long, and
+         browsing it meant scrolling the whole list to find one
+         title; Main already searches sayadaws, the chooser never
+         searched its own talks. GONE until a list lands, so the
+         loading/empty states stay exactly as before. -->
+    <LinearLayout
+        android:id="@+id/talkSearchRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone">
+        <EditText
+            android:id="@+id/talkSearch"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@drawable/search_bg"
+            android:hint="တရားခေါင်းစဉ် ရှာပါ…"
+            android:imeOptions="actionSearch"
+            android:inputType="text"
+            android:padding="10dp"
+            android:singleLine="true"
+            android:textColor="@color/ink"
+            android:textColorHint="@color/muted"
+            android:textSize="16sp" />
+        <!-- v5.57: talkSearchClear carries glass_icon_3d (was transparent) —
+             same visual-system completion as the nav icons (v5.56): the
+             chooser's ✕ was the last ✕ control without a badge. -->
+        <TextView
+            android:id="@+id/talkSearchClear"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@drawable/glass_icon_3d"
+            android:gravity="center"
+            android:text="✕"
+            android:textColor="@color/gold"
+            android:textSize="20sp"
+            android:visibility="gone" />
+        <!-- v4.94: chooser filter button — cycles all / ★ only /
+             unlistened only; lives in the search row, so it
+             appears exactly when the search box does. -->
+        <TextView
+            android:id="@+id/talkFilter"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:gravity="center"
+            android:paddingLeft="8dp"
+            android:paddingRight="8dp"
+            android:text="အားလုံး"
+            android:textColor="@color/muted"
+            android:textSize="14sp" />
+    </LinearLayout>
+    <TextView
+        android:id="@+id/talkSearchEmpty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:gravity="center"
+        android:text="ရှာတာမတွေ့ပါ — တခြားစာလုံးနဲ့ ပြန်ရှာကြည့်ပါ"
+        android:textColor="@color/muted"
+        android:textSize="15sp"
+        android:visibility="gone" />
+    <ProgressBar
+        android:id="@+id/progress"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="12dp" />
+    <Button
+        android:id="@+id/btnRetry"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="8dp"
+        android:text="↻ ပြန်ဆွဲထုတ်မယ်"
+        android:visibility="gone" />
+    <ListView
+        android:id="@+id/list"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_weight="1"
+        android:divider="@color/surface"
+        android:dividerHeight="1dp"
+        android:fastScrollEnabled="true" />
+    <!-- v7.32 (user order 2026-11-01 ~19:36 +07): queue preview removed — no preview block above the strip. -->
+    <!-- v4.31: real mini-player, same strip as Main's (v4.15/v4.30) —
+         GONE while nothing plays, so the list-only chooser stays
+         list-only; rows themselves stay number + title only. -->
+    <LinearLayout
+        android:id="@+id/nowStrip"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/nav_glass"
+        android:orientation="vertical"
+        android:padding="10dp"
+        android:visibility="gone">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <com.h2h.dhamma.CircleImageView
+                android:id="@+id/nowStripPhoto"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginEnd="10dp"
+                android:scaleType="centerCrop"
+                android:visibility="gone" />
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/nowStripText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/gold"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/nowStripSub"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/muted"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </LinearLayout>
+        
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_horizontal"
+                android:orientation="horizontal">
+            <TextView
+                android:id="@+id/nowStripPrev"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:layout_margin="2dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="⏮"
+                android:textColor="#FFFFFF"
+                android:textSize="24sp" />
+            <TextView
+                android:id="@+id/nowStripToggle"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:layout_margin="2dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="▶"
+                android:textColor="#FFFFFF"
+                android:textSize="24sp" />
+            <TextView
+                android:id="@+id/nowStripNext"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:layout_margin="2dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="⏭"
+                android:textColor="#FFFFFF"
+                android:textSize="24sp" />
+
+            
+            
+            
+            </LinearLayout>
+        
+        <ProgressBar
+            android:id="@+id/nowStripProgress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            android:layout_marginTop="6dp"
+            android:max="1000"
+            android:progress="0"
+            android:progressBackgroundTint="#40C9A227"
+            android:progressTint="#C9A227" />
+    </LinearLayout>
+</LinearLayout>

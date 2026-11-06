@@ -1,0 +1,16 @@
+# build outputs (build.sh writes the APK outside the repo)
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+build/
+gen/
+# local config / signing
+local.properties
+*.keystore
+*.jks
+# editor / OS
+.DS_Store
+*.iml
+.idea/

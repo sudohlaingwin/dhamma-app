@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Three-bar list icon for the Room top-right drawer toggle (user order 2026-10-30 ~22:13 +07,
+     thinned 2026-10-30 ~22:18 +07: the first version's bars were 8dp blocks in a 56dp button
+     and read as solid blocks against the Liquid Glass order — now 3dp lines in a 48dp button,
+     on the same translucent glass_btn_dark pill, so the glass reads again). -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:left="14dp" android:right="14dp" android:top="14dp" android:bottom="31dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#FFFFFF" />
+            <corners android:radius="1.5dp" />
+        </shape>
+    </item>
+    <item android:left="14dp" android:right="14dp" android:top="22dp" android:bottom="23dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#FFFFFF" />
+            <corners android:radius="1.5dp" />
+        </shape>
+    </item>
+    <item android:left="14dp" android:right="14dp" android:top="30dp" android:bottom="15dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#FFFFFF" />
+            <corners android:radius="1.5dp" />
+        </shape>
+    </item>
+</layer-list>

@@ -1,0 +1,326 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v5.30 (user order 2026-10-31 ~21:05 +07, Spotify now-playing
+     video): Room panel is Spotify-structured — big talk title first,
+     sayadaw name below it, taller wave, clean elapsed/total times
+     row, main control row Shuffle | Previous | Play | Next |
+     Sleep(timer), secondary row Forward | Speed | Download |
+     Favourite | Share | Repeat. All buttons are the existing
+     ones, only reordered; no new ids, no new wiring. The talk
+     list stays in the right side drawer opened by the top-right
+     "Play List" button. The altar stays visible behind the
+     translucent panel. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#1E140E">
+    <com.h2h.dhamma.RoomView
+        android:id="@+id/roomView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+    <!-- v12.52: id so RoomView can read this panel's real top for
+         the theme-scene flame limit (Finding 6) — the panel is
+         wrap_content, so its top is not a fixed fraction of the
+         view on shorter screens. -->
+    <LinearLayout
+        android:id="@+id/roomBottomPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/glass_panel"
+            android:elevation="8dp"
+            android:orientation="vertical"
+            android:padding="16dp">
+            
+            
+            <!-- v7.28 (user order 2026-11-01 ~19:07 +07): sayadaw photo +
+                 name on TOP, talk title BELOW it and smaller — the reverse
+                 of the v5.30 Spotify order. -->
+            <LinearLayout
+                android:id="@+id/roomSayadawRow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+                <ImageView
+                    android:id="@+id/roomSayadawPhoto"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:layout_marginEnd="10dp" />
+                <TextView
+                    android:id="@+id/roomSayadaw"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="#C9A227"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+            <TextView
+                android:id="@+id/roomNowPlaying"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:ellipsize="end"
+                android:maxLines="3"
+                android:text="တရားတစ်ပုဒ် ရွေးပါ"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+            <!-- v1.42: retry, shown only when the talk list fails to load -->
+            <Button
+                android:id="@+id/roomRetry"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="↻ ပြန်ဆွဲထုတ်မယ်"
+                android:visibility="gone"
+                android:background="@drawable/glass_btn_dark"
+                android:textColor="#FFFFFF" />
+            <LinearLayout
+                android:id="@+id/roomSeekRow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="vertical">
+                <com.h2h.dhamma.WaveSeekView
+                    android:id="@+id/roomSeek"
+                    android:layout_width="match_parent"
+                    android:layout_height="64dp" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <TextView
+                        android:id="@+id/roomElapsed"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0:00"
+                        android:textColor="#AAAAAA" />
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
+                        android:layout_weight="1" />
+                    <TextView
+                        android:id="@+id/roomSleep"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="#AAAAAA"
+                        android:textSize="13sp"
+                        android:visibility="gone" />
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
+                        android:layout_weight="1" />
+                    <TextView
+                        android:id="@+id/roomTotal"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0:00"
+                        android:textColor="#AAAAAA" />
+                </LinearLayout>
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/roomControlsRow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:gravity="center"
+                android:orientation="horizontal">
+                <!-- v5.30: Spotify main row — Shuffle | Previous | Play (big) | Next | Sleep(timer). -->
+<ImageButton
+                        android:id="@+id/roomShuffleBtn"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginLeft="8dp"
+                        android:background="@drawable/glass_icon_3d"
+                        android:contentDescription="Shuffle"
+                        android:padding="10dp"
+                        android:scaleType="center"
+                        android:src="@drawable/ic_shuffle"
+                        android:elevation="6dp" />
+<!-- v5.15: Previous talk in the time row — the Room had
+                         Next in the control row but Previous only as the
+                         hidden altar swipe-right; this is the visible way
+                         back, without touching the 3-button control row. -->
+                    <ImageButton
+                        android:id="@+id/roomPrev"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginLeft="8dp"
+                        android:background="@drawable/glass_icon_3d"
+                        android:contentDescription="Previous"
+                        android:padding="10dp"
+                        android:scaleType="center"
+                        android:src="@drawable/ic_prev"
+                        android:elevation="6dp" />
+<FrameLayout
+                    android:layout_width="72dp"
+                    android:layout_height="72dp"
+                    android:layout_marginLeft="4dp"
+                    android:layout_marginRight="4dp">
+                    <View
+                        android:id="@+id/playGlow"
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
+                        android:layout_gravity="center"
+                        android:background="@drawable/glow_ring"
+                        android:visibility="gone" />
+                    <ImageButton
+                        android:id="@+id/roomPlayPause"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:background="@drawable/glass_icon_3d"
+                        android:contentDescription="Play / Pause"
+                        android:padding="14dp"
+                        android:scaleType="center"
+                        android:src="@drawable/ic_play"
+                        android:elevation="6dp" />
+                </FrameLayout>
+<ImageButton
+                    android:id="@+id/roomNext"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginLeft="4dp"
+                    android:background="@drawable/glass_icon_3d"
+                    android:contentDescription="Next"
+                    android:padding="10dp"
+                    android:scaleType="center"
+                    android:src="@drawable/ic_next"
+                    android:elevation="6dp" />
+<!-- v5.17: Sleep timer beside Previous — the Room had
+                         no way to ARM a timer: the countdown text only
+                         exists while a timer runs, and the stack sleep
+                         button died with the v5.11 stack removal, so
+                         setting one meant leaving the player. Same
+                         13sp glass style as Rewind/Previous; the
+                         control row and the left stack stay untouched. -->
+                    <ImageButton
+                        android:id="@+id/roomSleepBtn"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginLeft="4dp"
+                        android:background="@drawable/glass_icon_3d"
+                        android:contentDescription="Sleep timer"
+                        android:padding="10dp"
+                        android:scaleType="center"
+                        android:src="@drawable/ic_sleep"
+                        android:elevation="6dp" />
+            </LinearLayout>
+            
+            <!-- 2026-10-31 user order: Room Up Next strip + queue preview removed; queue stays in the Play List drawer. -->
+
+        </LinearLayout>
+    </LinearLayout>
+    <!-- v2.48: Play List side drawer — slides in from the right, thin
+         1dp gold rim, Liquid Glass over the altar photo. -->
+    <LinearLayout
+        android:id="@+id/roomPlayListPanel"
+        android:layout_width="300dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="right"
+        android:background="@drawable/drawer_panel_3d"
+        android:elevation="12dp"
+        android:orientation="vertical"
+        android:padding="12dp"
+        android:visibility="gone">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <Button
+                android:id="@+id/roomPlayListClose"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:background="@drawable/glass_btn"
+                android:text="✕"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:elevation="4dp" />
+            <TextView
+                android:id="@+id/roomPlayListTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Play List"
+                android:textColor="#C9A227"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+        <View
+            android:id="@+id/roomPlayListDivider"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="6dp"
+            android:layout_marginBottom="6dp"
+            android:background="#66C9A227" />
+        
+        <ListView
+            android:id="@+id/roomList"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:background="@android:color/transparent"
+            android:divider="@android:color/transparent"
+            android:dividerHeight="0dp"
+            android:fastScrollEnabled="true" />
+        <!-- v12.92 (user order 2026-11-06 ~21:32 +07: drawer bottom "ရုပ်ဆိုးနေတယ်"): a finished bottom edge — gold divider, centre handle, and a full-width glass close button, so the list ends cleanly instead of running off the screen edge. -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="8dp"
+            android:background="#66C9A227" />
+        <View
+            android:layout_width="48dp"
+            android:layout_height="5dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/drawer_handle" />
+        <Button
+            android:id="@+id/roomPlayListCloseBottom"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/glass_btn_dark"
+            android:textColor="#C9A227"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+    <!-- USER ORDER 2026-10-31 ~19:39 +07: the entire left transport stack
+     (repeat/shuffle/speed/sleep/download/favourite/share/previous/
+     queue/copy-link/library/settings/home) was REMOVED here. The Room
+     is clean again. Do NOT re-add stack buttons to this layout.
+     Those functions stay reachable from mini-player strips, the
+     drawer, and Settings. -->
+    <!-- 3.72: Play List toggle, top-right corner, above the drawer so
+         it stays tappable while the drawer is open. Text button replaced
+         by a three-bar icon (user order) — same id, same toggle behaviour. -->
+    <ImageButton
+        android:id="@+id/roomPlayList"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="top|right"
+        android:layout_marginTop="16dp"
+        android:layout_marginRight="12dp"
+        android:background="@drawable/glass_icon_3d"
+        android:elevation="8dp"
+        android:src="@drawable/ic_menu_bars"
+        android:scaleType="centerInside"
+        android:contentDescription="Play List" />
+</FrameLayout>

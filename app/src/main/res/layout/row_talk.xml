@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v2.43 Liquid Glass: floating glass card. Outer padding makes the gap
+     (ListView ignores item margins); inner card carries the glass. A talk
+     row is its number, title and marks (v5.49: ▶/◈/★/⬇/⏳/✓/↺, same
+     order as the Room drawer) — nothing else. -->
+<!-- v7.32: row ⋮ removed by user order — the row is number + title + marks only. -->
+
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingLeft="12dp"
+    android:paddingRight="12dp"
+    android:paddingTop="4dp"
+    android:paddingBottom="4dp">
+    <LinearLayout
+        android:id="@+id/cardInner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:elevation="4dp"
+        android:orientation="horizontal"
+        android:padding="10dp">
+        <TextView
+            android:id="@+id/index"
+            android:layout_width="48dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:textColor="@color/gold"
+            android:textSize="14sp" />
+        <TextView
+            android:id="@+id/talkTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="@color/ink"
+            android:textSize="15sp" />
+        <!-- v7.32 (user order 2026-11-01 ~19:36 +07): row ⋮ removed — rows are tap-to-open + long-press-share only again. -->
+    </LinearLayout>
+</LinearLayout>

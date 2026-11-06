@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- v8.01: tag key for the strip-drag talk identity (Fx.miniSeekBar).
+         Not a view: a View tag key only, so a scrub that outlives its
+         talk can be recognised at lift and discarded. -->
+    <item name="stripDragUrl" type="id"/>
+</resources>
