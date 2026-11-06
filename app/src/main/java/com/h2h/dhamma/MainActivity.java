@@ -406,6 +406,9 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        // v12.95: returning from the unknown-sources Settings page —
+        // if install is now allowed, continue the pending update.
+        UpdateChecker.onResume(this);
         // v1.81: count this screen as on top (see AppForeground).
         AppForeground.activityResumed();
         // v10.49: keep-screen-on was honoured on the Room, the Talks
@@ -2411,6 +2414,17 @@ public class MainActivity extends Activity {
         // scheduling failure never breaks launch — schedule()
         // catches everything itself).
         AutoDownloadJob.schedule(this);
+        // v12.95: in-app updater (3D-app force-update system) — checks
+        // GitHub for a newer published release on every launch; a
+        // newer release shows the blocking update dialog.
+        UpdateChecker.check(this);
+    }
+
+    // v12.95: back is swallowed while the update block is up — the
+    // update comes first, like the 3D app's blocking screen.
+    @Override public void onBackPressed() {
+        if (UpdateChecker.isBlockVisible()) return;
+        super.onBackPressed();
     }
 
     private void loadCatalog() {
