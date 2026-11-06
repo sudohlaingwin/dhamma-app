@@ -108,6 +108,20 @@ public class AudioService extends Service {
     // importance takes effect; recreating the same id restores the
     // blocked state Android kept for it.
     private static final String CHANNEL_ID_FALLBACK = "playback_media2";
+    // v12.96 TEST (his report 2026-11-06 ~23:45 +07 "notiက လုံးဝမပေါ်တော့ဘူး"
+    // on a v10.74+ build): the custom RemoteViews card is OFF. The code
+    // already had three fallbacks (plain snapshot, wrapper minimal card,
+    // channel migration), all of which "succeed" while the shade shows
+    // nothing — the one failure they cannot catch is the phone's shade
+    // silently dropping a posted custom-view notification (the Xiaomi-
+    // shade hypothesis floated 2026-11-03). This build posts ONLY the
+    // plain card (title/sub/progress/actions/portrait — the v5.28 card
+    // that DID show in his screenshots). If the card appears now, the
+    // custom views were the culprit and plain stays; if it still shows
+    // nothing, the cause is channel/permission/system-level and the
+    // next step is the Settings ⚠ check on his phone. Revert by
+    // flipping this back to true — the v9.01 code is untouched.
+    private static final boolean USE_CUSTOM_NOTI_VIEWS = false;
     private static final int NOTIF_ID = 1;
 
     private final IBinder binder = new LocalBinder();
@@ -6261,7 +6275,7 @@ public class AudioService extends Service {
         // taken after attach would carry the custom views too.
         android.app.Notification plainNotif = null;
         try { plainNotif = b.build(); } catch (Exception ignored) {}
-        if (notiOn) {
+        if (notiOn && USE_CUSTOM_NOTI_VIEWS) {
             android.graphics.Bitmap portrait = null;
             try {
                 if (resumeOk && sd.length() > 0) {
