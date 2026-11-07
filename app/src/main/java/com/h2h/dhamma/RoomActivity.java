@@ -8502,6 +8502,20 @@ if (snd67n >= 0) currentIndex = snd67n;
                     final boolean dQueued = queueLineIndexForUrl(dt.url) >= 0;
                     if (dQueued) dOpts.add(Lang.t(RoomActivity.this, "menu_queue_remove"));
                     else dOpts.add(Lang.t(RoomActivity.this, "menu_queue_add"));
+                    // v13.04: "queue all from here" — the Downloaded
+                    // library's bulk verb (menu_queue_from_here),
+                    // missing from this dialog since the v7.32 ⋮
+                    // removal (the v7.81 rebuild restored add /
+                    // remove / play-next but not this one): queues
+                    // this talk and every shown talk below it, in
+                    // drawer display order, so a listener can queue
+                    // a whole run without leaving the Room. Offered
+                    // on any non-sounding row (the dialog gate
+                    // already excludes the sounding talk, and the
+                    // sounding-row dialog has no queue verbs by
+                    // design); already-queued rows below are skipped
+                    // by the handler, like the library verb.
+                    dOpts.add(Lang.t(RoomActivity.this, "menu_queue_from_here"));
                     final String dCur = currentTalkUrl();
                     final QueueEntry dFw = firstWaitingQueueEntry();
                     final boolean dPlaying = dCur != null && dCur.length() > 0;
@@ -8564,6 +8578,39 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         saveQueue(java.util.Collections.singleton(dt.url), true);
                                         if (adapter != null) adapter.notifyDataSetChanged();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "added_to_queue"), Toast.LENGTH_SHORT).show();
+                                    } else if (dOptArr[which].equals(Lang.t(RoomActivity.this, "menu_queue_from_here"))) {
+                                        // v13.04: queue this talk and every shown talk
+                                        // below it, in drawer display order
+                                        // (drawerTalkIndex resolves the full list and
+                                        // the filter view alike, like the library
+                                        // verb's display-position loop; the search
+                                        // view never reaches this dialog). The
+                                        // library verb's rules: skip the sounding
+                                        // talk (re-checked at tap time, the v11.12
+                                        // window) and already-queued talks (they
+                                        // stay where they are); the keep set carries
+                                        // every new URL through the funnel's stale
+                                        // drop, or the funnel would drop them as
+                                        // not-yet-saved.
+                                        int added04 = 0;
+                                        java.util.Set<String> keep04 = new java.util.HashSet<String>();
+                                        int dispCount04 = drawerDisplayCount();
+                                        for (int dp04 = pos; dp04 < dispCount04; dp04++) {
+                                            int ti04 = drawerTalkIndex(dp04);
+                                            if (ti04 < 0 || ti04 >= talks.size()) continue;
+                                            Talk t04 = talks.get(ti04);
+                                            if (t04 == null || t04.url == null || t04.url.length() == 0) continue;
+                                            if (isSoundingTalk(t04.url)) continue;
+                                            if (queueLineIndexForUrl(t04.url) >= 0) continue;
+                                            queueUrls.add(t04.url);
+                                            keep04.add(t04.url);
+                                            added04++;
+                                        }
+                                        saveQueue(keep04, true);
+                                        if (adapter != null) adapter.notifyDataSetChanged();
+                                        Toast.makeText(RoomActivity.this, added04 > 0
+                                                ? Lang.t(RoomActivity.this, "queue_plain_prefix") + added04 + Lang.t(RoomActivity.this, "queue_added_suffix")
+                                                : Lang.t(RoomActivity.this, "already_in_queue"), Toast.LENGTH_SHORT).show();
                                     } else {
                                         // v11.12: same tap-time sounding re-check as the
                                         // queue-only dialog above — this dialog's gate also

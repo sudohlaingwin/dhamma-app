@@ -620,7 +620,14 @@ public class TalksActivity extends Activity {
     // yet and must survive the stale drop below; every other
     // caller passes null (remove / move / move-to-end / prune
     // add nothing new, so nothing of theirs is kept).
+    // v13.04: the Set overload — the bulk "queue all from here"
+    // verb adds several URLs at once, and every one of them
+    // must survive the same drop, so it passes them all.
     private void saveTalkQueueKeepingForeign(java.util.ArrayList<String> inList, String keepUrl98) {
+        saveTalkQueueKeepingForeign(inList, keepUrl98 == null ? null
+                : java.util.Collections.singleton(keepUrl98));
+    }
+    private void saveTalkQueueKeepingForeign(java.util.ArrayList<String> inList, java.util.Set<String> keepUrls98) {
         // v12.05: capture the caller's pre-mutation order + moved set
         // BEFORE the drop/adopt below -- inList itself is never
         // mutated by this funnel (only the out copy is), but the
@@ -653,7 +660,7 @@ public class TalksActivity extends Activity {
             // resurrected): an entry absent from the fresh
             // saved read is gone — popped, cleared or pruned
             // elsewhere — unless this call just added it
-            // (keepUrl98). Runs even when the saved read is
+            // (keepUrls98). Runs even when the saved read is
             // empty (a cleared queue must not resurrect
             // wholesale); foreign v2 lines are never in out
             // at entry (talkQueue holds bare URLs, the carried
@@ -672,7 +679,7 @@ public class TalksActivity extends Activity {
                 QueueEntry e98 = QueueEntry.parse(out.get(i98));
                 String u98 = e98 == null ? "" : e98.url;
                 if (u98.length() == 0) continue;
-                if (keepUrl98 != null && u98.equals(keepUrl98)) continue;
+                if (keepUrls98 != null && keepUrls98.contains(u98)) continue;
                 if (!savedUrls98.contains(u98)) out.remove(i98);
             }
             if (saved != null && saved.length() > 0) {
@@ -787,7 +794,7 @@ public class TalksActivity extends Activity {
                 // the position the pass above just gave them, which
                 // already is their saved position) are re-sorted to
                 // the fresh saved order; entries this call moved,
-                // just added (keepUrl98), or with no saved rank stay
+                // just added (keepUrls98), or with no saved rank stay
                 // pinned at their current slots. The next 1s tick's
                 // refreshQueueMarks rebuilds talkQueue from the
                 // persisted key, so the chooser's in-memory order
@@ -1450,7 +1457,7 @@ public class TalksActivity extends Activity {
                     talkQueue.remove(moveHeldUrl);
                     talkQueue.add(talkQueue.indexOf(tappedUrl), moveHeldUrl);
                     moveHeldUrl = null;
-                    saveTalkQueueKeepingForeign(talkQueue, null);
+                    saveTalkQueueKeepingForeign(talkQueue, (String) null);
                     refreshQueueMarks();
                     if (!talks.isEmpty() && sayadawName != null) refreshFavHeader();
                     android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "moved_item") + heldTitle, android.widget.Toast.LENGTH_SHORT).show();
@@ -1555,7 +1562,7 @@ public class TalksActivity extends Activity {
                     talkQueue.remove(moveHeldUrl);
                     talkQueue.add(moveHeldUrl);
                     moveHeldUrl = null;
-                    saveTalkQueueKeepingForeign(talkQueue, null);
+                    saveTalkQueueKeepingForeign(talkQueue, (String) null);
                     // v11.86: the funnel's anchor-preserving carry (v10.98) re-inserts
                     // a waiting foreign line right after its nearest surviving
                     // predecessor — when that anchor is the moved talk, the foreign line
@@ -1658,6 +1665,19 @@ public class TalksActivity extends Activity {
                     final boolean dQueued = talkQueue.contains(dt.url);
                     if (dQueued) dOpts.add(Lang.t(TalksActivity.this, "menu_queue_remove"));
                     else dOpts.add(Lang.t(TalksActivity.this, "menu_queue_add"));
+                    // v13.04: "queue all from here" — the Downloaded
+                    // library's bulk verb (menu_queue_from_here),
+                    // missing from this dialog since the v7.32 ⋮
+                    // removal (the v7.82 rebuild restored add /
+                    // remove / move / play-next but not this one):
+                    // queues this talk and every shown talk below
+                    // it, in display order, so a listener can queue
+                    // a whole run without opening the Room first.
+                    // Offered on any non-sounding row (the dialog
+                    // gate already excludes the sounding talk);
+                    // already-queued rows below are skipped by the
+                    // handler, like the library verb.
+                    dOpts.add(Lang.t(TalksActivity.this, "menu_queue_from_here"));
                     // v7.83: re-arm the dead pick-up/drop move — the
                     // chooser ⋮ removal deleted its only setter, so
                     // Talks moveHeldUrl could only ever be restored
@@ -1783,7 +1803,7 @@ public class TalksActivity extends Activity {
                                             return;
                                         }
                                         talkQueue.remove(dt.url);
-                                        saveTalkQueueKeepingForeign(talkQueue, null);
+                                        saveTalkQueueKeepingForeign(talkQueue, (String) null);
                                         refreshQueueMarks();
                                         if (!talks.isEmpty() && sayadawName != null) refreshFavHeader();
                                         if (adapter != null) adapter.notifyDataSetChanged();
@@ -1814,6 +1834,42 @@ public class TalksActivity extends Activity {
                                         if (!talks.isEmpty() && sayadawName != null) refreshFavHeader();
                                         if (adapter != null) adapter.notifyDataSetChanged();
                                         android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "added_to_queue"), android.widget.Toast.LENGTH_SHORT).show();
+                                    } else if (dOptArr[which].equals(Lang.t(TalksActivity.this, "menu_queue_from_here"))) {
+                                        // v13.04: queue this talk and every shown talk
+                                        // below it, in display order (visibleHits when a
+                                        // search/filter is active, else the full list —
+                                        // the same mapping talkIndexAtDisplay uses, so
+                                        // a narrowed list queues exactly what is on
+                                        // screen). The library verb's rules: skip the
+                                        // sounding talk (re-checked at tap time, the
+                                        // v11.14 window — the dialog can sit open
+                                        // across an auto-advance) and already-queued
+                                        // talks (they stay where they are); the keep
+                                        // set carries every new URL through the
+                                        // funnel's stale drop, or the funnel would
+                                        // drop them as not-yet-saved.
+                                        int added04 = 0;
+                                        java.util.Set<String> keep04 = new java.util.HashSet<String>();
+                                        int dispCount04 = visibleHits != null ? visibleHits.size() : talks.size();
+                                        for (int dp04 = pos; dp04 < dispCount04; dp04++) {
+                                            int ti04 = talkIndexAtDisplay(dp04);
+                                            if (ti04 < 0 || ti04 >= talks.size()) continue;
+                                            Talk t04 = talks.get(ti04);
+                                            if (t04 == null || t04.url == null || t04.url.length() == 0) continue;
+                                            if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && t04.url.equals(talkPlayingUrl))
+                                                    || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && t04.url.equals(talkPlayingLibUrl))) continue;
+                                            if (talkQueue.contains(t04.url)) continue;
+                                            talkQueue.add(t04.url);
+                                            keep04.add(t04.url);
+                                            added04++;
+                                        }
+                                        saveTalkQueueKeepingForeign(talkQueue, keep04);
+                                        refreshQueueMarks();
+                                        if (!talks.isEmpty() && sayadawName != null) refreshFavHeader();
+                                        if (adapter != null) adapter.notifyDataSetChanged();
+                                        android.widget.Toast.makeText(TalksActivity.this, added04 > 0
+                                                ? Lang.t(TalksActivity.this, "queue_plain_prefix") + added04 + Lang.t(TalksActivity.this, "queue_added_suffix")
+                                                : Lang.t(TalksActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
                                     } else if (dOptArr[which].equals(Lang.t(TalksActivity.this, "dl_btn_download"))) {
                                         // v11.70: tap-time re-checks, the v11.14/v11.12
                                         // pattern -- the offer gate ran at dialog-build
@@ -4813,7 +4869,7 @@ public class TalksActivity extends Activity {
                                             new java.util.HashSet<String>(talkQueue);
                                     if (Prefs.queueHasStaleLinePure(rawQ, inList69,
                                             sayadawName, talkPlayingUrl))
-                                        saveTalkQueueKeepingForeign(talkQueue, null);
+                                        saveTalkQueueKeepingForeign(talkQueue, (String) null);
                                 }
                             } catch (Exception ignored) {}
                         }
