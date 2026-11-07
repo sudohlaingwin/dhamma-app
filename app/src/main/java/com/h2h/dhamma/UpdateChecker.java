@@ -111,6 +111,18 @@ public class UpdateChecker {
                 waitingForPermission = false;
                 if (downloadedFile != null && downloadedFile.exists()) fireInstaller(activity);
                 else refreshBlockUi(activity);
+            } else {
+                // v12.99: returning from a CANCELLED installer left the
+                // update button dead — fireInstaller disables it with
+                // the "upd_inst" text, and this branch did nothing when
+                // waitingForPermission was false, so the button stayed
+                // disabled until rotation or process death. Re-sync the
+                // button: with the file downloaded it becomes tappable
+                // again (tap re-fires the installer); mid-download it
+                // shows progress; without permission it re-shows the
+                // permission prompt. Same for a Settings return without
+                // granting: refreshBlockUi re-shows that state too.
+                refreshBlockUi(activity);
             }
             return;
         }
