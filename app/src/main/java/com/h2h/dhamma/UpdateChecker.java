@@ -46,6 +46,9 @@ public class UpdateChecker {
 
     private static boolean checkedThisProcess = false;
     private static boolean checkRunning = false;
+    // v12.98: wall-clock of the last check start — onResume re-checks
+    // at most once a minute (see onResume).
+    private static long lastCheckAtMs = 0;
     // Pending-update state, kept across rotation (static, process-wide).
     private static String pendingUrl = null;
     private static String pendingName = null;
@@ -72,6 +75,7 @@ public class UpdateChecker {
         if (checkedThisProcess || checkRunning) return;
         checkedThisProcess = true;
         checkRunning = true;
+        lastCheckAtMs = System.currentTimeMillis();
         final Context appCtx = activity.getApplicationContext();
         new Thread(new Runnable() {
             @Override public void run() {
@@ -101,12 +105,24 @@ public class UpdateChecker {
     }
 
     public static void onResume(Activity activity) {
-        if (pendingUrl == null) return;
-        if (!isBlockVisible()) { showBlock(activity); return; }
-        if (waitingForPermission && canInstall(activity)) {
-            waitingForPermission = false;
-            if (downloadedFile != null && downloadedFile.exists()) fireInstaller(activity);
-            else refreshBlockUi(activity);
+        if (pendingUrl != null) {
+            if (!isBlockVisible()) { showBlock(activity); return; }
+            if (waitingForPermission && canInstall(activity)) {
+                waitingForPermission = false;
+                if (downloadedFile != null && downloadedFile.exists()) fireInstaller(activity);
+                else refreshBlockUi(activity);
+            }
+            return;
+        }
+        // v12.98: the check used to run ONCE per process — if the app
+        // was already open when a release was published, no Main resume
+        // ever re-checked, so the update never appeared until the
+        // process died (his v12.97 report 2026-11-07 ~11:40 +07: the
+        // app was open since the v12.96 install, before v1297 was
+        // published). Re-check on resume, at most once a minute.
+        if (!checkRunning && System.currentTimeMillis() - lastCheckAtMs > 60000) {
+            checkedThisProcess = false;
+            check(activity);
         }
     }
 
