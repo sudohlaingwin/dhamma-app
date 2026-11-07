@@ -591,6 +591,26 @@ public class Prefs {
     }
 
     public static void talkPosPut(Context c, String url, int pos) {
+        talkPosPutInner(c, url, pos, false);
+    }
+
+    // v13.06: synchronous twin — same write, commit() instead of
+    // apply(), for the swipe-away exit (AudioService.onTaskRemoved)
+    // where the process is killed ~300ms after the save and an
+    // apply() flush may never land on disk.
+    public static void talkPosPutSync(Context c, String url, int pos) {
+        talkPosPutInner(c, url, pos, true);
+    }
+
+    // v13.06: commit twin of talkPosPutBoth — same both-forms write,
+    // synchronous, so a re-saved spot survives the swipe-away kill.
+    public static void talkPosPutBothSync(Context c, String url, int pos) {
+        talkPosPutSync(c, url, pos);
+        String other = talkPosOtherForm(c, url);
+        if (other != null) talkPosPutSync(c, other, pos);
+    }
+
+    private static void talkPosPutInner(Context c, String url, int pos, boolean sync) {
         if (url == null || url.length() == 0 || pos <= 0) return;
         if (url.indexOf('\t') >= 0 || url.indexOf('\n') >= 0 || url.indexOf('\r') >= 0) return;
         try {
@@ -608,7 +628,9 @@ public class Prefs {
                     count++;
                 }
             }
-            sp(c).edit().putString(TALK_POS_KEY, sb.toString()).apply();
+            android.content.SharedPreferences.Editor e =
+                    sp(c).edit().putString(TALK_POS_KEY, sb.toString());
+            if (sync) e.commit(); else e.apply();
         } catch (Exception ignored) {}
     }
 

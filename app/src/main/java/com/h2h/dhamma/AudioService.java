@@ -1081,7 +1081,25 @@ public class AudioService extends Service {
     @Override
     public void onTaskRemoved(Intent rootIntent) {
         super.onTaskRemoved(rootIntent);
+        // v13.06: a swipe-away is an exit like Back — keep the resume
+        // spot. stopPlayback() below clears lastPos/talkPosMap by
+        // design (v1.57 stop semantics), and onDestroy's v12.20 final
+        // save is skipped once currentUrl is null, so a swiped-away
+        // talk used to restart from 0 on every path while the Back
+        // exit kept its minute. Capture the spot first (same guard as
+        // the v12.20 final save), let the stop run, then re-save it
+        // synchronously — commit(), not apply(): the process dies
+        // 300ms later and an async flush may never land.
+        String swipeUrl = null; int swipePos = 0;
+        if (currentUrl != null && player != null && prepared
+                && !trackEnded && !trackError) {
+            try {
+                swipePos = player.getCurrentPosition();
+                if (swipePos > 5000) swipeUrl = currentUrl;
+            } catch (Exception ignored) {}
+        }
         try { stopPlayback(); } catch (Exception ignored) {}
+        if (swipeUrl != null) saveResumeSpotSync(swipeUrl, swipePos);
         try { stopForeground(true); } catch (Exception ignored) {}
         stopSelf();
         new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
@@ -1958,6 +1976,22 @@ public class AudioService extends Service {
     private void saveTalkPos(String url, int pos) {
         if (url == null || pos <= 5000) return;
         Prefs.talkPosPutBoth(this, url, pos);
+    }
+
+    // v13.06: re-save a resume spot synchronously (commit) — the only
+    // writer that must survive a process kill milliseconds later.
+    // Same two tiers as the checkpoint/pause path: the global
+    // lastPos/lastPosUrl pair and the per-talk map under both forms
+    // (Prefs.talkPosPutBothSync — the apply() original cannot be
+    // relied on here). Called only from onTaskRemoved, after
+    // stopPlayback() has cleared both tiers.
+    private void saveResumeSpotSync(String url, int pos) {
+        if (url == null || pos <= 5000) return;
+        try {
+            getSharedPreferences("dhamma", MODE_PRIVATE).edit()
+                    .putInt("lastPos", pos).putString("lastPosUrl", url).commit();
+        } catch (Exception ignored) {}
+        Prefs.talkPosPutBothSync(this, url, pos);
     }
 
     // v5.34: drop one talk's spot under both its forms — the mirror
