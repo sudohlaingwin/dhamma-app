@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.h2h.dhamma"
-    android:versionCode="1300"
-    android:versionName="13.00">
+    android:versionCode="1301"
+    android:versionName="13.01">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
     <supports-screens
         android:smallScreens="true"

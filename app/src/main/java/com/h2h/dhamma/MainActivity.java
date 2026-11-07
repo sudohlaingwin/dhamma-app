@@ -69,6 +69,10 @@ public class MainActivity extends Activity {
     private Button themeToggle;
     private EditText searchField;
     private GridView gridView;
+    // v13.01: restored on his order — Personal Playlist entry button (premium backlog #2).
+    private Button playlistBtn;
+    // v13.01: restored on his order — Listening history / stats entry button (premium backlog #3).
+    private Button historyBtn;
     // v2.03: row-bind cache — getView used to read SharedPreferences
     // (isNight + three size lookups, each a fontSize() call) for
     // every row on every scroll bind. applyThemeAndFont() already
@@ -375,6 +379,25 @@ public class MainActivity extends Activity {
         if (navPlayer != null) navPlayer.setText(Lang.t(this, "nav_player"));
         TextView navSettings = findViewById(R.id.navSettingsLabel);
         if (navSettings != null) navSettings.setText(Lang.t(this, "nav_settings"));
+        // v13.01: restored playlist entry button — same Lang + font-size
+        // treatment as the nav labels above, so a language picked
+        // in Settings shows here on return.
+        if (playlistBtn != null) {
+            playlistBtn.setText(Lang.t(this, "pl_title"));
+            playlistBtn.setBackgroundResource(night ? R.drawable.nav_glass_night : R.drawable.nav_glass);
+            int pf = Prefs.fontSize(this);
+            playlistBtn.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,
+                    pf == 0 ? 14 : (pf == 1 ? 16 : 20));
+        }
+        // v13.01: restored history entry button — same treatment as the
+        // playlist button above it.
+        if (historyBtn != null) {
+            historyBtn.setText(Lang.t(this, "hs_title"));
+            historyBtn.setBackgroundResource(night ? R.drawable.nav_glass_night : R.drawable.nav_glass);
+            int hf = Prefs.fontSize(this);
+            historyBtn.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,
+                    hf == 0 ? 14 : (hf == 1 ? 16 : 20));
+        }
         if (searchField != null) searchField.setHint(Lang.t(this, "search_hint"));
         refreshFavHint();
         if (navBar != null)
@@ -2280,6 +2303,34 @@ public class MainActivity extends Activity {
                 .getStringSet("favs", new HashSet<String>()));
 
         searchField = findViewById(R.id.search);
+        // v13.01: restored Personal Playlist (premium backlog #2) — the
+        // entry button between search and the grid; label + colours
+        // follow the theme in applyThemeAndFont, like the nav labels.
+        playlistBtn = findViewById(R.id.playlistBtn);
+        if (playlistBtn != null) {
+            playlistBtn.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    Fx.tap(MainActivity.this);
+                    Fx.morph(v);
+                    Fx.go(MainActivity.this,
+                            new Intent(MainActivity.this, PlaylistActivity.class));
+                }
+            });
+        }
+        // v13.01: restored Listening history / stats (premium backlog #3) —
+        // the entry button under the playlist button; label +
+        // colours follow the theme in applyThemeAndFont.
+        historyBtn = findViewById(R.id.historyBtn);
+        if (historyBtn != null) {
+            historyBtn.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    Fx.tap(MainActivity.this);
+                    Fx.morph(v);
+                    Fx.go(MainActivity.this,
+                            new Intent(MainActivity.this, HistoryActivity.class));
+                }
+            });
+        }
         // v1.48: restore the pre-rotation query (see onSaveInstanceState).
         if (savedInstanceState != null) query = savedInstanceState.getString("q", "");
         // v4.26: restore the filter with the query (guarded: an

@@ -51,6 +51,28 @@
         android:textColor="@color/ink"
         android:textColorHint="@color/muted"
         android:textSize="16sp" />
+    <!-- v13.01: restored on his order — Personal Playlist entry (premium backlog #2), between search and the grid. Label + colours follow the theme in applyThemeAndFont; the tap opens PlaylistActivity. (Removed v12.90 on his order, restored v13.01.) -->
+    <Button
+        android:id="@+id/playlistBtn"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/nav_glass"
+        android:padding="10dp"
+        android:textColor="#C9A227"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+    <!-- v13.01: restored on his order — Listening history / stats entry (premium backlog #3), under the playlist button. Label + colours follow the theme in applyThemeAndFont; the tap opens HistoryActivity. (Removed v12.90, restored v13.01.) -->
+    <Button
+        android:id="@+id/historyBtn"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/nav_glass"
+        android:padding="10dp"
+        android:textColor="#C9A227"
+        android:textSize="16sp"
+        android:textStyle="bold" />
     <GridView
         android:id="@+id/grid"
         android:layout_width="match_parent"
