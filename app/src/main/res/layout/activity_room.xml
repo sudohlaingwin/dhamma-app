@@ -113,49 +113,6 @@
                         android:layout_width="0dp"
                         android:layout_height="0dp"
                         android:layout_weight="1" />
-                    <!-- v13.01: restored on his order — Bookmarks (premium backlog #1): add a mark at the sounding minute / open the mark list. Small glass buttons in the clock row; the main control row stays exactly as ordered. (Removed v12.90, restored v13.01.) -->
-                    <Button
-                        android:id="@+id/roomBookmarkAdd"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginEnd="6dp"
-                        android:background="@drawable/glass_btn_dark"
-                        android:minWidth="0dp"
-                        android:minHeight="0dp"
-                        android:paddingLeft="8dp"
-                        android:paddingRight="8dp"
-                        android:paddingTop="4dp"
-                        android:paddingBottom="4dp"
-                        android:textColor="#FFFFFF"
-                        android:textSize="12sp" />
-                    <Button
-                        android:id="@+id/roomBookmarkList"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginEnd="6dp"
-                        android:background="@drawable/glass_btn_dark"
-                        android:minWidth="0dp"
-                        android:minHeight="0dp"
-                        android:paddingLeft="8dp"
-                        android:paddingRight="8dp"
-                        android:paddingTop="4dp"
-                        android:paddingBottom="4dp"
-                        android:textColor="#FFFFFF"
-                        android:textSize="12sp" />
-                    <!-- v13.01: restored on his order — Personal Playlist (premium backlog #2): add the sounding talk to one of the user's lists. Third small glass button in the clock row, same size as the bookmark pair; the main control row stays exactly as ordered. (Removed v12.90, restored v13.01.) -->
-                    <Button
-                        android:id="@+id/roomPlaylistAdd"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:background="@drawable/glass_btn_dark"
-                        android:minWidth="0dp"
-                        android:minHeight="0dp"
-                        android:paddingLeft="8dp"
-                        android:paddingRight="8dp"
-                        android:paddingTop="4dp"
-                        android:paddingBottom="4dp"
-                        android:textColor="#FFFFFF"
-                        android:textSize="12sp" />
                     <TextView
                         android:id="@+id/roomSleep"
                         android:layout_width="wrap_content"

@@ -81,13 +81,6 @@ public class RoomActivity extends Activity {
     // every tick, mirroring the speed/download/fav/share buttons.
     private Button roomRepeatBtn;
     private android.widget.ImageButton roomShuffleBtn; // v7.28: vector icon, not a text glyph
-    // v13.01: restored on his order — bookmark buttons (premium backlog #1),
-    // cached like the other Room buttons — two small text buttons in the clock row.
-    private Button bmAddBtn;
-    private Button bmListBtn;
-    // v13.01: restored on his order — playlist-add button (premium backlog #2),
-    // cached the same way — third small text button in the clock row.
-    private Button plAddBtn;
     // v2.07: premium play motion — gold glow ring + morph bounce.
     private View playGlow;
     private android.animation.ObjectAnimator glowPulse;
@@ -605,19 +598,6 @@ public class RoomActivity extends Activity {
             }
         } catch (Exception ignored) {}
         return out;
-    }
-    // v13.01: drawer filter entry (his order) — the ★ / unlistened /
-    // downloaded filter views (v4.96/v5.14, drawerFilterMode 1/2/3)
-    // lost their only entry when the drawer row ⋮ menu went away, so
-    // no code could set them. Both long-press dialogs below route
-    // through here: the list re-filters at once, and closing the
-    // drawer clears the filter (setPlayListPanel).
-    private void applyDrawerFilter(int mode) {
-        drawerFilterMode = mode;
-        if (adapter != null) adapter.notifyDataSetChanged();
-        String key = mode == 1 ? "filter_starred_only" : mode == 2 ? "filter_unlistened_only"
-                : mode == 3 ? "filter_downloaded_only" : "filter_talks_all";
-        Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, key), Toast.LENGTH_SHORT).show();
     }
     // v7.12: queue-only display lines — the drawer rows in queue
     // order, parsed, not raw. Before this, every queue-only map
@@ -7371,29 +7351,6 @@ if (snd68 >= 0) currentIndex = snd68;
                 }
             }
         });
-        // v13.01: restored Bookmarks — premium backlog #1. Two small buttons
-        // in the clock row (add a mark at the sounding minute; open
-        // the mark list to jump or delete). The main control row
-        // stays exactly as ordered (shuffle/prev/play/next/sleep);
-        // the marks themselves draw as gold pins on the wave above.
-        bmAddBtn = findViewById(R.id.roomBookmarkAdd);
-        bmListBtn = findViewById(R.id.roomBookmarkList);
-        bmAddBtn.setText(Lang.t(this, "bm_add"));
-        bmListBtn.setText(Lang.t(this, "bm_list"));
-        bmAddBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { onBookmarkAdd(); }
-        });
-        bmListBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { showBookmarkList(); }
-        });
-        // v13.01: restored Personal Playlist (premium backlog #2) — third
-        // small button in the clock row: add the sounding talk to
-        // one of the user's lists (chooser dialog, or a new list).
-        plAddBtn = findViewById(R.id.roomPlaylistAdd);
-        plAddBtn.setText(Lang.t(this, "pl_add"));
-        plAddBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { showPlaylistAddDialog(); }
-        });
         btnPlayPause = findViewById(R.id.roomPlayPause);
         // v3.76: UI language — control labels read from Lang (Forward/Next,
         // drawer title, retry). The sayadaw header and talk titles are content
@@ -8481,13 +8438,6 @@ if (snd67n >= 0) currentIndex = snd67n;
                     sOpts.add(sFav71 ? Lang.t(RoomActivity.this, "menu_fav_remove") : Lang.t(RoomActivity.this, "menu_fav_add"));
                     if (!isDownloadedFile(st.url) && !roomIsDlQueued(st.url))
                         sOpts.add(Lang.t(RoomActivity.this, "dl_btn_download"));
-                    // v13.01: drawer filter entry — the filter views lost their
-                    // only entry with the drawer row ⋮ menu; they now live in
-                    // this dialog (no ⋮ resurrected, no new view).
-                    sOpts.add(Lang.t(RoomActivity.this, "filter_starred_only"));
-                    sOpts.add(Lang.t(RoomActivity.this, "filter_unlistened_only"));
-                    sOpts.add(Lang.t(RoomActivity.this, "filter_downloaded_only"));
-                    sOpts.add(Lang.t(RoomActivity.this, "filter_talks_all"));
                     final String[] sOptArr = sOpts.toArray(new String[0]);
                     new android.app.AlertDialog.Builder(RoomActivity.this)
                             .setTitle(st.title != null && st.title.length() > 0 ? st.title : st.url)
@@ -8510,13 +8460,6 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, added71 ? "fav_added" : "fav_removed"), Toast.LENGTH_SHORT).show();
                                     } else if (sOptArr[which].equals(Lang.t(RoomActivity.this, "dl_btn_download"))) {
                                         enqueueRoomDownload(st);
-                                    } else if (sOptArr[which].equals(Lang.t(RoomActivity.this, "filter_starred_only"))
-                                            || sOptArr[which].equals(Lang.t(RoomActivity.this, "filter_unlistened_only"))
-                                            || sOptArr[which].equals(Lang.t(RoomActivity.this, "filter_downloaded_only"))
-                                            || sOptArr[which].equals(Lang.t(RoomActivity.this, "filter_talks_all"))) {
-                                        applyDrawerFilter(sOptArr[which].equals(Lang.t(RoomActivity.this, "filter_starred_only")) ? 1
-                                                : sOptArr[which].equals(Lang.t(RoomActivity.this, "filter_unlistened_only")) ? 2
-                                                : sOptArr[which].equals(Lang.t(RoomActivity.this, "filter_downloaded_only")) ? 3 : 0);
                                     }
                                 }
                             })
@@ -8560,14 +8503,6 @@ if (snd67n >= 0) currentIndex = snd67n;
                     final boolean dPlaying = dCur != null && dCur.length() > 0;
                     if (dPlaying && (!dQueued || (dFw != null && !dt.url.equals(dFw.url))))
                         dOpts.add(dQueued ? Lang.t(RoomActivity.this, "menu_play_next") : Lang.t(RoomActivity.this, "menu_add_next"));
-                    // v13.01: drawer filter entry — same four views as the sounding-row
-                    // dialog above (no ⋮ resurrected, no new view). NOTE: this dialog
-                    // ends in a bare else (play-next), so the filter items MUST have
-                    // their own branch below or a tap would queue the talk.
-                    dOpts.add(Lang.t(RoomActivity.this, "filter_starred_only"));
-                    dOpts.add(Lang.t(RoomActivity.this, "filter_unlistened_only"));
-                    dOpts.add(Lang.t(RoomActivity.this, "filter_downloaded_only"));
-                    dOpts.add(Lang.t(RoomActivity.this, "filter_talks_all"));
                     final String[] dOptArr = dOpts.toArray(new String[0]);
                     new android.app.AlertDialog.Builder(RoomActivity.this)
                             .setTitle(dt.title != null && dt.title.length() > 0 ? dt.title : dt.url)
@@ -8625,13 +8560,6 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         saveQueue(java.util.Collections.singleton(dt.url), true);
                                         if (adapter != null) adapter.notifyDataSetChanged();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "added_to_queue"), Toast.LENGTH_SHORT).show();
-                                    } else if (dOptArr[which].equals(Lang.t(RoomActivity.this, "filter_starred_only"))
-                                            || dOptArr[which].equals(Lang.t(RoomActivity.this, "filter_unlistened_only"))
-                                            || dOptArr[which].equals(Lang.t(RoomActivity.this, "filter_downloaded_only"))
-                                            || dOptArr[which].equals(Lang.t(RoomActivity.this, "filter_talks_all"))) {
-                                        applyDrawerFilter(dOptArr[which].equals(Lang.t(RoomActivity.this, "filter_starred_only")) ? 1
-                                                : dOptArr[which].equals(Lang.t(RoomActivity.this, "filter_unlistened_only")) ? 2
-                                                : dOptArr[which].equals(Lang.t(RoomActivity.this, "filter_downloaded_only")) ? 3 : 0);
                                     } else {
                                         // v11.12: same tap-time sounding re-check as the
                                         // queue-only dialog above — this dialog's gate also
