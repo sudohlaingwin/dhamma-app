@@ -6207,31 +6207,21 @@ public class AudioService extends Service {
         else if (isBuffering() && !holdPaused) b.setProgress(0, 0, true);
         if (notiOn) {
             // v5.28: plain card again (see the MediaStyle removal
-            // note below). Actions in prev|play|next|Forward|Stop
-            // order (v5.42 inserts the favourite toggle between
-            // Forward and Stop for Room sessions); text is sayadaw
-            // + elapsed/total + state, the form that actually
-            // shows on his phone.
-            if (prevPi != null)
-                b.addAction(android.R.drawable.ic_media_previous, Lang.t(this, "notif_action_prev"), prevPi);
+            // note below). v12.97: EXACTLY THREE actions — Play |
+            // Next | Forward, in that order, the three he asked for.
+            // The v12.96 card carried six (Prev|Play|Next|Forward|
+            // Fav|Stop) and his shade showed NONE of them in the
+            // collapsed card (screenshot 2026-11-07 11:21). Prev/Fav/
+            // Stop leave the card only; they all still work inside
+            // the app (Room main row, strips, drawer long-press,
+            // library row menu). Text is sayadaw + elapsed/total +
+            // state, the form that actually shows on his phone.
             b.addAction(active ? android.R.drawable.ic_media_pause
                     : android.R.drawable.ic_media_play,
                     active ? Lang.t(this, "notif_action_pause") : Lang.t(this, "notif_action_play"), togglePi);
             if (nextPi != null)
                 b.addAction(android.R.drawable.ic_media_next, Lang.t(this, "notif_action_next"), nextPi);
             b.addAction(android.R.drawable.ic_media_ff, "Forward", fwdPi);
-            // v5.42: favourite toggle on the plain card, between
-            // Forward and Stop so the transport actions keep their
-            // order. Icon + label follow cardFavOn at rebuild time
-            // (★ ဖြုတ် when already a favourite, ★ မှတ် when not);
-            // Room sessions only via cardFavShow — a library card
-            // gets no action, so it can never star the wrong talk.
-            // Plain card only, no MediaStyle, no custom layout.
-            if (cardFavShow)
-                b.addAction(cardFavOn ? android.R.drawable.btn_star_big_on
-                        : android.R.drawable.btn_star_big_off,
-                        cardFavOn ? Lang.t(this, "notif_action_fav_remove") : Lang.t(this, "notif_action_fav_add"), favPi);
-            b.addAction(android.R.drawable.ic_delete, Lang.t(this, "notif_action_stop"), stopPi);
             // v5.28: MediaStyle REMOVED, permanently on this phone.
             // Tested three times and invisible every time — v1.70,
             // v5.25, v5.26 (new DEFAULT channel + TRANSPORT +
