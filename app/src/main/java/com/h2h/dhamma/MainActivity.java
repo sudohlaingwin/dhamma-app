@@ -2422,9 +2422,25 @@ public class MainActivity extends Activity {
 
     // v12.95: back is swallowed while the update block is up — the
     // update comes first, like the 3D app's blocking screen.
+    // v13.00: Back on the Main screen must REALLY exit the app.
+    // finish() alone left the foreground service (and the process)
+    // alive, so the app never cold-started and the updater never saw
+    // a new release. Now Back stops the service, closes every
+    // activity, and kills the process. (Home keeps background
+    // playback going — only Back exits for real.)
     @Override public void onBackPressed() {
         if (UpdateChecker.isBlockVisible()) return;
-        super.onBackPressed();
+        exitAppForReal();
+    }
+
+    private void exitAppForReal() {
+        try { stopService(new Intent(this, AudioService.class)); } catch (Exception ignored) {}
+        finishAffinity();
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
+            @Override public void run() {
+                android.os.Process.killProcess(android.os.Process.myPid());
+            }
+        }, 200);
     }
 
     private void loadCatalog() {

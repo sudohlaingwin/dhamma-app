@@ -1070,6 +1070,27 @@ public class AudioService extends Service {
     @Override
     public IBinder onBind(Intent intent) { return binder; }
 
+    // v13.00: swiping the app away from recents must REALLY exit it.
+    // The service is START_STICKY + foreground, and nothing handled
+    // task removal — so the process stayed alive forever after a swipe
+    // (and a system kill restarted the sticky service), the app never
+    // cold-started, and the updater never saw a new release. Now a
+    // swipe stops playback, drops the foreground card, stops the
+    // service, and kills the process, so the next launch is a cold
+    // start and UpdateChecker.check() runs again.
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        super.onTaskRemoved(rootIntent);
+        try { stopPlayback(); } catch (Exception ignored) {}
+        try { stopForeground(true); } catch (Exception ignored) {}
+        stopSelf();
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
+            @Override public void run() {
+                android.os.Process.killProcess(android.os.Process.myPid());
+            }
+        }, 300);
+    }
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         // v1.75: a START_STICKY restart arrives with a null intent
