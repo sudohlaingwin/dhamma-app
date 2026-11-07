@@ -1708,7 +1708,8 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         int navText = night ? android.graphics.Color.WHITE
                 : android.graphics.Color.parseColor("#3B2314");
         int gold = android.graphics.Color.parseColor("#C9A227");
-        strip.setBackgroundResource(night ? R.drawable.nav_glass_night : R.drawable.nav_glass);
+        // v13.03: real liquid glass — GlassBlur blurs the content behind this surface.
+        GlassBlur.attach(strip, night);
         android.widget.TextView tx = findViewById(R.id.nowStripText);
         android.widget.TextView tg = findViewById(R.id.nowStripToggle);
         android.widget.TextView sb = findViewById(R.id.nowStripSub);

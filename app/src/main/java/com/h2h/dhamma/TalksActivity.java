@@ -2318,7 +2318,8 @@ public class TalksActivity extends Activity {
         // v4.93: search box follows the theme like Main's — dark face
         // + white text at night, surface face + ink text by day.
         if (searchBox != null) {
-            searchBox.setBackgroundResource(night ? R.drawable.search_bg_night : R.drawable.search_bg);
+            // v13.03: real liquid glass — GlassBlur blurs the content behind this surface.
+            GlassBlur.attachSearch(searchBox, night);
             searchBox.setTextColor(night
                     ? android.graphics.Color.WHITE
                     : android.graphics.Color.parseColor("#3B2314"));
@@ -3378,7 +3379,8 @@ public class TalksActivity extends Activity {
         int navText = night ? android.graphics.Color.WHITE
                 : android.graphics.Color.parseColor("#3B2314");
         int gold = android.graphics.Color.parseColor("#C9A227");
-        strip.setBackgroundResource(night ? R.drawable.nav_glass_night : R.drawable.nav_glass);
+        // v13.03: real liquid glass — GlassBlur blurs the content behind this surface.
+        GlassBlur.attach(strip, night);
         android.widget.TextView tx = findViewById(R.id.nowStripText);
         android.widget.TextView tg = findViewById(R.id.nowStripToggle);
         android.widget.TextView sb = findViewById(R.id.nowStripSub);
@@ -4139,7 +4141,8 @@ public class TalksActivity extends Activity {
         // so theme the box here too (night would otherwise wait for
         // a return to restyle it).
         boolean night = Prefs.isNight(this);
-        searchBox.setBackgroundResource(night ? R.drawable.search_bg_night : R.drawable.search_bg);
+        // v13.03: real liquid glass — GlassBlur blurs the content behind this surface.
+            GlassBlur.attachSearch(searchBox, night);
         searchBox.setTextColor(night
                 ? android.graphics.Color.WHITE
                 : android.graphics.Color.parseColor("#3B2314"));

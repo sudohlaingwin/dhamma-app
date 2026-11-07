@@ -359,7 +359,8 @@ public class MainActivity extends Activity {
         if (themeToggle != null)
             themeToggle.setText(night ? "☀" : "🌙");
         if (searchField != null) {
-            searchField.setBackgroundResource(night ? R.drawable.search_bg_night : R.drawable.search_bg);
+            // v13.03: real liquid glass — GlassBlur blurs the content behind this surface.
+            GlassBlur.attachSearch(searchField, night);
             searchField.setTextColor(night ? Color.WHITE : Color.parseColor("#3B2314"));
             searchField.setHintTextColor(night ? Color.parseColor("#AAAAAA") : Color.parseColor("#7A6A58"));
             int f = Prefs.fontSize(this);
@@ -378,7 +379,8 @@ public class MainActivity extends Activity {
         if (searchField != null) searchField.setHint(Lang.t(this, "search_hint"));
         refreshFavHint();
         if (navBar != null)
-            navBar.setBackgroundResource(night ? R.drawable.nav_glass_night : R.drawable.nav_glass);
+            // v13.03: real liquid glass — GlassBlur blurs the content behind this surface.
+            GlassBlur.attach(navBar, night);
         int navText = night ? Color.WHITE : Color.parseColor("#3B2314");
         int gold = Color.parseColor("#C9A227");
         for (int id : new int[]{R.id.navPlayerIcon, R.id.navSettingsIcon}) {
@@ -1023,7 +1025,8 @@ public class MainActivity extends Activity {
         int navText = night ? android.graphics.Color.WHITE
                 : android.graphics.Color.parseColor("#3B2314");
         int gold = android.graphics.Color.parseColor("#C9A227");
-        strip.setBackgroundResource(night ? R.drawable.nav_glass_night : R.drawable.nav_glass);
+        // v13.03: real liquid glass — GlassBlur blurs the content behind this surface.
+        GlassBlur.attach(strip, night);
         android.widget.TextView tx = findViewById(R.id.nowStripText);
         android.widget.TextView tg = findViewById(R.id.nowStripToggle);
         android.widget.TextView sb = findViewById(R.id.nowStripSub);

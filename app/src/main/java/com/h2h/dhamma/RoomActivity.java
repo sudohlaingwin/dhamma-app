@@ -6610,6 +6610,10 @@ if (snd68 >= 0) currentIndex = snd68;
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_room);
+        // v13.03: real liquid glass on the bottom panel — the altar
+        // behind it is genuinely blurred (see GlassBlur).
+        android.view.View bottomPanel = findViewById(R.id.roomBottomPanel);
+        if (bottomPanel != null) GlassBlur.attachPanel(bottomPanel);
         // v1.38: keep-screen-on was only applied on the Talks chooser,
         // never here where listening actually happens — honour it too.
         if (Prefs.keepScreenOn(this))

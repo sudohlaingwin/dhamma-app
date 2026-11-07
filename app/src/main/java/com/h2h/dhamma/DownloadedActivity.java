@@ -2328,7 +2328,8 @@ public class DownloadedActivity extends Activity {
         int navText = night ? android.graphics.Color.WHITE
                 : android.graphics.Color.parseColor("#3B2314");
         int gold = android.graphics.Color.parseColor("#C9A227");
-        strip.setBackgroundResource(night ? R.drawable.nav_glass_night : R.drawable.nav_glass);
+        // v13.03: real liquid glass — GlassBlur blurs the content behind this surface.
+        GlassBlur.attach(strip, night);
         android.widget.TextView tx = findViewById(R.id.nowStripText);
         android.widget.TextView tg = findViewById(R.id.nowStripToggle);
         android.widget.TextView sb = findViewById(R.id.nowStripSub);
@@ -6972,7 +6973,8 @@ public class DownloadedActivity extends Activity {
             // used the themed rounded drawables since v1.17 — same
             // drawables here, so the box reads as one element in
             // both themes instead of a leftover light widget.
-            search.setBackgroundResource(night ? R.drawable.search_bg_night : R.drawable.search_bg);
+            // v13.03: real liquid glass — GlassBlur blurs the content behind this surface.
+            GlassBlur.attachSearch(search, night);
             search.setTextColor(night ? android.graphics.Color.WHITE
                     : android.graphics.Color.parseColor("#3B2314"));
             search.setHintTextColor(muted);
