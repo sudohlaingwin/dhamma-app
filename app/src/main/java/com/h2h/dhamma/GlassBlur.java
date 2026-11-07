@@ -14,6 +14,7 @@ import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewTreeObserver;
 
+import java.lang.ref.WeakReference;
 import java.util.WeakHashMap;
 
 /**
@@ -46,6 +47,16 @@ import java.util.WeakHashMap;
  * no RenderEffect / RenderScript needed. If a capture ever fails the
  * drawable falls back to the old static glass drawable, so the glass
  * never goes blank.
+ *
+ * v13.05 hardening: the first version leaked — ATTACHED is a
+ * WeakHashMap keyed by the view, but each Glass held its view
+ * strongly, so the map could never expunge a dead entry and every
+ * rotation stranded a Glass + view + bitmap; the view is now held
+ * weakly. The pre-draw listener was also lost when a glass view
+ * detached and reattached (a dead observer is never revived), so the
+ * blur captured once and froze — it is re-registered on reattach.
+ * The per-capture and per-draw allocations (two int[] per blur, a
+ * Path + RectF + int[2] per draw) are now reused buffers.
  *
  * Attached surfaces (all one-line attach calls at the existing
  * theme/background sites): Main nav bar + search + mini-player strip,
@@ -111,7 +122,13 @@ public class GlassBlur {
     // One attached glass surface.
     // ------------------------------------------------------------------
     private static class Glass {
-        final View glass;
+        // v13.05: WEAK — the static ATTACHED map is a WeakHashMap keyed
+        // by the view, and a strong value->key reference pins every
+        // entry forever (the map can never expunge a key its own value
+        // holds). A destroyed activity's views then strand their Glass
+        // + blurred bitmap in the map on every rotation. With a weak
+        // ref the entry expunges on the map's next access instead.
+        final WeakReference<View> glassRef;
         final BlurDrawable drawable;
         final ViewTreeObserver.OnPreDrawListener preDraw =
                 new ViewTreeObserver.OnPreDrawListener() {
@@ -122,7 +139,14 @@ public class GlassBlur {
                 };
         final View.OnAttachStateChangeListener attachListener =
                 new View.OnAttachStateChangeListener() {
-                    @Override public void onViewAttachedToWindow(View v) { refresh(); }
+                    // v13.05: a detached view gets a NEW ViewTreeObserver
+                    // on reattach — the pre-draw listener registered on
+                    // the old (now dead) observer is gone, so re-register
+                    // here or the blur captures once and then freezes.
+                    @Override public void onViewAttachedToWindow(View v) {
+                        registerPreDraw();
+                        refresh();
+                    }
                     @Override public void onViewDetachedFromWindow(View v) { stop(); }
                 };
         final Runnable captureRunnable = new Runnable() {
@@ -130,13 +154,19 @@ public class GlassBlur {
         };
         ViewTreeObserver observer;
         Bitmap blurred;
+        // v13.05: scratch reused across captures — boxBlur used to
+        // allocate two fresh int[] (~160KB each) every 200ms tick.
+        int[] blurA, blurB;
         boolean capturePending;
         long lastCaptureMs;
+
+        /** The attached view, or null once its activity is gone. */
+        View view() { return glassRef.get(); }
 
         Glass(View glass, boolean night,
               float tlDp, float trDp, float brDp, float blDp,
               int fallbackDayRes, int fallbackNightRes) {
-            this.glass = glass;
+            this.glassRef = new WeakReference<>(glass);
             this.drawable = new BlurDrawable(this);
             setNight(night, tlDp, trDp, brDp, blDp, fallbackDayRes, fallbackNightRes);
             glass.setBackground(drawable);
@@ -145,7 +175,9 @@ public class GlassBlur {
         void setNight(boolean night,
                       float tlDp, float trDp, float brDp, float blDp,
                       int fallbackDayRes, int fallbackNightRes) {
-            float d = glass.getResources().getDisplayMetrics().density;
+            View v = view();
+            if (v == null) return;
+            float d = v.getResources().getDisplayMetrics().density;
             drawable.setRadii(new float[]{
                     tlDp * d, tlDp * d, trDp * d, trDp * d,
                     brDp * d, brDp * d, blDp * d, blDp * d});
@@ -153,11 +185,25 @@ public class GlassBlur {
         }
 
         void start() {
-            glass.addOnAttachStateChangeListener(attachListener);
-            observer = glass.getViewTreeObserver();
-            if (observer != null && observer.isAlive())
-                observer.addOnPreDrawListener(preDraw);
+            View v = view();
+            if (v == null) return;
+            v.addOnAttachStateChangeListener(attachListener);
+            registerPreDraw();
             refresh();
+        }
+
+        void registerPreDraw() {
+            View v = view();
+            if (v == null) return;
+            ViewTreeObserver o = v.getViewTreeObserver();
+            if (o != null && o.isAlive()) {
+                // Remove-then-add: the first attach already merged the
+                // floating observer's listener into this one, so a bare
+                // add here would register preDraw twice.
+                o.removeOnPreDrawListener(preDraw);
+                observer = o;
+                observer.addOnPreDrawListener(preDraw);
+            }
         }
 
         void stop() {
@@ -168,17 +214,21 @@ public class GlassBlur {
 
         void refresh() {
             if (capturePending) return;
-            if (glass.getWindowToken() == null || !glass.isShown()) return;
+            View v = view();
+            if (v == null) return;
+            if (v.getWindowToken() == null || !v.isShown()) return;
             if (SystemClock.uptimeMillis() - lastCaptureMs < MIN_CAPTURE_MS) return;
             capturePending = true;
-            glass.post(captureRunnable);
+            v.post(captureRunnable);
         }
 
         void capture() {
             capturePending = false;
+            View v = view();
+            if (v == null) return;
             try {
-                View root = glass.getRootView();
-                if (root == null || glass.getWindowToken() == null) return;
+                View root = v.getRootView();
+                if (root == null || v.getWindowToken() == null) return;
                 int rw = root.getWidth();
                 int rh = root.getHeight();
                 if (rw <= 0 || rh <= 0) return;
@@ -187,19 +237,26 @@ public class GlassBlur {
                 if (blurred == null || blurred.getWidth() != w || blurred.getHeight() != h) {
                     if (blurred != null) blurred.recycle();
                     blurred = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+                    blurA = null;
+                    blurB = null;
+                }
+                int n = w * h;
+                if (blurA == null || blurA.length != n) {
+                    blurA = new int[n];
+                    blurB = new int[n];
                 }
                 Canvas c = new Canvas(blurred);
                 c.scale(1f / SCALE, 1f / SCALE);
-                int vis = glass.getVisibility();
-                glass.setVisibility(View.INVISIBLE);
+                int vis = v.getVisibility();
+                v.setVisibility(View.INVISIBLE);
                 try {
                     root.draw(c);
                 } finally {
-                    glass.setVisibility(vis);
+                    v.setVisibility(vis);
                 }
-                boxBlur(blurred, BLUR_RADIUS);
+                boxBlur(blurred, BLUR_RADIUS, blurA, blurB);
                 drawable.setBitmap(blurred, SCALE);
-                glass.invalidate();
+                v.invalidate();
                 lastCaptureMs = SystemClock.uptimeMillis();
             } catch (Exception e) {
                 // Capture must never crash the UI: the drawable keeps its
@@ -217,6 +274,11 @@ public class GlassBlur {
         final Paint tintPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         final Paint rimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         final Paint sheenPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        // v13.05: reused across draws — draw() used to allocate a Path,
+        // a RectF and an int[2] on every frame the glass invalidated.
+        final Path roundPath = new Path();
+        final RectF roundRect = new RectF();
+        final int[] loc = new int[2];
         Bitmap bmp;
         int scale = SCALE;
         float[] radii = new float[8];
@@ -239,10 +301,12 @@ public class GlassBlur {
         void setNight(boolean night, int fallbackDayRes, int fallbackNightRes) {
             tintPaint.setColor(night ? 0x66020201 : 0x59FFFFFF);
             rimPaint.setColor(night ? 0x66C9A227 : 0x99C9A227);
+            View v = owner.view();
+            if (v == null) return;
             rimPaint.setStrokeWidth(
-                    owner.glass.getResources().getDisplayMetrics().density);
+                    v.getResources().getDisplayMetrics().density);
             try {
-                fallback = owner.glass.getResources().getDrawable(
+                fallback = v.getResources().getDrawable(
                         night ? fallbackNightRes : fallbackDayRes, null);
             } catch (Exception e) {
                 fallback = null;
@@ -260,11 +324,13 @@ public class GlassBlur {
         public void draw(Canvas canvas) {
             Rect b = getBounds();
             if (b.width() <= 0 || b.height() <= 0) return;
-            Path round = new Path();
-            round.addRoundRect(new RectF(b), radii, Path.Direction.CW);
+            roundPath.reset();
+            roundRect.set(b);
+            roundPath.addRoundRect(roundRect, radii, Path.Direction.CW);
             if (bmp != null && !bmp.isRecycled()) {
-                int[] loc = new int[2];
-                owner.glass.getLocationInWindow(loc);
+                View gv = owner.view();
+                if (gv == null) return;
+                gv.getLocationInWindow(loc);
                 Rect src = new Rect(
                         loc[0] / scale, loc[1] / scale,
                         (loc[0] + b.width()) / scale,
@@ -272,7 +338,7 @@ public class GlassBlur {
                 src.intersect(0, 0, bmp.getWidth(), bmp.getHeight());
                 if (!src.isEmpty()) {
                     canvas.save();
-                    canvas.clipPath(round);
+                    canvas.clipPath(roundPath);
                     canvas.drawBitmap(bmp, src, b, bitmapPaint);
                     canvas.restore();
                 }
@@ -284,7 +350,7 @@ public class GlassBlur {
             }
             // Translucent tint over the blur.
             tintPaint.setAlpha(alpha);
-            canvas.drawPath(round, tintPaint);
+            canvas.drawPath(roundPath, tintPaint);
             // Top sheen: bright band fading down over the top half.
             if (!b.equals(lastBounds)) {
                 lastBounds.set(b);
@@ -294,10 +360,10 @@ public class GlassBlur {
             }
             sheenPaint.setShader(lastSheen);
             sheenPaint.setAlpha(alpha);
-            canvas.drawPath(round, sheenPaint);
+            canvas.drawPath(roundPath, sheenPaint);
             // Gold rim.
             rimPaint.setAlpha(alpha);
-            canvas.drawPath(round, rimPaint);
+            canvas.drawPath(roundPath, rimPaint);
         }
 
         @Override
@@ -318,13 +384,13 @@ public class GlassBlur {
 
     // ------------------------------------------------------------------
     // Separable box blur, two iterations ~= soft gaussian. Operates
-    // in-place on a small bitmap; sums fit easily in int.
+    // in-place on a small bitmap; sums fit easily in int. The scratch
+    // arrays are the caller's reused buffers (v13.05), never allocated
+    // per capture.
     // ------------------------------------------------------------------
-    private static void boxBlur(Bitmap bmp, int radius) {
+    private static void boxBlur(Bitmap bmp, int radius, int[] src, int[] tmp) {
         int w = bmp.getWidth();
         int h = bmp.getHeight();
-        int[] src = new int[w * h];
-        int[] tmp = new int[w * h];
         bmp.getPixels(src, 0, w, 0, 0, w, h);
         boxBlurPass(src, tmp, w, h, radius, true);
         boxBlurPass(tmp, src, w, h, radius, false);
