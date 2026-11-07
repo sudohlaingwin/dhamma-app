@@ -1,16 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Liquid Glass: translucent base + gold rim + glossy top sheen + depth. -->
+<!-- v13.02 gloss pass: the Room bottom panel keeps its dark glass body
+     and top-only rounded corners (geometry untouched — RoomView reads
+     the panel's real top for the altar flame limit), but gains a gold
+     glow along its top edge and a brighter dome sheen, so the panel
+     reads as a raised glossy slab over the altar instead of a flat
+     tint. Same name, zero code changes. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
             <solid android:color="#D91E140E" />
-            <stroke android:width="1dp" android:color="#66C9A227" />
+            <stroke android:width="1dp" android:color="#99C9A227" />
             <corners android:topLeftRadius="24dp" android:topRightRadius="24dp" android:bottomLeftRadius="0dp" android:bottomRightRadius="0dp" />
         </shape>
     </item>
+    <!-- Gold glow along the top edge, fading down. -->
     <item>
         <shape android:shape="rectangle">
-            <gradient android:angle="270" android:startColor="#2EFFFFFF" android:centerColor="#1AFFFFFF" android:centerY="0.45" android:endColor="#00FFFFFF" android:type="linear" />
+            <gradient android:angle="270" android:startColor="#59C9A227" android:centerColor="#1AC9A227" android:centerY="0.12" android:endColor="#00C9A227" android:type="linear" />
+            <corners android:topLeftRadius="24dp" android:topRightRadius="24dp" android:bottomLeftRadius="0dp" android:bottomRightRadius="0dp" />
+        </shape>
+    </item>
+    <!-- Dome sheen: bright top fading down. -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient android:angle="270" android:startColor="#59FFFFFF" android:centerColor="#1AFFFFFF" android:centerY="0.45" android:endColor="#00FFFFFF" android:type="linear" />
+            <corners android:topLeftRadius="24dp" android:topRightRadius="24dp" android:bottomLeftRadius="0dp" android:bottomRightRadius="0dp" />
+        </shape>
+    </item>
+    <!-- Diagonal gloss sweep: light from the upper left. -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient android:angle="135" android:startColor="#26FFFFFF" android:centerColor="#0DFFFFFF" android:centerY="0.5" android:endColor="#00FFFFFF" android:type="linear" />
             <corners android:topLeftRadius="24dp" android:topRightRadius="24dp" android:bottomLeftRadius="0dp" android:bottomRightRadius="0dp" />
         </shape>
     </item>

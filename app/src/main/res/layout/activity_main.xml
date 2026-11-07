@@ -40,6 +40,13 @@
             android:textColor="@color/maroon"
             android:textSize="20sp" />
     </RelativeLayout>
+    <!-- v13.02: thin gold rule under the header title. -->
+    <View
+        android:layout_width="64dp"
+        android:layout_height="2dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="8dp"
+        android:background="#C9A227" />
     <EditText
         android:id="@+id/search"
         android:layout_width="match_parent"
