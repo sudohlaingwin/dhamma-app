@@ -1,9 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- v13.02 gloss pass on the v5.51 embossed Liquid Glass icon button:
-     dome top brightened (#CC -> #E6 white), gold rim brightened
-     (#B3 -> #E6 gold), top bevel light strengthened — every Room icon
-     button and every mini-player strip button reads glossier, same
-     geometry, same name, zero code changes. -->
+<!-- v5.51 (user order 2026-10-31 ~22:46 +07: icons to 3D raised
+     Liquid Glass): embossed version of glass_btn_dark, for the
+     Room icon buttons (v5.51) and every mini-player strip button
+     (v5.52: Main, Talks, library, Settings). How it reads as 3D: a dark shadow
+     layer peeks out at the bottom edge, the glass body itself
+     runs bright-white at the top to near-black at the bottom
+     (light from above, dome shading), and a gold rim holds the
+     edge — the same Liquid Glass language as v2.44, with depth
+     added. Room buttons using it also carry elevation in layout, so
+     the system draws a real drop shadow under the bevel; strip
+     buttons carry no elevation (it would clip in the scrolling
+     strip row), so their depth comes from the drawable alone. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Bottom shadow: dark layer, body inset above it. -->
     <item>
@@ -17,12 +24,12 @@
         <shape android:shape="rectangle">
             <gradient
                 android:angle="270"
-                android:startColor="#E6FFFFFF"
+                android:startColor="#CCFFFFFF"
                 android:centerColor="#40FFFFFF"
                 android:centerY="0.42"
                 android:endColor="#33000000"
                 android:type="linear" />
-            <stroke android:width="1dp" android:color="#E6C9A227" />
+            <stroke android:width="1dp" android:color="#B3C9A227" />
             <corners android:radius="20dp" />
         </shape>
     </item>
@@ -31,7 +38,7 @@
         <shape android:shape="rectangle">
             <gradient
                 android:angle="270"
-                android:startColor="#CCFFFFFF"
+                android:startColor="#99FFFFFF"
                 android:centerColor="#33FFFFFF"
                 android:centerY="0.35"
                 android:endColor="#00FFFFFF"

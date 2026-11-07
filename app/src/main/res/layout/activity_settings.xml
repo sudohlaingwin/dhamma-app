@@ -1,6 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- v13.02 (user order 2026-11-07 ~22:34 +07, UI gloss pass): the 5 section
-     headers read gold now (was muted grey) — flat switch-row shape untouched. -->
 <!-- v12.94 (user order 2026-11-06 ~22:46 +07: rebuilt to the worldwide
      music-streaming-app standard — flat sections with small headers,
      Switch rows, value/nav rows with hairline dividers; the 6 cards,
@@ -48,7 +46,7 @@
         android:letterSpacing="0.06"
         android:paddingVertical="4dp"
         android:text="အသံနှင့် အမြင်"
-        android:textColor="@color/gold"
+        android:textColor="@color/muted"
         android:textSize="13sp"
         android:textStyle="bold" />
 
@@ -157,7 +155,7 @@
         android:letterSpacing="0.06"
         android:paddingVertical="4dp"
         android:text="ဖွင့်ခြင်း"
-        android:textColor="@color/gold"
+        android:textColor="@color/muted"
         android:textSize="13sp"
         android:textStyle="bold" />
 
@@ -356,7 +354,7 @@
         android:letterSpacing="0.06"
         android:paddingVertical="4dp"
         android:text="အကြောင်းကြားစာ"
-        android:textColor="@color/gold"
+        android:textColor="@color/muted"
         android:textSize="13sp"
         android:textStyle="bold" />
 
@@ -400,7 +398,7 @@
         android:letterSpacing="0.06"
         android:paddingVertical="4dp"
         android:text="ဒေတာ"
-        android:textColor="@color/gold"
+        android:textColor="@color/muted"
         android:textSize="13sp"
         android:textStyle="bold" />
 
@@ -548,7 +546,7 @@
         android:letterSpacing="0.06"
         android:paddingVertical="4dp"
         android:text="အကြောင်း"
-        android:textColor="@color/gold"
+        android:textColor="@color/muted"
         android:textSize="13sp"
         android:textStyle="bold" />
 

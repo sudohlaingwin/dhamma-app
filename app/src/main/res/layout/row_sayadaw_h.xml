@@ -6,17 +6,13 @@
     android:gravity="center_horizontal"
     android:orientation="vertical"
     android:padding="4dp">
-    <!-- v13.02: portrait wears a 2dp gold gradient ring (portrait_ring) —
-         photo 68dp -> 64dp centred so the ring shows all round. -->
     <FrameLayout
         android:layout_width="68dp"
-        android:layout_height="68dp"
-        android:background="@drawable/portrait_ring">
+        android:layout_height="68dp">
         <com.h2h.dhamma.CircleImageView
             android:id="@+id/photo"
-            android:layout_width="64dp"
-            android:layout_height="64dp"
-            android:layout_gravity="center"
+            android:layout_width="68dp"
+            android:layout_height="68dp"
             android:scaleType="centerCrop" />
 
     </FrameLayout>

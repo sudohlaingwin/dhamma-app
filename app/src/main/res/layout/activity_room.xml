@@ -183,7 +183,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_gravity="center"
-                        android:background="@drawable/glass_play_3d"
+                        android:background="@drawable/glass_icon_3d"
                         android:contentDescription="Play / Pause"
                         android:padding="14dp"
                         android:scaleType="center"
