@@ -2186,6 +2186,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
     private void updateSleepCountdown() {
         try {
             if (btnSleep == null) return;
+            long susp = sleepWatchService != null ? sleepWatchService.getSleepSuspendedMs() : 0;
             long rem = sleepWatchService != null ? sleepWatchService.getSleepRemainingMs() : 0;
             int sl = Prefs.sleepMinutes(this);
             // v4.82: the one-shot has no countdown to show — the
@@ -2198,6 +2199,16 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                 // while the strip read "1:00:00" for the same timer (H:MM:SS at ≥3600s).
                 btnSleep.setText(sl + Lang.t(this, "sleep_min")
                         + " · −" + AudioService.sleepClock(rem));
+            } else if (susp > 0 && sl > 0) {
+                // v13.49 (F1): while the talk is paused the timer is suspended,
+                // not running — getSleepRemainingMs() reads 0 and the button used
+                // to drop to the plain setting while the strip on this same screen
+                // and the Room kept showing the frozen remainder. Same guard as
+                // the Room (susp > 0 && sl > 0) so a remainder orphaned by a
+                // turned-off setting never shows as live; same clock shape, with
+                // the strip's pause prefix marking it paused.
+                btnSleep.setText(sl + Lang.t(this, "sleep_min")
+                        + " · −⏸ " + AudioService.sleepClock(susp));
             } else {
                 btnSleep.setText(sl == 0 ? Lang.t(this, "off") : sl + Lang.t(this, "sleep_min"));
             }
@@ -2509,7 +2520,8 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                     int n = 0;
                     if (dlFiles != null) {
                         for (java.io.File df : dlFiles)
-                            if (df.isFile() && df.getName().toLowerCase().endsWith(".mp3")
+                            // v13.49 (L3 rider): a 0-byte file never plays — v13.48 F3 class; it is not a downloaded talk
+                            if (df.isFile() && df.length() > 0 && df.getName().toLowerCase().endsWith(".mp3")
                                     && !inProgNames88.contains(df.getName())) n++;
                     }
                     if (n > 0) label += " (" + n + ")";
