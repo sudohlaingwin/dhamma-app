@@ -773,11 +773,21 @@ public class WaveSeekView extends View {
                 // onCancelTrackingTouch contract above. Swell and
                 // readout still settle exactly like a lift, but
                 // the listener must NOT commit the preview seek.
+                // v13.20: the listener fires only while a drag
+                // is still open (the ACTION_UP v11.91 rule, in
+                // CANCEL form) — after a two-finger POINTER_UP
+                // commit the drag is closed, but a later system
+                // CANCEL still reached the Room handler, which
+                // cleared the 1500ms settle hold while the
+                // committed seek was landing, so the bar could
+                // snap back to the pre-seek position. A real
+                // mid-drag CANCEL still fires (dragging true).
+                boolean wasDraggingCancel = dragging;
                 dragging = false;
                 activePointerId = -1;
                 snappedBookmarkMs = -1; // v12.64: a cancelled tap is not a bookmark jump either
                 animateSwell(1f, 200);
-                if (listener != null) listener.onCancelTrackingTouch(this);
+                if (wasDraggingCancel && listener != null) listener.onCancelTrackingTouch(this);
                 return true;
         }
         return super.onTouchEvent(e);

@@ -7146,6 +7146,24 @@ if (snd68 >= 0) currentIndex = snd68;
                         seekBar.setMax(0);
                         seekBar.setProgress(0);
                         seekBar.setBufferedPercent(0);
+                        // v13.20: the discard resets bar + clocks
+                        // to 0/0, but the wave shape was left
+                        // frozen — a stop mid-drag (poll branch)
+                        // called setPlaying(false) while seeking,
+                        // so the !seeking-guarded resetRipple in
+                        // the stop branch never ran, and the lift
+                        // landed here with wavy bars at 0:00
+                        // until the next play (the v3.27 bug,
+                        // reachable again). Only when no talk is
+                        // current: a stop cleared the current URL,
+                        // so the frozen ripple belongs to nothing.
+                        // When the discard follows an advance (or
+                        // a tap) to a new talk, the current URL
+                        // is that talk and the poll has already
+                        // re-armed the wave — flattening here
+                        // would dip a live wave at the lift, so
+                        // leave it alone.
+                        if (service.getCurrentUrl() == null) seekBar.resetRipple();
                     }
                     elapsedText.setText("0:00");
                     totalText.setText("0:00");

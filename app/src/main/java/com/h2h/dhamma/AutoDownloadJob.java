@@ -42,6 +42,17 @@ public class AutoDownloadJob extends JobService {
     // AutoDownloadJob instance per job.
     private static boolean sRunInFlight68 = false;
 
+    // v13.20: system-stop flag — onStopJob fires when the job's
+    // constraints are lost (Wi-Fi gone), but returning false
+    // never reached the worker thread, so the run kept fetching
+    // every remaining sayadaw page over mobile data. Static
+    // like the run guard (a fresh instance may serve the job);
+    // cleared when a run ends, never at its start, so a stop
+    // that lands before the worker thread starts is honoured
+    // too. The loop checks it beside the toggle + Wi-Fi
+    // re-checks below.
+    private static volatile boolean sStopRequested68 = false;
+
     // v12.75: schedule-once — if the periodic job is already
     // pending, leave it alone. AOSP replaces a same-id job on
     // re-schedule and re-anchors its 6h window at now, so the old
@@ -124,8 +135,15 @@ public class AutoDownloadJob extends JobService {
 
     @Override
     public boolean onStopJob(JobParameters params) {
+        // v13.20: signal the worker thread to end — returning
+        // false alone never reached it, so a run whose
+        // constraints were lost kept fetching pages. The loop
+        // below checks this flag beside the toggle + Wi-Fi
+        // re-checks and breaks out, still writing the last-run
+        // stamp with what the partial run downloaded.
         // Never reschedule: the periodic job re-fires on its own
         // rhythm, and a stopped one-off seed is covered by it.
+        sStopRequested68 = true;
         return false;
     }
 
@@ -137,7 +155,10 @@ public class AutoDownloadJob extends JobService {
         try {
             doWorkInner68();
         } finally {
-            synchronized (AutoDownloadJob.class) { sRunInFlight68 = false; }
+            synchronized (AutoDownloadJob.class) {
+                sRunInFlight68 = false;
+                sStopRequested68 = false; // v13.20: next run starts clean
+            }
         }
     }
 
@@ -172,6 +193,14 @@ public class AutoDownloadJob extends JobService {
             // still writes the last-run stamp below with what this
             // partial run actually downloaded.
             if (!Prefs.autoDlEnabled(this)) break;
+            // v13.20: same re-check for Wi-Fi + the system stop
+            // flag — the run-start guard alone let a mid-run
+            // Wi-Fi loss ride the remaining page fetches on
+            // mobile data (enqueues were always safe: the
+            // DownloadManager request is NETWORK_WIFI, so the
+            // leak was HTML pages only), and a stop for lost
+            // constraints never ended the run either.
+            if (sStopRequested68 || !Fx.stripIsWifi(this)) break;
             try {
                 totalNew += checkSayadaw68(name,
                         Prefs.AUTO_DL_MAX_TOTAL - totalNew,
