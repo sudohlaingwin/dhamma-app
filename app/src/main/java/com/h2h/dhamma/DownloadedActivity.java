@@ -5729,6 +5729,12 @@ public class DownloadedActivity extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        // v13.08: detach the liquid-glass surfaces — the drawable is
+        // the view's background and its callback pins the dead view +
+        // its destroyed activity in GlassBlur's static map on every
+        // rotation (the v13.05 weak view ref did not fix this).
+        GlassBlur.detach(findViewById(R.id.nowStrip));
+        GlassBlur.detach(findViewById(R.id.searchDl));
         refreshHandler.removeCallbacks(refreshRunnable);
         // v2.25: same pulse stop as onPause (destroy without pause
         // must not leak the infinite animator either).

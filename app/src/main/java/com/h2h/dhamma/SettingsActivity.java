@@ -1656,6 +1656,11 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
             }
         } catch (Exception ignored) {}
         syncLiveConns88.clear();
+        // v13.08: detach the liquid-glass surface — the drawable is
+        // the view's background and its callback pins the dead view +
+        // its destroyed activity in GlassBlur's static map on every
+        // rotation (the v13.05 weak view ref did not fix this).
+        GlassBlur.detach(findViewById(R.id.nowStrip));
         super.onDestroy();
     }
 

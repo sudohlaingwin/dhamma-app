@@ -12908,6 +12908,11 @@ if (snd67q >= 0) currentIndex = snd67q;
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        // v13.08: detach the liquid-glass panel — the drawable is the
+        // view's background and its callback pins the dead view + its
+        // destroyed activity in GlassBlur's static map on every
+        // rotation (the v13.05 weak view ref did not fix this).
+        GlassBlur.detach(findViewById(R.id.roomBottomPanel));
         handler.removeCallbacks(pollRunnable);
         // v2.20: defensive — the poll's animators must not outlive
         // the activity (onPause already cancels them on a normal

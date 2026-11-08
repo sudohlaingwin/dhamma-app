@@ -2307,6 +2307,17 @@ public class TalksActivity extends Activity {
     }
 
     @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // v13.08: detach the liquid-glass surfaces — the drawable is
+        // the view's background and its callback pins the dead view +
+        // its destroyed activity in GlassBlur's static map on every
+        // rotation (the v13.05 weak view ref did not fix this).
+        GlassBlur.detach(searchBox);
+        GlassBlur.detach(findViewById(R.id.nowStrip));
+    }
+
+    @Override
     public void onBackPressed() {
         super.onBackPressed();
         overridePendingTransition(R.anim.nav_in, R.anim.nav_out);

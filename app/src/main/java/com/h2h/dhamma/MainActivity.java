@@ -1532,6 +1532,18 @@ public class MainActivity extends Activity {
         AppForeground.scheduleBackgroundCheck(this);
     }
 
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // v13.08: detach the liquid-glass surfaces — the drawable is
+        // the view's background and its callback pins the dead view +
+        // its destroyed activity in GlassBlur's static map on every
+        // rotation (the v13.05 weak view ref did not fix this).
+        GlassBlur.detach(searchField);
+        GlassBlur.detach(navBar);
+        GlassBlur.detach(findViewById(R.id.nowStrip));
+    }
+
     // v1.48: rotating the phone used to wipe the search text (and the
     // filtered grid with it) — keep the query across recreation.
     @Override
