@@ -1250,6 +1250,28 @@ public class TalksActivity extends Activity {
     private boolean suppressSharePause = false;
     private String sayadawName, pageUrl;
     private String autoUrl;
+    // v13.24 (T2): a load landing while this screen is paused (Home
+    // press) must not toast or auto-open over the launcher — the v1.63
+    // guard only drops finished/destroyed landings. The landing data
+    // still lands (list, marks, title, retry button — its own views),
+    // but the user-facing effects are stashed here and flushed from
+    // onResume, when the user is looking at this screen again.
+    // pendingLandingFerr null = clean load; pendingLandingEmpty = the
+    // clean load came back with zero talks. landingDeferred clears
+    // before the flush fires, so a second onResume never re-fires.
+    // A rotation loses the stash (instance state) — the toast is
+    // lost, but autoUrl stays unconsumed, so the restored path still
+    // auto-opens; the list state itself (empty + retry) carries the
+    // failure.
+    private boolean landingDeferred = false;
+    private String pendingLandingFerr = null;
+    private boolean pendingLandingEmpty = false;
+    // v13.24 (T2): per-activity resumed flag for the landing above —
+    // Activity has no isResumed() (Fragment-only), and the global
+    // AppForeground.isForeground() counts ALL screens, so a Room on
+    // top would read true while this chooser sits paused behind it.
+    // Set in onResume, cleared in onPause; UI thread only.
+    private boolean talksResumed = false;
     // v1.83: generation guard for the loader — tapping retry while a
     // load is still in flight used to start a second thread, and the
     // older, slower one finishing last wiped the newer list (and
@@ -2317,6 +2339,7 @@ public class TalksActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
+        talksResumed = false; // v13.24 (T2): the landing's resumed read
         stopTalksStripTick(); // v4.31: never tick a detached strip
         // v10.07: stop listening while hidden — onResume re-registers.
         if (talksDlCompleteRegistered && talksDlCompleteReceiver != null) {
@@ -2497,6 +2520,7 @@ public class TalksActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        talksResumed = true; // v13.24 (T2): the landing's resumed read
         // v1.81: count this screen as on top (see AppForeground).
         AppForeground.activityResumed();
         // v4.14: the share chooser is gone by now — a later onPause
@@ -2791,6 +2815,14 @@ public class TalksActivity extends Activity {
                 talksDlCompleteRegistered = true;
             } catch (Exception ignored) {}
         }
+        // v13.24 (T2): flush a load landing's user-facing effects
+        // deferred because the load finished while this screen was
+        // paused (Home press) — the failure/empty toast and the
+        // auto-open fire here, when the user is looking at this
+        // screen again, exactly once. A rotation loses the stash
+        // (instance state), but autoUrl stays unconsumed, so the
+        // restored path still auto-opens.
+        if (landingDeferred) flushDeferredLanding();
     }
 
     private void refreshFavHeader() {
@@ -4858,6 +4890,22 @@ public class TalksActivity extends Activity {
                         // v1.83: a stale load (see loadSeq) must not
                         // overwrite a newer load's list.
                         if (mySeq != loadSeq) return;
+                        // v13.24 (T2): Home-press landing — a load
+                        // finishing while this screen is paused must
+                        // not toast or auto-open over the launcher.
+                        // The v1.63 guard above only drops finished /
+                        // destroyed landings; a paused activity is
+                        // neither, so the user-facing effects below
+                        // (toasts + auto-open) run only while resumed
+                        // and are stashed for onResume otherwise.
+                        // The silent data landing (list, marks, title,
+                        // retry button) still runs — it only touches
+                        // this screen's own views.
+                        // (Activity has no isResumed() — that is a
+                        // Fragment method — so this reads the field
+                        // onResume/onPause maintain below. UI thread
+                        // only, so no race with the lifecycle.)
+                        final boolean landingResumed = talksResumed;
                         // v2.62: completion fades the spinner out
                         // (250ms, then GONE + alpha restored, same
                         // rhythm as the row pour below), instead of
@@ -4949,14 +4997,24 @@ public class TalksActivity extends Activity {
                         // retry button with no word about what happened —
                         // the Room already toasts its failures, so does
                         // the chooser now (transient toast, no new UI).
-                        if (ferr != null)
-                            android.widget.Toast.makeText(TalksActivity.this,
-                                    Lang.t(TalksActivity.this, "talks_fetch_failed_long"),
-                                    android.widget.Toast.LENGTH_LONG).show();
-                        else if (found.isEmpty())
-                            android.widget.Toast.makeText(TalksActivity.this,
-                                    Lang.t(TalksActivity.this, "talks_none_for_sayadaw"),
-                                    android.widget.Toast.LENGTH_LONG).show();
+                        // v13.24 (T2): ... but only while resumed — a
+                        // paused landing stashes the toast for the
+                        // onResume flush instead of firing it over
+                        // the launcher.
+                        if (landingResumed) {
+                            if (ferr != null)
+                                android.widget.Toast.makeText(TalksActivity.this,
+                                        Lang.t(TalksActivity.this, "talks_fetch_failed_long"),
+                                        android.widget.Toast.LENGTH_LONG).show();
+                            else if (found.isEmpty())
+                                android.widget.Toast.makeText(TalksActivity.this,
+                                        Lang.t(TalksActivity.this, "talks_none_for_sayadaw"),
+                                        android.widget.Toast.LENGTH_LONG).show();
+                        } else {
+                            landingDeferred = true;
+                            pendingLandingFerr = ferr;
+                            pendingLandingEmpty = found.isEmpty();
+                        }
                         // v2.60: premium retry-button fade — the
                         // button used to snap VISIBLE the instant a
                         // load failed or came back empty, a hard
@@ -5030,42 +5088,15 @@ public class TalksActivity extends Activity {
                                 }
                             }
                         }
+                        // v13.24 (T2): same Home-press rule — the
+                        // Room must not open over the launcher.
+                        // autoOpenFromLanding is this block, factored
+                        // out so the onResume flush runs the identical
+                        // code; autoUrl stays set while deferred, so
+                        // the flush consumes it exactly once, on a
+                        // clean non-empty load only (v10.84).
                         boolean autoOpened = false;
-                        if (autoUrl != null && autoUrl.length() > 0) {
-                            String want = autoUrl;
-                            // v10.84: same class as the Room fix —
-                            // a failed or empty load used to consume
-                            // the auto talk while suppressing its
-                            // "not in list" toast, so a retry that
-                            // then succeeded never auto-opened it.
-                            // Only a clean, non-empty load consumes
-                            // it now; a failed/empty load keeps it
-                            // for the retry. (talks already holds
-                            // the landed list here, so it is the
-                            // clean-load test; the boolean below
-                            // shadows the outer list name, hence
-                            // talks, not found, is used.)
-                            if (ferr == null && !talks.isEmpty()) autoUrl = null;
-                            boolean found = false;
-                            for (int i = 0; i < talks.size(); i++) {
-                                if (talks.get(i).url.equals(want)) { autoOpened = true; openRoom(i); found = true; break; }
-                            }
-                            // v1.82: same silent miss as the restored
-                            // path above — the saved talk is gone
-                            // from the site's list, so say so.
-                            // v1.88: but only on a clean, non-empty
-                            // load — the Room got this guard in
-                            // v1.72, the chooser's fresh-load path
-                            // never did, so a FAILED load toasted
-                            // both "load failed" and the lie that the
-                            // talk had left the list (and an empty
-                            // load doubled its own message). The
-                            // failure/empty toasts above already
-                            // cover those cases.
-                            if (!found && ferr == null && !talks.isEmpty())
-                                android.widget.Toast.makeText(TalksActivity.this,
-                                        Lang.t(TalksActivity.this, "talk_no_longer_in_list"), android.widget.Toast.LENGTH_SHORT).show();
-                        }
+                        if (landingResumed) autoOpened = autoOpenFromLanding(ferr);
                         // v3.91: Talks auto-scroll to playing talk on
                         // fresh open (expanded-loop backlog item 1) —
                         // opening a sayadaw's list while one of their
@@ -5140,5 +5171,70 @@ public class TalksActivity extends Activity {
                 });
             }
         }).start();
+    }
+
+    // v13.24 (T2): the load landing's auto-open, factored out of the
+    // landing runnable so the onResume flush for a paused landing
+    // runs the identical code. Returns true when the Room opened.
+    private boolean autoOpenFromLanding(String ferr) {
+        if (autoUrl == null || autoUrl.length() == 0) return false;
+        String want = autoUrl;
+        // v10.84: same class as the Room fix —
+        // a failed or empty load used to consume
+        // the auto talk while suppressing its
+        // "not in list" toast, so a retry that
+        // then succeeded never auto-opened it.
+        // Only a clean, non-empty load consumes
+        // it now; a failed/empty load keeps it
+        // for the retry. (talks already holds
+        // the landed list here, so it is the
+        // clean-load test; the boolean below
+        // shadows the outer list name, hence
+        // talks, not found, is used.)
+        if (ferr == null && !talks.isEmpty()) autoUrl = null;
+        boolean found = false;
+        boolean opened = false;
+        for (int i = 0; i < talks.size(); i++) {
+            if (talks.get(i).url.equals(want)) { opened = true; openRoom(i); found = true; break; }
+        }
+        // v1.82: same silent miss as the restored
+        // path above — the saved talk is gone
+        // from the site's list, so say so.
+        // v1.88: but only on a clean, non-empty
+        // load — the Room got this guard in
+        // v1.72, the chooser's fresh-load path
+        // never did, so a FAILED load toasted
+        // both "load failed" and the lie that the
+        // talk had left the list (and an empty
+        // load doubled its own message). The
+        // failure/empty toasts above already
+        // cover those cases.
+        if (!found && ferr == null && !talks.isEmpty())
+            android.widget.Toast.makeText(TalksActivity.this,
+                    Lang.t(TalksActivity.this, "talk_no_longer_in_list"), android.widget.Toast.LENGTH_SHORT).show();
+        return opened;
+    }
+
+    // v13.24 (T2): flush a load landing's user-facing effects that
+    // were deferred because the load finished while this screen was
+    // paused (Home press). The flag clears before anything fires, so
+    // a second onResume never re-fires; the stashed ferr is captured
+    // before the fields clear, so the auto-open sees the same
+    // failure/clean state the landing saw.
+    private void flushDeferredLanding() {
+        landingDeferred = false;
+        String pendingFerr = pendingLandingFerr;
+        pendingLandingFerr = null;
+        boolean pendingEmpty = pendingLandingEmpty;
+        pendingLandingEmpty = false;
+        if (pendingFerr != null)
+            android.widget.Toast.makeText(TalksActivity.this,
+                    Lang.t(TalksActivity.this, "talks_fetch_failed_long"),
+                    android.widget.Toast.LENGTH_LONG).show();
+        else if (pendingEmpty)
+            android.widget.Toast.makeText(TalksActivity.this,
+                    Lang.t(TalksActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_LONG).show();
+        autoOpenFromLanding(pendingFerr);
     }
 }
