@@ -284,7 +284,9 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
             open.putExtra("url", lastPage);
             open.putExtra("photo", sp.getString("lastPhoto", ""));
             open.putExtra("autoUrl", sp.getString("lastUrl", ""));
-            open.putExtra("autoTitle", sp.getString("lastTitle", ""));
+            // v13.09 (widget F8): the autoTitle extra is dropped —
+            // RoomActivity v11.75 deleted it (read nowhere; the
+            // load-completion auto-play keys off autoUrl only).
         } else if ("library".equals(kind)) {
             open = new Intent(context, DownloadedActivity.class);
             open.putExtra("jumpPath", libResume ? libJumpPath : liveUrl);

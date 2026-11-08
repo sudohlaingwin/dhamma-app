@@ -1572,6 +1572,16 @@ public class MainActivity extends Activity {
             requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 1);
         }
         setContentView(R.layout.activity_main);
+        // v13.09 (widget F3): a force-stop cancels every widget
+        // PendingIntent, and the host keeps the dead-intent
+        // RemoteViews — the widget buttons stay dead until the
+        // next in-app play. Reboot and app update self-heal
+        // (APPWIDGET_UPDATE), force-stop is the unique hole. The
+        // app icon is the way back in after one, so re-issue the
+        // widget's intents on every Main launch: refresh() rebuilds
+        // the RemoteViews with fresh PendingIntents, and returns
+        // early when no widget is placed.
+        DhammaWidgetProvider.refresh(this);
         favs = new HashSet<String>(getSharedPreferences("dhamma", MODE_PRIVATE)
                 .getStringSet("favs", new HashSet<String>()));
         rootView = findViewById(R.id.root);

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v13.09 (widget F6): the widget picker's description line.
+     String resources (not Lang) because widget_info.xml can only
+     reference @string. Burmese-first, in the widget's own voice
+     (ဖွင့်မယ် / ရပ်မယ် / နောက်တစ်ပုဒ်, Lang wg_play/wg_pause/wg_next). -->
+<resources>
+    <string name="widget_desc">ပင်မမျက်နှာပြင်ကနေ တရားတော် ဖွင့်မယ်၊ ရပ်မယ်၊ နောက်တစ်ပုဒ် ပြောင်းမယ်</string>
+</resources>

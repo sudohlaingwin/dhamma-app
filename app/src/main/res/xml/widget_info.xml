@@ -1,13 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- v12.67: Home Screen Widget info — 4x1 cells, horizontal resize
      only, push-driven updates (updatePeriodMillis 0: the service
-     pushes a refresh on every state edge, never polled). -->
+     pushes a refresh on every state edge, never polled).
+     v13.09 (widget F6): previewLayout + description so the Android
+     12+ widget picker shows the real widget and a line about it
+     instead of a blank tile; (F7) minHeight 112dp — the content
+     measures ~111dp (10+10 padding, 12sp app, 16sp title, 48dp
+     button row), so 110dp squeezed the button row 1dp on strict
+     hosts. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="250dp"
-    android:minHeight="110dp"
+    android:minHeight="112dp"
     android:targetCellWidth="4"
     android:targetCellHeight="1"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_dhamma"
+    android:previewLayout="@layout/widget_dhamma"
+    android:description="@string/widget_desc"
     android:resizeMode="horizontal"
     android:widgetCategory="home_screen" />

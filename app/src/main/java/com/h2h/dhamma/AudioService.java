@@ -1061,6 +1061,17 @@ public class AudioService extends Service {
             getSharedPreferences("dhamma", MODE_PRIVATE)
                     .registerOnSharedPreferenceChangeListener(dlMapListener62);
         } catch (Exception ignored) {}
+        // v13.09 (widget F1): a process death while playing left
+        // the stale pause icon on the home screen — the static
+        // mirrors reset, but nothing re-rendered: the host keeps
+        // the last-pushed RemoteViews, onDestroy never runs on a
+        // kill, and the START_STICKY null-intent restart ends the
+        // service without a refresh. Re-render here, before any
+        // onStartCommand path runs, so the widget always shows the
+        // honest state (stored last talk + play icon) from the
+        // moment the service comes back. Cheap when no widget is
+        // placed (refresh returns early on an empty id list).
+        DhammaWidgetProvider.refresh(this);
     }
 
     public class LocalBinder extends Binder {
@@ -1109,6 +1120,45 @@ public class AudioService extends Service {
         }, 300);
     }
 
+    // v13.09 (widget F2/F4): the stored-talk resume the widget Play
+    // leg and the widget Next leg share — a dead service has no
+    // current talk, so both legs first bring the last talk back
+    // through play() (which sets currentTitle/currentUrl
+    // synchronously), then the caller decides: Play stops there,
+    // Next advances one step from it. Returns false when nothing
+    // was ever played. showNotification(false) promotes to
+    // foreground at once: prepareAsync may take seconds on a slow
+    // stream, and a foreground-service start must show its card
+    // inside the deadline; play() itself re-shows the card too,
+    // so this is belt-and-braces.
+    private boolean resumeStoredTalkForWidget() {
+        android.content.SharedPreferences sp =
+                getSharedPreferences("dhamma", MODE_PRIVATE);
+        // v12.71: a library session resumes its own file, not the
+        // stale Room talk in lastUrl / lastTitle (a library session
+        // never writes those) — skip-dead-files discipline v11.66:
+        // a deleted file falls through to the Room anchors below,
+        // never to a dead play.
+        if ("lib".equals(sp.getString("lastKind", ""))) {
+            String libPath = sp.getString("lastLibPath", "");
+            String libTitle = sp.getString("lastLibTitle", "");
+            if (libPath.length() > 0 && libTitle.length() > 0
+                    && new java.io.File(libPath).isFile()) {
+                play(libPath, libTitle, savedSeekFor(libPath));
+                showNotification(false);
+                return true;
+            }
+        }
+        String wUrl = sp.getString("lastUrl", "");
+        String wTitle = sp.getString("lastTitle", "");
+        if (wUrl.length() == 0 || wTitle.length() == 0) return false;
+        java.io.File wOff = offlineFileFor(wUrl);
+        play(wOff != null ? wOff.getAbsolutePath() : wUrl,
+                wTitle, savedSeekFor(wUrl));
+        showNotification(false);
+        return true;
+    }
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         // v1.75: a START_STICKY restart arrives with a null intent
@@ -1148,15 +1198,26 @@ public class AudioService extends Service {
                 // library session, the Room advance (hand queue >
                 // forward stack > shuffle > list-next with wrap,
                 // autoplay-off still advances, repeat-one ignored)
-                // for a Room session. A trackless tap ends the
-                // service like a stale toggle; a non-Room,
-                // non-library track advances nothing. The advance
-                // itself re-renders the widget through play() /
+                // for a Room session. A non-Room, non-library
+                // track advances nothing. The advance itself
+                // re-renders the widget through play() /
                 // notifyState; the refresh below covers the no-op
                 // cases (icon stays honest).
-                if (currentTitle == null) stopSelf();
-                else if (isLibSession()) advanceLibInBackground79(true);
-                else if (isRoomTrack()) advanceInBackground58(true);
+                // v13.09 (widget F2): a trackless tap used to end
+                // the service with nothing playing and no feedback
+                // (a dead service after process death or a swipe).
+                // Resume the stored talk first — play() sets
+                // currentTitle/currentUrl synchronously, so the
+                // same dispatch below then advances one step from
+                // it, exactly like a manual Next from inside the
+                // app. Nothing ever played still ends the service;
+                // an advance that finds nothing to play leaves the
+                // resumed talk sounding.
+                if (currentTitle == null && !resumeStoredTalkForWidget()) stopSelf();
+                if (currentTitle != null) {
+                    if (isLibSession()) advanceLibInBackground79(true);
+                    else if (isRoomTrack()) advanceInBackground58(true);
+                }
                 DhammaWidgetProvider.refresh(this);
             } else if (DhammaWidgetProvider.ACTION_WIDGET_PLAY.equals(intent.getAction())) {
                 // v12.67: widget Play with a dead service resumes
@@ -1167,44 +1228,17 @@ public class AudioService extends Service {
                 // the advance paths); a data-saver-gated resume
                 // starts paused through play()'s own gate, and the
                 // Room poll asks the gate question on return.
-                // showNotification(false) promotes to foreground
-                // at once: prepareAsync may take seconds on a slow
-                // stream, and a foreground-service start must show
-                // its card inside the deadline.
-                if (currentTitle != null) toggle();
-                else {
-                    android.content.SharedPreferences sp =
-                            getSharedPreferences("dhamma", MODE_PRIVATE);
-                    // v12.71: a library session resumes its own
-                    // file, not the stale Room talk in lastUrl /
-                    // lastTitle (a library session never writes
-                    // those) — skip-dead-files discipline v11.66:
-                    // a deleted file falls through to the Room
-                    // anchors below, never to a dead play.
-                    boolean resumedLib = false;
-                    if ("lib".equals(sp.getString("lastKind", ""))) {
-                        String libPath = sp.getString("lastLibPath", "");
-                        String libTitle = sp.getString("lastLibTitle", "");
-                        if (libPath.length() > 0 && libTitle.length() > 0
-                                && new java.io.File(libPath).isFile()) {
-                            play(libPath, libTitle, savedSeekFor(libPath));
-                            showNotification(false);
-                            resumedLib = true;
-                        }
-                    }
-                    if (!resumedLib) {
-                        String wUrl = sp.getString("lastUrl", "");
-                        String wTitle = sp.getString("lastTitle", "");
-                        if (wUrl.length() == 0 || wTitle.length() == 0) stopSelf();
-                        else {
-                            java.io.File wOff = offlineFileFor(wUrl);
-                            play(wOff != null ? wOff.getAbsolutePath() : wUrl,
-                                    wTitle, savedSeekFor(wUrl));
-                            showNotification(false);
-                        }
-                    }
+                // v13.09 (widget F4): the widget refresh is in a
+                // finally, so the icon stays honest even if the
+                // resume throws before play()'s own guards catch
+                // it (play() catches its setDataSource failure
+                // itself; this covers the unguarded head of it).
+                try {
+                    if (currentTitle != null) toggle();
+                    else if (!resumeStoredTalkForWidget()) stopSelf();
+                } finally {
+                    DhammaWidgetProvider.refresh(this);
                 }
-                DhammaWidgetProvider.refresh(this);
             } else if (ACTION_PLAY_FILE.equals(intent.getAction())) {
                 // v12.82 (sim1298): play one downloaded file by
                 // path — History's route for a path-form recent
