@@ -8349,9 +8349,10 @@ public class DownloadedActivity extends Activity {
                 }
                 boolean headPlaying677 = head677 != null && head677.equals(cur677)
                         && hasSoundingTrack(); // v13.17: live mirror (was bound-only)
-                if (head677 != null && !headPlaying677)
+                if (head677 != null && !headPlaying677) {
                     items.add(Lang.t(DownloadedActivity.this, "dl_menu_play_queued"));
                     itemKeys.add("dl_menu_play_queued");
+                }
             }
         }
         // v6.88: shuffle-play / reverse-play the hand queue —

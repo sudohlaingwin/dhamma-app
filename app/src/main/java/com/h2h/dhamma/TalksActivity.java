@@ -1751,9 +1751,10 @@ public class TalksActivity extends Activity {
                     QueueEntry dFxGate = foreignQueueHead();
                     if (talkPlayingUrl != null && talkPlayingUrl.length() > 0
                             && (!dQueued || (dFxGate != null && !dFxGate.url.equals(dt.url))
-                            || (dFw != null && !dFw.equals(dt.url))))
+                            || (dFw != null && !dFw.equals(dt.url)))) {
                         dOpts.add(dQueued ? Lang.t(TalksActivity.this, "menu_play_next") : Lang.t(TalksActivity.this, "menu_add_next"));
                         dKeys.add(dQueued ? "menu_play_next" : "menu_add_next");
+                    }
                     // v11.70: per-talk download from the browsing screen --
                     // the only download verb left in the app was the Room
                     // data-gate Wi-Fi button (mobile data + data saver
@@ -1764,9 +1765,10 @@ public class TalksActivity extends Activity {
                     // dialog (v7.82/v7.88 shape) gains one option, the
                     // existing dl_btn_download key, offered only for a
                     // talk that is neither downloaded nor already queued.
-                    if (!isTalkDownloaded(dt.url) && !talkIsDlQueued(dt.url))
+                    if (!isTalkDownloaded(dt.url) && !talkIsDlQueued(dt.url)) {
                         dOpts.add(Lang.t(TalksActivity.this, "dl_btn_download"));
                         dKeys.add("dl_btn_download");
+                    }
                     final String[] dOptArr = dOpts.toArray(new String[0]);
                     final String[] dKeyArr = dKeys.toArray(new String[0]);
                     new android.app.AlertDialog.Builder(TalksActivity.this)

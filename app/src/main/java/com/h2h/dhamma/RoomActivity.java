@@ -8098,9 +8098,10 @@ if (snd67n >= 0) currentIndex = snd67n;
                         final boolean fHeldRow = ffe.url.equals(moveHeldUrl)
                                 && queueLineIndexForUrl(ffe.url) >= 0;
                         // v11.34: never offer a move for the sounding foreign row — foreign form of the v11.22 in-list offer gate; bound this is isCurrentTalk, unbound the v11.32 foreign mirror.
-                        if (drawerDisplayCount() >= 2 && !isSoundingForeignTalk(ffe.url, ffe.sayadaw))
+                        if (drawerDisplayCount() >= 2 && !isSoundingForeignTalk(ffe.url, ffe.sayadaw)) {
                             fOptList.add(fHeldRow ? Lang.t(RoomActivity.this, "menu_move_end") : Lang.t(RoomActivity.this, "menu_move"));
                             fKeys.add(fHeldRow ? "menu_move_end" : "menu_move");
+                        }
                         // v7.16: play-next for the foreign row — the
                         // queue-only view has no row for the playing
                         // talk, so no arm/drop target can ever mean
@@ -8136,9 +8137,10 @@ if (snd67n >= 0) currentIndex = snd67n;
                         // v11.36 sounding-row mark — a foreign row CAN be the playing
                         // row now, which is exactly why this gate exists.
                         if (curUrl16 != null && fqi16 >= 0 && fw16 != null && !ffe.url.equals(fw16.url)
-                                && !isSoundingForeignTalk(ffe.url, ffe.sayadaw))
+                                && !isSoundingForeignTalk(ffe.url, ffe.sayadaw)) {
                             fOptList.add(Lang.t(RoomActivity.this, "menu_play_next"));
                             fKeys.add("menu_play_next");
+                        }
                         final String[] fOpts = fOptList.toArray(new String[0]);
                         final String[] fKeyArr = fKeys.toArray(new String[0]);
                         new android.app.AlertDialog.Builder(RoomActivity.this)
@@ -8353,9 +8355,10 @@ if (snd67n >= 0) currentIndex = snd67n;
                     // waiting talk, downloadable from its chooser
                     // since v11.70), and only when neither
                     // downloaded nor already queued.
-                    if (isSoundingTalk(qt.url) && !isDownloadedFile(qt.url) && !roomIsDlQueued(qt.url))
+                    if (isSoundingTalk(qt.url) && !isDownloadedFile(qt.url) && !roomIsDlQueued(qt.url)) {
                         qOptList.add(Lang.t(RoomActivity.this, "dl_btn_download"));
                         qKeys.add("dl_btn_download");
+                    }
                     final boolean qHeld = qt.url.equals(moveHeldUrl)
                             && queueLineIndexForUrl(qt.url) >= 0;
                     // v11.22: never offer a move for the sounding row — the
@@ -8364,9 +8367,10 @@ if (snd67n >= 0) currentIndex = snd67n;
                     // so a sounding talk still saved in the queue
                     // (service-restart leftover) could be picked up
                     // as if it were a waiting talk.
-                    if (drawerDisplayCount() >= 2 && !isSoundingTalk(qt.url))
+                    if (drawerDisplayCount() >= 2 && !isSoundingTalk(qt.url)) {
                         qOptList.add(qHeld ? Lang.t(RoomActivity.this, "menu_move_end") : Lang.t(RoomActivity.this, "menu_move"));
                         qKeys.add(qHeld ? "menu_move_end" : "menu_move");
+                    }
                     String qCur91 = currentTalkUrl();
                     int qqi91 = queueLineIndexForUrl(qt.url);
                     QueueEntry qw91 = firstWaitingQueueEntry();
@@ -8388,9 +8392,10 @@ if (snd67n >= 0) currentIndex = snd67n;
                     }
                     if ((qCur91 != null || qSnd11 != null) && qqi91 >= 0 && qw91 != null
                             && !qt.url.equals(qw91.url)
-                            && !qt.url.equals(qCur91) && !qt.url.equals(qSnd11))
+                            && !qt.url.equals(qCur91) && !qt.url.equals(qSnd11)) {
                         qOptList.add(Lang.t(RoomActivity.this, "menu_play_next"));
                         qKeys.add("menu_play_next");
+                    }
                     final String[] qOpts = qOptList.toArray(new String[0]);
                     final String[] qKeyArr = qKeys.toArray(new String[0]);
                     new android.app.AlertDialog.Builder(RoomActivity.this)
@@ -8576,9 +8581,10 @@ if (snd67n >= 0) currentIndex = snd67n;
                     } catch (Exception ignored) {}
                     sOpts.add(sFav71 ? Lang.t(RoomActivity.this, "menu_fav_remove") : Lang.t(RoomActivity.this, "menu_fav_add"));
                     sKeys.add(sFav71 ? "menu_fav_remove" : "menu_fav_add");
-                    if (!isDownloadedFile(st.url) && !roomIsDlQueued(st.url))
+                    if (!isDownloadedFile(st.url) && !roomIsDlQueued(st.url)) {
                         sOpts.add(Lang.t(RoomActivity.this, "dl_btn_download"));
                         sKeys.add("dl_btn_download");
+                    }
                     final String[] sOptArr = sOpts.toArray(new String[0]);
                     final String[] sKeyArr = sKeys.toArray(new String[0]);
                     new android.app.AlertDialog.Builder(RoomActivity.this)
@@ -8663,9 +8669,10 @@ if (snd67n >= 0) currentIndex = snd67n;
                     final String dCur = currentTalkUrl();
                     final QueueEntry dFw = firstWaitingQueueEntry();
                     final boolean dPlaying = dCur != null && dCur.length() > 0;
-                    if (dPlaying && (!dQueued || (dFw != null && !dt.url.equals(dFw.url))))
+                    if (dPlaying && (!dQueued || (dFw != null && !dt.url.equals(dFw.url)))) {
                         dOpts.add(dQueued ? Lang.t(RoomActivity.this, "menu_play_next") : Lang.t(RoomActivity.this, "menu_add_next"));
                         dKeys.add(dQueued ? "menu_play_next" : "menu_add_next");
+                    }
                     final String[] dOptArr = dOpts.toArray(new String[0]);
                     final String[] dKeyArr = dKeys.toArray(new String[0]);
                     new android.app.AlertDialog.Builder(RoomActivity.this)
