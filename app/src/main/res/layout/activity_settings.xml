@@ -765,8 +765,10 @@
             <!-- v5.28: Settings strip parity — Main, Talks and the
                  library went two-row in v5.27; Settings was the one
                  strip left as a single squeezed row (9 x 40dp buttons
-                 against the title). Same two rows + repeat/shuffle
-                 after speed, same 36dp buttons, same glyphs. -->
+                 against the title). Same two rows (Prev/Toggle/Next)
+                 + progress, same 36dp buttons, same glyphs.
+                 v13.35: the v5.28 text named extra buttons that never
+                 landed on this strip. -->
             </LinearLayout>
         
         <ProgressBar

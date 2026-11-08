@@ -4226,7 +4226,7 @@ public class TalksActivity extends Activity {
     // re-cascading on every keystroke. Search action on the keyboard
     // just dismisses it; clearing restores the full list.
     private void wireSearchBox() {
-        android.view.View row = findViewById(R.id.talkSearchRow);
+        // v13.35: removed the unused row local (findViewById result never read).
         searchBox = (android.widget.EditText) findViewById(R.id.talkSearch);
         if (searchBox == null) return;
         searchBox.setHint(Lang.t(TalksActivity.this, "talks_search_hint"));

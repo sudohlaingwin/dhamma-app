@@ -2059,7 +2059,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
             // every strip and zero on the card. Room skips lastUrl,
             // library skips lastLibPath — prefs the strip already
             // reads, so no new read and no tick cost. The ◈
-            // button's visibility rule (saved queue non-empty,
+            // suffix's visibility rule (saved queue non-empty,
             // v4.77) is untouched; an all-playing queue still
             // toasts empty on open, as today.
             String curUrl = sp.getString("lastUrl", "");
@@ -2558,10 +2558,17 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         // refresh()); this method owns only the live network note,
         // now a subtext line under the switch ("· Wi-Fi" / "· မိုဘိုင်း",
         // hidden when unknown) — the v7.54 change-only write, same as before.
+        // v13.35: the label + checked writes were NOT change-only —
+        // setText/setChecked ran on every 1s tick even when nothing
+        // changed. Guard both against the live view state, the same
+        // pattern as the note below it.
         try {
             if (btnDataSaver == null) return;
-            btnDataSaver.setText(Lang.t(this, "data_saver"));
-            btnDataSaver.setChecked(Prefs.dataSaver(this));
+            String dsLabel = Lang.t(this, "data_saver");
+            CharSequence dsCur = btnDataSaver.getText();
+            if (dsCur == null || !dsLabel.equals(dsCur.toString())) btnDataSaver.setText(dsLabel);
+            boolean dsOn = Prefs.dataSaver(this);
+            if (btnDataSaver.isChecked() != dsOn) btnDataSaver.setChecked(dsOn);
             String note = dataSaverNetworkNote();
             android.widget.TextView dn = findViewById(R.id.dataSaverNote);
             if (dn != null) {
@@ -2712,7 +2719,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         // v12.94: section headers — small muted caps, not card titles.
         for (int id : new int[]{R.id.secAppearance, R.id.secPlayback, R.id.secNoti, R.id.secData, R.id.secAbout}) { TextView hv = findViewById(id); if (hv != null) { hv.setTextColor(muted); hv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, note); } }
         for (int id : new int[]{R.id.notiNote, R.id.autoDlNote, R.id.dataSaverNote, R.id.aboutSrc}) { TextView nv = findViewById(id); if (nv != null) { nv.setTextColor(muted); nv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, note); } }
-        int f = Prefs.fontSize(this);
+        // v13.35: no second Prefs.fontSize read here — fs above is reused below (was int f).
         // v10.86: one live blocked-channel read for the whole
         // refresh — the note override below reuses it, so the
         // label mark and the note can never disagree mid-refresh.
@@ -2792,7 +2799,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         setLabelText(R.id.secAbout, "sec_about");
         setLabelText(R.id.lblClearData, "clear_data");
         setLabelText(R.id.lblVersion, "version");
-        if (fontValue != null) { fontValue.setText(f == 0 ? Lang.t(this, "font_small") : f == 1 ? Lang.t(this, "font_normal") : Lang.t(this, "font_large")); fontValue.setTextColor(muted); fontValue.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn); }
+        if (fontValue != null) { fontValue.setText(fs == 0 ? Lang.t(this, "font_small") : fs == 1 ? Lang.t(this, "font_normal") : Lang.t(this, "font_large")); fontValue.setTextColor(muted); fontValue.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn); }
         if (langValue != null) { langValue.setText(Lang.NAMES[Lang.index(this)]); langValue.setTextColor(muted); langValue.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn); }
         // v11.93: the two "›" chevrons had no id, so refresh() never
         // recoloured them — they kept day muted-brown at night and

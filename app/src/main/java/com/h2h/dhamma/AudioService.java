@@ -6456,7 +6456,10 @@ public class AudioService extends Service {
                     active ? Lang.t(this, "notif_action_pause") : Lang.t(this, "notif_action_play"), togglePi);
             if (nextPi != null)
                 b.addAction(android.R.drawable.ic_media_next, Lang.t(this, "notif_action_next"), nextPi);
-            b.addAction(android.R.drawable.ic_media_ff, "Forward", fwdPi);
+            // v13.35: D6 — the third action was the only English word
+            // on the card (hardcoded "Forward") while Play/Pause/Next
+            // all read Lang.t. Same key, same order, same icon.
+            b.addAction(android.R.drawable.ic_media_ff, Lang.t(this, "notif_action_forward"), fwdPi);
             // v5.28: MediaStyle REMOVED, permanently on this phone.
             // Tested three times and invisible every time — v1.70,
             // v5.25, v5.26 (new DEFAULT channel + TRANSPORT +
