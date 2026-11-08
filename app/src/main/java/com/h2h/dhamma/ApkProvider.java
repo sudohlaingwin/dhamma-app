@@ -18,9 +18,23 @@ public class ApkProvider extends ContentProvider {
     @Override public boolean onCreate() { return true; }
 
     @Override public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
-        File f = new File(getContext().getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
-                UpdateChecker.APK_NAME);
-        if (!f.exists()) throw new FileNotFoundException("update apk missing");
+        // v13.50 (F3): serve the file UpdateChecker just downloaded and size-verified
+        // (fireInstaller checks that exact file) — the old external-only resolution
+        // served a stale dhamma-update.apk from a previous cycle when the download
+        // had fallen back to the internal dir (unmounted storage), and threw when
+        // the external dir was still null. Fall back to the external-Downloads file,
+        // then the internal-dir file (the mirror of the download fallback), only
+        // when no verified file is held.
+        File f = UpdateChecker.installerFile();
+        if (f == null || !f.exists()) {
+            File dir = getContext().getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+            f = (dir == null) ? null : new File(dir, UpdateChecker.APK_NAME);
+            if (f == null || !f.exists()) {
+                File internal = new File(getContext().getFilesDir(), UpdateChecker.APK_NAME);
+                if (internal.exists()) f = internal;
+            }
+        }
+        if (f == null || !f.exists()) throw new FileNotFoundException("update apk missing");
         return ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY);
     }
 

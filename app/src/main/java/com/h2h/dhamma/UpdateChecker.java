@@ -65,6 +65,9 @@ public class UpdateChecker {
     // is asked again then.
     private static String skippedTag = null;
     private static boolean downloading = false;
+    // v13.50 (F2): set by onSkipButton so a stalled download ends promptly
+    // instead of burning all 3 attempts after the user already bailed.
+    private static volatile boolean downloadCancel = false;
     private static int lastProgress = -1;
     private static long lastPostAt = 0;
     private static File downloadedFile = null;
@@ -128,7 +131,11 @@ public class UpdateChecker {
                             final Activity a = activity;
                             a.runOnUiThread(new Runnable() {
                                 @Override public void run() {
-                                    if (!a.isFinishing()) showBlock(a);
+                                    // v13.50 (F4): isFinishing() is false for a config-change destroy —
+                                    // a stale post used to run showBlock on the dead activity, whose
+                                    // opening dismissBlock() killed the fresh dialog and left the offer
+                                    // vanished until the next Main resume.
+                                    if (!a.isFinishing() && !a.isDestroyed()) showBlock(a);
                                 }
                             });
                         }
@@ -304,7 +311,17 @@ public class UpdateChecker {
         TextView title = (TextView) blockDialog.findViewById(R.id.updTitle);
         if (title != null) title.setText(Lang.t(activity, "upd_title"));
         if (blockSub != null) blockSub.setText(Lang.t(activity, "upd_sub"));
-        if (blockVersion != null) blockVersion.setText(pendingName == null ? "" : pendingName);
+        // v13.50 (F1): show the release asset's real size next to the tag
+        // ("v1349 (≈ 6.0 MB)", the talk gate's exact "≈ %.1f MB" shape) —
+        // the ~6 MB update used to start on mobile data with no size shown,
+        // so the tap was never informed consent under the app's own
+        // data-saver rule. Size unknown (-1) shows the bare tag, as before.
+        if (blockVersion != null) {
+            String v = pendingName == null ? "" : pendingName;
+            if (pendingSize > 0)
+                v += String.format(java.util.Locale.US, " (≈ %.1f MB)", pendingSize / 1048576.0);
+            blockVersion.setText(v);
+        }
         if (blockBtn != null) {
             blockBtn.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) {
@@ -350,6 +367,9 @@ public class UpdateChecker {
     // onResume re-check from re-blocking, and the next cold start
     // (statics reset) asks again. Never deletes the downloaded file.
     private static void onSkipButton(Activity activity) {
+        // v13.50 (F2): stop the download thread as well as the dialog — the
+        // completion block below leaves no stale failure behind for it.
+        downloadCancel = true;
         Fx.tap(activity);
         skippedTag = pendingName;
         pendingUrl = null;
@@ -373,6 +393,7 @@ public class UpdateChecker {
     private static void startDownload(final Activity activity) {
         if (downloading) return;
         downloading = true;
+        downloadCancel = false;
         downloadFailed = false;
         lastProgress = -1;
         downloadedFile = null;
@@ -394,14 +415,14 @@ public class UpdateChecker {
                     if (dir == null) dir = appCtx.getFilesDir(); // unmounted / shared storage
                     if (dir == null) throw new IllegalStateException("no storage dir");
                     out = new File(dir, APK_NAME);
-                    for (int attempt = 1; attempt <= MAX_ATTEMPTS && !ok; attempt++) {
+                    for (int attempt = 1; attempt <= MAX_ATTEMPTS && !ok && !downloadCancel; attempt++) {
                         try {
                             ok = downloadOnce(pendingUrl, out)
                                     && (pendingSize <= 0 || out.length() == pendingSize);
                         } catch (Exception ignored) {
                             ok = false;
                         }
-                        if (!ok && attempt < MAX_ATTEMPTS) {
+                        if (!ok && !downloadCancel && attempt < MAX_ATTEMPTS) {
                             try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
                         }
                     }
@@ -414,7 +435,13 @@ public class UpdateChecker {
                 } finally {
                     downloading = false;
                 }
-                if (ok) {
+                // v13.50 (F2): a skip during the download leaves no stale state
+                // behind — the thread just ends (the partial file is already
+                // deleted above) instead of marking the next dialog's button
+                // with a failure nobody saw.
+                if (downloadCancel) {
+                    // skipped mid-download: nothing to show, nothing failed
+                } else if (ok) {
                     downloadedFile = out;
                     postToUi(new Runnable() {
                         @Override public void run() {
@@ -475,7 +502,7 @@ public class UpdateChecker {
             byte[] buf = new byte[8192];
             long done = 0;
             int n;
-            while ((n = in.read(buf)) != -1) {
+            while (!downloadCancel && (n = in.read(buf)) != -1) {
                 fos.write(buf, 0, n);
                 done += n;
                 // v13.19 (F14): when the server hides Content-Length
@@ -517,6 +544,13 @@ public class UpdateChecker {
         if (a != null) {
             try { a.runOnUiThread(r); } catch (Exception ignored) {}
         }
+    }
+
+    // v13.50 (F3): the file fireInstaller size-verified, for ApkProvider —
+    // the installer must receive exactly this file, never a stale same-name
+    // file from the external dir.
+    static File installerFile() {
+        return downloadedFile;
     }
 
     private static void fireInstaller(Activity activity) {
@@ -567,9 +601,11 @@ public class UpdateChecker {
             blockStatus.setText(Lang.t(activity, "upd_dl") + " " + p + "%");
             blockBtn.setEnabled(false);
             blockBtn.setText(Lang.t(activity, "upd_dl") + " " + p + "%");
-            // v13.10 (F2): no skipping mid-download — the escape
-            // appears only once the update is actually stuck.
-            blockSkip.setVisibility(View.GONE);
+            // v13.50 (F2): the escape stays available while downloading — a
+            // stalled download IS stuck, so the v13.10 rationale ("the escape
+            // appears only once the update is actually stuck") now covers it.
+            // onSkipButton cancels the download as well as dismissing.
+            blockSkip.setVisibility(View.VISIBLE);
         } else if (downloadFailed) {
             blockBar.setVisibility(View.VISIBLE);
             blockBar.setProgress(0);
