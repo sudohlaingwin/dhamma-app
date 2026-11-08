@@ -1732,7 +1732,7 @@ public class AudioService extends Service {
                     // asks on return. Treated exactly like a held-pause open from here (no
                     // start, no sleep timer, seek/speed still apply); a gate approval, a local
                     // file, or a still-Wi-Fi network passes through untouched.
-                    if (!startPaused && refuseGatedResume()) startPaused = true;
+                    if (!startPaused && refuseGatedResume(false)) startPaused = true;
                     // v10.61: the strips poll livePlaying, and
                     // nothing on this path ever set it — a
                     // toggle-held talk opened paused but every
@@ -2086,7 +2086,7 @@ public class AudioService extends Service {
         if (trackError && currentUrl != null && currentTitle != null) {
             // v11.77: a failed-track retry re-streams — gate it like resume() does, or a
             // Wi-Fi -> mobile-data switch lets the retry stream a whole talk unasked.
-            if (refuseGatedResume()) return;
+            if (refuseGatedResume(true)) return;
             play(currentUrl, currentTitle, savedSeekFor(currentUrl));
             return;
         }
@@ -2108,7 +2108,7 @@ public class AudioService extends Service {
                 // pause-tap on Wi-Fi followed by a mobile-data switch lets the held talk
                 // start streaming unasked. A refusal leaves the hold in place; the Room
                 // poll asks the gate question from the held flag.
-                if (refuseGatedResume()) return;
+                if (refuseGatedResume(true)) return;
                 holdPaused = false;
                 // v10.61: an un-hold is a will-play — the strips
                 // (Main/Talks/Settings/Library) poll livePlaying on
@@ -2339,12 +2339,21 @@ public class AudioService extends Service {
     // false = free to play. A refused resume stays exactly as resume() left it: paused,
     // no focus request, no checkpoint tick, no sleep re-arm, no volume change, and the held
     // flag is the Room poll's cue to ask the resume-mode question on return.
-    private boolean refuseGatedResume() {
+    // v13.48 (F1): the tap paths now say so at once — a gate-refused
+    // resume/toggle/seek-retry used to die silently anywhere except
+    // the Room (only the Room poll asks the gate question), so a
+    // widget / strip / card / headset Play tap on mobile data looked
+    // dead. Toast the Room's own mobile_no_autoplay wording (the
+    // v12.09 rule for backgrounded Next/Prev deferrals) on the tap
+    // paths only; onPrepared passes false — the Room poll already
+    // asks there. No gate, hold or state change.
+    private boolean refuseGatedResume(boolean toast) {
         if (!needsResumeGate()) return false;
         gateHeldResumeUrl = currentUrl;
         showNotification(false);
         notifyState();
         updateSession();
+        if (toast) toastGateDeferred58();
         return true;
     }
 
@@ -2370,7 +2379,7 @@ public class AudioService extends Service {
         // re-tap reaches resume() while still playing, so the gate is skipped, not removed,
         // for that path.
         if (currentTitle == null) return;
-        if (!isPlaying() && refuseGatedResume()) return;
+        if (!isPlaying() && refuseGatedResume(true)) return;
         // v12.09: a hold that survived into a successful resume is stale — the gate
         // passed (Wi-Fi returned, the talk downloaded, or data saver went off), so the
         // Room poll must not re-ask the question on the next pause for a talk that now
@@ -2670,7 +2679,7 @@ public class AudioService extends Service {
         if (trackError && currentUrl != null && currentTitle != null) {
             // v11.77: a failed-track seek re-streams — gate it like resume() does, or a seek-bar
             // drag on a dead stream after a Wi-Fi -> mobile-data switch streams unasked.
-            if (refuseGatedResume()) return;
+            if (refuseGatedResume(true)) return;
             // v12.20: persist the dragged spot before the retry —
             // the old code retried from ms but never saved it, so
             // a second failure jumped back to the stale checkpoint
@@ -2811,7 +2820,7 @@ public class AudioService extends Service {
             java.util.Set<String> inProg = inProgressDlFilenames59();
             for (java.io.File f : files)
                 if (f.isFile() && f.getName().toLowerCase().endsWith(".mp3")
-                        && !inProg.contains(f.getName())) shelf.add(f);
+                        && f.length() > 0 && !inProg.contains(f.getName())) shelf.add(f); // v13.48 (F3)
             java.util.Collections.sort(shelf, new java.util.Comparator<java.io.File>() {
                 @Override public int compare(java.io.File a, java.io.File b) {
                     return Long.compare(b.lastModified(), a.lastModified());
@@ -4510,9 +4519,14 @@ public class AudioService extends Service {
         // is a fresh choice and wins; an unchanged pref is a routine
         // sync and must leave the one-shot alone.
         if (sleepEndOfTalk && mins != sleepEndArmedPref) cancelSleepEndOfTalk();
-        if (!sleepEndOfTalk && mins > 0 && (remaining == 0 || mins != getSleepSetMinutes()))
+        // v13.48 (F2): a routine sync landing in the 3.2 s bedtime fade must not re-arm a
+        // fresh full timer for a stop already firing (sleepStopPending set by the fire
+        // branch) — the fade completes and pauses as scheduled; and a cancel landing in
+        // the fade (mins 0, remaining already cleared by the fire) must reach
+        // setSleepMinutes(0), which now cancels the fade, instead of dying silently.
+        if (!sleepEndOfTalk && mins > 0 && !sleepStopPending && (remaining == 0 || mins != getSleepSetMinutes()))
             setSleepMinutes(mins);
-        else if (!sleepEndOfTalk && mins == 0 && remaining > 0) setSleepMinutes(0);
+        else if (!sleepEndOfTalk && mins == 0 && (remaining > 0 || sleepStopPending)) setSleepMinutes(0);
     }
 
     public void setSpeed(float s) {
@@ -4537,6 +4551,12 @@ public class AudioService extends Service {
     }
 
     public void setSleepMinutes(int mins) {
+        // v13.48 (F2): a sleep pick/cancel made during the 3.2 s bedtime
+        // fade supersedes the fade — cancel it first (stops the fade
+        // runnable, restores the volume, clears sleepStopPending), so
+        // a cancel leaves the talk playing with no timer and a new
+        // pick arms fresh from the pick instead of pausing anyway.
+        cancelSleepFade();
         if (sleepRunnable != null) sleepHandler.removeCallbacks(sleepRunnable);
         sleepRunnable = null;
         sleepEndMs = 0;
@@ -5451,7 +5471,8 @@ public class AudioService extends Service {
             if (map.has(url)) {
                 java.io.File f = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
                         android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + map.getString(url));
-                if (f.exists() && !inProg.contains(map.getString(url))) return f;
+                // v13.48 (F3): a 0-byte file never plays — treat it as no download.
+                if (f.exists() && f.length() > 0 && !inProg.contains(map.getString(url))) return f;
             }
             java.util.Set<String> claimedByOther = new java.util.HashSet<String>();
             java.util.Iterator<String> keys = map.keys();
@@ -5476,7 +5497,7 @@ public class AudioService extends Service {
                 if (inProg.contains(name)) continue; // v11.59: still downloading, not offline yet
                 java.io.File f = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
                         android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + name);
-                if (f.exists()) return f;
+                if (f.exists() && f.length() > 0) return f; // v13.48 (F3): a 0-byte file never plays
             }
         } catch (Exception ignored) {}
         return null;
