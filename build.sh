@@ -18,6 +18,12 @@ echo "[$proj] javac..."
 javac -encoding UTF-8 -source 8 -target 8 -nowarn -cp $AJAR -d $b/obj $(find $src/java $b/gen -name "*.java")
 echo "[$proj] d8..."
 $BT/d8 --lib $AJAR --min-api 24 --output $b/dex $(find $b/obj -name "*.class")
+# v13.11: pipeline F1 — a codeless ~6KB stub dex once passed
+# apksigner verify + badging (v1.56) and was caught only by the
+# run's independent check. Refuse to sign a stub here, in the
+# script, before any packaging happens.
+dex_bytes=$(stat -c%s $b/dex/classes.dex)
+if [ "$dex_bytes" -lt 100000 ]; then echo "[$proj] FATAL: dex only $dex_bytes bytes — refusing to sign a stub" >&2; exit 1; fi
 (cd $b && zip -q -j unsigned.apk dex/classes.dex)
 echo "[$proj] zipalign + sign..."
 $BT/zipalign -f -p 4 $b/unsigned.apk $b/aligned.apk >/dev/null

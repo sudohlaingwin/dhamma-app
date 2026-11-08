@@ -1551,6 +1551,64 @@ public class Prefs {
         return lastName;
     }
 
+    // v13.11: sayadawForTalk used to re-parse the whole dlMap +
+    // dlSayadaw JSON out of SharedPreferences on EVERY call, and it
+    // is called on the UI thread on every widget refresh / play /
+    // pause / completion while a library session is live — a large
+    // download library made every state edge pay a full JSON parse.
+    // Cache the parsed maps keyed by the raw strings: a repeat call
+    // with unchanged prefs is a cheap String.equals, and any writer
+    // (Fx / Downloaded / AutoDownloadJob / Room / Talks / the v12.43
+    // migration) invalidates it for free, because the raw string it
+    // wrote differs. The cached maps are never mutated — the only
+    // consumer, ownerForSoundingTalkPure, reads them (get/iterate).
+    // Synchronized: writers run on background threads
+    // (AutoDownloadJob) while readers run on the UI thread.
+    private static String cachedDlMapRaw = null;
+    private static java.util.Map<String, String> cachedDlMap = null;
+    private static String cachedDlSayRaw = null;
+    private static java.util.Map<String, String> cachedDlSay = null;
+
+    private static java.util.Map<String, String> dlMapCached(
+            android.content.SharedPreferences s) {
+        String raw = s.getString("dlMap", "{}");
+        synchronized (Prefs.class) {
+            if (raw.equals(cachedDlMapRaw) && cachedDlMap != null) return cachedDlMap;
+            java.util.Map<String, String> m = new java.util.HashMap<String, String>();
+            try {
+                org.json.JSONObject j = new org.json.JSONObject(raw);
+                java.util.Iterator<String> k = j.keys();
+                while (k.hasNext()) {
+                    String key = k.next();
+                    m.put(key, j.optString(key, ""));
+                }
+            } catch (Exception ignored) {}
+            cachedDlMapRaw = raw;
+            cachedDlMap = m;
+            return m;
+        }
+    }
+
+    private static java.util.Map<String, String> dlSayCached(
+            android.content.SharedPreferences s) {
+        String raw = s.getString("dlSayadaw", "{}");
+        synchronized (Prefs.class) {
+            if (raw.equals(cachedDlSayRaw) && cachedDlSay != null) return cachedDlSay;
+            java.util.Map<String, String> m = new java.util.HashMap<String, String>();
+            try {
+                org.json.JSONObject j = new org.json.JSONObject(raw);
+                java.util.Iterator<String> k = j.keys();
+                while (k.hasNext()) {
+                    String key = k.next();
+                    m.put(key, j.optString(key, ""));
+                }
+            } catch (Exception ignored) {}
+            cachedDlSayRaw = raw;
+            cachedDlSay = m;
+            return m;
+        }
+    }
+
     // Context wrapper for the pure rule above: reads the two JSON
     // maps (dlMap stream -> filename, dlSayadaw stream -> sayadaw)
     // the same way stripFavUrl / stripLibSayadaw read them. "" when
@@ -1560,24 +1618,8 @@ public class Prefs {
         if (c == null) return lastName == null ? "" : lastName;
         try {
             android.content.SharedPreferences s = sp(c);
-            java.util.Map<String, String> dlMap = new java.util.HashMap<String, String>();
-            java.util.Map<String, String> dlSay = new java.util.HashMap<String, String>();
-            try {
-                org.json.JSONObject m = new org.json.JSONObject(s.getString("dlMap", "{}"));
-                java.util.Iterator<String> k = m.keys();
-                while (k.hasNext()) {
-                    String key = k.next();
-                    dlMap.put(key, m.optString(key, ""));
-                }
-            } catch (Exception ignored) {}
-            try {
-                org.json.JSONObject m = new org.json.JSONObject(s.getString("dlSayadaw", "{}"));
-                java.util.Iterator<String> k = m.keys();
-                while (k.hasNext()) {
-                    String key = k.next();
-                    dlSay.put(key, m.optString(key, ""));
-                }
-            } catch (Exception ignored) {}
+            java.util.Map<String, String> dlMap = dlMapCached(s);
+            java.util.Map<String, String> dlSay = dlSayCached(s);
             return ownerForSoundingTalkPure(kind, soundingUrl, lastName, dlMap, dlSay);
         } catch (Exception ignored) {
             return lastName == null ? "" : lastName;

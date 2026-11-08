@@ -151,10 +151,13 @@ public class ImageLoader {
         if (disk.exists()) {
             Bitmap bmp = decodeBoundedFile(disk);
             if (bmp != null) {
-                Bitmap circ = circular(bmp);
-                // v1.63: LRU eviction (see MEM) — no more clear-all.
-                synchronized (MEM) { MEM.put(url, circ); }
-                setInstant(view, circ);
+                // v13.11: the disk file IS the circular render
+                // (circ.compress at write time) — re-circularizing
+                // it here was a wasted bitmap allocation + a
+                // full-size draw per disk-hit bind, with bit-identical
+                // output. Put the decoded bitmap straight in.
+                synchronized (MEM) { MEM.put(url, bmp); }
+                setInstant(view, bmp);
                 return;
             }
             // v1.85: an undecodable cache file (truncated download,
@@ -333,7 +336,20 @@ public class ImageLoader {
             if (files == null) return;
             java.util.ArrayList<File> renders = new java.util.ArrayList<File>();
             for (File f : files) {
-                if (f.getName().endsWith(".tmp")) { try { f.delete(); } catch (Exception ignored) {} }
+                // v13.11: prune used to delete EVERY .tmp in the dir
+                // — including one another DL_POOL worker was still
+                // writing (4 threads, one tmp per URL). That
+                // download's renameTo then failed and the portrait
+                // was lost from disk (re-downloaded next launch,
+                // gold initial meanwhile). A tmp is only stale once
+                // no worker can still be writing it: a write takes
+                // seconds, so only delete tmps older than 1h (a
+                // killed process leaves its tmp behind; its mtime
+                // stops advancing). The failed-write path still
+                // deletes its own tmp immediately.
+                if (f.getName().endsWith(".tmp")) {
+                    if (System.currentTimeMillis() - f.lastModified() > 3600000L) { try { f.delete(); } catch (Exception ignored) {} }
+                }
                 else if (f.getName().endsWith(".p512.png")) renders.add(f);
             }
             if (renders.size() <= MAX_DISK_FILES) return;
