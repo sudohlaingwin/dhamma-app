@@ -792,9 +792,15 @@ public class RoomView extends View {
                     c.drawCircle(ex, ey, 2 * u * s, paint);
                 }
             } else if (anim == 4) {
+                // v13.33 (RoomView F1): the two divisors below used to
+                // be bare (int) casts — a Room a couple of px tall
+                // (split-screen minimum / tiny multi-window) shrinks
+                // s until (int) dw == 0 or (int) (dh * 0.45f) == 0
+                // and the int % 0 throws inside onDraw mid-talk.
+                // Same Math.max(1, ...) guard anim 1/2 already use.
                 for (int i = 0; i < 24; i++) {
-                    float sx = left + ((i * 269) % (int) dw);
-                    float sy = (i * 131) % (int) (dh * 0.45f);
+                    float sx = left + ((i * 269) % Math.max(1, (int) dw));
+                    float sy = (i * 131) % Math.max(1, (int) (dh * 0.45f));
                     float tw = 0.5f + 0.5f * (float) Math.sin(tt * 0.004 + i * 1.9f);
                     paint.setColor(Color.argb((int) (170 * litBlend * tw), 220, 235, 255));
                     c.drawCircle(sx, sy, 2.2f * u * s, paint);
@@ -802,7 +808,7 @@ public class RoomView extends View {
             } else if (anim == 5) {
                 for (int i = 0; i < 18; i++) {
                     float fall = (tt * 0.05f + i * 149) % (dh + 40 * u);
-                    float px2 = left + ((i * 181) % (int) dw) + (float) Math.sin(tt * 0.002 + i) * 14 * u;
+                    float px2 = left + ((i * 181) % Math.max(1, (int) dw)) + (float) Math.sin(tt * 0.002 + i) * 14 * u;
                     float py2 = fall - 20 * u;
                     paint.setColor(Color.argb((int) (170 * litBlend), 255, 180, 40));
                     c.drawOval(px2 - 6 * u * s, py2 - 3 * u * s, px2 + 6 * u * s, py2 + 3 * u * s, paint);
