@@ -7370,6 +7370,26 @@ if (snd68 >= 0) currentIndex = snd68;
                     seekBar.setMax(0);
                     seekBar.setProgress(0);
                     seekBar.setBufferedPercent(0);
+                    // v13.21: a system CANCEL after a stop (the
+                    // v13.20 residual) — the same frozen ripple as
+                    // W1, through the cancel path instead of the
+                    // lift: the poll stop branch froze the ripple
+                    // while seeking, so its !seeking-guarded
+                    // resetRipple never ran, and this leg reset
+                    // bar + clocks to 0/0 without flattening it.
+                    // Flatten only when no talk is current —
+                    // hasLiveTrackForQueue is the discriminator
+                    // the leg lacked: bound, a stop nulled
+                    // currentTitle (hasTrack false); buffering
+                    // still counts as a track (hasTrack true from
+                    // play, duration 0 until prepared), so its
+                    // wave keeps the live ripple and the poll's
+                    // fresh-track path re-arms it on prepare;
+                    // unbound, the v10.40 statics decide. A lift
+                    // after a stop never reaches here (the v7.97
+                    // discard flattens it), so this leg was the
+                    // only remaining path to a frozen 0:00 bar.
+                    if (!hasLiveTrackForQueue()) seekBar.resetRipple();
                     elapsedText.setText("0:00");
                     totalText.setText("0:00");
                 }
