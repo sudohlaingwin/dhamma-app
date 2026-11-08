@@ -389,6 +389,10 @@ public class UpdateChecker {
                             try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
                         }
                     }
+                    // v13.19 (F10): after the final failed attempt no
+                    // half-written file stays in Downloads — the next
+                    // attempt (or skip) starts from a clean slate.
+                    if (!ok && out != null) out.delete();
                 } catch (Throwable t) {
                     ok = false;
                 } finally {
@@ -435,7 +439,14 @@ public class UpdateChecker {
                     c.disconnect();
                     c = null;
                     if (loc == null) return false;
-                    cur = loc;
+                    // v13.19 (F11): a relative Location ("/x.apk") is
+                    // not a URL — resolve it against the current URL
+                    // instead of dying on every attempt.
+                    try {
+                        cur = new URL(new URL(cur), loc).toString();
+                    } catch (Exception ignored) {
+                        return false;
+                    }
                     continue;
                 }
                 if (code != 200) return false;
@@ -451,10 +462,19 @@ public class UpdateChecker {
             while ((n = in.read(buf)) != -1) {
                 fos.write(buf, 0, n);
                 done += n;
+                // v13.19 (F14): when the server hides Content-Length
+                // (chunked body) the bar used to sit at 0% for the
+                // whole download — post from the release asset's known
+                // size (pendingSize, v13.10 F3) instead, capped at 99%
+                // until the caller verifies the finished file.
                 if (total > 0) postProgress((int) (done * 100 / total));
+                else if (pendingSize > 0)
+                    postProgress(Math.min(99, (int) (done * 100 / pendingSize)));
             }
             fos.getFD().sync();
-            return total <= 0 || done == total;
+            // v13.19 (F7): an empty chunked body (done == 0, no length)
+            // used to count as a success — it is not a download.
+            return total <= 0 ? done > 0 : done == total;
         } finally {
             try { if (fos != null) fos.close(); } catch (Exception ignored) {}
             try { if (in != null) in.close(); } catch (Exception ignored) {}
