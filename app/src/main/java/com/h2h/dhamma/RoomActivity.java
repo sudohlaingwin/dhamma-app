@@ -4734,7 +4734,21 @@ if (snd65 >= 0) currentIndex = snd65;
                             : (service.isBuffering() && !service.isHoldPaused()
                                     ? Lang.t(RoomActivity.this, "notif_state_buffering") + " " : "▶ "))
                             + queuePos + dlMark + progMark + favMark + service.getCurrentTitle() + endedSuf;
-                    if (!pollLine.equals(nowPlaying.getText().toString())) {
+                    // v13.40: status-line guards (M9/F5 class, poll/tick +
+                    // loadTalks/playTalk/bind) — nowPlaying is a field assigned
+                    // from findViewById in onCreate, so a missing roomNowPlaying
+                    // id leaves it null and every bare setText/getText/animate
+                    // below NPEd: the 500ms poll tick died within a second of
+                    // opening the Room, and a load/play/bind died on its status
+                    // write. All nine setText sites + their pour blocks are now
+                    // guarded; a missing status line is simply never written.
+                    // All ids exist in activity_room.xml today, so no live
+                    // behaviour changes. The notification-stop read below uses
+                    // a null-safe ternary, so that branch becomes a no-op
+                    // instead of crashing; the rider guards the three onCreate
+                    // sites v13.39 missed (btnRetry long-click + Fx.press,
+                    // btnPlayPause Fx.press).
+                    if (nowPlaying != null && !pollLine.equals(nowPlaying.getText().toString())) {
                         nowPlaying.setText(pollLine);
                         // v3.49: pour-restart continuity (v3.37 rule, extended) — a settled
                         // view still pours visibly from 0/12dp; a mid-pour view flows on
@@ -4877,30 +4891,32 @@ if (snd65 >= 0) currentIndex = snd65;
                         }
                     } else {
                     currentIndex = -1;
-                    nowPlaying.setText(Lang.t(RoomActivity.this, "room_count_prefix") + talks.size() + Lang.t(RoomActivity.this, "room_count_suffix"));
-                    // v2.69: premium poll return-to-count pour — the
-                    // mirror of the v2.66 load-complete count pour.
-                    // A stale row used to snap the status line back
-                    // to this count line in one frame, while every
-                    // other status line already pours (v2.66/v2.67/
-                    // v2.68); it now fades + rises in with the same
-                    // rhythm (320ms, 12dp rise, decelerate, ending
-                    // at exactly alpha 1 / offset 0). Runs once:
-                    // currentIndex is -1 after this, so the poll
-                    // never re-enters the branch, and the v2.66
-                    // onPause/onDestroy reset already cancels this
-                    // same view's animator. Visual only; text and
-                    // stale-row behaviour untouched.
-                    // v3.49: pour-restart continuity (v3.37 rule, extended) — a settled
-                    // view still pours visibly from 0/12dp; a mid-pour view flows on
-                    // from its current alpha/offset instead of snapping back.
-                    nowPlaying.animate().cancel();
-                    if (nowPlaying.getAlpha() >= 0.999f && nowPlaying.getTranslationY() <= 0.5f) {
-                        nowPlaying.setAlpha(0f);
-                        nowPlaying.setTranslationY(12f * getResources().getDisplayMetrics().density);
+                    if (nowPlaying != null) {
+                        nowPlaying.setText(Lang.t(RoomActivity.this, "room_count_prefix") + talks.size() + Lang.t(RoomActivity.this, "room_count_suffix"));
+                        // v2.69: premium poll return-to-count pour — the
+                        // mirror of the v2.66 load-complete count pour.
+                        // A stale row used to snap the status line back
+                        // to this count line in one frame, while every
+                        // other status line already pours (v2.66/v2.67/
+                        // v2.68); it now fades + rises in with the same
+                        // rhythm (320ms, 12dp rise, decelerate, ending
+                        // at exactly alpha 1 / offset 0). Runs once:
+                        // currentIndex is -1 after this, so the poll
+                        // never re-enters the branch, and the v2.66
+                        // onPause/onDestroy reset already cancels this
+                        // same view's animator. Visual only; text and
+                        // stale-row behaviour untouched.
+                        // v3.49: pour-restart continuity (v3.37 rule, extended) — a settled
+                        // view still pours visibly from 0/12dp; a mid-pour view flows on
+                        // from its current alpha/offset instead of snapping back.
+                        nowPlaying.animate().cancel();
+                        if (nowPlaying.getAlpha() >= 0.999f && nowPlaying.getTranslationY() <= 0.5f) {
+                            nowPlaying.setAlpha(0f);
+                            nowPlaying.setTranslationY(12f * getResources().getDisplayMetrics().density);
+                        }
+                        nowPlaying.animate().alpha(1f).translationY(0f).setDuration(320)
+                                .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
                     }
-                    nowPlaying.animate().alpha(1f).translationY(0f).setDuration(320)
-                            .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
                     if (adapter != null) adapter.notifyDataSetChanged();
                     }
                 }
@@ -4910,7 +4926,7 @@ if (snd65 >= 0) currentIndex = snd65;
                 // (loading/count lines never start with ▶/⏸, so they
                 // are left alone).
                 else if (!service.hasTrack()) {
-                    String np = nowPlaying.getText().toString();
+                    String np = nowPlaying == null ? "" : nowPlaying.getText().toString();
                     // v1.80: the buffering line ("ဆွဲထုတ်နေသည်… "
                     // + title) is a track-title line too — stopping
                     // from the notification mid-buffer used to leave
@@ -6828,6 +6844,11 @@ if (snd68 >= 0) currentIndex = snd68;
         // calls are untouched. Fx.press is NOT null-safe, so its
         // four calls are guarded too; the onNewIntent sayadaw
         // twin (9739) is guarded in the same patch.
+        // v13.40 rider: this sweep missed btnRetry's long-click +
+        // Fx.press and btnPlayPause's Fx.press (their click listeners
+        // were guarded, these three sites were not) — guarded now in
+        // the same shapes; see the poll/tick + loadTalks status-line
+        // guards (v13.40) for the nowPlaying family.
         btnRetry = findViewById(R.id.roomRetry);
         if (btnRetry != null) btnRetry.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
@@ -6851,7 +6872,7 @@ if (snd68 >= 0) currentIndex = snd68;
         // whether the site itself is down instead of retrying
         // blind. No page URL, or no browser to take it, toasts
         // instead of crashing.
-        btnRetry.setOnLongClickListener(new View.OnLongClickListener() {
+        if (btnRetry != null) btnRetry.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 Fx.tap(RoomActivity.this);
                 if (pageUrl == null || pageUrl.length() == 0 || "null".equals(pageUrl)) {
@@ -6868,7 +6889,7 @@ if (snd68 >= 0) currentIndex = snd68;
         });
         // v2.28: press feedback on the Room retry button, same gap
         // as the Talks chooser's — see TalksActivity.
-        Fx.press(btnRetry);
+        if (btnRetry != null) Fx.press(btnRetry);
         // v1.51: restore the pre-rotation photo instead of picking a
         // new one (see onSaveInstanceState).
         if (savedInstanceState != null && savedInstanceState.containsKey("themeIndex")) {
@@ -7487,7 +7508,7 @@ if (snd62 >= 0) currentIndex = snd62;
                 service.toggle();
             }
         });
-        Fx.press(btnPlayPause); // v2.08: press feedback on the play control
+        if (btnPlayPause != null) Fx.press(btnPlayPause); // v2.08: press feedback on the play control
         // v4.13: long-press Play restarts the current talk from the
         // beginning — no new button on the fixed control row (the
         // ↻ restart used to live there before v1.37). A buffering
@@ -9570,7 +9591,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                 // paused talks read exactly as before.
                 boolean bindActive = service.isPlaying()
                         || (service.isBuffering() && !service.isHoldPaused());
-                nowPlaying.setText((bindActive ? "⏸ " : "▶ ") + service.getCurrentTitle());
+                if (nowPlaying != null) nowPlaying.setText((bindActive ? "⏸ " : "▶ ") + service.getCurrentTitle());
                 // v1.75: a track from elsewhere leaves the old index
                 // stale (gold ▶ on a row that is not playing) — the
                 // poll clears it too, but clear it here at once so
@@ -11479,42 +11500,44 @@ if (snd67q >= 0) currentIndex = snd67q;
             }
         }
         Talk t = talks.get(idx);
-        nowPlaying.setText("⏸ " + t.title); // v2.47: action rule — starting = will play = ⏸
-        // v2.09: the title fades in with the shrine-photo crossfade
-        // on every talk change instead of swapping instantly.
-        // v2.22: fade + a 12dp rise, not alpha-only — the title now
-        // pours in the same way the v2.15 panel entrance pours the
-        // rows in on open, and the rise ends at exactly 0 so the
-        // 500ms poll (which only sets text) never leaves it offset.
-        // v2.22: the play button morphs on every new talk start too —
-        // the v2.07 morph only fired on a play/pause flip, so a Next
-        // or row tap while already playing gave no visible beat at
-        // all; guarded, since playIndex can run before the button
-        // exists on the queued pre-bind path.
-        // v3.37: premium talk-change pour-restart continuity —
-        // the title/seek/controls pours below used to force
-        // alpha 0 + 12dp rise unconditionally, so a rapid second
-        // talk change (Next twice, or a row tap mid-pour) snapped
-        // each row back to fully faded / fully dropped in one
-        // frame before pouring again — the same restart snap
-        // v3.34/v3.35/v3.36 fixed for the nudges, the morph and
-        // the drawer. A pour that already finished (alpha 1,
-        // offset 0) still starts from 0/12dp exactly as before,
-        // so an ordinary talk change pours visibly; a pour still
-        // in flight now animates on from its current alpha and
-        // offset over the same 320ms instead of jumping back.
-        // Each row is judged on its own values, since the three
-        // animators are independent, and the onPause/onDestroy
-        // resets still land every row at exactly 1/0 on leave.
-        // Visual only; text, timing targets and the pour rhythm
-        // for a settled row are untouched.
-        nowPlaying.animate().cancel();
-        if (nowPlaying.getAlpha() >= 0.999f && nowPlaying.getTranslationY() <= 0.5f) {
-            nowPlaying.setAlpha(0f);
-            nowPlaying.setTranslationY(12f * getResources().getDisplayMetrics().density);
+        if (nowPlaying != null) {
+            nowPlaying.setText("⏸ " + t.title); // v2.47: action rule — starting = will play = ⏸
+            // v2.09: the title fades in with the shrine-photo crossfade
+            // on every talk change instead of swapping instantly.
+            // v2.22: fade + a 12dp rise, not alpha-only — the title now
+            // pours in the same way the v2.15 panel entrance pours the
+            // rows in on open, and the rise ends at exactly 0 so the
+            // 500ms poll (which only sets text) never leaves it offset.
+            // v2.22: the play button morphs on every new talk start too —
+            // the v2.07 morph only fired on a play/pause flip, so a Next
+            // or row tap while already playing gave no visible beat at
+            // all; guarded, since playIndex can run before the button
+            // exists on the queued pre-bind path.
+            // v3.37: premium talk-change pour-restart continuity —
+            // the title/seek/controls pours below used to force
+            // alpha 0 + 12dp rise unconditionally, so a rapid second
+            // talk change (Next twice, or a row tap mid-pour) snapped
+            // each row back to fully faded / fully dropped in one
+            // frame before pouring again — the same restart snap
+            // v3.34/v3.35/v3.36 fixed for the nudges, the morph and
+            // the drawer. A pour that already finished (alpha 1,
+            // offset 0) still starts from 0/12dp exactly as before,
+            // so an ordinary talk change pours visibly; a pour still
+            // in flight now animates on from its current alpha and
+            // offset over the same 320ms instead of jumping back.
+            // Each row is judged on its own values, since the three
+            // animators are independent, and the onPause/onDestroy
+            // resets still land every row at exactly 1/0 on leave.
+            // Visual only; text, timing targets and the pour rhythm
+            // for a settled row are untouched.
+            nowPlaying.animate().cancel();
+            if (nowPlaying.getAlpha() >= 0.999f && nowPlaying.getTranslationY() <= 0.5f) {
+                nowPlaying.setAlpha(0f);
+                nowPlaying.setTranslationY(12f * getResources().getDisplayMetrics().density);
+            }
+            nowPlaying.animate().alpha(1f).translationY(0f).setDuration(320)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
         }
-        nowPlaying.animate().alpha(1f).translationY(0f).setDuration(320)
-                .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
         if (btnPlayPause != null) Fx.morph(btnPlayPause);
         // v2.30: the seek row joins the talk-change choreography —
         // the title (v2.22) and the photo (v1.52 crossfade) already
@@ -12287,7 +12310,7 @@ if (snd67q >= 0) currentIndex = snd67q;
         // list, just wasted bandwidth).
         final String loadPageUrl = pageUrl;
         hideRetry();
-        nowPlaying.setText(Lang.t(RoomActivity.this, "talks_loading"));
+        if (nowPlaying != null) nowPlaying.setText(Lang.t(RoomActivity.this, "talks_loading"));
         // v2.68: premium load-start loading-line pour — the
         // mirror of the v2.66 count pour and v2.67 failure/empty
         // pours, closing the last status-line gap: a retry tap
@@ -12305,7 +12328,7 @@ if (snd67q >= 0) currentIndex = snd67q;
         // and the v2.66/v2.67 completion pour supersedes it by
         // cancelling this animator. Visual only; text and load
         // behaviour untouched.
-        if (pourLoading) {
+        if (pourLoading && nowPlaying != null) {
             // v3.49: pour-restart continuity (v3.37 rule, extended) — a settled
             // view still pours visibly from 0/12dp; a mid-pour view flows on
             // from its current alpha/offset instead of snapping back.
@@ -12495,31 +12518,33 @@ if (snd67q >= 0) currentIndex = snd67q;
                         // list is still loading, so it is safe on every load path.
                         syncSavedQueueOnReturn();
                         if (ferr != null) {
-                            nowPlaying.setText(Lang.t(RoomActivity.this, "fetch_failed_prefix") + ferr);
-                            // v2.67: premium load-failure status pour — the
-                            // mirror of the v2.66 count pour. A failed load
-                            // used to swap the loading line for this error
-                            // line in one frame, while the success count
-                            // line already pours (v2.66); the error line now
-                            // fades + rises in with the same rhythm (320ms,
-                            // 12dp rise, decelerate, ending at exactly alpha 1
-                            // / offset 0). No new lifecycle code: the v2.66
-                            // onPause/onDestroy reset already cancels this
-                            // same view's animator, and the poll never
-                            // overwrites an error line (v1.57 guard — it
-                            // does not start with ▶/⏸/ဆွဲထုတ်နေသည်…).
-                            // Visual only; text, retry fade and toasts
-                            // are untouched.
-                            // v3.49: pour-restart continuity (v3.37 rule, extended) — a settled
-                            // view still pours visibly from 0/12dp; a mid-pour view flows on
-                            // from its current alpha/offset instead of snapping back.
-                            nowPlaying.animate().cancel();
-                            if (nowPlaying.getAlpha() >= 0.999f && nowPlaying.getTranslationY() <= 0.5f) {
-                                nowPlaying.setAlpha(0f);
-                                nowPlaying.setTranslationY(12f * getResources().getDisplayMetrics().density);
+                            if (nowPlaying != null) {
+                                nowPlaying.setText(Lang.t(RoomActivity.this, "fetch_failed_prefix") + ferr);
+                                // v2.67: premium load-failure status pour — the
+                                // mirror of the v2.66 count pour. A failed load
+                                // used to swap the loading line for this error
+                                // line in one frame, while the success count
+                                // line already pours (v2.66); the error line now
+                                // fades + rises in with the same rhythm (320ms,
+                                // 12dp rise, decelerate, ending at exactly alpha 1
+                                // / offset 0). No new lifecycle code: the v2.66
+                                // onPause/onDestroy reset already cancels this
+                                // same view's animator, and the poll never
+                                // overwrites an error line (v1.57 guard — it
+                                // does not start with ▶/⏸/ဆွဲထုတ်နေသည်…).
+                                // Visual only; text, retry fade and toasts
+                                // are untouched.
+                                // v3.49: pour-restart continuity (v3.37 rule, extended) — a settled
+                                // view still pours visibly from 0/12dp; a mid-pour view flows on
+                                // from its current alpha/offset instead of snapping back.
+                                nowPlaying.animate().cancel();
+                                if (nowPlaying.getAlpha() >= 0.999f && nowPlaying.getTranslationY() <= 0.5f) {
+                                    nowPlaying.setAlpha(0f);
+                                    nowPlaying.setTranslationY(12f * getResources().getDisplayMetrics().density);
+                                }
+                                nowPlaying.animate().alpha(1f).translationY(0f).setDuration(320)
+                                        .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
                             }
-                            nowPlaying.animate().alpha(1f).translationY(0f).setDuration(320)
-                                    .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
                             Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "talk_list_fetch_failed"), Toast.LENGTH_LONG).show();
                             // v2.61: premium retry-button fade — the
                             // mirror of the v2.60 Talks fade. The Room
@@ -12581,22 +12606,24 @@ if (snd67q >= 0) currentIndex = snd67q;
                                 }
                             }
                         } else if (found.isEmpty()) {
-                            nowPlaying.setText(Lang.t(RoomActivity.this, "talks_none_for_sayadaw"));
-                            // v2.67: same pour as the failure line above —
-                            // an empty load used to swap the loading line
-                            // for this line in one frame, while the success
-                            // count line already pours (v2.66). Same rhythm,
-                            // same v2.66 lifecycle reset, same poll guard.
-                            // v3.49: pour-restart continuity (v3.37 rule, extended) — a settled
-                            // view still pours visibly from 0/12dp; a mid-pour view flows on
-                            // from its current alpha/offset instead of snapping back.
-                            nowPlaying.animate().cancel();
-                            if (nowPlaying.getAlpha() >= 0.999f && nowPlaying.getTranslationY() <= 0.5f) {
-                                nowPlaying.setAlpha(0f);
-                                nowPlaying.setTranslationY(12f * getResources().getDisplayMetrics().density);
+                            if (nowPlaying != null) {
+                                nowPlaying.setText(Lang.t(RoomActivity.this, "talks_none_for_sayadaw"));
+                                // v2.67: same pour as the failure line above —
+                                // an empty load used to swap the loading line
+                                // for this line in one frame, while the success
+                                // count line already pours (v2.66). Same rhythm,
+                                // same v2.66 lifecycle reset, same poll guard.
+                                // v3.49: pour-restart continuity (v3.37 rule, extended) — a settled
+                                // view still pours visibly from 0/12dp; a mid-pour view flows on
+                                // from its current alpha/offset instead of snapping back.
+                                nowPlaying.animate().cancel();
+                                if (nowPlaying.getAlpha() >= 0.999f && nowPlaying.getTranslationY() <= 0.5f) {
+                                    nowPlaying.setAlpha(0f);
+                                    nowPlaying.setTranslationY(12f * getResources().getDisplayMetrics().density);
+                                }
+                                nowPlaying.animate().alpha(1f).translationY(0f).setDuration(320)
+                                        .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
                             }
-                            nowPlaying.animate().alpha(1f).translationY(0f).setDuration(320)
-                                    .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
                             if (btnRetry != null) {
                                 // v2.78: same mid-fade-out cancel as the
                                 // failure branch above.
@@ -12627,40 +12654,42 @@ if (snd67q >= 0) currentIndex = snd67q;
                                 }
                             }
                         } else {
-                            nowPlaying.setText(Lang.t(RoomActivity.this, "room_count_prefix") + talks.size() + Lang.t(RoomActivity.this, "room_count_suffix"));
-                            // v2.66: premium load-complete count pour — a
-                            // successful Room load used to swap the
-                            // loading line for this count line in one
-                            // frame, while every other Room change
-                            // already moves (v2.15 panel entrance,
-                            // v2.22 title pour, v2.30/v2.31 row pours,
-                            // v2.65 sayadaw-switch header pour). The
-                            // count line now fades + rises in with
-                            // the talk-change title's own rhythm
-                            // (320ms, 12dp rise, decelerate, ending
-                            // at exactly alpha 1 / offset 0), so a
-                            // finished load lands as one choreographed
-                            // change, not a text snap. Guards: an
-                            // auto-talk below supersedes it — playIndex
-                            // cancels this animator and pours its own
-                            // title (same supersede as the v2.15
-                            // entrance); a stale load never reaches
-                            // here (mySeq check above); onPause/
-                            // onDestroy cancel it and reset alpha/
-                            // translation like the v2.65 header pour,
-                            // so a leave mid-pour never strands a
-                            // faded status line. Visual only; text,
-                            // count and load behaviour untouched.
-                            // v3.49: pour-restart continuity (v3.37 rule, extended) — a settled
-                            // view still pours visibly from 0/12dp; a mid-pour view flows on
-                            // from its current alpha/offset instead of snapping back.
-                            nowPlaying.animate().cancel();
-                            if (nowPlaying.getAlpha() >= 0.999f && nowPlaying.getTranslationY() <= 0.5f) {
-                                nowPlaying.setAlpha(0f);
-                                nowPlaying.setTranslationY(12f * getResources().getDisplayMetrics().density);
+                            if (nowPlaying != null) {
+                                nowPlaying.setText(Lang.t(RoomActivity.this, "room_count_prefix") + talks.size() + Lang.t(RoomActivity.this, "room_count_suffix"));
+                                // v2.66: premium load-complete count pour — a
+                                // successful Room load used to swap the
+                                // loading line for this count line in one
+                                // frame, while every other Room change
+                                // already moves (v2.15 panel entrance,
+                                // v2.22 title pour, v2.30/v2.31 row pours,
+                                // v2.65 sayadaw-switch header pour). The
+                                // count line now fades + rises in with
+                                // the talk-change title's own rhythm
+                                // (320ms, 12dp rise, decelerate, ending
+                                // at exactly alpha 1 / offset 0), so a
+                                // finished load lands as one choreographed
+                                // change, not a text snap. Guards: an
+                                // auto-talk below supersedes it — playIndex
+                                // cancels this animator and pours its own
+                                // title (same supersede as the v2.15
+                                // entrance); a stale load never reaches
+                                // here (mySeq check above); onPause/
+                                // onDestroy cancel it and reset alpha/
+                                // translation like the v2.65 header pour,
+                                // so a leave mid-pour never strands a
+                                // faded status line. Visual only; text,
+                                // count and load behaviour untouched.
+                                // v3.49: pour-restart continuity (v3.37 rule, extended) — a settled
+                                // view still pours visibly from 0/12dp; a mid-pour view flows on
+                                // from its current alpha/offset instead of snapping back.
+                                nowPlaying.animate().cancel();
+                                if (nowPlaying.getAlpha() >= 0.999f && nowPlaying.getTranslationY() <= 0.5f) {
+                                    nowPlaying.setAlpha(0f);
+                                    nowPlaying.setTranslationY(12f * getResources().getDisplayMetrics().density);
+                                }
+                                nowPlaying.animate().alpha(1f).translationY(0f).setDuration(320)
+                                        .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
                             }
-                            nowPlaying.animate().alpha(1f).translationY(0f).setDuration(320)
-                                    .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
                         }
                         if (autoUrl != null && autoUrl.length() > 0) {
                             String want = autoUrl;
