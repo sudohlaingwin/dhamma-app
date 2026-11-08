@@ -1333,7 +1333,14 @@ public class TalksActivity extends Activity {
         sayadawName = getIntent().getStringExtra("name");
         pageUrl = getIntent().getStringExtra("url");
         autoUrl = getIntent().getStringExtra("autoUrl");
-        ((TextView) findViewById(R.id.title)).setText(sayadawName);
+        // v13.36 (Talks T5, M9/F5 class): the chooser title was wired
+        // bare in onCreate — a missing id NPEd before anything was
+        // usable, the same latent crash Main M9 (v13.32) and
+        // Settings F5 (v13.34) closed on their screens. The title
+        // view is now a guarded local, shared by the three onCreate
+        // uses below; a missing title simply never wires.
+        android.widget.TextView titleTv = (android.widget.TextView) findViewById(R.id.title);
+        if (titleTv != null) titleTv.setText(sayadawName);
         // v6.04: chooser header portrait — Main passes this sayadaw's
         // photo in the intent (same extra Room gets), so no new
         // parse; a missing/empty extra falls back to the catalog
@@ -1366,7 +1373,7 @@ public class TalksActivity extends Activity {
         // No new view, no mark, rows stay number + title only; an
         // empty or not-yet-loaded list is a no-op, and the tap blip
         // is the shared Fx.tap every other tap already uses.
-        findViewById(R.id.title).setOnClickListener(new android.view.View.OnClickListener() {
+        if (titleTv != null) titleTv.setOnClickListener(new android.view.View.OnClickListener() {
             @Override public void onClick(android.view.View v) {
                 Fx.tap(TalksActivity.this);
                 if (talkList != null) talkList.smoothScrollToPosition(0);
@@ -1379,7 +1386,7 @@ public class TalksActivity extends Activity {
         // hunting. Guards mirror the fresh-open match exactly
         // (live Room session + this sayadaw + URL in this list);
         // anything else toasts instead of scrolling nowhere.
-        findViewById(R.id.title).setOnLongClickListener(new android.view.View.OnLongClickListener() {
+        if (titleTv != null) titleTv.setOnLongClickListener(new android.view.View.OnLongClickListener() {
             @Override public boolean onLongClick(android.view.View v) {
                 // v10.43: bound-trackless stop — liveSession stays true but the mirror is false, so toast instead of scrolling to a stopped talk.
                 if (talkList == null || talks.isEmpty() || !AudioService.liveSession || !AudioService.liveHasTrack) {
@@ -1418,9 +1425,13 @@ public class TalksActivity extends Activity {
         ListView list = findViewById(R.id.list);
         talkList = list;
         adapter = new TalkAdapter();
-        list.setAdapter(adapter);
+        // v13.36 (Talks T5): the list was wired bare — a missing id
+        // NPEd on setAdapter before the rows could ever pour in.
+        // Guarded in the file's own if (x != null) shape; a missing
+        // list simply never wires, the search box still does.
+        if (list != null) list.setAdapter(adapter);
         wireSearchBox(); // v4.93: talk title search under the header
-        list.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+        if (list != null) list.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
                 Fx.tap(TalksActivity.this);
                 // v5.77: drop tap for an armed pick-up/drop move —
@@ -1538,7 +1549,7 @@ public class TalksActivity extends Activity {
         // background check while the chooser is up, cleared on
         // return), so a slow share pick never reads as leaving
         // under background-playback-off.
-        list.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+        if (list != null) list.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
             @Override public boolean onItemLongClick(AdapterView<?> p, View v, int pos, long id) {
                 // v4.56: display position → talk index (see tap).
                 int ti = talkIndexAtDisplay(pos);
@@ -2132,7 +2143,13 @@ public class TalksActivity extends Activity {
                 return true;
             }
         });
-        findViewById(R.id.btnRetry).setOnClickListener(new View.OnClickListener() {
+        // v13.36 (Talks T5): the retry button was wired bare in
+        // onCreate — a missing id NPEd on the first listener, so a
+        // failed load could never even offer its retry. Guarded
+        // local, shared by the wiring below and the two rotation
+        // restores; a missing button simply never wires.
+        android.view.View retryBtn = findViewById(R.id.btnRetry);
+        if (retryBtn != null) retryBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 // v2.84: retry click beat — the last tappable control
                 // without one (nav v2.36, Settings v2.37, rows v2.38,
@@ -2154,7 +2171,7 @@ public class TalksActivity extends Activity {
         // whether the site itself is down instead of retrying
         // blind. No page URL, or no browser to take it, toasts
         // instead of crashing.
-        findViewById(R.id.btnRetry).setOnLongClickListener(new View.OnLongClickListener() {
+        if (retryBtn != null) retryBtn.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 Fx.tap(TalksActivity.this);
                 if (pageUrl == null || pageUrl.length() == 0) {
@@ -2173,7 +2190,7 @@ public class TalksActivity extends Activity {
         // v2.11 press passes covered rows, cards, Room controls and
         // Settings buttons, but this button (and the Room's) never
         // got one, so a retry tap after a failed load felt dead.
-        Fx.press(findViewById(R.id.btnRetry));
+        if (retryBtn != null) Fx.press(retryBtn);
         // v1.53: rotating the phone used to wipe the loaded list and
         // refetch it over the network (plus re-fire the resume
         // auto-open after back + rotate, since the intent still carries
@@ -2242,8 +2259,8 @@ public class TalksActivity extends Activity {
                 // (same rule as the fresh-load site above) instead
                 // of dropping back to the plain name.
                 if (sayadawName != null) refreshFavHeader();
-                progress.setVisibility(View.GONE);
-                findViewById(R.id.btnRetry).setVisibility(View.GONE);
+                if (progress != null) progress.setVisibility(View.GONE);
+                if (retryBtn != null) retryBtn.setVisibility(View.GONE);
                 // v1.54: rotation used to drop the listener back to the
                 // top of a long talk list — keep the scroll position too.
                 // v12.85: the saved position is a full-list position
@@ -2294,8 +2311,8 @@ public class TalksActivity extends Activity {
                 // "no longer in list" on an empty load, and this
                 // branch must match it, so no auto-open is attempted.
                 talkCleanEmpty = true;
-                progress.setVisibility(View.GONE);
-                findViewById(R.id.btnRetry).setVisibility(View.GONE);
+                if (progress != null) progress.setVisibility(View.GONE);
+                if (retryBtn != null) retryBtn.setVisibility(View.GONE);
                 restored = true;
             }
         }
@@ -2409,11 +2426,15 @@ public class TalksActivity extends Activity {
         View root = findViewById(R.id.root);
         if (root != null) root.setBackgroundResource(night ? R.drawable.bg_gradient_night : R.drawable.bg_gradient_day);
         TextView title = findViewById(R.id.title);
-        title.setTextColor(night
+        // v13.36 (Talks T5): applyTheme runs on open AND on every
+        // return — a missing title NPEd here both times, although
+        // every other view in this method is already guarded (root,
+        // retry, list, search box). Guard the two title writes.
+        if (title != null) title.setTextColor(night
                 ? android.graphics.Color.parseColor("#C9A227")
                 : android.graphics.Color.parseColor("#7A2E1F"));
         int f = Prefs.fontSize(this);
-        title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, f == 0 ? 18 : (f == 1 ? 20 : 26));
+        if (title != null) title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, f == 0 ? 18 : (f == 1 ? 20 : 26));
         // v1.98: the retry button (shown only on load failure) kept
         // its default size while the title beside it scaled — same
         // button step as Settings (14/16/18), re-applied on return
@@ -4814,6 +4835,11 @@ public class TalksActivity extends Activity {
         // fade-in duration and the hide path are untouched.
         // Visual only; load, retry and completion behaviour
         // untouched.
+        // v13.36 (Talks T5): the load spinner block dereferenced the
+        // progress field bare — a missing R.id.progress NPEd every
+        // load, right after open. Guard the whole block; the load
+        // itself proceeds without a spinner.
+        if (progress != null) {
         if (progress.getVisibility() != View.VISIBLE) {
             progress.setVisibility(View.VISIBLE);
             Fx.fadeIn(progress, 250);
@@ -4828,6 +4854,7 @@ public class TalksActivity extends Activity {
             Fx.cancelFade(progress);
             progress.animate().alpha(1f).setDuration(250)
                     .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+        }
         }
         // v2.79: the retry exit is a fade now (see hideTalksRetry),
         // the mirror of the Room's v2.78 fade-out — the old snap
