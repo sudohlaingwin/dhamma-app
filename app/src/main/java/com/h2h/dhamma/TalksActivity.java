@@ -2330,6 +2330,7 @@ public class TalksActivity extends Activity {
         boolean night = Prefs.isNight(this);
         cachedNight = night;
         cachedFont = Prefs.fontSize(this);
+        Fx.applySystemBars(this, night); // v13.07: bars follow the theme
         cachedLang = Prefs.lang(this);
         View root = findViewById(R.id.root);
         if (root != null) root.setBackgroundResource(night ? R.drawable.bg_gradient_night : R.drawable.bg_gradient_day);

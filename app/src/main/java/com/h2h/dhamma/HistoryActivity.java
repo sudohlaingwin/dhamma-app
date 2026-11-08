@@ -59,6 +59,7 @@ public class HistoryActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_history);
         night = Prefs.isNight(this);
+        Fx.applySystemBars(this, night); // v13.07: bars follow the theme
         View root = findViewById(R.id.hsRoot);
         if (root != null)
             root.setBackgroundResource(night ? R.drawable.bg_gradient_night

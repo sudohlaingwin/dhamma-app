@@ -585,6 +585,43 @@ public class Fx {
                 }).start();
     }
 
+    // v13.07: system bars follow the theme — the status bar and the
+    // navigation bar paint the same colours as the top and bottom
+    // of the day/night gradient, so the theme runs edge to edge
+    // instead of stopping at the theme's maroon status bar (day)
+    // or a maroon strip over a near-black app (night). Colours are
+    // the gradient endpoints themselves (bg_gradient_day/night):
+    // status = top, nav = bottom. Day icons are dark, night icons
+    // light. LIGHT_NAVIGATION_BAR needs API 26, so on 24/25 the
+    // nav bar stays black (light buttons stay readable) while the
+    // status bar still follows the theme (LIGHT_STATUS_BAR is
+    // API 23+). Room passes night=true always: its altar is dark
+    // in both themes. Only the two light-icon bits are flipped —
+    // every other system-ui flag the window carries is preserved.
+    // All calls are guarded: a window without a decor view, or any
+    // throw, leaves the theme default in place.
+    public static void applySystemBars(Activity a, boolean night) {
+        if (a == null) return;
+        try {
+            android.view.Window w = a.getWindow();
+            if (w == null) return;
+            android.view.View decor = w.getDecorView();
+            if (decor == null) return;
+            w.setStatusBarColor(night ? 0xFF3A2415 : 0xFFFFF9E8);
+            int vis = decor.getSystemUiVisibility();
+            if (night) vis &= ~android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            else vis |= android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            if (Build.VERSION.SDK_INT >= 26) {
+                w.setNavigationBarColor(night ? 0xFF101010 : 0xFFEFD9A0);
+                if (night) vis &= ~android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+                else vis |= android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            } else {
+                w.setNavigationBarColor(0xFF000000);
+            }
+            decor.setSystemUiVisibility(vis);
+        } catch (Exception ignored) {}
+    }
+
     // v2.35: premium theme-toggle spin — the Day/Night toggle used
     // to swap its glyph instantly while the theme dipped (v2.23),
     // so the control itself never moved. It now turns one full

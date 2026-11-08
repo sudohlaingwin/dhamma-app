@@ -6930,6 +6930,7 @@ public class DownloadedActivity extends Activity {
     private void applyTheme() {
         boolean night = Prefs.isNight(this);
         cachedDlNight = night;
+        Fx.applySystemBars(this, night); // v13.07: bars follow the theme
         cachedDlFont = Prefs.fontSize(this);
         cachedDlLang = Prefs.lang(this);
         View root = findViewById(R.id.root);

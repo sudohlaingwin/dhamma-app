@@ -337,6 +337,7 @@ public class MainActivity extends Activity {
         boolean night = Prefs.isNight(this);
         cachedNight = night;
         cachedNameSize = Prefs.nameSize(this);
+        Fx.applySystemBars(this, night); // v13.07: bars follow the theme
         cachedGroupSize = Prefs.groupSize(this);
         cachedLang = Prefs.lang(this); // v3.84: synced with the rest, so the dip's swap re-arms it
         if (rootView != null)

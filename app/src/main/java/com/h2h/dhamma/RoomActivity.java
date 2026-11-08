@@ -6610,6 +6610,8 @@ if (snd68 >= 0) currentIndex = snd68;
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_room);
+        // v13.07: the altar is dark in both themes — dark system bars always.
+        Fx.applySystemBars(this, true);
         // v13.03: real liquid glass on the bottom panel — the altar
         // behind it is genuinely blurred (see GlassBlur).
         android.view.View bottomPanel = findViewById(R.id.roomBottomPanel);

@@ -2650,6 +2650,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         else
             getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         boolean night = Prefs.isNight(this);
+        Fx.applySystemBars(this, night); // v13.07: bars follow the theme
         int ink = night ? Color.WHITE : Color.parseColor("#3B2314");
         int muted = night ? Color.parseColor("#AAAAAA") : Color.parseColor("#7A6A58");
         root.setBackgroundResource(night ? R.drawable.bg_gradient_night : R.drawable.bg_gradient_day);
