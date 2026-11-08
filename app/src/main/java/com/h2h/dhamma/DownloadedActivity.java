@@ -2908,9 +2908,12 @@ public class DownloadedActivity extends Activity {
         // paused lib session; a stopped/dead session clears it
         // through the liveHasTrack guard, like the lib path.
         if (libRowPlayingPath == null && dlListLoaded
-                && AudioService.liveSession && AudioService.liveHasTrack
-                && service != null) {
-            String svcCur = service.getCurrentUrl();
+                && AudioService.liveSession && AudioService.liveHasTrack) {
+            // v13.17: unbound-window mirror — soundingLibPath() is the bound
+            // currentUrl when bound and the persisted Room anchors (lastUrl ->
+            // dlMap -> shelf entry) when unbound, so a Room session playing a
+            // downloaded file marks its shelf row before onServiceConnected too.
+            String svcCur = soundingLibPath();
             if (svcCur != null && svcCur.startsWith("/")) {
                 for (Entry e : entries) {
                     if (e.file.getAbsolutePath().equals(svcCur)) {
@@ -7259,9 +7262,15 @@ public class DownloadedActivity extends Activity {
     // and replayed after the next talk, exactly the defect those runs fixed for the
     // bound case. The mirror is the v10.43 row-mark gate itself (liveSession +
     // liveHasTrack + lastKind "lib" -> lastLibPath), so the menu can never disagree
-    // with the row's own playing mark; a Room session, a stopped session, or a
-    // bound trackless service all read "" here, and "" equals no shelf path, so
-    // every skip comparison keeps its old meaning on those paths.
+    // with the row's own playing mark. v13.17 adds the Room leg below: a Room
+    // session playing a downloaded file reads the same way unbound (lastKind
+    // "room" -> lastUrl -> the dlMap filename -> the shelf entry with that
+    // name), so the menu can never disagree with the Room row mark either; a
+    // streamed Room talk (no dlMap entry) and a file gone from the shelf
+    // resolve to "" like a stopped session, never a guessed name, and ""
+    // equals no shelf path, so every skip comparison keeps its old meaning on
+    // those paths. The shelf scan also keeps the v11.59 rule for free: a file
+    // still downloading has no shelf entry, so it never resolves as sounding.
     private String soundingLibPath() {
         if (service != null) {
             String c = service.getCurrentUrl();
@@ -7275,8 +7284,47 @@ public class DownloadedActivity extends Activity {
                 String lp = sp.getString("lastLibPath", "");
                 return lp == null ? "" : lp;
             }
+            // v13.17: Room leg — the v11.24 mirror covered lib sessions only, so
+            // unbound a Room session playing a downloaded file still read as
+            // not-playing everywhere this helper is used (menu gates, delete
+            // guards, the v11.73 confirm re-checks), while bound the same file
+            // was skipped because getCurrentUrl() IS the shelf path. Resolve
+            // through the persisted anchors the service already writes on every
+            // play: lastUrl is the stream URL even for an offline play, and the
+            // dlMap names its shelf file; the scan matches the shelf entry, so
+            // a streamed talk (no dlMap entry) or a deleted file resolves to ""
+            // and nothing is ever guessed.
+            if ("room".equals(sp.getString("lastKind", ""))) {
+                String lastUrl = sp.getString("lastUrl", "");
+                if (lastUrl != null && lastUrl.length() > 0) {
+                    org.json.JSONObject map = new org.json.JSONObject(
+                            sp.getString("dlMap", "{}"));
+                    String fn = map.optString(lastUrl, "");
+                    if (fn.length() > 0) {
+                        for (Entry e : entries) {
+                            if (e.file.getName().equals(fn))
+                                return e.file.getAbsolutePath();
+                        }
+                    }
+                }
+            }
         } catch (Exception ignored) {}
         return "";
+    }
+
+    // v13.17: bound-or-live "a track is sounding" — the same shape as
+    // soundingLibPath() above: bound, the service is the authority (its
+    // hasTrack() is already true in the prepare window, before onPrepared
+    // sets the static mirror); unbound, the v10.40 static mirror
+    // (liveSession + liveHasTrack) covers the fast-open window before
+    // onServiceConnected (and the post-death window), where service == null
+    // would otherwise read "no track" while a talk is sounding. The
+    // statics are cleared exactly where currentTitle/currentUrl are nulled
+    // (AudioService stopPlayback/onDestroy), so the two legs can never
+    // disagree about a stopped session.
+    private boolean hasSoundingTrack() {
+        if (service != null) return service.hasTrack();
+        return AudioService.liveSession && AudioService.liveHasTrack;
     }
 
     private void showLibQueueMenu(final int shownPos) {
@@ -7562,7 +7610,7 @@ public class DownloadedActivity extends Activity {
         // shown set stay queued.
         if (!libQueueOnly && ((dlQuery != null && !dlQuery.isEmpty()) || dlFilterMode != 0)) {
             boolean hasQueuedShown = false;
-            String cur41 = service != null ? service.getCurrentUrl() : "\0";
+            String cur41 = soundingLibPath(); // v13.17: unbound-window mirror (was bound-only)
             for (int i = 0; i < libDisplayCount(); i++) {
                 Entry se = libEntryAtDisplay(i);
                 if (se == null) continue;
@@ -7597,7 +7645,7 @@ public class DownloadedActivity extends Activity {
         // in display order.
         if (!libQueueOnly && ((dlQuery != null && !dlQuery.isEmpty()) || dlFilterMode != 0)) {
             boolean hasQueuedFavShown00 = false, hasQueuedNewShown00 = false;
-            String cur00 = service != null ? service.getCurrentUrl() : "\0";
+            String cur00 = soundingLibPath(); // v13.17: unbound-window mirror (was bound-only)
             for (int i = 0; i < libDisplayCount(); i++) {
                 Entry se00 = libEntryAtDisplay(i);
                 if (se00 == null) continue;
@@ -7798,7 +7846,7 @@ public class DownloadedActivity extends Activity {
                     if (f644.length() > 0) { fn644.put(f644, u644); Integer c644 = cnt644.get(f644); cnt644.put(f644, c644 == null ? 1 : c644 + 1); }
                 }
                 for (String k644 : cnt644.keySet()) if (cnt644.get(k644) > 1) fn644.remove(k644);
-                String cur644 = service != null ? service.getCurrentUrl() : "\0";
+                String cur644 = soundingLibPath(); // v13.17: unbound-window mirror (was bound-only)
                 for (int i = 0; i < libDisplayCount(); i++) {
                     Entry se644 = libEntryAtDisplay(i);
                     if (se644 == null) continue;
@@ -7848,7 +7896,7 @@ public class DownloadedActivity extends Activity {
                     if (f697.length() > 0) { fn697.put(f697, u697); Integer c697 = cnt697.get(f697); cnt697.put(f697, c697 == null ? 1 : c697 + 1); }
                 }
                 for (String k697 : cnt697.keySet()) if (cnt697.get(k697) > 1) fn697.remove(k697);
-                String cur697 = service != null ? service.getCurrentUrl() : "\0";
+                String cur697 = soundingLibPath(); // v13.17: unbound-window mirror (was bound-only)
                 for (int i = 0; i < libDisplayCount(); i++) {
                     Entry se697 = libEntryAtDisplay(i);
                     if (se697 == null) continue;
@@ -7906,7 +7954,7 @@ public class DownloadedActivity extends Activity {
                     if (f698.length() > 0) { fn698.put(f698, u698); Integer c698 = cnt698.get(f698); cnt698.put(f698, c698 == null ? 1 : c698 + 1); }
                 }
                 for (String k698 : cnt698.keySet()) if (cnt698.get(k698) > 1) fn698.remove(k698);
-                String cur698 = service != null ? service.getCurrentUrl() : "\0";
+                String cur698 = soundingLibPath(); // v13.17: unbound-window mirror (was bound-only)
                 for (int i = 0; i < libDisplayCount(); i++) {
                     Entry se698 = libEntryAtDisplay(i);
                     if (se698 == null) continue;
@@ -7965,7 +8013,7 @@ public class DownloadedActivity extends Activity {
                     if (f699.length() > 0) { fn699.put(f699, u699); Integer c699 = cnt699.get(f699); cnt699.put(f699, c699 == null ? 1 : c699 + 1); }
                 }
                 for (String k699 : cnt699.keySet()) if (cnt699.get(k699) > 1) fn699.remove(k699);
-                String cur699 = service != null ? service.getCurrentUrl() : "\0";
+                String cur699 = soundingLibPath(); // v13.17: unbound-window mirror (was bound-only)
                 for (int i = 0; i < libDisplayCount(); i++) {
                     Entry se699 = libEntryAtDisplay(i);
                     if (se699 == null) continue;
@@ -8022,7 +8070,7 @@ public class DownloadedActivity extends Activity {
                     if (f645.length() > 0) { fn645.put(f645, u645); Integer c645 = cnt645.get(f645); cnt645.put(f645, c645 == null ? 1 : c645 + 1); }
                 }
                 for (String k645 : cnt645.keySet()) if (cnt645.get(k645) > 1) fn645.remove(k645);
-                String cur645 = service != null ? service.getCurrentUrl() : "\0";
+                String cur645 = soundingLibPath(); // v13.17: unbound-window mirror (was bound-only)
                 for (int i = 0; i < libDisplayCount(); i++) {
                     Entry se645 = libEntryAtDisplay(i);
                     if (se645 == null) continue;
@@ -8190,7 +8238,7 @@ public class DownloadedActivity extends Activity {
         // below plays the first shown file with row-tap
         // semantics and head-queues the rest in display order.
         if (!libQueueOnly && ((dlQuery != null && !dlQuery.isEmpty()) || dlFilterMode != 0)) {
-            String cur647 = service != null ? service.getCurrentUrl() : "\0";
+            String cur647 = soundingLibPath(); // v13.17: unbound-window mirror (was bound-only)
             boolean hasNonPlaying647 = false;
             for (int i = 0; i < libDisplayCount(); i++) {
                 Entry se647 = libEntryAtDisplay(i);
@@ -8224,7 +8272,7 @@ public class DownloadedActivity extends Activity {
         // handler run on the filtered subset, in display
         // order.
         if (!libQueueOnly && ((dlQuery != null && !dlQuery.isEmpty()) || dlFilterMode != 0)) {
-            String cur674 = service != null ? service.getCurrentUrl() : "\0";
+            String cur674 = soundingLibPath(); // v13.17: unbound-window mirror (was bound-only)
             boolean hasPlayFav674 = false, hasPlayNew674 = false;
             for (int i = 0; i < libDisplayCount(); i++) {
                 Entry se674 = libEntryAtDisplay(i);
@@ -8257,7 +8305,7 @@ public class DownloadedActivity extends Activity {
         // the head still offers, like v6.76's gate).
         {
             if (!libQueueOnly && !queue.isEmpty()) {
-                String cur677 = service != null ? service.getCurrentUrl() : "\0";
+                String cur677 = soundingLibPath(); // v13.17: unbound-window mirror (was bound-only)
                 String head677 = null;
                 int count677 = 0;
                 for (String p677 : queue) {
@@ -8269,7 +8317,7 @@ public class DownloadedActivity extends Activity {
                     if (head677 == null) head677 = p677;
                 }
                 boolean headPlaying677 = head677 != null && head677.equals(cur677)
-                        && service != null && service.hasTrack();
+                        && hasSoundingTrack(); // v13.17: live mirror (was bound-only)
                 if (head677 != null && !headPlaying677)
                     items.add(Lang.t(DownloadedActivity.this, "dl_menu_play_queued"));
                     itemKeys.add("dl_menu_play_queued");
@@ -8289,8 +8337,8 @@ public class DownloadedActivity extends Activity {
         // file still offers, like v6.77's gate).
         {
             if (!libQueueOnly) {
-                String cur88 = service != null ? service.getCurrentUrl() : "\0";
-                boolean sounding88 = service != null && service.hasTrack();
+                String cur88 = soundingLibPath(); // v13.17: unbound-window mirror (was bound-only)
+                boolean sounding88 = hasSoundingTrack(); // v13.17: live mirror (was bound-only)
                 int shelf88 = 0;
                 boolean hasNonPlaying88 = false;
                 for (String p88 : queue) {
@@ -8325,7 +8373,7 @@ public class DownloadedActivity extends Activity {
         // offer a set whose only file is already sounding.
         if (!libQueueOnly && ((dlQuery != null && !dlQuery.isEmpty()) || dlFilterMode != 0)
                 && libDisplayCount() >= 2) {
-            String cur648 = service != null ? service.getCurrentUrl() : "\0";
+            String cur648 = soundingLibPath(); // v13.17: unbound-window mirror (was bound-only)
             boolean hasNonPlaying648 = false;
             for (int i = 0; i < libDisplayCount(); i++) {
                 Entry se648 = libEntryAtDisplay(i);
@@ -8361,7 +8409,7 @@ public class DownloadedActivity extends Activity {
         // libListenedFiles), so the offer and the handler below
         // can never disagree.
         if (!libQueueOnly && ((dlQuery != null && !dlQuery.isEmpty()) || dlFilterMode != 0)) {
-            String cur679g = service != null ? service.getCurrentUrl() : "\0";
+            String cur679g = soundingLibPath(); // v13.17: unbound-window mirror (was bound-only)
             int fav679g = 0, new679g = 0;
             boolean favNonPlaying679g = false, newNonPlaying679g = false;
             for (int i = 0; i < libDisplayCount(); i++) {
@@ -9330,7 +9378,7 @@ public class DownloadedActivity extends Activity {
                                     if (f644.length() > 0) { fn644.put(f644, u644); Integer c644 = cnt644.get(f644); cnt644.put(f644, c644 == null ? 1 : c644 + 1); }
                                 }
                                 for (String k644 : cnt644.keySet()) if (cnt644.get(k644) > 1) fn644.remove(k644);
-                                String curPath644 = service != null ? service.getCurrentUrl() : "\0";
+                                String curPath644 = cur; // v13.17: the handler's own tap-time mirror (was a bound-only re-read)
                                 for (int i = 0; i < libDisplayCount(); i++) {
                                     Entry de644 = libEntryAtDisplay(i);
                                     if (de644 == null) continue;
@@ -9380,7 +9428,7 @@ public class DownloadedActivity extends Activity {
                                     if (f697.length() > 0) { fn697.put(f697, u697); Integer c697 = cnt697.get(f697); cnt697.put(f697, c697 == null ? 1 : c697 + 1); }
                                 }
                                 for (String k697 : cnt697.keySet()) if (cnt697.get(k697) > 1) fn697.remove(k697);
-                                String curPath697 = service != null ? service.getCurrentUrl() : "\0";
+                                String curPath697 = cur; // v13.17: the handler's own tap-time mirror (was a bound-only re-read)
                                 for (int i = 0; i < libDisplayCount(); i++) {
                                     Entry de697 = libEntryAtDisplay(i);
                                     if (de697 == null) continue;
@@ -9433,7 +9481,7 @@ public class DownloadedActivity extends Activity {
                                     if (f699.length() > 0) { fn699.put(f699, u699); Integer c699 = cnt699.get(f699); cnt699.put(f699, c699 == null ? 1 : c699 + 1); }
                                 }
                                 for (String k699 : cnt699.keySet()) if (cnt699.get(k699) > 1) fn699.remove(k699);
-                                String curPath699 = service != null ? service.getCurrentUrl() : "\0";
+                                String curPath699 = cur; // v13.17: the handler's own tap-time mirror (was a bound-only re-read)
                                 for (int i = 0; i < libDisplayCount(); i++) {
                                     Entry de699 = libEntryAtDisplay(i);
                                     if (de699 == null) continue;
@@ -9482,7 +9530,7 @@ public class DownloadedActivity extends Activity {
                                     if (f698.length() > 0) { fn698.put(f698, u698); Integer c698 = cnt698.get(f698); cnt698.put(f698, c698 == null ? 1 : c698 + 1); }
                                 }
                                 for (String k698 : cnt698.keySet()) if (cnt698.get(k698) > 1) fn698.remove(k698);
-                                String curPath698 = service != null ? service.getCurrentUrl() : "\0";
+                                String curPath698 = cur; // v13.17: the handler's own tap-time mirror (was a bound-only re-read)
                                 for (int i = 0; i < libDisplayCount(); i++) {
                                     Entry de698 = libEntryAtDisplay(i);
                                     if (de698 == null) continue;
@@ -9537,7 +9585,7 @@ public class DownloadedActivity extends Activity {
                                     if (f645.length() > 0) { fn645.put(f645, u645); Integer c645 = cnt645.get(f645); cnt645.put(f645, c645 == null ? 1 : c645 + 1); }
                                 }
                                 for (String k645 : cnt645.keySet()) if (cnt645.get(k645) > 1) fn645.remove(k645);
-                                String curPath645 = service != null ? service.getCurrentUrl() : "\0";
+                                String curPath645 = cur; // v13.17: the handler's own tap-time mirror (was a bound-only re-read)
                                 for (int i = 0; i < libDisplayCount(); i++) {
                                     Entry de645 = libEntryAtDisplay(i);
                                     if (de645 == null) continue;
@@ -10260,7 +10308,7 @@ public class DownloadedActivity extends Activity {
                             if (head677 != null) {
                                 String headPath677 = head677.file.getAbsolutePath();
                                 boolean headPlaying677 = headPath677.equals(cur)
-                                        && service != null && service.hasTrack();
+                                        && hasSoundingTrack(); // v13.17: live mirror (was bound-only)
                                 q.remove(headPath677);
                                 if (headPlaying677) {
                                     Toast.makeText(DownloadedActivity.this,
@@ -10333,11 +10381,11 @@ public class DownloadedActivity extends Activity {
                                 Entry first88 = order88.get(0);
                                 String firstPath88 = first88.file.getAbsolutePath();
                                 boolean firstPlaying88 = firstPath88.equals(cur)
-                                        && service != null && service.hasTrack();
+                                        && hasSoundingTrack(); // v13.17: live mirror (was bound-only)
                                 int playable88 = 0;
                                 for (Entry e88 : order88)
                                     if (!(e88.file.getAbsolutePath().equals(cur)
-                                            && service != null && service.hasTrack())) playable88++;
+                                            && hasSoundingTrack())) playable88++; // v13.17: live mirror (was bound-only)
                                 java.util.ArrayList<String> rest88 = new java.util.ArrayList<String>();
                                 for (int k88 = 1; k88 < order88.size(); k88++)
                                     rest88.add(order88.get(k88).file.getAbsolutePath());
@@ -10387,11 +10435,11 @@ public class DownloadedActivity extends Activity {
                                 Entry first88r = order88r.get(0);
                                 String firstPath88r = first88r.file.getAbsolutePath();
                                 boolean firstPlaying88r = firstPath88r.equals(cur)
-                                        && service != null && service.hasTrack();
+                                        && hasSoundingTrack(); // v13.17: live mirror (was bound-only)
                                 int playable88r = 0;
                                 for (Entry e88r : order88r)
                                     if (!(e88r.file.getAbsolutePath().equals(cur)
-                                            && service != null && service.hasTrack())) playable88r++;
+                                            && hasSoundingTrack())) playable88r++; // v13.17: live mirror (was bound-only)
                                 java.util.ArrayList<String> rest88r = new java.util.ArrayList<String>();
                                 for (int k88r = 1; k88r < order88r.size(); k88r++)
                                     rest88r.add(order88r.get(k88r).file.getAbsolutePath());
