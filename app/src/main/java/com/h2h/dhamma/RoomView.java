@@ -520,16 +520,17 @@ public class RoomView extends View {
     }
 
     private float aiDstH;
-    private float aiX(float fx) { return fx * w; }
+    private float aiDstL, aiDstW; // v13.23: centred dst rect left/width for the landscape fit
+    private float aiX(float fx) { return aiDstL + fx * aiDstW; }
     private float aiY(float fy) {
         return (fy - 0.12f) / 0.60f * aiDstH;
     }
 
     private void drawAiScene(Canvas c, float cx, long tt) {
         // Crop band [0.12, 0.72] of the image, aspect-preserved,
-        // top-aligned: on his phone (w=1080) dstH = 0.9*w = 972px,
-        // so lamp wicks land at ~0.36h, incense tips at ~0.28h,
-        // head at ~0.08h — all ABOVE the panel top (~0.55h).
+        // top-aligned: on his phone (w=1080) dstH = 1.2*w = 1296px,
+        // so lamp wicks land at ~0.40h, incense tips at ~0.31h,
+        // head at ~0.11h — all ABOVE the panel top (~0.55h).
         // The old full-view draw put wicks at 0.81h and smoke tips
         // at 0.71h, i.e. BEHIND the panel: flames invisible, and
         // smoke alpha had already faded to 0 before rising clear
@@ -538,12 +539,36 @@ public class RoomView extends View {
         // drawn; the view behind it stays dark temple shadow.
         int iw = aiImage.getWidth(), ih = aiImage.getHeight();
         int srcTop = (int) (0.12f * ih), srcBot = (int) (0.72f * ih);
-        aiDstH = w * (float) (srcBot - srcTop) / iw;
+        // v13.23 (RoomView F2, landscape classic altar): the crop band
+        // used to be drawn full-width at aiDstH = 1.2*w with no fit to
+        // the view height or the panel — in landscape (w=2392, h=1080)
+        // the lamp wicks landed at y~2119, i.e. below the bottom of
+        // the view, so the classic altar showed only the Buddha's head
+        // and halo: no flames, no smoke, no lamps. Same fit as
+        // drawThemeScene now: shrink uniformly (centred) until the
+        // highest lamp base sits just above the panel top, and never
+        // taller than the view; the fit scale multiplies every overlay
+        // through aiX()/aiY() and the *u radii below, so flames stay
+        // on their wicks by construction. Portrait is provably
+        // unchanged: fit=1 there (flames ~957px vs panel top ~1315px
+        // on his 1080x2392 phone, aiDstH 1296 < h).
+        float fullH = w * (float) (srcBot - srcTop) / iw;
+        float flameFy = 0f;
+        for (int i = 0; i < AI_FLAMES.length; i++)
+            flameFy = Math.max(flameFy, AI_FLAMES[i][1]);
+        float flameY = (flameFy - 0.12f) / 0.60f * fullH;
+        float fit = 1f;
+        float limitY = panelLimitY();
+        if (flameY > limitY) fit = limitY / flameY;
+        if (fullH * fit > h) fit = h / fullH;
+        aiDstH = fullH * fit;
+        aiDstL = (w - w * fit) / 2f;
+        aiDstW = w * fit;
         paint.setShader(null);
         paint.setAlpha(255);
         c.drawBitmap(aiImage,
                 new Rect(0, srcTop, iw, srcBot),
-                new RectF(0, 0, w, aiDstH), paint);
+                new RectF(aiDstL, 0, aiDstL + aiDstW, aiDstH), paint);
         // time-of-day light wash per hour slot (v12.48: aiLightSlot
         // is the hour band from setPhoto, never the theme — the wash
         // branches below were dead until then, because the slot
@@ -565,10 +590,10 @@ public class RoomView extends View {
             float breath = (float) Math.sin(tt * 0.0016);
             float pulse = 0.78f + 0.22f * breath;
             // breathing halo glow over the baked ring
-            paint.setShader(new RadialGradient(hx, hy, 130 * u,
+            paint.setShader(new RadialGradient(hx, hy, 130 * u * fit,
                     Color.argb((int) ((26 + 60 * litBlend) * (0.85f + 0.15f * breath)), 255, 215, 90),
                     Color.TRANSPARENT, Shader.TileMode.CLAMP));
-            c.drawCircle(hx, hy, 130 * u, paint);
+            c.drawCircle(hx, hy, 130 * u * fit, paint);
             paint.setShader(null);
             // ROTATING halo rays — real movement, not just
             // bright/dim: 24 thin rays turning one full turn in
@@ -576,32 +601,32 @@ public class RoomView extends View {
             // here; the v9.19 breathing glow alone read as a lamp
             // dimmer switch (his words: လင်းလိုက်မှိန်လိုက်).
             paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(2.5f * u);
+            paint.setStrokeWidth(2.5f * u * fit);
             paint.setStrokeCap(Paint.Cap.ROUND);
             float rot = tt * 0.00005f;
             for (int i = 0; i < 24; i++) {
                 float a = rot + i * (float) (Math.PI * 2 / 24);
                 float shim = 0.7f + 0.3f * (float) Math.sin(tt * 0.0016 + i);
                 paint.setColor(Color.argb((int) (30 * litBlend * shim), 255, 220, 110));
-                float r1 = 95 * u, r2 = 140 * u;
+                float r1 = 95 * u * fit, r2 = 140 * u * fit;
                 c.drawLine(hx + (float) Math.cos(a) * r1, hy + (float) Math.sin(a) * r1,
                         hx + (float) Math.cos(a) * r2, hy + (float) Math.sin(a) * r2, paint);
             }
             paint.setStyle(Paint.Style.FILL);
             // gold dust motes drifting up through the halo light
             for (int i = 0; i < 12; i++) {
-                float rise = (tt * 0.02f + i * 97) % (240 * u);
-                float mx = hx + (float) Math.sin(i * 2.3 + tt * 0.001) * 70 * u;
-                float my = hy + 120 * u - rise;
+                float rise = (tt * 0.02f + i * 97) % (240 * u * fit);
+                float mx = hx + (float) Math.sin(i * 2.3 + tt * 0.001) * 70 * u * fit;
+                float my = hy + 120 * u * fit - rise;
                 float tw = 0.5f + 0.5f * (float) Math.sin(tt * 0.003 + i * 1.7);
                 paint.setColor(Color.argb((int) (110 * litBlend * tw), 255, 225, 130));
-                c.drawCircle(mx, my, 2 * u, paint);
+                c.drawCircle(mx, my, 2 * u * fit, paint);
             }
             // warm lamp glow rising from the oil lamps
-            paint.setShader(new RadialGradient(aiX(0.222f), aiY(0.655f), 200 * u,
+            paint.setShader(new RadialGradient(aiX(0.222f), aiY(0.655f), 200 * u * fit,
                     Color.argb((int) (40 * pulse * litBlend), 255, 170, 60),
                     Color.TRANSPARENT, Shader.TileMode.CLAMP));
-            c.drawRect(0, aiY(0.45f), w, aiDstH, paint);
+            c.drawRect(aiDstL, aiY(0.45f), aiDstL + aiDstW, aiDstH, paint);
             paint.setShader(null);
             // live flames on the lamps' own wicks, bigger now
             // v9.38 TRIM (his video 2026-11-02 ~23:14 +07 "နဲနဲများတယ်"):
@@ -614,7 +639,7 @@ public class RoomView extends View {
             // stays exact. Glow discs shrink with it (fw scales).
             for (int i = 0; i < AI_FLAMES.length; i++) {
                 flame(c, aiX(AI_FLAMES[i][0]), aiY(AI_FLAMES[i][1]),
-                        15 * u * (0.35f + 0.65f * litBlend), AI_FLAME_PHASE[i], litBlend);
+                        15 * u * fit * (0.35f + 0.65f * litBlend), AI_FLAME_PHASE[i], litBlend);
             }
             // incense smoke — v9.43 NATURAL WISP REWORK (his order
             // 2026-11-02 ~23:33 +07: smoke does not look natural).
