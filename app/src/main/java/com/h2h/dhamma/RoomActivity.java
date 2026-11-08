@@ -1311,17 +1311,30 @@ public class RoomActivity extends Activity {
                         // (gate-aware, offline-aware, pre-bind-queued);
                         // otherwise the seekTo fallback for a foreign
                         // sounding talk; unbound + no row -> dismiss only.
+                        // v13.41: RoomActivity clock-line guards (M9/F5 class, same as
+                        // Main v13.32, Settings v13.34, Talks v13.36, Downloaded
+                        // v13.37, DlAdapter v13.38, Room onCreate v13.39, nowPlaying
+                        // v13.40) — every bare elapsedText/totalText deref in the
+                        // file is now null-guarded: a renamed or missing roomElapsed
+                        // / roomTotal id leaves its clock unwritten instead of killing
+                        // the Room on the 500ms poll tick, a bookmark tap, a drag, or
+                        // a talk change. All ids exist in activity_room.xml today, so
+                        // no live behaviour changes; the already-safe sites
+                        // (clockToggle/clockReset try/catch, applyTheme sizes, clock
+                        // click/long-click wiring) and the null-safe Fx.fadeIn call
+                        // are untouched. The seekBar bare derefs in the same blocks
+                        // are a separate family (next slice), not this patch.
                         if (isCurrentTalk(url)) {
                             service.seekTo(ms);
                             if (seekBar != null) seekBar.setProgress(ms);
-                            elapsedText.setText(formatTime(ms));
+                            if (elapsedText != null) elapsedText.setText(formatTime(ms));
                         } else {
                             int idx = talkIndexForUrl(url);
                             if (idx >= 0) playIndex(idx, ms);
                             else if (service != null) {
                                 service.seekTo(ms);
                                 if (seekBar != null) seekBar.setProgress(ms);
-                                elapsedText.setText(formatTime(ms));
+                                if (elapsedText != null) elapsedText.setText(formatTime(ms));
                             }
                         }
                         d.dismiss();
@@ -2937,8 +2950,8 @@ if (snd65 >= 0) currentIndex = snd65;
                     seekBar.setMax(0);
                     seekBar.setProgress(0);
                     seekBar.setBufferedPercent(0);
-                    elapsedText.setText("0:00");
-                    totalText.setText("0:00");
+                    if (elapsedText != null) elapsedText.setText("0:00");
+                    if (totalText != null) totalText.setText("0:00");
                 }
             }
             if (snd73 >= 0) currentIndex = snd73;
@@ -4849,8 +4862,8 @@ if (snd65 >= 0) currentIndex = snd65;
                             seekBar.setMax(0);
                             seekBar.setProgress(0);
                             seekBar.setBufferedPercent(0);
-                            elapsedText.setText("0:00");
-                            totalText.setText("0:00");
+                            if (elapsedText != null) elapsedText.setText("0:00");
+                            if (totalText != null) totalText.setText("0:00");
                         }
                         reconcileForwardAfterBackground27(); // v8.27: background-played forward step consumed
                         // v7.64: same branch, queue side — a v7.63
@@ -4994,8 +5007,8 @@ if (snd65 >= 0) currentIndex = snd65;
                             // never disturbed; pause never reaches
                             // this branch, so its frozen shape stays.
                             if (seekBar != null) seekBar.resetRipple();
-                            elapsedText.setText("0:00");
-                            totalText.setText("0:00");
+                            if (elapsedText != null) elapsedText.setText("0:00");
+                            if (totalText != null) totalText.setText("0:00");
                             // v2.82: premium stop-reset seek-row pour —
                             // the title already pours back to the count
                             // line here (v2.69) and the button flips
@@ -5282,7 +5295,7 @@ if (snd65 >= 0) currentIndex = snd65;
                         String newTotal = showRemaining
                                 ? "−" + formatTime(Math.max(0, dur - pos))
                                 : formatTime(dur);
-                        if (!newTotal.equals(totalText.getText().toString())) {
+                        if (totalText != null && !newTotal.equals(totalText.getText().toString())) {
                             totalText.setText(newTotal);
                             if (!showRemaining) Fx.fadeIn(totalText, 250);
                         }
@@ -5385,13 +5398,13 @@ if (snd65 >= 0) currentIndex = snd65;
                             if (showRemaining && dur > 0) {
                                 String heldTotal = "−" + formatTime(
                                         Math.max(0, dur - lastUserSeekPos));
-                                if (!heldTotal.equals(totalText.getText().toString()))
+                                if (totalText != null && !heldTotal.equals(totalText.getText().toString()))
                                     totalText.setText(heldTotal);
                             }
                         } else if ((freshTrack && !resumeGlide) || pos == cur) {
                             if (seekGlide != null) { seekGlide.cancel(); seekGlide = null; }
                             seekBar.setProgress(pos);
-                            elapsedText.setText(formatTime(pos));
+                            if (elapsedText != null) elapsedText.setText(formatTime(pos));
                         } else if (pos < cur) {
                             // v3.32: premium replay rewind glide — the
                             // v2.20 instant-set stayed for every
@@ -5429,7 +5442,7 @@ if (snd65 >= 0) currentIndex = snd65;
                                 @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
                                     int p = (Integer) a.getAnimatedValue();
                                     seekBar.setProgress(p);
-                                    elapsedText.setText(formatTime(p));
+                                    if (elapsedText != null) elapsedText.setText(formatTime(p));
                                 }
                             });
                             seekGlide.start();
@@ -5442,13 +5455,13 @@ if (snd65 >= 0) currentIndex = snd65;
                                 @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
                                     int p = (Integer) a.getAnimatedValue();
                                     seekBar.setProgress(p);
-                                    elapsedText.setText(formatTime(p));
+                                    if (elapsedText != null) elapsedText.setText(formatTime(p));
                                 }
                             });
                             seekGlide.start();
                         }
                     } else if (service.hasTrack() && !service.isTrackError()) { // v12.74 (sim1282): a failed mid-play stream must not snap elapsed to 0:00 — the getters read 0 when unprepared, so the last real elapsed stays until a retry/replay/stop
-                        elapsedText.setText(formatTime(pos));
+                        if (elapsedText != null) elapsedText.setText(formatTime(pos));
                     }
                 }
                 // track ended (polling: no listener here, so the Talks
@@ -7131,7 +7144,7 @@ if (snd68 >= 0) currentIndex = snd68;
         if (seekBar != null) seekBar.setOnWaveSeekListener(new WaveSeekView.OnWaveSeekListener() {
             @Override public void onProgressChanged(WaveSeekView s, int p, boolean fromUser) {
                 if (fromUser && service != null) {
-                    elapsedText.setText(formatTime(p));
+                    if (elapsedText != null) elapsedText.setText(formatTime(p));
                     // v12.42: remaining-mode total must follow the
                     // finger too — the poll's total write ("-(dur-pos)")
                     // sits inside the !seeking branch, so while a drag
@@ -7150,7 +7163,7 @@ if (snd68 >= 0) currentIndex = snd68;
                     // there is the duration, position-independent.
                     if (showRemaining && seekBar != null && seekBar.getMax() > 0) {
                         String remWant = "−" + formatTime(Math.max(0, seekBar.getMax() - p));
-                        if (!remWant.equals(totalText.getText().toString()))
+                        if (totalText != null && !remWant.equals(totalText.getText().toString()))
                             totalText.setText(remWant);
                     }
                 }
@@ -7217,8 +7230,8 @@ if (snd68 >= 0) currentIndex = snd68;
                         // leave it alone.
                         if (service.getCurrentUrl() == null) seekBar.resetRipple();
                     }
-                    elapsedText.setText("0:00");
-                    totalText.setText("0:00");
+                    if (elapsedText != null) elapsedText.setText("0:00");
+                    if (totalText != null) totalText.setText("0:00");
                     return;
                 }
                 // v8.00: a wave drag on a bar with no range seeks
@@ -7256,16 +7269,16 @@ if (snd68 >= 0) currentIndex = snd68;
                             seekBar.setProgress(pos);
                             seekBar.setBufferedPercent(service.getBufferedPercent());
                         }
-                        elapsedText.setText(formatTime(pos));
-                        totalText.setText(showRemaining
+                        if (elapsedText != null) elapsedText.setText(formatTime(pos));
+                        if (totalText != null) totalText.setText(showRemaining
                                 ? "−" + formatTime(Math.max(0, dur - pos))
                                 : formatTime(dur));
                     } else if (seekBar != null) {
                         seekBar.setMax(0);
                         seekBar.setProgress(0);
                         seekBar.setBufferedPercent(0);
-                        elapsedText.setText("0:00");
-                        totalText.setText("0:00");
+                        if (elapsedText != null) elapsedText.setText("0:00");
+                        if (totalText != null) totalText.setText("0:00");
                     }
                     return;
                 }
@@ -7336,8 +7349,8 @@ if (snd68 >= 0) currentIndex = snd68;
                         seekBar.setProgress(0);
                         seekBar.setBufferedPercent(0);
                     }
-                    elapsedText.setText("0:00");
-                    totalText.setText("0:00");
+                    if (elapsedText != null) elapsedText.setText("0:00");
+                    if (totalText != null) totalText.setText("0:00");
                     return;
                 }
                 int seekTarget = s.getProgress();
@@ -7347,7 +7360,7 @@ if (snd68 >= 0) currentIndex = snd68;
                             && seekTarget >= liveDur) {
                         seekTarget = liveDur - 2000;
                         seekBar.setProgress(seekTarget);
-                        elapsedText.setText(formatTime(seekTarget));
+                        if (elapsedText != null) elapsedText.setText(formatTime(seekTarget));
                     }
                 }
                 // v3.29: capture the direction BEFORE seekTo — the
@@ -7414,8 +7427,8 @@ if (snd68 >= 0) currentIndex = snd68;
                         seekBar.setProgress(pos);
                         seekBar.setBufferedPercent(service.getBufferedPercent());
                     }
-                    elapsedText.setText(formatTime(pos));
-                    totalText.setText(showRemaining
+                    if (elapsedText != null) elapsedText.setText(formatTime(pos));
+                    if (totalText != null) totalText.setText(showRemaining
                             ? "−" + formatTime(Math.max(0, dur - pos))
                             : formatTime(dur));
                 } else if (seekBar != null) {
@@ -7442,8 +7455,8 @@ if (snd68 >= 0) currentIndex = snd68;
                     // discard flattens it), so this leg was the
                     // only remaining path to a frozen 0:00 bar.
                     if (!hasLiveTrackForQueue()) seekBar.resetRipple();
-                    elapsedText.setText("0:00");
-                    totalText.setText("0:00");
+                    if (elapsedText != null) elapsedText.setText("0:00");
+                    if (totalText != null) totalText.setText("0:00");
                 }
             }
         });
@@ -11603,8 +11616,8 @@ if (snd67q >= 0) currentIndex = snd67q;
             seekBar.setProgress(0);
             seekBar.setBufferedPercent(0); // v4.06: a new talk starts unbuffered
             seekBar.setBookmarks(null); // v12.64: stale pins go with the old talk; the poll re-adds the new talk's marks once its duration arrives
-            elapsedText.setText("0:00");
-            totalText.setText("0:00");
+            if (elapsedText != null) elapsedText.setText("0:00");
+            if (totalText != null) totalText.setText("0:00");
         }
         // v1.48: queue instead of dropping the tap when the service
         // has not bound yet (see pendingPlayIndex above).
