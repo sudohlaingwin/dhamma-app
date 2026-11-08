@@ -12975,7 +12975,18 @@ if (snd67q >= 0) currentIndex = snd67q;
         // kept redrawing its flames off-screen at 20fps. Put the
         // flames out here; the restarted poll re-lights them
         // from the service state on return.
-        if (roomView != null) roomView.setPlaying(false);
+        // v13.22: ...except on a rotation — onPause runs BEFORE
+        // onSaveInstanceState, so an unconditional put-out made
+        // the bundle always save roomLit=false and the v3.88
+        // restore rebuilt the shrine dark and relit it over
+        // ~600ms (the relight waits on the poll, which needs the
+        // rebind). A config change keeps lit=true through
+        // detach/reattach (onDetachedFromWindow stops the
+        // animator, onAttachedToWindow restarts it while lit),
+        // so the altar never blinks; real leaves still put the
+        // flames out here, and the leave-guard pause below
+        // already skips config changes the same way.
+        if (roomView != null && !isChangingConfigurations()) roomView.setPlaying(false);
         // v1.74: ...unless the pause is only the share chooser
         // opening (see suppressBgPause) — a transient sheet is
         // not leaving the Room, and background-off must not stop
