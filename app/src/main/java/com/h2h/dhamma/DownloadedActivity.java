@@ -7347,8 +7347,11 @@ public class DownloadedActivity extends Activity {
         boolean playing = path.equals(soundingLibPath()); // v11.24: unbound-window mirror, not bound-only
         final boolean queued = !playing && queue.contains(path);
         java.util.ArrayList<String> items = new java.util.ArrayList<String>();
-        if (!playing && !queued) { items.add(Lang.t(DownloadedActivity.this, "menu_play_next_short")); items.add(Lang.t(DownloadedActivity.this, "menu_queue_add")); }
-        if (!playing) items.add(Lang.t(DownloadedActivity.this, "menu_queue_from_here"));
+        // v13.15: key list parallel to items — dialogs dispatch on keys,
+        // not on re-evaluated labels (language-proof).
+        java.util.ArrayList<String> itemKeys = new java.util.ArrayList<String>();
+        if (!playing && !queued) { items.add(Lang.t(DownloadedActivity.this, "menu_play_next_short")); itemKeys.add("menu_play_next_short"); items.add(Lang.t(DownloadedActivity.this, "menu_queue_add")); itemKeys.add("menu_queue_add"); }
+        if (!playing) { items.add(Lang.t(DownloadedActivity.this, "menu_queue_from_here")); itemKeys.add("menu_queue_from_here"); }
         // v6.38: queue only the shown files — the shown-set base
         // verb the library's ⋮ menu still lacked (the Talks
         // chooser gained it as v6.26, the Room drawer as v6.14).
@@ -7369,7 +7372,7 @@ public class DownloadedActivity extends Activity {
         // playing file and already-queued paths like every
         // other queue verb here.
         if (!libQueueOnly && ((dlQuery != null && !dlQuery.isEmpty()) || dlFilterMode != 0)
-                && libDisplayCount() > 0) items.add(Lang.t(DownloadedActivity.this, "dl_menu_queue_shown"));
+                && libDisplayCount() > 0) items.add(Lang.t(DownloadedActivity.this, "dl_menu_queue_shown")); itemKeys.add("dl_menu_queue_shown");
         // v6.68: queue only the shown files NEXT — the head-insert
         // twin of the v6.38 append above, and the library mirror
         // of the Talks chooser's v6.66 verb and the Room
@@ -7404,7 +7407,7 @@ public class DownloadedActivity extends Activity {
                 hasQueueableShown68 = true; break;
             }
         }
-        if (hasQueueableShown68) items.add(Lang.t(DownloadedActivity.this, "dl_menu_queue_next_shown"));
+        if (hasQueueableShown68) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_queue_next_shown")); itemKeys.add("dl_menu_queue_next_shown"); }
         // v6.39: delete only the shown files — the shown-set
         // delete verb the library's ⋮ menu still lacked (the
         // Talks chooser gained it as v6.37; the library had
@@ -7429,7 +7432,7 @@ public class DownloadedActivity extends Activity {
                 if (de != null && !de.file.getAbsolutePath().equals(cur0)) { hasDeletableShown = true; break; }
             }
         }
-        if (hasDeletableShown) items.add(Lang.t(DownloadedActivity.this, "dl_del_shown"));
+        if (hasDeletableShown) { items.add(Lang.t(DownloadedActivity.this, "dl_del_shown")); itemKeys.add("dl_del_shown"); }
         // v6.94: delete only the shown subset's downloaded files (starred, or
         // not-yet-heard) — the library mirrors of the Talks chooser's v6.93 pair,
         // and the subset delete twins of the library's own v6.39 shown-set delete.
@@ -7459,8 +7462,8 @@ public class DownloadedActivity extends Activity {
                 if (hasDlFavShown94 && hasDlNewShown94) break;
             }
         }
-        if (hasDlFavShown94) items.add(Lang.t(DownloadedActivity.this, "dl_del_shown_star"));
-        if (hasDlNewShown94) items.add(Lang.t(DownloadedActivity.this, "dl_del_shown_new"));
+        if (hasDlFavShown94) { items.add(Lang.t(DownloadedActivity.this, "dl_del_shown_star")); itemKeys.add("dl_del_shown_star"); }
+        if (hasDlNewShown94) { items.add(Lang.t(DownloadedActivity.this, "dl_del_shown_new")); itemKeys.add("dl_del_shown_new"); }
         // v6.40: shown-set ★ / unlistened queue verbs — the
         // shown-set variants of the v4.59 bulk verbs below,
         // which read the full shelf (entries). A listener who
@@ -7489,8 +7492,8 @@ public class DownloadedActivity extends Activity {
                 if (!libListenedFiles.contains(se.file.getName())) hasShownNew = true;
                 if (hasShownFav && hasShownNew) break;
             }
-            if (hasShownFav) items.add(Lang.t(DownloadedActivity.this, "dl_menu_queue_shown_star"));
-            if (hasShownNew) items.add(Lang.t(DownloadedActivity.this, "dl_menu_queue_shown_new"));
+            if (hasShownFav) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_queue_shown_star")); itemKeys.add("dl_menu_queue_shown_star"); }
+            if (hasShownNew) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_queue_shown_new")); itemKeys.add("dl_menu_queue_shown_new"); }
         }
         // v6.71: queue only the shown favourites / shown not-yet-
         // listened files NEXT — the head-insert twins of the v6.40
@@ -7528,8 +7531,8 @@ public class DownloadedActivity extends Activity {
                 if (!libListenedFiles.contains(se71.file.getName())) hasNextNewShown71 = true;
                 if (hasNextFavShown71 && hasNextNewShown71) break;
             }
-            if (hasNextFavShown71) items.add(Lang.t(DownloadedActivity.this, "dl_menu_queue_next_shown_star"));
-            if (hasNextNewShown71) items.add(Lang.t(DownloadedActivity.this, "dl_menu_queue_next_shown_new"));
+            if (hasNextFavShown71) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_queue_next_shown_star")); itemKeys.add("dl_menu_queue_next_shown_star"); }
+            if (hasNextNewShown71) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_queue_next_shown_new")); itemKeys.add("dl_menu_queue_next_shown_new"); }
         }
         // v6.41: remove only the shown files from the queue —
         // the shown-set un-queue verb the library's ⋮ menu
@@ -7560,7 +7563,7 @@ public class DownloadedActivity extends Activity {
                 if (u41.equals(cur41)) continue;
                 if (queue.contains(u41)) { hasQueuedShown = true; break; }
             }
-            if (hasQueuedShown) items.add(Lang.t(DownloadedActivity.this, "dl_menu_unqueue_shown"));
+            if (hasQueuedShown) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_unqueue_shown")); itemKeys.add("dl_menu_unqueue_shown"); }
         }
         // v7.00: remove only the shown ★ / shown not-yet-
         // listened files from the queue — the subset un-queue
@@ -7598,8 +7601,8 @@ public class DownloadedActivity extends Activity {
                 if (!libListenedFiles.contains(se00.file.getName())) hasQueuedNewShown00 = true;
                 if (hasQueuedFavShown00 && hasQueuedNewShown00) break;
             }
-            if (hasQueuedFavShown00) items.add(Lang.t(DownloadedActivity.this, "dl_menu_unqueue_shown_star"));
-            if (hasQueuedNewShown00) items.add(Lang.t(DownloadedActivity.this, "dl_menu_unqueue_shown_new"));
+            if (hasQueuedFavShown00) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_unqueue_shown_star")); itemKeys.add("dl_menu_unqueue_shown_star"); }
+            if (hasQueuedNewShown00) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_unqueue_shown_new")); itemKeys.add("dl_menu_unqueue_shown_new"); }
         }
         // v6.42: favourite only the shown files — the shown-set
         // favourite verb the library's ⋮ menu still lacked (the
@@ -7648,7 +7651,7 @@ public class DownloadedActivity extends Activity {
                     if (u642 != null && (ft642 == null || !ft642.contains(u642))) { hasNonFav642 = true; break; }
                 }
             } catch (Exception ignored) {}
-            if (hasNonFav642) items.add(Lang.t(DownloadedActivity.this, "dl_menu_fav_shown"));
+            if (hasNonFav642) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_fav_shown")); itemKeys.add("dl_menu_fav_shown"); }
         }
         // v6.43: un-favourite only the shown files — the shown-set
         // un-star verb the library's ⋮ menu still lacked (the
@@ -7679,7 +7682,7 @@ public class DownloadedActivity extends Activity {
                 Entry se643 = libEntryAtDisplay(i);
                 if (se643 != null && libFavFiles.contains(se643.file.getName())) { hasFav643 = true; break; }
             }
-            if (hasFav643) items.add(Lang.t(DownloadedActivity.this, "dl_menu_unfav_shown"));
+            if (hasFav643) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_unfav_shown")); itemKeys.add("dl_menu_unfav_shown"); }
         }
         // v7.05: star / un-star only the shown not-yet-
         // listened files — the library mirror of the Talks
@@ -7740,8 +7743,8 @@ public class DownloadedActivity extends Activity {
                     if (hasNonFavNew705 && hasFavNew705) break;
                 }
             } catch (Exception ignored) {}
-            if (hasNonFavNew705) items.add(Lang.t(DownloadedActivity.this, "dl_menu_fav_shown_new"));
-            if (hasFavNew705) items.add(Lang.t(DownloadedActivity.this, "dl_menu_unfav_shown_new"));
+            if (hasNonFavNew705) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_fav_shown_new")); itemKeys.add("dl_menu_fav_shown_new"); }
+            if (hasFavNew705) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_unfav_shown_new")); itemKeys.add("dl_menu_unfav_shown_new"); }
         }
         // v6.44: mark only the shown files listened — the
         // shown-set mark verb the library's ⋮ menu still
@@ -7797,7 +7800,7 @@ public class DownloadedActivity extends Activity {
                     if (u644 != null && (pt644 == null || !pt644.contains(u644))) { hasUnplayed644 = true; break; }
                 }
             } catch (Exception ignored) {}
-            if (hasUnplayed644) items.add(Lang.t(DownloadedActivity.this, "dl_menu_mark_shown"));
+            if (hasUnplayed644) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_mark_shown")); itemKeys.add("dl_menu_mark_shown"); }
         // v6.97: mark only the shown ★ files listened — the
         // library mirror of the Talks chooser's v6.95 ★ mark,
         // and the subset twin of the library's own v6.44
@@ -7848,7 +7851,7 @@ public class DownloadedActivity extends Activity {
                     if (u697 != null && (pt697 == null || !pt697.contains(u697))) { hasMarkFavShown697 = true; break; }
                 }
             } catch (Exception ignored) {}
-            if (hasMarkFavShown697) items.add(Lang.t(DownloadedActivity.this, "dl_menu_mark_shown_star"));
+            if (hasMarkFavShown697) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_mark_shown_star")); itemKeys.add("dl_menu_mark_shown_star"); }
         }
         }
         // v6.98: un-mark only the shown ★ files listened — the
@@ -7906,7 +7909,7 @@ public class DownloadedActivity extends Activity {
                     if (u698 != null && pt698 != null && pt698.contains(u698)) { hasUnmarkFavShown698 = true; break; }
                 }
             } catch (Exception ignored) {}
-            if (hasUnmarkFavShown698) items.add(Lang.t(DownloadedActivity.this, "dl_menu_unmark_shown_star"));
+            if (hasUnmarkFavShown698) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_unmark_shown_star")); itemKeys.add("dl_menu_unmark_shown_star"); }
         }
         // v6.99: mark only the shown အသစ် files listened — the
         // library mirror of the Talks chooser's v6.95 အသစ်
@@ -7964,7 +7967,7 @@ public class DownloadedActivity extends Activity {
                     if (u699 != null && (pt699 == null || !pt699.contains(u699))) { hasMarkNewShown699 = true; break; }
                 }
             } catch (Exception ignored) {}
-            if (hasMarkNewShown699) items.add(Lang.t(DownloadedActivity.this, "dl_menu_mark_shown_new"));
+            if (hasMarkNewShown699) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_mark_shown_new")); itemKeys.add("dl_menu_mark_shown_new"); }
         }
         // v6.45: un-mark only the shown files listened — the
         // shown-set un-mark verb the library's ⋮ menu still
@@ -8021,7 +8024,7 @@ public class DownloadedActivity extends Activity {
                     if (u645 != null && pt645 != null && pt645.contains(u645)) { hasPlayed645 = true; break; }
                 }
             } catch (Exception ignored) {}
-            if (hasPlayed645) items.add(Lang.t(DownloadedActivity.this, "dl_menu_unmark_shown"));
+            if (hasPlayed645) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_unmark_shown")); itemKeys.add("dl_menu_unmark_shown"); }
         }
         // v6.46: share only the shown files — the shown-set
         // share verb the library's ⋮ menu still lacked (the
@@ -8069,7 +8072,7 @@ public class DownloadedActivity extends Activity {
                     }
                 }
             } catch (Exception ignored) {}
-            if (linked646 >= 2) items.add(Lang.t(DownloadedActivity.this, "dl_menu_share_shown"));
+            if (linked646 >= 2) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_share_shown")); itemKeys.add("dl_menu_share_shown"); }
         }
         // v6.90: share only the shown subset (starred, or
         // not-yet-heard) — the library mirrors of the Talks
@@ -8115,8 +8118,8 @@ public class DownloadedActivity extends Activity {
                     if (!libListenedFiles.contains(se90.file.getName())) linkedNew90++;
                 }
             } catch (Exception ignored) {}
-            if (linkedFav90 >= 2) items.add(Lang.t(DownloadedActivity.this, "dl_menu_share_shown_star"));
-            if (linkedNew90 >= 2) items.add(Lang.t(DownloadedActivity.this, "dl_menu_share_shown_new"));
+            if (linkedFav90 >= 2) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_share_shown_star")); itemKeys.add("dl_menu_share_shown_star"); }
+            if (linkedNew90 >= 2) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_share_shown_new")); itemKeys.add("dl_menu_share_shown_new"); }
         }
         // v6.92: copy only the shown subset's links (starred, or
         // not-yet-heard) — the library mirrors of the Talks
@@ -8161,8 +8164,8 @@ public class DownloadedActivity extends Activity {
                     if (!libListenedFiles.contains(se92.file.getName())) linkedNew92++;
                 }
             } catch (Exception ignored) {}
-            if (linkedFav92 >= 2) items.add(Lang.t(DownloadedActivity.this, "dl_menu_copy_shown_star"));
-            if (linkedNew92 >= 2) items.add(Lang.t(DownloadedActivity.this, "dl_menu_copy_shown_new"));
+            if (linkedFav92 >= 2) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_copy_shown_star")); itemKeys.add("dl_menu_copy_shown_star"); }
+            if (linkedNew92 >= 2) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_copy_shown_new")); itemKeys.add("dl_menu_copy_shown_new"); }
         }
         // v6.47: play only the shown files from the start —
         // the shown-set play verb the library's ⋮ menu still
@@ -8186,7 +8189,7 @@ public class DownloadedActivity extends Activity {
                 Entry se647 = libEntryAtDisplay(i);
                 if (se647 != null && !se647.file.getAbsolutePath().equals(cur647)) { hasNonPlaying647 = true; break; }
             }
-            if (hasNonPlaying647) items.add(Lang.t(DownloadedActivity.this, "dl_menu_play_shown"));
+            if (hasNonPlaying647) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_play_shown")); itemKeys.add("dl_menu_play_shown"); }
         }
         // v6.74: play only the shown favourites / shown not-yet-
         // listened files from the first of the subset — the
@@ -8224,8 +8227,8 @@ public class DownloadedActivity extends Activity {
                 if (!libListenedFiles.contains(se674.file.getName())) hasPlayNew674 = true;
                 if (hasPlayFav674 && hasPlayNew674) break;
             }
-            if (hasPlayFav674) items.add(Lang.t(DownloadedActivity.this, "dl_menu_play_shown_star"));
-            if (hasPlayNew674) items.add(Lang.t(DownloadedActivity.this, "dl_menu_play_shown_new"));
+            if (hasPlayFav674) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_play_shown_star")); itemKeys.add("dl_menu_play_shown_star"); }
+            if (hasPlayNew674) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_play_shown_new")); itemKeys.add("dl_menu_play_shown_new"); }
         }
         // v6.77: play the hand queue from its head — the
         // library mirror of the Room drawer's v6.75 and the
@@ -8262,6 +8265,7 @@ public class DownloadedActivity extends Activity {
                         && service != null && service.hasTrack();
                 if (head677 != null && !headPlaying677)
                     items.add(Lang.t(DownloadedActivity.this, "dl_menu_play_queued"));
+                    itemKeys.add("dl_menu_play_queued");
             }
         }
         // v6.88: shuffle-play / reverse-play the hand queue —
@@ -8292,7 +8296,9 @@ public class DownloadedActivity extends Activity {
                 }
                 if (shelf88 >= 2 && hasNonPlaying88) {
                     items.add(Lang.t(DownloadedActivity.this, "dl_menu_shuffle_queued"));
+                    itemKeys.add("dl_menu_shuffle_queued");
                     items.add(Lang.t(DownloadedActivity.this, "dl_menu_reverse_queued"));
+                    itemKeys.add("dl_menu_reverse_queued");
                 }
             }
         }
@@ -8320,7 +8326,9 @@ public class DownloadedActivity extends Activity {
             }
             if (hasNonPlaying648) {
                 items.add(Lang.t(DownloadedActivity.this, "dl_menu_shuffle_shown"));
+                itemKeys.add("dl_menu_shuffle_shown");
                 items.add(Lang.t(DownloadedActivity.this, "dl_menu_reverse_shown"));
+                itemKeys.add("dl_menu_reverse_shown");
             }
         }
         // v6.79: shuffle-play only the shown favourites /
@@ -8362,8 +8370,8 @@ public class DownloadedActivity extends Activity {
                     if (!playing679g) newNonPlaying679g = true;
                 }
             }
-            if (fav679g >= 2 && favNonPlaying679g) items.add(Lang.t(DownloadedActivity.this, "dl_menu_shuffle_shown_star"));
-            if (new679g >= 2 && newNonPlaying679g) items.add(Lang.t(DownloadedActivity.this, "dl_menu_shuffle_shown_new"));
+            if (fav679g >= 2 && favNonPlaying679g) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_shuffle_shown_star")); itemKeys.add("dl_menu_shuffle_shown_star"); }
+            if (new679g >= 2 && newNonPlaying679g) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_shuffle_shown_new")); itemKeys.add("dl_menu_shuffle_shown_new"); }
         }
         // v6.82: reverse-play only the shown favourites /
         // shown not-yet-listened files — the library mirror
@@ -8406,8 +8414,8 @@ public class DownloadedActivity extends Activity {
                     if (!playing682g) newNonPlaying682g = true;
                 }
             }
-            if (fav682g >= 2 && favNonPlaying682g) items.add(Lang.t(DownloadedActivity.this, "dl_menu_reverse_shown_star"));
-            if (new682g >= 2 && newNonPlaying682g) items.add(Lang.t(DownloadedActivity.this, "dl_menu_reverse_shown_new"));
+            if (fav682g >= 2 && favNonPlaying682g) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_reverse_shown_star")); itemKeys.add("dl_menu_reverse_shown_star"); }
+            if (new682g >= 2 && newNonPlaying682g) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_reverse_shown_new")); itemKeys.add("dl_menu_reverse_shown_new"); }
         }
         // v6.49: copy only the shown files' links — the library
         // mirror of the Talks chooser's v6.36 and the Room
@@ -8453,7 +8461,7 @@ public class DownloadedActivity extends Activity {
                     }
                 }
             } catch (Exception ignored) {}
-            if (linked649 >= 2) items.add(Lang.t(DownloadedActivity.this, "dl_menu_copy_shown"));
+            if (linked649 >= 2) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_copy_shown")); itemKeys.add("dl_menu_copy_shown"); }
         }
         // v4.59: bulk queue verbs, mirroring the chooser's v4.49 /
         // v4.50 items — offered from any row whenever the shelf
@@ -8463,22 +8471,22 @@ public class DownloadedActivity extends Activity {
         boolean hasFavFile = false;
         for (int i = 0; i < entries.size(); i++)
             if (libFavFiles.contains(entries.get(i).file.getName())) { hasFavFile = true; break; }
-        if (hasFavFile) items.add(Lang.t(DownloadedActivity.this, "dl_queue_all_star"));
+        if (hasFavFile) { items.add(Lang.t(DownloadedActivity.this, "dl_queue_all_star")); itemKeys.add("dl_queue_all_star"); }
         boolean hasUnplayedFile = false;
         for (int i = 0; i < entries.size(); i++)
             if (!libListenedFiles.contains(entries.get(i).file.getName())) { hasUnplayedFile = true; break; }
-        if (hasUnplayedFile) items.add(Lang.t(DownloadedActivity.this, "dl_queue_all_unplayed"));
+        if (hasUnplayedFile) { items.add(Lang.t(DownloadedActivity.this, "dl_queue_all_unplayed")); itemKeys.add("dl_queue_all_unplayed"); }
         boolean hasQueueable = false;
         for (int i = 0; i < entries.size(); i++)
             if (!entries.get(i).file.getAbsolutePath().equals(soundingLibPath())) { hasQueueable = true; break; } // v11.24: unbound-window mirror
-        if (hasQueueable) items.add(Lang.t(DownloadedActivity.this, "dl_queue_all_list"));
-        if (queued) items.add(Lang.t(DownloadedActivity.this, "menu_queue_remove"));
+        if (hasQueueable) { items.add(Lang.t(DownloadedActivity.this, "dl_queue_all_list")); itemKeys.add("dl_queue_all_list"); }
+        if (queued) { items.add(Lang.t(DownloadedActivity.this, "menu_queue_remove")); itemKeys.add("menu_queue_remove"); }
         if (queued) {
             int qpos = queue.indexOf(path);
-            if (qpos > 0) items.add(Lang.t(DownloadedActivity.this, "menu_move_up"));
-            if (qpos >= 0 && qpos < queue.size() - 1) items.add(Lang.t(DownloadedActivity.this, "menu_move_down"));
-            if (qpos > 0) items.add(Lang.t(DownloadedActivity.this, "menu_move_top"));
-            if (qpos >= 0 && qpos < queue.size() - 1) items.add(Lang.t(DownloadedActivity.this, "menu_move_end"));
+            if (qpos > 0) { items.add(Lang.t(DownloadedActivity.this, "menu_move_up")); itemKeys.add("menu_move_up"); }
+            if (qpos >= 0 && qpos < queue.size() - 1) { items.add(Lang.t(DownloadedActivity.this, "menu_move_down")); itemKeys.add("menu_move_down"); }
+            if (qpos > 0) { items.add(Lang.t(DownloadedActivity.this, "menu_move_top")); itemKeys.add("menu_move_top"); }
+            if (qpos >= 0 && qpos < queue.size() - 1) { items.add(Lang.t(DownloadedActivity.this, "menu_move_end")); itemKeys.add("menu_move_end"); }
             // v5.78: pick-up/drop move, the last Room-drawer
             // reorder verb the library lacked (v4.92 there,
             // v5.77 in the chooser) — the one-step and jump
@@ -8490,15 +8498,16 @@ public class DownloadedActivity extends Activity {
             // reads ✋ + gold wash until the drop, like the
             // chooser and drawer.
             items.add(Lang.t(DownloadedActivity.this, "menu_move"));
+            itemKeys.add("menu_move");
         }
-        if (queued && queue.size() > 1) items.add(Lang.t(DownloadedActivity.this, "dl_menu_reorder_shuffle"));
-        if (queued && queue.size() > 1) items.add(Lang.t(DownloadedActivity.this, "dl_menu_reorder_reverse"));
-        if (queue.size() > 1) items.add(Lang.t(DownloadedActivity.this, "dl_menu_clear_queue"));
+        if (queued && queue.size() > 1) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_reorder_shuffle")); itemKeys.add("dl_menu_reorder_shuffle"); }
+        if (queued && queue.size() > 1) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_reorder_reverse")); itemKeys.add("dl_menu_reorder_reverse"); }
+        if (queue.size() > 1) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_clear_queue")); itemKeys.add("dl_menu_clear_queue"); }
         // v4.58: queue-only view toggle, mirroring the Talks
         // chooser's v4.56 menu — offered whenever a queue exists
         // (enter) or while the view is on (exit).
-        if (!libQueueOnly && !queue.isEmpty()) items.add(Lang.t(DownloadedActivity.this, "dl_menu_show_queue_only"));
-        if (libQueueOnly) items.add(Lang.t(DownloadedActivity.this, "dl_menu_show_all_again"));
+        if (!libQueueOnly && !queue.isEmpty()) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_show_queue_only")); itemKeys.add("dl_menu_show_queue_only"); }
+        if (libQueueOnly) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_show_all_again")); itemKeys.add("dl_menu_show_all_again"); }
         // v6.53: share this one file — ahead of the single-file favourite (v7.90) and copy, like the
         // chooser's v6.52 share and the drawer's trailing share,
         // so the shown-set share above stays the set verb and
@@ -8506,7 +8515,7 @@ public class DownloadedActivity extends Activity {
         // (see the shareUrl653 block above): a file with no
         // dlMap entry simply shows no share entry, never a
         // title-only share and never a guessed link.
-        if (shareUrl653 != null) items.add(Lang.t(DownloadedActivity.this, "dl_menu_share"));
+        if (shareUrl653 != null) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_share")); itemKeys.add("dl_menu_share"); }
         // v7.90: favourite this one file — the library mirror of the
         // Talks chooser's v7.88 and the Room drawer's v7.89 single-talk
         // verbs, and the last mirror surface those runs flagged: the
@@ -8523,9 +8532,11 @@ public class DownloadedActivity extends Activity {
         // own ★ mark renders from, so it can never disagree with the
         // visible mark; the playing file is included, like share and
         // copy beside it: starring is not a play order.
-        if (shareUrl653 != null) items.add(libFavFiles.contains(t.file.getName())
+        if (shareUrl653 != null) { items.add(libFavFiles.contains(t.file.getName())
                 ? Lang.t(DownloadedActivity.this, "menu_fav_remove")
-                : Lang.t(DownloadedActivity.this, "menu_fav_add"));
+                : Lang.t(DownloadedActivity.this, "menu_fav_add")); itemKeys.add(libFavFiles.contains(t.file.getName())
+                ? "menu_fav_remove"
+                : "menu_fav_add"); }
         // v6.56: copy this one file's link — the library mirror
         // of the chooser's v6.54 and the drawer's v6.55 single-talk
         // copies, and the last mirror surface those runs flagged:
@@ -8545,18 +8556,20 @@ public class DownloadedActivity extends Activity {
         // title, never a guessed link — and the playing file
         // is included, like the share beside it: a link is not
         // a play order.
-        if (shareUrl653 != null) items.add(Lang.t(DownloadedActivity.this, "dl_menu_copy_link"));
+        if (shareUrl653 != null) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_copy_link")); itemKeys.add("dl_menu_copy_link"); }
         if (items.isEmpty()) {
             Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "file_playing"), Toast.LENGTH_SHORT).show();
             return;
         }
         final String[] opts = items.toArray(new String[0]);
+        final String[] optKeys = itemKeys.toArray(new String[0]);
         final java.util.ArrayList<String> q = queue;
         new android.app.AlertDialog.Builder(DownloadedActivity.this)
                 .setTitle(t.title)
                 .setItems(opts, new android.content.DialogInterface.OnClickListener() {
                     @Override public void onClick(android.content.DialogInterface d, int which) {
                         String choice = opts[which];
+                        final String choiceKey = optKeys[which];
                         String cur = soundingLibPath(); // v11.24: unbound-window mirror, so the v11.12/v11.14 re-checks and every bulk skip see the sounding file even with no bind
                         // v12.00: drop entries the library advance already popped --
                         // the v11.98 Talks-funnel rule, applied to this dialog's
@@ -8617,7 +8630,7 @@ public class DownloadedActivity extends Activity {
                         String qSd70 = libSayadawMap.get(t.file.getName());
                         String qSdSuffix70 = (qSd70 != null && qSd70.length() > 0)
                                 ? " · " + qSd70 : "";
-                        if (choice.equals(Lang.t(DownloadedActivity.this, "menu_play_next_short"))) {
+                        if ("menu_play_next_short".equals(choiceKey)) {
                             // v11.12: tap-time sounding re-check — the row menu's
                             // gate (playing, at build time) excluded the sounding
                             // file, but the dialog can stay open across a library
@@ -8633,7 +8646,7 @@ public class DownloadedActivity extends Activity {
                             q.remove(path);
                             q.add(0, path);
                             Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "queue_next_prefix") + t.title + qSdSuffix70, Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "menu_queue_add"))) {
+                        } else if ("menu_queue_add".equals(choiceKey)) {
                             // v11.14: tap-time sounding re-check — the mirror of the v11.12
                             // play-next leg above, which this append verb never got: the
                             // offer gate ran at menu-build time (!playing), but the dialog
@@ -8652,7 +8665,7 @@ public class DownloadedActivity extends Activity {
                             }
                             if (!q.contains(path)) q.add(path);
                             Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "added_to_queue") + ": " + t.title + qSdSuffix70, Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "menu_queue_from_here"))) {
+                        } else if ("menu_queue_from_here".equals(choiceKey)) {
                             int added = 0;
                             // v4.58: iterate display positions through
                             // the mapping, so in queue-only view the
@@ -8669,7 +8682,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, added > 0
                                     ? Lang.t(DownloadedActivity.this, "queue_plain_prefix") + added + Lang.t(DownloadedActivity.this, "queue_added_suffix")
                                     : Lang.t(DownloadedActivity.this, "already_in_queue"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_queue_shown"))) {
+                        } else if ("dl_menu_queue_shown".equals(choiceKey)) {
                             // v6.38: queue the shown display in
                             // order — same skip rules as the
                             // from-here verb above (playing file,
@@ -8688,7 +8701,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, added > 0
                                     ? Lang.t(DownloadedActivity.this, "queue_shown_prefix") + added + Lang.t(DownloadedActivity.this, "queue_added_suffix")
                                     : Lang.t(DownloadedActivity.this, "already_in_queue"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_queue_next_shown"))) {
+                        } else if ("dl_menu_queue_next_shown".equals(choiceKey)) {
                             // v6.68: queue only the shown files NEXT
                             // — the head-insert twin of the v6.38
                             // append above, mirroring the chooser's
@@ -8721,7 +8734,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, !next68.isEmpty()
                                     ? Lang.t(DownloadedActivity.this, "queue_next_shown_prefix") + next68.size() + Lang.t(DownloadedActivity.this, "queue_next_suffix")
                                     : Lang.t(DownloadedActivity.this, "already_in_queue"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_del_shown"))) {
+                        } else if ("dl_del_shown".equals(choiceKey)) {
                             // v6.39: delete only the shown files,
                             // in display order — the offer above
                             // already excluded the playing file,
@@ -8794,8 +8807,8 @@ public class DownloadedActivity extends Activity {
                                         .setNegativeButton(Lang.t(DownloadedActivity.this, "del_btn_no"), null)
                                         .show();
                             }
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_del_shown_star"))
-                                || choice.equals(Lang.t(DownloadedActivity.this, "dl_del_shown_new"))) {
+                        } else if ("dl_del_shown_star".equals(choiceKey)
+                                || "dl_del_shown_new".equals(choiceKey)) {
                             // v6.94: delete only the shown subset's files, in display order —
                             // the library mirrors of the chooser's v6.93 pair, same mechanics
                             // as the library's own v6.39 (confirm first, a delete is
@@ -8814,7 +8827,7 @@ public class DownloadedActivity extends Activity {
                             // so offer and handler can never disagree about a file starred
                             // or marked since the menu opened; the playing file stays
                             // excluded on purpose, like v6.39.
-                            final boolean fav94 = choice.equals(Lang.t(DownloadedActivity.this, "dl_del_shown_star"));
+                            final boolean fav94 = "dl_del_shown_star".equals(choiceKey);
                             final String tag94 = fav94 ? Lang.t(DownloadedActivity.this, "dl_tag_shown_star") : Lang.t(DownloadedActivity.this, "dl_tag_shown_new");
                             int offerCount94 = 0;
                             for (int i = 0; i < libDisplayCount(); i++) {
@@ -8865,7 +8878,7 @@ public class DownloadedActivity extends Activity {
                                         .setNegativeButton(Lang.t(DownloadedActivity.this, "del_btn_no"), null)
                                         .show();
                             }
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_queue_all_star"))) {
+                        } else if ("dl_queue_all_star".equals(choiceKey)) {
                             // v4.59: queue the shelf's favourite files
                             // in shelf order — same skip rules as the
                             // chooser's verb (playing file, already
@@ -8881,7 +8894,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, added > 0
                                     ? Lang.t(DownloadedActivity.this, "queue_star_prefix") + added + Lang.t(DownloadedActivity.this, "queue_added_suffix")
                                     : Lang.t(DownloadedActivity.this, "already_in_queue"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_queue_shown_star"))) {
+                        } else if ("dl_menu_queue_shown_star".equals(choiceKey)) {
                             // v6.40: queue only the shown favourite
                             // files, in display order — the shown-set
                             // variant of "★ အားလုံး တန်းစီ" below;
@@ -8901,7 +8914,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, added > 0
                                     ? Lang.t(DownloadedActivity.this, "queue_shown_star_prefix") + added + Lang.t(DownloadedActivity.this, "queue_added_suffix")
                                     : Lang.t(DownloadedActivity.this, "already_in_queue"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_queue_shown_new"))) {
+                        } else if ("dl_menu_queue_shown_new".equals(choiceKey)) {
                             // v6.40: queue only the shown not-yet-
                             // listened files, in display order — the
                             // shown-set variant of "မနားထောင်ရသေး
@@ -8920,7 +8933,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, added > 0
                                     ? Lang.t(DownloadedActivity.this, "queue_shown_new_prefix") + added + Lang.t(DownloadedActivity.this, "queue_added_suffix")
                                     : Lang.t(DownloadedActivity.this, "already_in_queue"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_queue_next_shown_star"))) {
+                        } else if ("dl_menu_queue_next_shown_star".equals(choiceKey)) {
                             // v6.71: queue only the shown favourite
                             // files NEXT — the head-insert twin of
                             // the v6.40 append above, mirroring the
@@ -8954,7 +8967,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, !next71.isEmpty()
                                     ? Lang.t(DownloadedActivity.this, "queue_next_shown_star_prefix") + next71.size() + Lang.t(DownloadedActivity.this, "queue_next_suffix")
                                     : Lang.t(DownloadedActivity.this, "already_in_queue"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_queue_next_shown_new"))) {
+                        } else if ("dl_menu_queue_next_shown_new".equals(choiceKey)) {
                             // v6.71: queue only the shown not-yet-
                             // listened files NEXT — the head-insert
                             // twin of the v6.40 append above, same
@@ -8981,7 +8994,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, !next71b.isEmpty()
                                     ? Lang.t(DownloadedActivity.this, "queue_next_shown_new_prefix") + next71b.size() + Lang.t(DownloadedActivity.this, "queue_next_suffix")
                                     : Lang.t(DownloadedActivity.this, "already_in_queue"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_unqueue_shown"))) {
+                        } else if ("dl_menu_unqueue_shown".equals(choiceKey)) {
                             // v6.41: un-queue only the shown set,
                             // in display order — the shown-set
                             // counterpart of per-row "တန်းစီမှ
@@ -9006,7 +9019,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, removed > 0
                                     ? Lang.t(DownloadedActivity.this, "queue_remove_shown_prefix") + removed + Lang.t(DownloadedActivity.this, "removed_suffix")
                                     : Lang.t(DownloadedActivity.this, "not_in_queue"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_unqueue_shown_star"))) {
+                        } else if ("dl_menu_unqueue_shown_star".equals(choiceKey)) {
                             // v7.00: un-queue only the shown ★
                             // files, in display order — the
                             // subset twin of the v6.41 shown-set
@@ -9032,7 +9045,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, removed00 > 0
                                     ? Lang.t(DownloadedActivity.this, "queue_remove_shown_star_prefix") + removed00 + Lang.t(DownloadedActivity.this, "removed_suffix")
                                     : Lang.t(DownloadedActivity.this, "not_in_queue"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_unqueue_shown_new"))) {
+                        } else if ("dl_menu_unqueue_shown_new".equals(choiceKey)) {
                             // v7.00: un-queue only the shown
                             // not-yet-listened files, in display
                             // order — the အသစ် twin of the ★
@@ -9056,7 +9069,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, removed00b > 0
                                     ? Lang.t(DownloadedActivity.this, "queue_remove_shown_new_prefix") + removed00b + Lang.t(DownloadedActivity.this, "removed_suffix")
                                     : Lang.t(DownloadedActivity.this, "not_in_queue"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_fav_shown"))) {
+                        } else if ("dl_menu_fav_shown".equals(choiceKey)) {
                             // v6.42: star only the shown files, in
                             // display order — the same display
                             // positions the offer gate reads
@@ -9106,7 +9119,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, added > 0
                                     ? Lang.t(DownloadedActivity.this, "fav_shown_prefix") + added + Lang.t(DownloadedActivity.this, "queue_added_suffix")
                                     : Lang.t(DownloadedActivity.this, "fav_already_starred"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_unfav_shown"))) {
+                        } else if ("dl_menu_unfav_shown".equals(choiceKey)) {
                             // v6.43: un-star only the shown files, in
                             // display order — the same display
                             // positions the offer gate reads
@@ -9161,7 +9174,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, removed > 0
                                     ? Lang.t(DownloadedActivity.this, "fav_remove_shown_prefix") + removed + Lang.t(DownloadedActivity.this, "removed_suffix")
                                     : Lang.t(DownloadedActivity.this, "not_in_fav"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_fav_shown_new"))) {
+                        } else if ("dl_menu_fav_shown_new".equals(choiceKey)) {
                             // v7.05: star only the shown not-yet-
                             // listened files, in display order —
                             // the library mirror of the chooser's
@@ -9213,7 +9226,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, added705 > 0
                                     ? Lang.t(DownloadedActivity.this, "fav_shown_new_prefix") + added705 + Lang.t(DownloadedActivity.this, "queue_added_suffix")
                                     : Lang.t(DownloadedActivity.this, "fav_already_starred"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_unfav_shown_new"))) {
+                        } else if ("dl_menu_unfav_shown_new".equals(choiceKey)) {
                             // v7.05: un-star only the shown starred
                             // not-yet-listened files, in display
                             // order — the library mirror of the
@@ -9268,7 +9281,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, removed705 > 0
                                     ? Lang.t(DownloadedActivity.this, "fav_remove_shown_new_prefix") + removed705 + Lang.t(DownloadedActivity.this, "removed_suffix")
                                     : Lang.t(DownloadedActivity.this, "not_in_fav"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_mark_shown"))) {
+                        } else if ("dl_menu_mark_shown".equals(choiceKey)) {
                             // v6.44: mark only the shown files
                             // listened, in display order — the
                             // same display positions the offer
@@ -9324,7 +9337,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, added > 0
                                     ? Lang.t(DownloadedActivity.this, "shown_plain_prefix") + added + Lang.t(DownloadedActivity.this, "marked_count_suffix")
                                     : Lang.t(DownloadedActivity.this, "already_listened"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_mark_shown_star"))) {
+                        } else if ("dl_menu_mark_shown_star".equals(choiceKey)) {
                             // v6.97: mark only the shown ★ files
                             // listened, in display order — the
                             // same display positions the offer
@@ -9375,7 +9388,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, added697 > 0
                                     ? Lang.t(DownloadedActivity.this, "shown_star_prefix") + added697 + Lang.t(DownloadedActivity.this, "marked_count_suffix")
                                     : Lang.t(DownloadedActivity.this, "already_listened"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_mark_shown_new"))) {
+                        } else if ("dl_menu_mark_shown_new".equals(choiceKey)) {
                             // v6.99: mark only the shown အသစ်
                             // files listened, in display order
                             // — the same display positions the
@@ -9427,7 +9440,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, added699 > 0
                                     ? Lang.t(DownloadedActivity.this, "shown_new_prefix") + added699 + Lang.t(DownloadedActivity.this, "marked_count_suffix")
                                     : Lang.t(DownloadedActivity.this, "already_listened"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_unmark_shown_star"))) {
+                        } else if ("dl_menu_unmark_shown_star".equals(choiceKey)) {
                             // v6.98: un-mark only the shown ★ files
                             // listened, in display order — the
                             // same display positions the offer
@@ -9477,7 +9490,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, removed698 > 0
                                     ? Lang.t(DownloadedActivity.this, "shown_star_prefix") + removed698 + Lang.t(DownloadedActivity.this, "unmarked_count_suffix")
                                     : Lang.t(DownloadedActivity.this, "nothing_to_unmark"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_unmark_shown"))) {
+                        } else if ("dl_menu_unmark_shown".equals(choiceKey)) {
                             // v6.45: un-mark only the shown files
                             // listened, in display order — the
                             // same display positions the offer
@@ -9531,7 +9544,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, removed > 0
                                     ? Lang.t(DownloadedActivity.this, "shown_plain_prefix") + removed + Lang.t(DownloadedActivity.this, "unmarked_count_suffix")
                                     : Lang.t(DownloadedActivity.this, "nothing_to_unmark"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_share_shown"))) {
+                        } else if ("dl_menu_share_shown".equals(choiceKey)) {
                             // v6.46: share the shown set as one
                             // message — the same display positions
                             // the offer gate reads
@@ -9607,7 +9620,7 @@ public class DownloadedActivity extends Activity {
                             } else {
                                 Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "share_link_missing"), Toast.LENGTH_SHORT).show();
                             }
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_share_shown_star"))) {
+                        } else if ("dl_menu_share_shown_star".equals(choiceKey)) {
                             // v6.90: share only the shown ★ subset as one message — the
                             // subset twin of v6.46's shown-set
                             // share, run on the shown subset
@@ -9695,7 +9708,7 @@ public class DownloadedActivity extends Activity {
                                     Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "share_link_missing"), Toast.LENGTH_SHORT).show();
                                 }
                             } catch (Exception ignored) {}
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_share_shown_new"))) {
+                        } else if ("dl_menu_share_shown_new".equals(choiceKey)) {
                             // v6.90: share only the shown not-yet-heard subset as one message — the
                             // subset twin of v6.46's shown-set
                             // share, run on the shown subset
@@ -9783,7 +9796,7 @@ public class DownloadedActivity extends Activity {
                                     Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "share_link_missing"), Toast.LENGTH_SHORT).show();
                                 }
                             } catch (Exception ignored) {}
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_copy_shown_star"))) {
+                        } else if ("dl_menu_copy_shown_star".equals(choiceKey)) {
                             // v6.92: copy only the shown ★ subset's links as one
                             // text — the copy twin of v6.90's subset share, run
                             // on the shown subset only. Same display positions
@@ -9864,7 +9877,7 @@ public class DownloadedActivity extends Activity {
                                     Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "copy_link_missing"), Toast.LENGTH_SHORT).show();
                                 }
                             } catch (Exception ignored) {}
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_copy_shown_new"))) {
+                        } else if ("dl_menu_copy_shown_new".equals(choiceKey)) {
                             // v6.92: copy only the shown not-yet-heard subset's
                             // links as one text — the copy twin of v6.90's
                             // subset share, run on the shown subset only. Same
@@ -9939,7 +9952,7 @@ public class DownloadedActivity extends Activity {
                                     Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "copy_link_missing"), Toast.LENGTH_SHORT).show();
                                 }
                             } catch (Exception ignored) {}
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_copy_shown"))) {
+                        } else if ("dl_menu_copy_shown".equals(choiceKey)) {
                             // v6.49: copy the shown set as one
                             // text — the v6.46 share message
                             // verbatim, on the clipboard instead
@@ -10019,7 +10032,7 @@ public class DownloadedActivity extends Activity {
                             } else {
                                 Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "copy_link_missing"), Toast.LENGTH_SHORT).show();
                             }
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_play_shown"))) {
+                        } else if ("dl_menu_play_shown".equals(choiceKey)) {
                             // v6.47: play only the shown set from
                             // its first file, in display order —
                             // the same display positions the offer
@@ -10103,8 +10116,8 @@ public class DownloadedActivity extends Activity {
                                             Toast.LENGTH_SHORT).show();
                                 }
                             }
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_play_shown_star"))
-                                || choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_play_shown_new"))) {
+                        } else if ("dl_menu_play_shown_star".equals(choiceKey)
+                                || "dl_menu_play_shown_new".equals(choiceKey)) {
                             // v6.74: play only the shown ★ / shown
                             // unlistened subset from its first
                             // file — v6.47's handler run on the
@@ -10144,7 +10157,7 @@ public class DownloadedActivity extends Activity {
                             // same row-mark caches as the offer
                             // gate (★ in libFavFiles; unlistened
                             // = absent from libListenedFiles).
-                            boolean fav674 = choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_play_shown_star"));
+                            boolean fav674 = "dl_menu_play_shown_star".equals(choiceKey);
                             String tag674 = fav674 ? Lang.t(DownloadedActivity.this, "dl_tag_shown_star") : Lang.t(DownloadedActivity.this, "dl_tag_shown_new");
                             java.util.ArrayList<Entry> subset674 = new java.util.ArrayList<Entry>();
                             for (int i = 0; i < libDisplayCount(); i++) {
@@ -10194,7 +10207,7 @@ public class DownloadedActivity extends Activity {
                                             Toast.LENGTH_SHORT).show();
                                 }
                             }
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_play_queued"))) {
+                        } else if ("dl_menu_play_queued".equals(choiceKey)) {
                             // v6.77: play the hand queue from its
                             // head — the library mirror of the
                             // Room drawer's v6.75 and the chooser's
@@ -10264,7 +10277,7 @@ public class DownloadedActivity extends Activity {
                                             Toast.LENGTH_SHORT).show();
                                 }
                             }
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_shuffle_queued"))) {
+                        } else if ("dl_menu_shuffle_queued".equals(choiceKey)) {
                             // v6.88: shuffle-play the hand queue —
                             // the library mirror of the Talks
                             // chooser's v6.87 shuffle branch and
@@ -10345,7 +10358,7 @@ public class DownloadedActivity extends Activity {
                                             Toast.LENGTH_SHORT).show();
                                 }
                             }
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_reverse_queued"))) {
+                        } else if ("dl_menu_reverse_queued".equals(choiceKey)) {
                             // v6.88: reverse-play the hand queue —
                             // the reverse twin of the shuffle branch
                             // above and the play twin of the reorder
@@ -10399,7 +10412,7 @@ public class DownloadedActivity extends Activity {
                                             Toast.LENGTH_SHORT).show();
                                 }
                             }
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_shuffle_shown"))) {
+                        } else if ("dl_menu_shuffle_shown".equals(choiceKey)) {
                             // v6.48: shuffle-play only the shown
                             // files — the library mirror of the
                             // chooser's v6.33. Same display
@@ -10470,8 +10483,8 @@ public class DownloadedActivity extends Activity {
                                             Toast.LENGTH_SHORT).show();
                                 }
                             }
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_shuffle_shown_star"))
-                                || choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_shuffle_shown_new"))) {
+                        } else if ("dl_menu_shuffle_shown_star".equals(choiceKey)
+                                || "dl_menu_shuffle_shown_new".equals(choiceKey)) {
                             // v6.79: shuffle-play only the shown
                             // favourite / shown unlistened subset
                             // — v6.48's shuffle handler run on the
@@ -10502,7 +10515,7 @@ public class DownloadedActivity extends Activity {
                             // are untouched, saved resume
                             // positions are untouched, and the play
                             // toast counts playable files only.
-                            boolean fav679 = choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_shuffle_shown_star"));
+                            boolean fav679 = "dl_menu_shuffle_shown_star".equals(choiceKey);
                             String tag679 = fav679 ? Lang.t(DownloadedActivity.this, "dl_tag_shown_star") : Lang.t(DownloadedActivity.this, "dl_tag_shown_new");
                             java.util.ArrayList<Entry> subset679 = new java.util.ArrayList<Entry>();
                             for (int i = 0; i < libDisplayCount(); i++) {
@@ -10553,8 +10566,8 @@ public class DownloadedActivity extends Activity {
                                             Toast.LENGTH_SHORT).show();
                                 }
                             }
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_reverse_shown_star"))
-                                || choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_reverse_shown_new"))) {
+                        } else if ("dl_menu_reverse_shown_star".equals(choiceKey)
+                                || "dl_menu_reverse_shown_new".equals(choiceKey)) {
                             // v6.82: reverse-play only the shown
                             // favourite / shown unlistened subset
                             // — v6.48's reverse handler run on the
@@ -10585,7 +10598,7 @@ public class DownloadedActivity extends Activity {
                             // are untouched, saved resume
                             // positions are untouched, and the play
                             // toast counts playable files only.
-                            boolean fav682 = choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_reverse_shown_star"));
+                            boolean fav682 = "dl_menu_reverse_shown_star".equals(choiceKey);
                             String tag682 = fav682 ? Lang.t(DownloadedActivity.this, "dl_tag_shown_star") : Lang.t(DownloadedActivity.this, "dl_tag_shown_new");
                             java.util.ArrayList<Entry> subset682 = new java.util.ArrayList<Entry>();
                             for (int i = 0; i < libDisplayCount(); i++) {
@@ -10636,7 +10649,7 @@ public class DownloadedActivity extends Activity {
                                             Toast.LENGTH_SHORT).show();
                                 }
                             }
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_reverse_shown"))) {
+                        } else if ("dl_menu_reverse_shown".equals(choiceKey)) {
                             // v6.48: reverse-play only the shown
                             // files — v6.47's forward play with
                             // the order reversed, the library
@@ -10704,7 +10717,7 @@ public class DownloadedActivity extends Activity {
                                             Toast.LENGTH_SHORT).show();
                                 }
                             }
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_queue_all_unplayed"))) {
+                        } else if ("dl_queue_all_unplayed".equals(choiceKey)) {
                             // v4.59: queue the shelf's not-yet-listened
                             // files in shelf order — a file with no
                             // dlMap entry has no ✓ either, so it
@@ -10721,7 +10734,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, added > 0
                                     ? Lang.t(DownloadedActivity.this, "queue_new_prefix") + added + Lang.t(DownloadedActivity.this, "queue_added_suffix")
                                     : Lang.t(DownloadedActivity.this, "already_in_queue"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_queue_all_list"))) {
+                        } else if ("dl_queue_all_list".equals(choiceKey)) {
                             int added = 0;
                             for (int i = 0; i < entries.size(); i++) {
                                 String u = entries.get(i).file.getAbsolutePath();
@@ -10731,7 +10744,7 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, added > 0
                                     ? Lang.t(DownloadedActivity.this, "queue_plain_prefix") + added + Lang.t(DownloadedActivity.this, "queue_added_suffix")
                                     : Lang.t(DownloadedActivity.this, "already_in_queue"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "menu_queue_remove"))) {
+                        } else if ("menu_queue_remove".equals(choiceKey)) {
                             q.remove(path);
                             // v7.85: a menu remove of the HELD file consumes the
                             // armed pick-up/drop move — the drop handler's
@@ -10745,7 +10758,7 @@ public class DownloadedActivity extends Activity {
                                 if (adapter != null) adapter.notifyDataSetChanged();
                             }
                             Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "removed_from_queue"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "menu_move_up")) || choice.equals(Lang.t(DownloadedActivity.this, "menu_move_down"))) {
+                        } else if ("menu_move_up".equals(choiceKey) || "menu_move_down".equals(choiceKey)) {
                             // v11.22: tap-time sounding re-check (v11.12
                             // class) — offered while waiting, sounding
                             // by tap time; the shared save tail below
@@ -10758,7 +10771,7 @@ public class DownloadedActivity extends Activity {
                                 return;
                             }
                             int qi = q.indexOf(path);
-                            int nj = choice.equals(Lang.t(DownloadedActivity.this, "menu_move_up")) ? qi - 1 : qi + 1;
+                            int nj = "menu_move_up".equals(choiceKey) ? qi - 1 : qi + 1;
                             if (qi >= 0 && nj >= 0 && nj < q.size()) {
                                 String tmp = q.get(qi);
                                 q.set(qi, q.get(nj));
@@ -10769,7 +10782,7 @@ public class DownloadedActivity extends Activity {
                                 }
                                 Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "moved_in_queue"), Toast.LENGTH_SHORT).show();
                             }
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "menu_move_top")) || choice.equals(Lang.t(DownloadedActivity.this, "menu_move_end"))) {
+                        } else if ("menu_move_top".equals(choiceKey) || "menu_move_end".equals(choiceKey)) {
                             // v11.22: same tap-time sounding re-check
                             // as the one-step verbs above.
                             // v11.27: cur mirror, not the bound-only
@@ -10782,7 +10795,7 @@ public class DownloadedActivity extends Activity {
                                 return;
                             }
                             q.remove(path);
-                            if (choice.equals(Lang.t(DownloadedActivity.this, "menu_move_top"))) q.add(0, path);
+                            if ("menu_move_top".equals(choiceKey)) q.add(0, path);
                             else q.add(path);
                             // v7.85: the library half of the v7.84 end-gap
                             // audit — the end itself was never missing
@@ -10802,10 +10815,10 @@ public class DownloadedActivity extends Activity {
                                 if (adapter != null) adapter.notifyDataSetChanged();
                             }
                             Toast.makeText(DownloadedActivity.this,
-                                    choice.equals(Lang.t(DownloadedActivity.this, "menu_move_top"))
+                                    "menu_move_top".equals(choiceKey)
                                             ? Lang.t(DownloadedActivity.this, "moved_to_top")
                                             : Lang.t(DownloadedActivity.this, "moved_to_end"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "menu_move"))) {
+                        } else if ("menu_move".equals(choiceKey)) {
                             // v11.22: same tap-time sounding re-check —
                             // never arm the file now playing.
                             // v11.27: cur mirror, like the two move
@@ -10827,13 +10840,13 @@ public class DownloadedActivity extends Activity {
                             // the library's route to the very end that the
                             // chooser gained as a gesture in v7.84.
                             Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "queue_pick_target"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_reorder_shuffle"))) {
+                        } else if ("dl_menu_reorder_shuffle".equals(choiceKey)) {
                             java.util.Collections.shuffle(q);
                             Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "queue_shuffled"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_reorder_reverse"))) {
+                        } else if ("dl_menu_reorder_reverse".equals(choiceKey)) {
                             java.util.Collections.reverse(q);
                             Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "queue_reversed"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_clear_queue"))) {
+                        } else if ("dl_menu_clear_queue".equals(choiceKey)) {
                             q.clear();
                             // v7.85: an emptied queue leaves no held file to
                             // drop — clear the arm here instead of letting
@@ -10843,7 +10856,7 @@ public class DownloadedActivity extends Activity {
                                 if (adapter != null) adapter.notifyDataSetChanged();
                             }
                             Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "queue_cleared"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_show_queue_only"))) {
+                        } else if ("dl_menu_show_queue_only".equals(choiceKey)) {
                             // v4.58: enter queue-only view — the queue
                             // itself is untouched, rows re-pour once
                             // in the new view, and the list jumps to
@@ -10889,14 +10902,14 @@ public class DownloadedActivity extends Activity {
                                 if (dlListView != null) dlListView.setSelection(0);
                                 Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "queue_only_view"), Toast.LENGTH_SHORT).show();
                             }
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_show_all_again"))) {
+                        } else if ("dl_menu_show_all_again".equals(choiceKey)) {
                             // v4.58: exit queue-only view — position
                             // is deliberately kept, so the listener
                             // lands back in the full shelf where the
                             // queue view left them, not at the top.
                             libQueueOnly = false;
                             Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "list_all_back"), Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_share"))) {
+                        } else if ("dl_menu_share".equals(choiceKey)) {
                             // v6.53: share this one file — the
                             // stripShareText format for this row's
                             // own file (sayadaw when recorded, else
@@ -10921,7 +10934,7 @@ public class DownloadedActivity extends Activity {
                             // v8.55: share chooser — suppress the background-off pause.
                             suppressDlSharePause = true;
                             startActivity(Intent.createChooser(send653, Lang.t(DownloadedActivity.this, "share_talk")));
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "menu_fav_add")) || choice.equals(Lang.t(DownloadedActivity.this, "menu_fav_remove"))) {
+                        } else if ("menu_fav_add".equals(choiceKey) || "menu_fav_remove".equals(choiceKey)) {
                             // v7.90: toggle this one file's star by its
                             // dlMap source URL (the v6.53 shareUrl653
                             // final), not by the label built above —
@@ -10965,7 +10978,7 @@ public class DownloadedActivity extends Activity {
                             android.widget.Toast.makeText(DownloadedActivity.this,
                                     Lang.t(DownloadedActivity.this, added90 ? "fav_added" : "fav_removed"),
                                     android.widget.Toast.LENGTH_SHORT).show();
-                        } else if (choice.equals(Lang.t(DownloadedActivity.this, "dl_menu_copy_link"))) {
+                        } else if ("dl_menu_copy_link".equals(choiceKey)) {
                             // v6.56: copy this one file's own
                             // original link — shareUrl653 verbatim
                             // (the dlMap reverse lookup, never a

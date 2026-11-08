@@ -1640,7 +1640,11 @@ public class TalksActivity extends Activity {
                         && (talkPlayingLibUrl == null || !t.url.equals(talkPlayingLibUrl))) {
                     final Talk dt = t;
                     java.util.ArrayList<String> dOpts = new java.util.ArrayList<String>();
+                    // v13.15: key list parallel to dOpts — dialogs dispatch on keys,
+                    // not on re-evaluated labels (language-proof).
+                    java.util.ArrayList<String> dKeys = new java.util.ArrayList<String>();
                     dOpts.add(Lang.t(TalksActivity.this, "menu_share"));
+                    dKeys.add("menu_share");
                     // v7.88: per-talk favourite from the browsing screen — the
                     // same builder gap as the v7.81/v7.82 queue builders:
                     // favTalks could only ever be toggled for the SOUNDING
@@ -1662,9 +1666,10 @@ public class TalksActivity extends Activity {
                         dFav = ft88 != null && dt.url != null && ft88.contains(dt.url);
                     } catch (Exception ignored) {}
                     dOpts.add(dFav ? Lang.t(TalksActivity.this, "menu_fav_remove") : Lang.t(TalksActivity.this, "menu_fav_add"));
+                    dKeys.add(dFav ? "menu_fav_remove" : "menu_fav_add");
                     final boolean dQueued = talkQueue.contains(dt.url);
-                    if (dQueued) dOpts.add(Lang.t(TalksActivity.this, "menu_queue_remove"));
-                    else dOpts.add(Lang.t(TalksActivity.this, "menu_queue_add"));
+                    if (dQueued) { dOpts.add(Lang.t(TalksActivity.this, "menu_queue_remove")); dKeys.add("menu_queue_remove"); }
+                    else { dOpts.add(Lang.t(TalksActivity.this, "menu_queue_add")); dKeys.add("menu_queue_add"); }
                     // v13.04: "queue all from here" — the Downloaded
                     // library's bulk verb (menu_queue_from_here),
                     // missing from this dialog since the v7.32 ⋮
@@ -1678,6 +1683,7 @@ public class TalksActivity extends Activity {
                     // already-queued rows below are skipped by the
                     // handler, like the library verb.
                     dOpts.add(Lang.t(TalksActivity.this, "menu_queue_from_here"));
+                    dKeys.add("menu_queue_from_here");
                     // v7.83: re-arm the dead pick-up/drop move — the
                     // chooser ⋮ removal deleted its only setter, so
                     // Talks moveHeldUrl could only ever be restored
@@ -1695,7 +1701,7 @@ public class TalksActivity extends Activity {
                     // the sounding talk, and an unqueued row has
                     // nothing to pick up); while armed, long-press
                     // keeps its old share path, as before.
-                    if (dQueued) dOpts.add(Lang.t(TalksActivity.this, "menu_move"));
+                    if (dQueued) { dOpts.add(Lang.t(TalksActivity.this, "menu_move")); dKeys.add("menu_move"); }
                     String dFw = null;
                     if (talkPlayingUrl != null && talkPlayingUrl.length() > 0) {
                         for (String q : talkQueue)
@@ -1714,6 +1720,7 @@ public class TalksActivity extends Activity {
                             && (!dQueued || (dFxGate != null && !dFxGate.url.equals(dt.url))
                             || (dFw != null && !dFw.equals(dt.url))))
                         dOpts.add(dQueued ? Lang.t(TalksActivity.this, "menu_play_next") : Lang.t(TalksActivity.this, "menu_add_next"));
+                        dKeys.add(dQueued ? "menu_play_next" : "menu_add_next");
                     // v11.70: per-talk download from the browsing screen --
                     // the only download verb left in the app was the Room
                     // data-gate Wi-Fi button (mobile data + data saver
@@ -1726,19 +1733,21 @@ public class TalksActivity extends Activity {
                     // talk that is neither downloaded nor already queued.
                     if (!isTalkDownloaded(dt.url) && !talkIsDlQueued(dt.url))
                         dOpts.add(Lang.t(TalksActivity.this, "dl_btn_download"));
+                        dKeys.add("dl_btn_download");
                     final String[] dOptArr = dOpts.toArray(new String[0]);
+                    final String[] dKeyArr = dKeys.toArray(new String[0]);
                     new android.app.AlertDialog.Builder(TalksActivity.this)
                             .setTitle(dt.title != null && dt.title.length() > 0 ? dt.title : dt.url)
                             .setItems(dOptArr, new android.content.DialogInterface.OnClickListener() {
                                 @Override public void onClick(android.content.DialogInterface d, int which) {
-                                    if (dOptArr[which].equals(Lang.t(TalksActivity.this, "menu_share"))) {
+                                    if ("menu_share".equals(dKeyArr[which])) {
                                         suppressSharePause = true;
                                         Intent send = new Intent(Intent.ACTION_SEND);
                                         send.setType("text/plain");
                                         send.putExtra(Intent.EXTRA_TEXT, (sayadawName == null ? "" : sayadawName) + " — " + dt.title
                                                 + "\n" + dt.url + Lang.t(TalksActivity.this, "share_source"));
                                         startActivity(Intent.createChooser(send, Lang.t(TalksActivity.this, "share_talk")));
-                                    } else if (dOptArr[which].equals(Lang.t(TalksActivity.this, "menu_fav_add")) || dOptArr[which].equals(Lang.t(TalksActivity.this, "menu_fav_remove"))) {
+                                    } else if ("menu_fav_add".equals(dKeyArr[which]) || "menu_fav_remove".equals(dKeyArr[which])) {
                                         // v7.88: toggle by URL, not by the label built
                                         // above — if the set changed between the
                                         // dialog opening and the tap, the toast
@@ -1797,7 +1806,7 @@ public class TalksActivity extends Activity {
                                         if (filterMode != 0) rebuildFilter();
                                         if (adapter != null) adapter.notifyDataSetChanged();
                                         android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, added88 ? "fav_added" : "fav_removed"), android.widget.Toast.LENGTH_SHORT).show();
-                                    } else if (dOptArr[which].equals(Lang.t(TalksActivity.this, "menu_queue_remove"))) {
+                                    } else if ("menu_queue_remove".equals(dKeyArr[which])) {
                                         if (!talkQueue.contains(dt.url)) {
                                             android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
                                             return;
@@ -1808,7 +1817,7 @@ public class TalksActivity extends Activity {
                                         if (!talks.isEmpty() && sayadawName != null) refreshFavHeader();
                                         if (adapter != null) adapter.notifyDataSetChanged();
                                         android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "removed_from_queue"), android.widget.Toast.LENGTH_SHORT).show();
-                                    } else if (dOptArr[which].equals(Lang.t(TalksActivity.this, "menu_queue_add"))) {
+                                    } else if ("menu_queue_add".equals(dKeyArr[which])) {
                                         // v11.14: tap-time sounding re-check — the mirror of the v11.12
                                         // play-next leg in the else branch below, which this append
                                         // verb never got: the offer gate ran at dialog-build time,
@@ -1834,7 +1843,7 @@ public class TalksActivity extends Activity {
                                         if (!talks.isEmpty() && sayadawName != null) refreshFavHeader();
                                         if (adapter != null) adapter.notifyDataSetChanged();
                                         android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "added_to_queue"), android.widget.Toast.LENGTH_SHORT).show();
-                                    } else if (dOptArr[which].equals(Lang.t(TalksActivity.this, "menu_queue_from_here"))) {
+                                    } else if ("menu_queue_from_here".equals(dKeyArr[which])) {
                                         // v13.04: queue this talk and every shown talk
                                         // below it, in display order (visibleHits when a
                                         // search/filter is active, else the full list —
@@ -1901,7 +1910,7 @@ public class TalksActivity extends Activity {
                                         android.widget.Toast.makeText(TalksActivity.this, added04 > 0
                                                 ? Lang.t(TalksActivity.this, "queue_plain_prefix") + added04 + Lang.t(TalksActivity.this, "queue_added_suffix")
                                                 : Lang.t(TalksActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
-                                    } else if (dOptArr[which].equals(Lang.t(TalksActivity.this, "dl_btn_download"))) {
+                                    } else if ("dl_btn_download".equals(dKeyArr[which])) {
                                         // v11.70: tap-time re-checks, the v11.14/v11.12
                                         // pattern -- the offer gate ran at dialog-build
                                         // time, but a Wi-Fi job can land, or another
@@ -1961,7 +1970,7 @@ public class TalksActivity extends Activity {
                                         else
                                             android.widget.Toast.makeText(TalksActivity.this,
                                                     Lang.t(TalksActivity.this, "dl_room_wifi_queued"), android.widget.Toast.LENGTH_LONG).show();
-                                    } else if (dOptArr[which].equals(Lang.t(TalksActivity.this, "menu_move"))) {
+                                    } else if ("menu_move".equals(dKeyArr[which])) {
                                         // v11.22: tap-time sounding re-check, the
                                         // move branch's missing v11.12/v11.14 leg —
                                         // both sounding forms (Room URL and

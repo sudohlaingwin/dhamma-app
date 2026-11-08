@@ -7965,7 +7965,11 @@ if (snd67n >= 0) currentIndex = snd67n;
                         // armed move from another row is replaced,
                         // like an in-list re-arm.
                         java.util.ArrayList<String> fOptList = new java.util.ArrayList<String>();
+                        // v13.15: key list parallel to fOptList — dialogs dispatch on keys,
+                        // not on re-evaluated labels (language-proof).
+                        java.util.ArrayList<String> fKeys = new java.util.ArrayList<String>();
                         fOptList.add(Lang.t(RoomActivity.this, "menu_share"));
+                        fKeys.add("menu_share");
                         // v7.89: same favourite verb as the full-list
                         // dialog above — a foreign row could only be
                         // shared, removed or moved, never favourited,
@@ -7978,12 +7982,15 @@ if (snd67n >= 0) currentIndex = snd67n;
                             fFav89 = ft89f != null && ffe.url != null && ft89f.contains(ffe.url);
                         } catch (Exception ignored) {}
                         fOptList.add(fFav89 ? Lang.t(RoomActivity.this, "menu_fav_remove") : Lang.t(RoomActivity.this, "menu_fav_add"));
+                        fKeys.add(fFav89 ? "menu_fav_remove" : "menu_fav_add");
                         fOptList.add(Lang.t(RoomActivity.this, "menu_queue_remove"));
+                        fKeys.add("menu_queue_remove");
                         final boolean fHeldRow = ffe.url.equals(moveHeldUrl)
                                 && queueLineIndexForUrl(ffe.url) >= 0;
                         // v11.34: never offer a move for the sounding foreign row — foreign form of the v11.22 in-list offer gate; bound this is isCurrentTalk, unbound the v11.32 foreign mirror.
                         if (drawerDisplayCount() >= 2 && !isSoundingForeignTalk(ffe.url, ffe.sayadaw))
                             fOptList.add(fHeldRow ? Lang.t(RoomActivity.this, "menu_move_end") : Lang.t(RoomActivity.this, "menu_move"));
+                            fKeys.add(fHeldRow ? "menu_move_end" : "menu_move");
                         // v7.16: play-next for the foreign row — the
                         // queue-only view has no row for the playing
                         // talk, so no arm/drop target can ever mean
@@ -8021,12 +8028,14 @@ if (snd67n >= 0) currentIndex = snd67n;
                         if (curUrl16 != null && fqi16 >= 0 && fw16 != null && !ffe.url.equals(fw16.url)
                                 && !isSoundingForeignTalk(ffe.url, ffe.sayadaw))
                             fOptList.add(Lang.t(RoomActivity.this, "menu_play_next"));
+                            fKeys.add("menu_play_next");
                         final String[] fOpts = fOptList.toArray(new String[0]);
+                        final String[] fKeyArr = fKeys.toArray(new String[0]);
                         new android.app.AlertDialog.Builder(RoomActivity.this)
                                 .setTitle(ffe.title.length() > 0 ? ffe.title : ffe.url)
                                 .setItems(fOpts, new android.content.DialogInterface.OnClickListener() {
                                     @Override public void onClick(android.content.DialogInterface d, int which) {
-                                        if (fOpts[which].equals(Lang.t(RoomActivity.this, "menu_share"))) {
+                                        if ("menu_share".equals(fKeyArr[which])) {
                                             suppressBgPause = true;
                                             Intent send = new Intent(Intent.ACTION_SEND);
                                             send.setType("text/plain");
@@ -8034,7 +8043,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                                                     + (ffe.title.length() > 0 ? ffe.title : ffe.url)
                                                     + "\n" + ffe.url + Lang.t(RoomActivity.this, "share_source"));
                                             startActivity(Intent.createChooser(send, Lang.t(RoomActivity.this, "share_talk")));
-                                        } else if (fOpts[which].equals(Lang.t(RoomActivity.this, "menu_fav_add")) || fOpts[which].equals(Lang.t(RoomActivity.this, "menu_fav_remove"))) {
+                                        } else if ("menu_fav_add".equals(fKeyArr[which]) || "menu_fav_remove".equals(fKeyArr[which])) {
                                             // v7.89: same as the full-list dialog —
                                             // refreshMarkSets reloads favSet so the
                                             // foreign row's ★ mark updates at once.
@@ -8045,7 +8054,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                                             refreshMarkSets();
                                             if (adapter != null) adapter.notifyDataSetChanged();
                                             Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, added89f ? "fav_added" : "fav_removed"), Toast.LENGTH_SHORT).show();
-                                        } else if (fOpts[which].equals(Lang.t(RoomActivity.this, "menu_queue_remove"))) {
+                                        } else if ("menu_queue_remove".equals(fKeyArr[which])) {
                                             // v7.89: was `which == 1` — the new
                                             // favourite item above shifted remove
                                             // to index 2, so the branch now
@@ -8062,7 +8071,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                                             saveQueue(null, true);
                                             if (adapter != null) adapter.notifyDataSetChanged();
                                             Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "removed_from_queue"), Toast.LENGTH_SHORT).show();
-                                        } else if (fOpts[which].equals(Lang.t(RoomActivity.this, "menu_move"))) {
+                                        } else if ("menu_move".equals(fKeyArr[which])) {
                                             // v7.15: arm the foreign row
                                             // for a pick-up/drop move —
                                             // the drop handlers and
@@ -8085,7 +8094,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                                             moveHeldUrl = ffe.url;
                                             Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "talks_move_prefix") + (ffe.title.length() > 0 ? ffe.title : ffe.url) + Lang.t(RoomActivity.this, "room_move_suffix"), Toast.LENGTH_SHORT).show();
                                             if (adapter != null) adapter.notifyDataSetChanged();
-                                        } else if (fOpts[which].equals(Lang.t(RoomActivity.this, "menu_move_end"))) {
+                                        } else if ("menu_move_end".equals(fKeyArr[which])) {
                                             // v7.15: move-to-end for the
                                             // already-held foreign row
                                             // (v6.86 pattern) — the
@@ -8211,14 +8220,20 @@ if (snd67n >= 0) currentIndex = snd67n;
                         && t.url != null && queueLineIndexForUrl(t.url) >= 0) {
                     final Talk qt = t;
                     java.util.ArrayList<String> qOptList = new java.util.ArrayList<String>();
+                    // v13.15: key list parallel to qOptList — dialogs dispatch on keys,
+                    // not on re-evaluated labels (language-proof).
+                    java.util.ArrayList<String> qKeys = new java.util.ArrayList<String>();
                     qOptList.add(Lang.t(RoomActivity.this, "menu_share"));
+                    qKeys.add("menu_share");
                     boolean qFav91 = false;
                     try {
                         java.util.Set<String> ft91 = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favTalks", null);
                         qFav91 = ft91 != null && qt.url != null && ft91.contains(qt.url);
                     } catch (Exception ignored) {}
                     qOptList.add(qFav91 ? Lang.t(RoomActivity.this, "menu_fav_remove") : Lang.t(RoomActivity.this, "menu_fav_add"));
+                    qKeys.add(qFav91 ? "menu_fav_remove" : "menu_fav_add");
                     qOptList.add(Lang.t(RoomActivity.this, "menu_queue_remove"));
+                    qKeys.add("menu_queue_remove");
                     // v11.71: Download for the sounding row in this
                     // view too -- the service-restart leftover still
                     // saved in the queue has a row here, and it is
@@ -8230,6 +8245,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                     // downloaded nor already queued.
                     if (isSoundingTalk(qt.url) && !isDownloadedFile(qt.url) && !roomIsDlQueued(qt.url))
                         qOptList.add(Lang.t(RoomActivity.this, "dl_btn_download"));
+                        qKeys.add("dl_btn_download");
                     final boolean qHeld = qt.url.equals(moveHeldUrl)
                             && queueLineIndexForUrl(qt.url) >= 0;
                     // v11.22: never offer a move for the sounding row — the
@@ -8240,6 +8256,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                     // as if it were a waiting talk.
                     if (drawerDisplayCount() >= 2 && !isSoundingTalk(qt.url))
                         qOptList.add(qHeld ? Lang.t(RoomActivity.this, "menu_move_end") : Lang.t(RoomActivity.this, "menu_move"));
+                        qKeys.add(qHeld ? "menu_move_end" : "menu_move");
                     String qCur91 = currentTalkUrl();
                     int qqi91 = queueLineIndexForUrl(qt.url);
                     QueueEntry qw91 = firstWaitingQueueEntry();
@@ -8263,26 +8280,28 @@ if (snd67n >= 0) currentIndex = snd67n;
                             && !qt.url.equals(qw91.url)
                             && !qt.url.equals(qCur91) && !qt.url.equals(qSnd11))
                         qOptList.add(Lang.t(RoomActivity.this, "menu_play_next"));
+                        qKeys.add("menu_play_next");
                     final String[] qOpts = qOptList.toArray(new String[0]);
+                    final String[] qKeyArr = qKeys.toArray(new String[0]);
                     new android.app.AlertDialog.Builder(RoomActivity.this)
                             .setTitle(qt.title != null && qt.title.length() > 0 ? qt.title : qt.url)
                             .setItems(qOpts, new android.content.DialogInterface.OnClickListener() {
                                 @Override public void onClick(android.content.DialogInterface d, int which) {
-                                    if (qOpts[which].equals(Lang.t(RoomActivity.this, "menu_share"))) {
+                                    if ("menu_share".equals(qKeyArr[which])) {
                                         suppressBgPause = true;
                                         Intent send = new Intent(Intent.ACTION_SEND);
                                         send.setType("text/plain");
                                         send.putExtra(Intent.EXTRA_TEXT, (sayadawName == null ? "" : sayadawName) + " — " + qt.title
                                                 + "\n" + qt.url + Lang.t(RoomActivity.this, "share_source"));
                                         startActivity(Intent.createChooser(send, Lang.t(RoomActivity.this, "share_talk")));
-                                    } else if (qOpts[which].equals(Lang.t(RoomActivity.this, "menu_fav_add")) || qOpts[which].equals(Lang.t(RoomActivity.this, "menu_fav_remove"))) {
+                                    } else if ("menu_fav_add".equals(qKeyArr[which]) || "menu_fav_remove".equals(qKeyArr[which])) {
                                         boolean added91 = Fx.toggleFavTalk(RoomActivity.this, qt.url);
                                         // v10.02: same paused-card star sync as the foreign-row branch above.
                                         refreshCardIfFlipped1025(qt.url);
                                         refreshMarkSets();
                                         if (adapter != null) adapter.notifyDataSetChanged();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, added91 ? "fav_added" : "fav_removed"), Toast.LENGTH_SHORT).show();
-                                    } else if (qOpts[which].equals(Lang.t(RoomActivity.this, "menu_queue_remove"))) {
+                                    } else if ("menu_queue_remove".equals(qKeyArr[which])) {
                                         int qi = queueLineIndexForUrl(qt.url);
                                         if (qi < 0) {
                                             Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_changed"), Toast.LENGTH_SHORT).show();
@@ -8294,7 +8313,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         saveQueue(null, true);
                                         if (adapter != null) adapter.notifyDataSetChanged();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "removed_from_queue"), Toast.LENGTH_SHORT).show();
-                                    } else if (qOpts[which].equals(Lang.t(RoomActivity.this, "menu_move"))) {
+                                    } else if ("menu_move".equals(qKeyArr[which])) {
                                         // v11.22: tap-time sounding re-check (v11.12
                                         // class) — the dialog can sit open across
                                         // a track change, so a row offered while
@@ -8307,7 +8326,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         moveHeldUrl = qt.url;
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "talks_move_prefix") + qt.title + Lang.t(RoomActivity.this, "room_move_suffix"), Toast.LENGTH_SHORT).show();
                                         if (adapter != null) adapter.notifyDataSetChanged();
-                                    } else if (qOpts[which].equals(Lang.t(RoomActivity.this, "menu_move_end"))) {
+                                    } else if ("menu_move_end".equals(qKeyArr[which])) {
                                         // v11.22: same tap-time re-check as the arm
                                         // above — a held row that became sounding
                                         // while the dialog sat open must not move
@@ -8331,7 +8350,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         saveQueue(null, true);
                                         if (adapter != null) adapter.notifyDataSetChanged();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "moved_to_end"), Toast.LENGTH_SHORT).show();
-                                    } else if (qOpts[which].equals(Lang.t(RoomActivity.this, "dl_btn_download"))) {
+                                    } else if ("dl_btn_download".equals(qKeyArr[which])) {
                                         // v11.71: the shared Room enqueue -- re-checks
                                         // inside, so a file landed or a queue placed
                                         // while the dialog sat open is caught there.
@@ -8435,28 +8454,35 @@ if (snd67n >= 0) currentIndex = snd67n;
                 if (!drawerQueueOnly && !drawerSearching() && t.url != null && isSoundingTalk(t.url)) {
                     final Talk st = t;
                     java.util.ArrayList<String> sOpts = new java.util.ArrayList<String>();
+                    // v13.15: key list parallel to sOpts — dialogs dispatch on keys,
+                    // not on re-evaluated labels (language-proof).
+                    java.util.ArrayList<String> sKeys = new java.util.ArrayList<String>();
                     sOpts.add(Lang.t(RoomActivity.this, "menu_share"));
+                    sKeys.add("menu_share");
                     boolean sFav71 = false;
                     try {
                         java.util.Set<String> ft71 = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favTalks", null);
                         sFav71 = ft71 != null && st.url != null && ft71.contains(st.url);
                     } catch (Exception ignored) {}
                     sOpts.add(sFav71 ? Lang.t(RoomActivity.this, "menu_fav_remove") : Lang.t(RoomActivity.this, "menu_fav_add"));
+                    sKeys.add(sFav71 ? "menu_fav_remove" : "menu_fav_add");
                     if (!isDownloadedFile(st.url) && !roomIsDlQueued(st.url))
                         sOpts.add(Lang.t(RoomActivity.this, "dl_btn_download"));
+                        sKeys.add("dl_btn_download");
                     final String[] sOptArr = sOpts.toArray(new String[0]);
+                    final String[] sKeyArr = sKeys.toArray(new String[0]);
                     new android.app.AlertDialog.Builder(RoomActivity.this)
                             .setTitle(st.title != null && st.title.length() > 0 ? st.title : st.url)
                             .setItems(sOptArr, new android.content.DialogInterface.OnClickListener() {
                                 @Override public void onClick(android.content.DialogInterface d, int which) {
-                                    if (sOptArr[which].equals(Lang.t(RoomActivity.this, "menu_share"))) {
+                                    if ("menu_share".equals(sKeyArr[which])) {
                                         suppressBgPause = true;
                                         Intent send = new Intent(Intent.ACTION_SEND);
                                         send.setType("text/plain");
                                         send.putExtra(Intent.EXTRA_TEXT, (sayadawName == null ? "" : sayadawName) + " — " + st.title
                                                 + "\n" + st.url + Lang.t(RoomActivity.this, "share_source"));
                                         startActivity(Intent.createChooser(send, Lang.t(RoomActivity.this, "share_talk")));
-                                    } else if (sOptArr[which].equals(Lang.t(RoomActivity.this, "menu_fav_add")) || sOptArr[which].equals(Lang.t(RoomActivity.this, "menu_fav_remove"))) {
+                                    } else if ("menu_fav_add".equals(sKeyArr[which]) || "menu_fav_remove".equals(sKeyArr[which])) {
                                         // v7.89 shape: refreshMarkSets reloads favSet
                                         // so the star mark rebinds at once.
                                         boolean added71 = Fx.toggleFavTalk(RoomActivity.this, st.url);
@@ -8464,7 +8490,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         refreshMarkSets();
                                         if (adapter != null) adapter.notifyDataSetChanged();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, added71 ? "fav_added" : "fav_removed"), Toast.LENGTH_SHORT).show();
-                                    } else if (sOptArr[which].equals(Lang.t(RoomActivity.this, "dl_btn_download"))) {
+                                    } else if ("dl_btn_download".equals(sKeyArr[which])) {
                                         enqueueRoomDownload(st);
                                     }
                                 }
@@ -8481,7 +8507,11 @@ if (snd67n >= 0) currentIndex = snd67n;
                 if (!drawerQueueOnly && !drawerSearching() && t.url != null && !isSoundingTalk(t.url)) {
                     final Talk dt = t;
                     java.util.ArrayList<String> dOpts = new java.util.ArrayList<String>();
+                    // v13.15: key list parallel to dOpts — dialogs dispatch on keys,
+                    // not on re-evaluated labels (language-proof).
+                    java.util.ArrayList<String> dKeys = new java.util.ArrayList<String>();
                     dOpts.add(Lang.t(RoomActivity.this, "menu_share"));
+                    dKeys.add("menu_share");
                     // v7.89: per-talk favourite from the Room drawer — the
                     // v7.88 chooser verb's Room-side mirror. Before this
                     // the drawer could only toggle a favourite for the
@@ -8501,9 +8531,10 @@ if (snd67n >= 0) currentIndex = snd67n;
                         dFav89 = ft89 != null && dt.url != null && ft89.contains(dt.url);
                     } catch (Exception ignored) {}
                     dOpts.add(dFav89 ? Lang.t(RoomActivity.this, "menu_fav_remove") : Lang.t(RoomActivity.this, "menu_fav_add"));
+                    dKeys.add(dFav89 ? "menu_fav_remove" : "menu_fav_add");
                     final boolean dQueued = queueLineIndexForUrl(dt.url) >= 0;
-                    if (dQueued) dOpts.add(Lang.t(RoomActivity.this, "menu_queue_remove"));
-                    else dOpts.add(Lang.t(RoomActivity.this, "menu_queue_add"));
+                    if (dQueued) { dOpts.add(Lang.t(RoomActivity.this, "menu_queue_remove")); dKeys.add("menu_queue_remove"); }
+                    else { dOpts.add(Lang.t(RoomActivity.this, "menu_queue_add")); dKeys.add("menu_queue_add"); }
                     // v13.04: "queue all from here" — the Downloaded
                     // library's bulk verb (menu_queue_from_here),
                     // missing from this dialog since the v7.32 ⋮
@@ -8518,24 +8549,27 @@ if (snd67n >= 0) currentIndex = snd67n;
                     // design); already-queued rows below are skipped
                     // by the handler, like the library verb.
                     dOpts.add(Lang.t(RoomActivity.this, "menu_queue_from_here"));
+                    dKeys.add("menu_queue_from_here");
                     final String dCur = currentTalkUrl();
                     final QueueEntry dFw = firstWaitingQueueEntry();
                     final boolean dPlaying = dCur != null && dCur.length() > 0;
                     if (dPlaying && (!dQueued || (dFw != null && !dt.url.equals(dFw.url))))
                         dOpts.add(dQueued ? Lang.t(RoomActivity.this, "menu_play_next") : Lang.t(RoomActivity.this, "menu_add_next"));
+                        dKeys.add(dQueued ? "menu_play_next" : "menu_add_next");
                     final String[] dOptArr = dOpts.toArray(new String[0]);
+                    final String[] dKeyArr = dKeys.toArray(new String[0]);
                     new android.app.AlertDialog.Builder(RoomActivity.this)
                             .setTitle(dt.title != null && dt.title.length() > 0 ? dt.title : dt.url)
                             .setItems(dOptArr, new android.content.DialogInterface.OnClickListener() {
                                 @Override public void onClick(android.content.DialogInterface d, int which) {
-                                    if (dOptArr[which].equals(Lang.t(RoomActivity.this, "menu_share"))) {
+                                    if ("menu_share".equals(dKeyArr[which])) {
                                         suppressBgPause = true;
                                         Intent send = new Intent(Intent.ACTION_SEND);
                                         send.setType("text/plain");
                                         send.putExtra(Intent.EXTRA_TEXT, (sayadawName == null ? "" : sayadawName) + " — " + dt.title
                                                 + "\n" + dt.url + Lang.t(RoomActivity.this, "share_source"));
                                         startActivity(Intent.createChooser(send, Lang.t(RoomActivity.this, "share_talk")));
-                                    } else if (dOptArr[which].equals(Lang.t(RoomActivity.this, "menu_fav_add")) || dOptArr[which].equals(Lang.t(RoomActivity.this, "menu_fav_remove"))) {
+                                    } else if ("menu_fav_add".equals(dKeyArr[which]) || "menu_fav_remove".equals(dKeyArr[which])) {
                                         // v7.89: refreshMarkSets reloads favSet from
                                         // prefs, so the ★ marks in these rows
                                         // update at once — the drawer bind only
@@ -8546,7 +8580,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         refreshMarkSets();
                                         if (adapter != null) adapter.notifyDataSetChanged();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, added89 ? "fav_added" : "fav_removed"), Toast.LENGTH_SHORT).show();
-                                    } else if (dOptArr[which].equals(Lang.t(RoomActivity.this, "menu_queue_remove"))) {
+                                    } else if ("menu_queue_remove".equals(dKeyArr[which])) {
                                         int qi = queueLineIndexForUrl(dt.url);
                                         if (qi < 0) {
                                             Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_changed"), Toast.LENGTH_SHORT).show();
@@ -8558,7 +8592,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         saveQueue(null, true);
                                         if (adapter != null) adapter.notifyDataSetChanged();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "removed_from_queue"), Toast.LENGTH_SHORT).show();
-                                    } else if (dOptArr[which].equals(Lang.t(RoomActivity.this, "menu_queue_add"))) {
+                                    } else if ("menu_queue_add".equals(dKeyArr[which])) {
                                         // v11.14: tap-time sounding re-check — the mirror of the v11.12
                                         // play-next leg in the else branch below, which this append
                                         // verb never got: the offer gate ran at dialog-build time
@@ -8580,7 +8614,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         saveQueue(java.util.Collections.singleton(dt.url), true);
                                         if (adapter != null) adapter.notifyDataSetChanged();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "added_to_queue"), Toast.LENGTH_SHORT).show();
-                                    } else if (dOptArr[which].equals(Lang.t(RoomActivity.this, "menu_queue_from_here"))) {
+                                    } else if ("menu_queue_from_here".equals(dKeyArr[which])) {
                                         // v13.04: queue this talk and every shown talk
                                         // below it, in drawer display order
                                         // (drawerTalkIndex resolves the full list and
@@ -8597,7 +8631,26 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         int added04 = 0;
                                         java.util.Set<String> keep04 = new java.util.HashSet<String>();
                                         int dispCount04 = drawerDisplayCount();
-                                        for (int dp04 = pos; dp04 < dispCount04; dp04++) {
+                                        // v13.15: anchor on the long-pressed talk, not the
+                                        // captured display position — the drawer filter
+                                        // can rebuild while the dialog sits open (favourite
+                                        // toggle, track end, download landing), shifting
+                                        // display positions under the captured pos, the
+                                        // Talks T1 defect (v13.13) in drawer form.
+                                        // drawerPosOfTalk resolves dt's CURRENT display
+                                        // position across search/filter/queue-only views.
+                                        int start04 = drawerPosOfTalk(talks.indexOf(dt));
+                                        if (start04 < 0) {
+                                            // Anchor filtered out of view: queue just
+                                            // the anchor itself, never a stale range.
+                                            if (dt != null && dt.url != null && dt.url.length() > 0
+                                                    && !isSoundingTalk(dt.url) && queueLineIndexForUrl(dt.url) < 0) {
+                                                queueUrls.add(dt.url);
+                                                keep04.add(dt.url);
+                                                added04++;
+                                            }
+                                        }
+                                        if (start04 >= 0) for (int dp04 = start04; dp04 < dispCount04; dp04++) {
                                             int ti04 = drawerTalkIndex(dp04);
                                             if (ti04 < 0 || ti04 >= talks.size()) continue;
                                             Talk t04 = talks.get(ti04);
