@@ -4523,6 +4523,17 @@ public class AudioService extends Service {
         // speed change made in Settings left the notification /
         // headset state showing the stale speed until then.
         updateSession();
+        // v13.45: the card too — updateSession() fixed the headset
+        // state in v1.72 but the plain card's speed suffix is built
+        // in showNotificationInner (6197) and the 15s tick only
+        // rebuilds the card while playing, so a speed change made
+        // while paused left the lock-screen card showing the old
+        // speed until the next play/pause tap. refreshNotification()
+        // is a no-op with no track, and the sleep intents already
+        // call it the same way. Every speed path funnels through
+        // setSpeed (ACTION_SPEED, Room/Downloaded syncLiveSettings,
+        // Settings syncSettingsFromPrefs), so one call covers all.
+        refreshNotification();
     }
 
     public void setSleepMinutes(int mins) {
@@ -5857,7 +5868,14 @@ public class AudioService extends Service {
                 if (Build.VERSION.SDK_INT >= 26) b = new Notification.Builder(this, chanId);
                 else b = new Notification.Builder(this);
                 String title = currentTitle != null ? currentTitle : Lang.t(this, "notif_default_title");
-                b.setSmallIcon(android.R.drawable.ic_media_play)
+                // v13.45: the fallback card used to show ▶ always —
+                // a playing talk's fallback card read as paused.
+                // Same active rule as the normal card (v1.78/v1.79):
+                // playing, or buffering-to-play, reads pause; only a
+                // held/paused talk reads play.
+                boolean fActive = playing || (isBuffering() && !holdPaused);
+                b.setSmallIcon(fActive ? android.R.drawable.ic_media_pause
+                        : android.R.drawable.ic_media_play)
                  .setOnlyAlertOnce(true)
                  .setContentTitle(title)
                  .setCategory(Notification.CATEGORY_TRANSPORT)
