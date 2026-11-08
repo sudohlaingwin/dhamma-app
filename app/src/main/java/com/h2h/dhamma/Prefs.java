@@ -233,7 +233,11 @@ public class Prefs {
             org.json.JSONArray arr = new org.json.JSONArray(
                     new String(baos.toByteArray(), "UTF-8"));
             for (int i = 0; i < arr.length(); i++) {
-                org.json.JSONObject o = arr.getJSONObject(i);
+                // v13.30 (Catalog F3): a bad row must not hide every
+                // name and alias after it — skip a non-object entry
+                // instead of aborting the whole map build.
+                org.json.JSONObject o;
+                try { o = arr.getJSONObject(i); } catch (Exception ignored) { continue; }
                 String name = o.optString("name", "");
                 String page = o.isNull("page_url") ? ""
                         : o.optString("page_url", "");

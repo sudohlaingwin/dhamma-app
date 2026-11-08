@@ -5567,7 +5567,11 @@ public class AudioService extends Service {
             while ((read = in.read(buf)) > 0) baos.write(buf, 0, read);
             org.json.JSONArray arr = new org.json.JSONArray(new String(baos.toByteArray(), "UTF-8"));
             for (int i = 0; i < arr.length(); i++) {
-                org.json.JSONObject o = arr.getJSONObject(i);
+                // v13.30 (Catalog F3): a bad row must not hide every
+                // sayadaw after it — skip a non-object entry instead
+                // of aborting the whole loop out of getJSONObject.
+                org.json.JSONObject o;
+                try { o = arr.getJSONObject(i); } catch (Exception ignored) { continue; }
                 if (!name.equals(o.optString("name", ""))) continue;
                 String group = o.optString("group", "");
                 String page = o.isNull("page_url") ? "" : o.optString("page_url", "");
@@ -5597,7 +5601,11 @@ public class AudioService extends Service {
                     org.json.JSONArray arr =
                             new org.json.JSONArray(new String(baos.toByteArray(), "UTF-8"));
                     for (int i = 0; i < arr.length(); i++) {
-                        org.json.JSONObject o = arr.getJSONObject(i);
+                        // v13.30 (Catalog F3): a bad row must not hide
+                        // every portrait after it — skip a non-object
+                        // entry instead of aborting the map build.
+                        org.json.JSONObject o;
+                        try { o = arr.getJSONObject(i); } catch (Exception ignored) { continue; }
                         String n = o.optString("name", "");
                         String p = o.isNull("photo_url") ? "" : o.optString("photo_url", "");
                         if (p.length() == 0 && !o.isNull("photo")) p = o.optString("photo", "");

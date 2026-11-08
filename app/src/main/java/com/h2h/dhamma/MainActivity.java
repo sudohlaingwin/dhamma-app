@@ -2541,7 +2541,11 @@ public class MainActivity extends Activity {
             String json = new String(baos.toByteArray(), "UTF-8");
             JSONArray arr = new JSONArray(json);
             for (int i = 0; i < arr.length(); i++) {
-                JSONObject o = arr.getJSONObject(i);
+                // v13.30 (Catalog F3): a bad row must not hide every
+                // sayadaw after it — skip a non-object entry instead
+                // of aborting the whole loop out of getJSONObject.
+                JSONObject o;
+                try { o = arr.getJSONObject(i); } catch (Exception ignored) { continue; }
                 String url = o.isNull("page_url") ? "" : o.optString("page_url", "");
                 String photo = "";
                 if (!o.isNull("photo_url")) photo = o.optString("photo_url", "");
