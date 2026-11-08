@@ -1080,7 +1080,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         // chooser never re-shows.
         openPicker = "clearData";
         android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
-                .setTitle("မှတ်တမ်း ရှင်းလင်းခြင်း")
+                .setTitle(Lang.t(this, "clear_data"))
                 .setItems(items, new android.content.DialogInterface.OnClickListener() {
                     @Override public void onClick(android.content.DialogInterface d, int which) {
                         if (which == 0) showClearFavsDialog();
@@ -2772,6 +2772,19 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         setLabelText(R.id.labelFont, "font_label");
         setLabelText(R.id.lblRepeat, "repeat");
         setLabelText(R.id.lblSleep, "sleep");
+        // v13.18: the five section headers + version/clear-data
+        // labels were the last hardcoded-Burmese chrome on this
+        // screen — in every other UI language they stayed Burmese
+        // while the rest of the screen followed the language tap.
+        // They now read from Lang like the other labels (refresh
+        // runs on create, on return and inside every choice dip).
+        setLabelText(R.id.secAppearance, "sec_appearance");
+        setLabelText(R.id.secPlayback, "sec_playback");
+        setLabelText(R.id.secNoti, "sec_noti");
+        setLabelText(R.id.secData, "sec_data");
+        setLabelText(R.id.secAbout, "sec_about");
+        setLabelText(R.id.lblClearData, "clear_data");
+        setLabelText(R.id.lblVersion, "version");
         if (fontValue != null) { fontValue.setText(f == 0 ? Lang.t(this, "font_small") : f == 1 ? Lang.t(this, "font_normal") : Lang.t(this, "font_large")); fontValue.setTextColor(muted); fontValue.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn); }
         if (langValue != null) { langValue.setText(Lang.NAMES[Lang.index(this)]); langValue.setTextColor(muted); langValue.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn); }
         // v11.93: the two "›" chevrons had no id, so refresh() never
