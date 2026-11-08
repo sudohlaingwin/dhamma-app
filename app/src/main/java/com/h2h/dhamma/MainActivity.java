@@ -823,14 +823,17 @@ public class MainActivity extends Activity {
         // sounding helper): liveSession alone stays true when
         // a bound Room/Library activity in the back stack
         // keeps a stopped service alive, with stale prefs.
-        // This helper feeds the two ROUTING call sites (glide-
-        // to-sounding, card-tap-to-Room), so one gate here
-        // keeps them both honest at once. The three VISUAL
-        // sites (nav glow, card pulse, grid ▶ mark) use the
-        // visual twin below instead — a library session must
-        // still show on the grid, but must never route a card
-        // tap into the Room. Paused/buffering/ended untouched
-        // (play() sets the mirror synchronously).
+        // v13.12: this helper feeds ONE routing site — the
+        // card-tap-to-Room branch below; the glides inline
+        // their own liveSession/liveHasTrack/lastKind checks
+        // and never call it (the old two-call-sites claim
+        // was stale). The three VISUAL sites (nav glow,
+        // card pulse, grid ▶ mark) use the visual twin below
+        // instead — a library session must still show on the
+        // grid, but must never route a card tap into the Room;
+        // its card tap routes to the library instead, via the
+        // visual twin (see the card tap). Paused/buffering/
+        // ended untouched (play() sets the mirror synchronously).
         if (!AudioService.liveSession || !AudioService.liveHasTrack) return null;
         try {
             android.content.SharedPreferences sp =
@@ -878,7 +881,7 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) { return null; }
     }
 
-    private void startMainPulseOn(android.view.View v, String name) {
+    private void startMainPulseOn(android.view.View v) {
         mainPulseView = v;
         mainPulse = android.animation.ObjectAnimator.ofFloat(v, "alpha", 1f, 0.55f);
         mainPulse.setDuration(900);
@@ -910,7 +913,7 @@ public class MainActivity extends Activity {
         if (sounding != null && sounding.equals(name)) {
             if (mainPulseView != nameView) {
                 stopMainPulse();
-                startMainPulseOn(nameView, name);
+                startMainPulseOn(nameView);
             }
         } else if (mainPulseView == nameView) {
             stopMainPulse();
@@ -948,7 +951,7 @@ public class MainActivity extends Activity {
         if (found == null) { stopMainPulse(); return; }
         if (mainPulseView != found) {
             stopMainPulse();
-            startMainPulseOn(found, sounding);
+            startMainPulseOn(found);
         }
     }
 
@@ -1878,13 +1881,22 @@ public class MainActivity extends Activity {
             // The sub view consumes the tap, so it no longer opens
             // the player — the title line still does. Its long-press
             // forwards to the strip, so stop/dismiss is unchanged.
-            // Resume strips show no clock (they return before the
-            // live branch), so a flip there is invisible until the
-            // next live session, which then shows the chosen mode.
+            // v13.12 (M7): resume strips show no clock (they
+            // return before the live branch), so the flip is a
+            // no-op there — the sub line is only a clock control
+            // while a live session is showing.
             android.widget.TextView stripSub = findViewById(R.id.nowStripSub);
             if (stripSub != null) {
                 stripSub.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) {
+                        // v13.12 (M7, sim1324): the flip is a live-mode
+                        // affordance only — a resume strip shows no
+                        // clock, so a flip there was invisible at tap
+                        // time and silently re-timed the next live
+                        // session. In resume mode (same live recheck
+                        // as the dismiss branch, v12.59) the tap is a
+                        // deliberate no-op instead of a silent mutation.
+                        if (resumeStripMode || !AudioService.liveSession || !AudioService.liveHasTrack) return;
                         Prefs.setStripClockRemaining(MainActivity.this, !Prefs.stripClockRemaining(MainActivity.this));
                         Fx.tap(MainActivity.this);
                         syncNowStrip();
@@ -1977,7 +1989,7 @@ public class MainActivity extends Activity {
                         if (dismissUrl.length() > 0) Prefs.talkPosRemoveBoth(MainActivity.this, dismissUrl);
                         Fx.tap(MainActivity.this);
                         Fx.morph(v);
-                        Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "hist_cleared"), Toast.LENGTH_SHORT).show();
+                        Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "resume_cleared"), Toast.LENGTH_SHORT).show();
                         syncNowStrip();
                         return true;
                     }
@@ -2220,6 +2232,34 @@ public class MainActivity extends Activity {
                     Fx.tap(MainActivity.this);
                     Fx.go(MainActivity.this, i);
                     return;
+                }
+                // v13.12 (M5, sim1324): a library session sounds too —
+                // the card breathes and shows ▶ for it, so tapping it
+                // must return to the library, not the Talks chooser.
+                // The visual twin is the same name the grid's ▶ mark
+                // and pulse use, so the tap can never disagree with
+                // what the card shows; the Room branch above already
+                // returned for a room session. Same jumpPath glide as
+                // the strip tap — a live session glides only, never
+                // auto-plays. A file gone from disk falls through to
+                // the chooser below, which is still useful.
+                android.content.SharedPreferences spLib =
+                        getSharedPreferences("dhamma", MODE_PRIVATE);
+                if ("lib".equals(spLib.getString("lastKind", ""))
+                        && AudioService.liveSession && AudioService.liveHasTrack
+                        && !AudioService.liveEnded) {
+                    String soundingVisual = soundingSayadawNameVisual();
+                    if (soundingVisual != null && soundingVisual.equals(s.name)) {
+                        String lp = spLib.getString("lastLibPath", "");
+                        if (lp.length() > 0 && new java.io.File(lp).isFile()) {
+                            Fx.morph(v);
+                            Fx.tap(MainActivity.this);
+                            Intent li = new Intent(MainActivity.this, DownloadedActivity.class);
+                            li.putExtra("jumpPath", lp);
+                            Fx.go(MainActivity.this, li);
+                            return;
+                        }
+                    }
                 }
                 Intent i = new Intent(MainActivity.this, TalksActivity.class);
                 i.putExtra("name", s.name);

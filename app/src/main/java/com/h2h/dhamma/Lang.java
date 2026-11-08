@@ -239,6 +239,7 @@ public class Lang {
         // checked (single variant across all sites). The Talks
         // empty-view "ဒေါင်းလုဒ်လုပ်ပြီးသား တရား မရှိသေးပါ" is a
         // different sentence, handled in v9.04 below.
+        if ("resume_cleared".equals(key)) return pick(i, new String[]{"ဆက်နားထောင်မယ့် နေရာ ရှင်းပြီးပါပြီ", "Resume spot cleared", "ล้างจุดฟังต่อแล้ว", "已清除续听位置", "Đã xóa điểm nghe tiếp", "ລຶບຈຸດຟັງຕໍ່ແລ້ວ", "បានលុបចំណុចបន្តស្តាប់", "Titik sambung dipadam", "再開位置を消去しました", "이어듣기 위치를 지웠습니다", "फिर से सुनने का स्थान साफ़ हो गया", "Posición de reanudación borrada"});
         if ("resume_from".equals(key)) return pick(i, new String[]{" မှ ဆက်နားထောင်ရန်", " — resume", " — ฟังต่อ", " — 继续收听", " — nghe tiếp", " — ຟັງຕໍ່", " — ស្តាប់បន្ត", " — sambung dengar", " — 続きから再生", " — 이어듣기", " — सुनना जारी रखें", " — continuar"});
         if ("downloaded_talk".equals(key)) return pick(i, new String[]{"⬇ ဒေါင်းလုဒ်လုပ်ပြီးသား တရား", "⬇ Downloaded talk", "⬇ ธรรมะที่ดาวน์โหลดแล้ว", "⬇ 已下载讲法", "⬇ Bài giảng đã tải xuống", "⬇ ທຳມະທີ່ດາວໂຫຼດແລ້ວ", "⬇ ធម៌ដែលបានទាញយក", "⬇ Ceramah yang dimuat turun", "⬇ ダウンロード済みの法話", "⬇ 다운로드한 법문", "⬇ डाउनलोड किया गया प्रवचन", "⬇ Charla descargada"});
         // v9.04: the Talks empty-view quartet (single ternary site) plus
