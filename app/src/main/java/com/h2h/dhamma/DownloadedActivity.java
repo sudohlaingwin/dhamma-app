@@ -4316,11 +4316,19 @@ public class DownloadedActivity extends Activity {
         if (Prefs.keepScreenOn(this))
             getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         applyTheme();
+        // v13.37: Downloaded D6 — every view wired in onCreate is
+        // now null-guarded (same M9/F5 class as Main v13.32,
+        // Settings v13.34, Talks v13.36): a renamed or missing id
+        // leaves its button unwired instead of exiting the
+        // library at once on open. All ids exist in
+        // activity_downloaded.xml today, so no live behaviour
+        // changes; applyTheme / wireDlStrip / syncDlStrip were
+        // already guarded and are untouched.
         sortBtn = findViewById(R.id.btnDlSort);
         // v1.47: the sort choice survives reopening the library.
         dlSortMode = Prefs.dlSortMode(this);
-        sortBtn.setText(dlSortLabel());
-        sortBtn.setOnClickListener(new View.OnClickListener() {
+        if (sortBtn != null) sortBtn.setText(dlSortLabel());
+        if (sortBtn != null) sortBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 // v2.41: header click beat — sort always flips, so
                 // it always morphs (see the other header buttons).
@@ -4393,7 +4401,7 @@ public class DownloadedActivity extends Activity {
         // Same dip + label + reload + current-track glide as the
         // tap, only when a change actually happens; an already-
         // default list just blips. No new view, no new button.
-        sortBtn.setOnLongClickListener(new View.OnLongClickListener() {
+        if (sortBtn != null) sortBtn.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 if (dlSortMode == 0) { Fx.tap(DownloadedActivity.this); return true; }
                 Fx.morph(v);
@@ -4425,7 +4433,8 @@ public class DownloadedActivity extends Activity {
         // (🔀 prefix, see applyShuffleMark) — no new view, and the
         // button-text refresh sites only set size/colour, never
         // text, so the mark survives a refresh.
-        findViewById(R.id.btnDlRandom).setOnClickListener(new View.OnClickListener() {
+        android.view.View randomBtn = findViewById(R.id.btnDlRandom);
+        if (randomBtn != null) randomBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 Entry rand0 = randomDisplayEntry();
                 if (rand0 == null) {
@@ -4482,7 +4491,7 @@ public class DownloadedActivity extends Activity {
         // (dlShuffle, session-only) — auto-advance then picks a
         // random shown file instead of the next one in order.
         // Tap still plays one random file at once, mode untouched.
-        findViewById(R.id.btnDlRandom).setOnLongClickListener(new View.OnLongClickListener() {
+        if (randomBtn != null) randomBtn.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 dlShuffle = !dlShuffle;
                 applyShuffleMark();
@@ -4493,7 +4502,8 @@ public class DownloadedActivity extends Activity {
         });
         // v1.42: play the whole shown list in order from the first file
         // (offline continuous play, v1.40, advances to the next one).
-        findViewById(R.id.btnDlPlayAll).setOnClickListener(new View.OnClickListener() {
+        android.view.View playAllBtn = findViewById(R.id.btnDlPlayAll);
+        if (playAllBtn != null) playAllBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 Entry first0 = firstDisplayEntry();
                 if (first0 == null) {
@@ -4546,7 +4556,7 @@ public class DownloadedActivity extends Activity {
         // first file picked at random; auto-advance then keeps
         // picking at random until the mode is toggled off. Tap
         // still plays the shown list in order from the first file.
-        findViewById(R.id.btnDlPlayAll).setOnLongClickListener(new View.OnLongClickListener() {
+        if (playAllBtn != null) playAllBtn.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 Entry shuf0 = randomDisplayEntry();
                 if (shuf0 == null) {
@@ -4591,7 +4601,8 @@ public class DownloadedActivity extends Activity {
         });
         // v1.30: delete the whole offline library at once (confirm
         // first; pauses playback if the playing file is being deleted)
-        findViewById(R.id.btnDlDeleteAll).setOnClickListener(new View.OnClickListener() {
+        android.view.View deleteAllBtn = findViewById(R.id.btnDlDeleteAll);
+        if (deleteAllBtn != null) deleteAllBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 if (entries.isEmpty()) {
                     Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "nothing_to_delete"), Toast.LENGTH_SHORT).show();
@@ -4817,13 +4828,13 @@ public class DownloadedActivity extends Activity {
         // v1.21: search the offline library by file title
         final android.widget.EditText dlSearch = findViewById(R.id.searchDl);
         dlSearchField = dlSearch;
-        dlSearch.setHint(Lang.t(DownloadedActivity.this, "dl_search_hint"));
+        if (dlSearch != null) dlSearch.setHint(Lang.t(DownloadedActivity.this, "dl_search_hint"));
         // v4.20: keyboard Search key dismisses the keyboard — same
         // missing editor action as the Main search: the Search key
         // did nothing, and the live filter already ran per keystroke.
-        dlSearch.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
-        dlSearch.setSingleLine(true);
-        dlSearch.setOnEditorActionListener(new android.widget.TextView.OnEditorActionListener() {
+        if (dlSearch != null) dlSearch.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        if (dlSearch != null) dlSearch.setSingleLine(true);
+        if (dlSearch != null) dlSearch.setOnEditorActionListener(new android.widget.TextView.OnEditorActionListener() {
             @Override public boolean onEditorAction(android.widget.TextView v, int actionId, android.view.KeyEvent event) {
                 if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
                         || actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
@@ -4867,7 +4878,7 @@ public class DownloadedActivity extends Activity {
             // the query while the list stayed unfiltered. The filter
             // query is restored here, in the watcher's exact
             // normalization; the first loadList filters with it.
-            if (savedQ.length() > 0) dlSearch.setText(savedQ);
+            if (savedQ.length() > 0 && dlSearch != null) dlSearch.setText(savedQ);
             // v1.55: the scroll restore is consumed by the first
             // loadList() after creation (see loadList), so a later
             // sort/delete never jumps back to the old position.
@@ -4886,13 +4897,14 @@ public class DownloadedActivity extends Activity {
             });
         }
         // v1.38: one-tap clear for the library search
-        findViewById(R.id.btnClearDlSearch).setOnClickListener(new View.OnClickListener() {
+        android.view.View clearBtn = findViewById(R.id.btnClearDlSearch);
+        if (clearBtn != null) clearBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 // v2.41: header click beat — morphs only when there
                 // is actually a search to clear, so tapping an
                 // already-empty search never reads as a change.
-                if (dlSearch.getText().length() > 0) Fx.morph(v);
-                dlSearch.setText("");
+                if (dlSearch != null && dlSearch.getText().length() > 0) Fx.morph(v);
+                if (dlSearch != null) dlSearch.setText("");
             }
         });
         // v4.19: long-press the ✕ resets the whole library view —
@@ -4903,7 +4915,7 @@ public class DownloadedActivity extends Activity {
         // query cleared AND sort back to latest-download, via the
         // sort long-press's own reset steps (v4.14). An already
         // default view just blips.
-        findViewById(R.id.btnClearDlSearch).setOnLongClickListener(new View.OnLongClickListener() {
+        if (clearBtn != null) clearBtn.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 Fx.tap(DownloadedActivity.this);
                 Fx.morph(v);
@@ -5081,7 +5093,7 @@ public class DownloadedActivity extends Activity {
             Fx.entrance(findViewById(R.id.dlHeader), findViewById(R.id.dlSubtitle),
                     findViewById(R.id.dlBtnRow), findViewById(R.id.btnDlPlayAll),
                     findViewById(R.id.btnDlDeleteAll), findViewById(R.id.dlSearchRow));
-        dlSearch.addTextChangedListener(new android.text.TextWatcher() {
+        if (dlSearch != null) dlSearch.addTextChangedListener(new android.text.TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
             @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
             @Override public void afterTextChanged(android.text.Editable s) {
@@ -5103,9 +5115,9 @@ public class DownloadedActivity extends Activity {
         });
         adapter = new DlAdapter();
         dlListView = findViewById(R.id.list);
-        dlListView.setAdapter(adapter);
+        if (dlListView != null) dlListView.setAdapter(adapter);
         wireDlStrip(); // v4.40: real mini-player on the library
-        dlListView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+        if (dlListView != null) dlListView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
                 // v4.22: a row tap plays in place (no navigation
                 // to auto-hide the keyboard), so a search keyboard
@@ -5271,7 +5283,7 @@ public class DownloadedActivity extends Activity {
         // paused, mirroring the Room Play long-press (v4.13).
         // Before the service binds, the restart queues like a tap
         // (pendingDlRestart) instead of dropping.
-        dlListView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+        if (dlListView != null) dlListView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
             @Override public boolean onItemLongClick(AdapterView<?> p, View v, int pos, long id) {
                 // v4.20: the restart long-press was morph-only, like
                 // the row tap above — it now blips too, so restarting
