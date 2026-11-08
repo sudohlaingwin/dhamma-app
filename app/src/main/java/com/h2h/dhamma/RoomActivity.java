@@ -6815,8 +6815,21 @@ if (snd68 >= 0) currentIndex = snd68;
             }
         });
         // v1.42: retry appears only when the talk list fails to load.
+        // v13.39: RoomActivity onCreate wiring (M9/F5 class, same as
+        // Main v13.32, Settings v13.34, Talks v13.36, Downloaded
+        // v13.37, DlAdapter v13.38) — every view wired in onCreate
+        // is now null-guarded: a renamed or missing id leaves its
+        // control unwired instead of exiting the Room on open. All
+        // ids exist in activity_room.xml today, so no live behaviour
+        // changes; the already-guarded sites (bottomPanel, roomView,
+        // sleepText block, sdHeader/sdPhoto, plTitle, plClose,
+        // plCloseBottom, roomShuffleBtn, rotation panel/tgl,
+        // drawerSearchBox) and the null-safe Fx.entrance / Fx.fadeIn
+        // calls are untouched. Fx.press is NOT null-safe, so its
+        // four calls are guarded too; the onNewIntent sayadaw
+        // twin (9739) is guarded in the same patch.
         btnRetry = findViewById(R.id.roomRetry);
-        btnRetry.setOnClickListener(new View.OnClickListener() {
+        if (btnRetry != null) btnRetry.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 // v2.78: no direct GONE here — loadTalks fades the
                 // button out (hideRetry), so a retry tap lands softly
@@ -6903,7 +6916,8 @@ if (snd68 >= 0) currentIndex = snd68;
                     savedInstanceState.getFloat("roomLitBlend", 0f),
                     savedInstanceState.getLong("roomDriftMs", 0L));
         }
-        ((TextView) findViewById(R.id.roomSayadaw)).setText(
+        android.widget.TextView sdName = findViewById(R.id.roomSayadaw);
+        if (sdName != null) sdName.setText(
                 (sayadawName == null ? "" : sayadawName) + (sayadawGroup == null ? "" : " · " + sayadawGroup));
         refreshSayadawPhoto(); // v5.38: portrait beside the name
         nowPlaying = findViewById(R.id.roomNowPlaying);
@@ -7014,8 +7028,8 @@ if (snd68 >= 0) currentIndex = snd68;
                 } catch (Exception ignored) {}
             }
         };
-        elapsedText.setOnClickListener(clockToggle);
-        totalText.setOnClickListener(clockToggle);
+        if (elapsedText != null) elapsedText.setOnClickListener(clockToggle);
+        if (totalText != null) totalText.setOnClickListener(clockToggle);
         // v4.16: long-press either clock resets it to elapsed
         // (tap toggles elapsed/remaining; a listener who flipped
         // to remaining gets one gesture back instead of a
@@ -7035,8 +7049,8 @@ if (snd68 >= 0) currentIndex = snd68;
                 return true;
             }
         };
-        elapsedText.setOnLongClickListener(clockReset);
-        totalText.setOnLongClickListener(clockReset);
+        if (elapsedText != null) elapsedText.setOnLongClickListener(clockReset);
+        if (totalText != null) totalText.setOnLongClickListener(clockReset);
         // v4.14: tap the sayadaw header to return to that sayadaw's
         // talk list (the chooser) — the Room previously had no way
         // back except system Back, which drops the whole Room. No
@@ -7093,7 +7107,7 @@ if (snd68 >= 0) currentIndex = snd68;
         });
         applyFontSizes();
         seekBar = findViewById(R.id.roomSeek);
-        seekBar.setOnWaveSeekListener(new WaveSeekView.OnWaveSeekListener() {
+        if (seekBar != null) seekBar.setOnWaveSeekListener(new WaveSeekView.OnWaveSeekListener() {
             @Override public void onProgressChanged(WaveSeekView s, int p, boolean fromUser) {
                 if (fromUser && service != null) {
                     elapsedText.setText(formatTime(p));
@@ -7422,7 +7436,7 @@ if (snd68 >= 0) currentIndex = snd68;
         applyLangLabels();
 
         playGlow = findViewById(R.id.playGlow);
-        btnPlayPause.setOnClickListener(new View.OnClickListener() {
+        if (btnPlayPause != null) btnPlayPause.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 // v1.48: before the service binds, this used to do
                 // nothing at all — queue the shown talk (or the first) instead.
@@ -7532,7 +7546,8 @@ if (snd62b >= 0) currentIndex = snd62b;
                 return true;
             }
         });
-        findViewById(R.id.roomNext).setOnClickListener(new View.OnClickListener() {
+        android.view.View nextBtn = findViewById(R.id.roomNext);
+        if (nextBtn != null) nextBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 // v1.39: Next is a manual tap, so at the last talk it wraps
                 // to the first instead of dead-ending (auto-advance at the
@@ -7572,13 +7587,13 @@ if (snd61 >= 0) currentIndex = snd61;
                 }
             }
         });
-        Fx.press(findViewById(R.id.roomNext)); // v2.08: press feedback on Next
+        if (nextBtn != null) Fx.press(nextBtn); // v2.08: press feedback on Next
         // v4.12: long-press Next previews the queue — the talk a tap
         // would jump to (wrapping at the last talk, exactly like the
         // tap itself), as a toast. No new view, no new control; the
         // control row stays Forward | Play | Next, and a long-press
         // never advances anything, so it cannot mis-fire a skip.
-        findViewById(R.id.roomNext).setOnLongClickListener(new android.view.View.OnLongClickListener() {
+        if (nextBtn != null) nextBtn.setOnLongClickListener(new android.view.View.OnLongClickListener() {
             @Override public boolean onLongClick(android.view.View v) {
                 Fx.tap(RoomActivity.this);
                 if (talks.isEmpty() || currentIndex < 0) {
@@ -7663,8 +7678,8 @@ if (snd67n >= 0) currentIndex = snd67n;
         });
         roomList = findViewById(R.id.roomList);
         adapter = new TalkAdapter();
-        roomList.setAdapter(adapter);
-        roomList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+        if (roomList != null) roomList.setAdapter(adapter);
+        if (roomList != null) roomList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
                 // v7.12: foreign queue row tap — a foreign row has
                 // no talk index, so drawerTalkIndex below returns
@@ -8781,7 +8796,8 @@ if (snd67n >= 0) currentIndex = snd67n;
             }
         });
         wireDrawerSearch(); // v4.98: title search in the Play List drawer
-        findViewById(R.id.roomPlayList).setOnClickListener(new View.OnClickListener() {
+        android.view.View plToggleBtn = findViewById(R.id.roomPlayList);
+        if (plToggleBtn != null) plToggleBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 Fx.tap(RoomActivity.this);
                 Fx.morph(v);
@@ -8801,7 +8817,7 @@ if (snd67n >= 0) currentIndex = snd67n;
         // scrolls off with a long queue, while the toggle stays
         // visible, so the playing talk stays one gesture away
         // from anywhere in the drawer. No playing talk toasts.
-        findViewById(R.id.roomPlayList).setOnLongClickListener(new View.OnLongClickListener() {
+        if (plToggleBtn != null) plToggleBtn.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 Fx.tap(RoomActivity.this);
                 // v7.66: scan-adopt before scrolling — the same
@@ -9056,7 +9072,7 @@ if (snd65s >= 0) currentIndex = snd65s;
                 }
             });
         }
-        Fx.press(findViewById(R.id.roomPlayList)); // v2.48: press feedback on Play List
+        if (plToggleBtn != null) Fx.press(plToggleBtn); // v2.48: press feedback on Play List
         // v3.72: drawer close button at the drawer's top-right corner
         // (user order) — closes only, unlike the toggle above.
         android.view.View plClose = findViewById(R.id.roomPlayListClose);
@@ -9094,7 +9110,8 @@ if (snd65s >= 0) currentIndex = snd65s;
         // (restart-from-top past 3s, else previous talk with wrap),
         // so button, swipe and headset all agree. Morph only, no
         // Morph only, no nudge.
-        findViewById(R.id.roomPrev).setOnClickListener(new View.OnClickListener() {
+        android.view.View prevBtn = findViewById(R.id.roomPrev);
+        if (prevBtn != null) prevBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 if (talks.isEmpty()) {
                     Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "no_talk_yet"), Toast.LENGTH_SHORT).show();
@@ -9110,12 +9127,12 @@ if (snd65s >= 0) currentIndex = snd65s;
                 }
             }
         });
-        Fx.press(findViewById(R.id.roomPrev));
+        if (prevBtn != null) Fx.press(prevBtn);
         // v5.15: long-press Previous previews the talk a tap would
         // land on (restart of the current talk past 3s, else the
         // previous talk with wrap), mirroring Next's preview; a
         // long-press never moves anything.
-        findViewById(R.id.roomPrev).setOnLongClickListener(new android.view.View.OnLongClickListener() {
+        if (prevBtn != null) prevBtn.setOnLongClickListener(new android.view.View.OnLongClickListener() {
             @Override public boolean onLongClick(android.view.View v) {
                 Fx.tap(RoomActivity.this);
                 if (talks.isEmpty() || currentIndex < 0) {
@@ -9221,15 +9238,16 @@ if (snd67q >= 0) currentIndex = snd67q;
         // No poll refresh: the countdown text in this same row
         // already shows the armed state, and the button's own
         // state needs none. Morph only, like Previous.
-        findViewById(R.id.roomSleepBtn).setOnClickListener(new View.OnClickListener() {
+        android.view.View sleepBtn = findViewById(R.id.roomSleepBtn);
+        if (sleepBtn != null) sleepBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 Fx.tap(RoomActivity.this);
                 Fx.morph(v);
                 Fx.stripSleepPick(RoomActivity.this);
             }
         });
-        Fx.press(findViewById(R.id.roomSleepBtn));
-        findViewById(R.id.roomSleepBtn).setOnLongClickListener(new android.view.View.OnLongClickListener() {
+        if (sleepBtn != null) Fx.press(sleepBtn);
+        if (sleepBtn != null) sleepBtn.setOnLongClickListener(new android.view.View.OnLongClickListener() {
             @Override public boolean onLongClick(android.view.View v) {
                 Fx.tap(RoomActivity.this);
                 Fx.morph(v);
@@ -9395,8 +9413,8 @@ if (snd67q >= 0) currentIndex = snd67q;
                     if (drawerSearchBox != null) drawerSearchBox.setText(ds);
                 }
                 adapter.notifyDataSetChanged();
-                btnRetry.setVisibility(View.GONE);
-                nowPlaying.setText(Lang.t(RoomActivity.this, "room_count_prefix") + talks.size() + Lang.t(RoomActivity.this, "room_count_suffix"));
+                if (btnRetry != null) btnRetry.setVisibility(View.GONE);
+                if (nowPlaying != null) nowPlaying.setText(Lang.t(RoomActivity.this, "room_count_prefix") + talks.size() + Lang.t(RoomActivity.this, "room_count_suffix"));
                 // the auto talk was already consumed before rotation (a
                 // restored list only exists after a completed load), so
                 // never let the recreated activity replay it from the
@@ -9736,7 +9754,8 @@ if (snd67q >= 0) currentIndex = snd67q;
             drawerFilterMode = 0;
             drawerQueueOnly = false;
             if (adapter != null) adapter.notifyDataSetChanged();
-            ((TextView) findViewById(R.id.roomSayadaw)).setText(
+            android.widget.TextView sdNameSwitch = findViewById(R.id.roomSayadaw);
+            if (sdNameSwitch != null) sdNameSwitch.setText(
                     (sayadawName == null ? "" : sayadawName)
                             + (sayadawGroup == null ? "" : " · " + sayadawGroup));
             refreshSayadawPhoto(); // v5.38: portrait follows a sayadaw switch
