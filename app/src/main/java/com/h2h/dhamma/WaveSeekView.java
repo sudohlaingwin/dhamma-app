@@ -641,13 +641,22 @@ public class WaveSeekView extends View {
         }
     }
 
-    private void scrubTo(float x) {
+    // v13.31 (W10): ms-direct commit — the TalkBack path steps in ms,
+    // so it commits in ms too instead of round-tripping through pixel
+    // space, where a pre-layout width of 0 turned the target into NaN
+    // and the seek landed at 0:00.
+    private void scrubToMs(int ms) {
         if (max <= 0) return;
-        float frac = Math.max(0f, Math.min(1f, x / getWidth()));
-        int p = Math.round(frac * max);
+        int p = Math.max(0, Math.min(max, ms));
         progress = p;
         invalidate();
         if (listener != null) listener.onProgressChanged(this, p, true);
+    }
+
+    private void scrubTo(float x) {
+        if (max <= 0 || getWidth() <= 0) return;
+        float frac = Math.max(0f, Math.min(1f, x / getWidth()));
+        scrubToMs(Math.round(frac * max));
     }
 
     // v11.91: TalkBack support — the view extends plain View, so
@@ -679,7 +688,11 @@ public class WaveSeekView extends View {
             int step = Math.max(10000, max / 20);
             int target = action == fwd ? Math.min(max, progress + step) : Math.max(0, progress - step);
             if (listener != null) listener.onStartTrackingTouch(this);
-            scrubTo((float) target / max * getWidth());
+            // v13.31 (W10): commit the step target in ms — the old
+            // scrubTo(target / max * getWidth()) divided by a
+            // pre-layout width of 0 (0/0 -> NaN -> round 0), so a
+            // TalkBack scroll before first layout sought to 0:00.
+            scrubToMs(target);
             if (listener != null) listener.onStopTrackingTouch(this);
             return true;
         }
