@@ -1701,7 +1701,10 @@ public class Prefs {
 
     // The calendar day before the given one, or null for an
     // invalid input. Manual month math (no Calendar) so the sim
-    // mirrors it exactly.
+    // mirrors it exactly. v13.51: Locale.US — the bare %02d
+    // followed the phone language, so on a Burmese phone the key
+    // came back in Myanmar digits and never matched the ASCII
+    // store, freezing the History day-streak at 1.
     static String statsPrevDayPure(String day) {
         if (!statsDayValidPure(day)) return null;
         int y = Integer.parseInt(day.substring(0, 4));
@@ -1713,7 +1716,7 @@ public class Prefs {
             if (m < 1) { m = 12; y--; }
             d = statsDaysInMonthPure(y, m);
         }
-        return String.format("%04d-%02d-%02d",
+        return String.format(java.util.Locale.US, "%04d-%02d-%02d",
                 Integer.valueOf(y), Integer.valueOf(m), Integer.valueOf(d));
     }
 

@@ -711,12 +711,14 @@ public class AudioService extends Service {
     public static volatile long liveSleepRemainingMs = 0;
     // v4.72: M:SS / H:MM:SS clock for that countdown — the same
     // shape Room.formatTime draws for its own sleep line.
+    // v13.51: Locale.US on the %02d calls — same Burmese-phone
+    // mixed-digit defect as Fx.fmtTime.
     public static String sleepClock(long ms) {
         int total = (int) Math.max(0, ms / 1000);
         if (total >= 3600)
-            return (total / 3600) + ":" + String.format("%02d", (total % 3600) / 60)
-                    + ":" + String.format("%02d", total % 60);
-        return (total / 60) + ":" + String.format("%02d", total % 60);
+            return (total / 3600) + ":" + String.format(java.util.Locale.US, "%02d", (total % 3600) / 60)
+                    + ":" + String.format(java.util.Locale.US, "%02d", total % 60);
+        return (total / 60) + ":" + String.format(java.util.Locale.US, "%02d", total % 60);
     }
     private void syncLiveSleepRemaining() {
         if (sleepEndMs != 0) {

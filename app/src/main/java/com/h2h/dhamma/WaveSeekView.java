@@ -487,12 +487,14 @@ public class WaveSeekView extends View {
 
     // v4.13: scrub-time formatter for the drag readout (same clock
     // shape as the Room's formatTime: m:ss, h:mm:ss past an hour).
+    // v13.51: Locale.US on the %02d calls — same Burmese-phone
+    // mixed-digit defect as Fx.fmtTime.
     private static String fmtDragTime(int ms) {
         int total = Math.max(0, ms / 1000);
         if (total >= 3600)
-            return (total / 3600) + ":" + String.format("%02d", (total % 3600) / 60)
-                    + ":" + String.format("%02d", total % 60);
-        return (total / 60) + ":" + String.format("%02d", total % 60);
+            return (total / 3600) + ":" + String.format(java.util.Locale.US, "%02d", (total % 3600) / 60)
+                    + ":" + String.format(java.util.Locale.US, "%02d", total % 60);
+        return (total / 60) + ":" + String.format(java.util.Locale.US, "%02d", total % 60);
     }
 
     // v4.06: percent of duration buffered (0-100, streams only).

@@ -6142,12 +6142,14 @@ int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
 
     // v1.47: hour-long talks used to show "65:23" — over an hour now
     // reads "1:05:23" like a clock, so a long talk's length is clear.
+    // v13.51: Locale.US on the %02d calls — same Burmese-phone
+    // mixed-digit defect as Fx.fmtTime.
     private static String formatTime(int ms) {
         int total = Math.max(0, ms / 1000);
         if (total >= 3600)
-            return (total / 3600) + ":" + String.format("%02d", (total % 3600) / 60)
-                    + ":" + String.format("%02d", total % 60);
-        return (total / 60) + ":" + String.format("%02d", total % 60);
+            return (total / 3600) + ":" + String.format(java.util.Locale.US, "%02d", (total % 3600) / 60)
+                    + ":" + String.format(java.util.Locale.US, "%02d", total % 60);
+        return (total / 60) + ":" + String.format(java.util.Locale.US, "%02d", total % 60);
     }
 
     // v1.51: rotating the phone used to re-randomise the shrine photo

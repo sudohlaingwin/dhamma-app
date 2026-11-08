@@ -2265,12 +2265,14 @@ public class DownloadedActivity extends Activity {
     private String dlEndedHandledFor = null;
     // v3.93: library playing-row clock — same H:MM:SS shape as the
     // Room's formatTime (v1.47), local so this file needs no import.
+    // v13.51: Locale.US on the %02d calls (fully qualified, still
+    // no import) — same Burmese-phone mixed-digit defect as Fx.fmtTime.
     private static String fmtDlTime(int ms) {
         int total = Math.max(0, ms / 1000);
         if (total >= 3600)
-            return (total / 3600) + ":" + String.format("%02d", (total % 3600) / 60)
-                    + ":" + String.format("%02d", total % 60);
-        return (total / 60) + ":" + String.format("%02d", total % 60);
+            return (total / 3600) + ":" + String.format(java.util.Locale.US, "%02d", (total % 3600) / 60)
+                    + ":" + String.format(java.util.Locale.US, "%02d", total % 60);
+        return (total / 60) + ":" + String.format(java.util.Locale.US, "%02d", total % 60);
     }
 
     private boolean dlResumeStripMode = false;

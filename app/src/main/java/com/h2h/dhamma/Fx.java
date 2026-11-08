@@ -964,7 +964,10 @@ public class Fx {
     public static String stripClockSuffix(int posMs, int durMs, boolean remaining) {
         if (durMs <= 0 || posMs < 0) return "";
         if (remaining) return " \u00b7 \u2212" + stripFmtTime(Math.max(0, durMs - posMs));
-        return stripTimeSuffix(posMs, durMs);
+        // v13.51: clamp the elapsed position to the duration — no
+        // live writer can overshoot today, but a future one must
+        // never show "65:01 / 65:00" for a tick.
+        return stripTimeSuffix(Math.min(posMs, durMs), durMs);
     }
 
     // v7.96: strip clock follows the drag preview -- v7.93 froze the
@@ -993,12 +996,17 @@ public class Fx {
     // v5.34: shared mm:ss / H:MM:SS formatter — the strips kept it
     // private, but the Talks rows and Room drawer rows now show a
     // per-talk resume time too, and they must read identically.
+    // v13.51: Locale.US on every %02d — the bare format followed
+    // the phone language, so on a Burmese phone the minutes and
+    // seconds rendered as Myanmar digits while the hour stayed
+    // Latin, and the strip clock disagreed with the notification
+    // card for the same talk.
     public static String fmtTime(int ms) {
         int total = Math.max(0, ms / 1000);
         if (total >= 3600)
-            return (total / 3600) + ":" + String.format("%02d", (total % 3600) / 60)
-                    + ":" + String.format("%02d", total % 60);
-        return (total / 60) + ":" + String.format("%02d", total % 60);
+            return (total / 3600) + ":" + String.format(java.util.Locale.US, "%02d", (total % 3600) / 60)
+                    + ":" + String.format(java.util.Locale.US, "%02d", total % 60);
+        return (total / 60) + ":" + String.format(java.util.Locale.US, "%02d", total % 60);
     }
 
     private static String stripFmtTime(int ms) {
@@ -1777,11 +1785,13 @@ public class Fx {
     // resumed hour-long talk read "65:23" instead of "1:05:23".
     // One helper, used by all eight resume branches (library +
     // Room on Main, Talks, Downloaded, Settings), so the cue can
-    // never drift from the app's clock rule again.
+    // never drift from the app's clock rule again. v13.51:
+    // Locale.US on the %02d calls (same Burmese-phone mixed-digit
+    // defect as fmtTime above).
     public static String stripResumeTime(int sec) {
         if (sec >= 3600)
-            return (sec / 3600) + ":" + String.format("%02d", (sec % 3600) / 60)
-                    + ":" + String.format("%02d", sec % 60);
+            return (sec / 3600) + ":" + String.format(java.util.Locale.US, "%02d", (sec % 3600) / 60)
+                    + ":" + String.format(java.util.Locale.US, "%02d", sec % 60);
         return (sec / 60) + ":" + (sec % 60 < 10 ? "0" + (sec % 60) : "" + (sec % 60));
     }
 
