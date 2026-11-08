@@ -11211,6 +11211,17 @@ public class DownloadedActivity extends Activity {
                     && moveHeldPath.equals(e.file.getAbsolutePath())
                     && libQueueCache.contains(e.file.getAbsolutePath());
             v.setBackgroundColor(held ? 0x33C9A227 : android.graphics.Color.TRANSPARENT);
+            // v13.38: DlAdapter D6 — every view bound in getView is
+            // now null-guarded (same M9/F5 class as Main v13.32,
+            // Settings v13.34, Talks v13.36, Downloaded onCreate
+            // v13.37): a renamed or missing row id leaves its view
+            // unbound instead of failing the whole list bind. All
+            // seven ids exist in row_downloaded.xml today, so no
+            // live behaviour changes; card / photo / queueMenu /
+            // delete styling and the stale-slot clear were already
+            // guarded and are untouched. The pulse block is guarded
+            // at its two branches (a null state with a stale pulse
+            // view used to reach state.animate() in the else-if).
             TextView title = v.findViewById(R.id.dlTitle);
             // v4.90: the playing row finally says so in its title
             // — the Talks chooser's v4.89 mirror. The state icon
@@ -11277,7 +11288,7 @@ public class DownloadedActivity extends Activity {
             // both playing and finished at once. ★ stays, like
             // both mirrors; the 1s tick already rebinds on a
             // track change, so the mark moves with the ▶.
-            title.setText((rowPlaying ? "▶ " : "")
+            if (title != null) title.setText((rowPlaying ? "▶ " : "")
                     + (libFavFiles.contains(e.file.getName()) ? "★ " : "")
                     + (!rowPlaying && libListenedFiles.contains(e.file.getName()) ? "✓ " : "")
                     // v4.57: hand-queue position mark, the Talks
@@ -11289,12 +11300,12 @@ public class DownloadedActivity extends Activity {
                     + (held ? "✋ " : "")
                     + libQMark
                     + e.title);
-            title.setTextColor(rowPlaying
+            if (title != null) title.setTextColor(rowPlaying
                     ? android.graphics.Color.parseColor("#C9A227")
                     : (night ? android.graphics.Color.WHITE
                     : android.graphics.Color.parseColor("#3B2314")));
             int f = cachedDlFont;
-            title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, f == 0 ? 14 : (f == 1 ? 16 : 20));
+            if (title != null) title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, f == 0 ? 14 : (f == 1 ? 16 : 20));
             double mb = e.len / 1048576.0;
             TextView size = v.findViewById(R.id.dlSize);
             // v1.42: the download date beside the size, so the listener
@@ -11353,15 +11364,15 @@ public class DownloadedActivity extends Activity {
             // name:length only, so an mtime-only change fires no
             // reload; the captured value is the truth until a real
             // (length-changing) reload re-captures it.
-            size.setText((rowSd != null ? rowSd + " · " : "")
+            if (size != null) size.setText((rowSd != null ? rowSd + " · " : "")
                     + String.format("%.1f MB · %s", mb,
                     android.text.format.DateFormat.format("dd/MM/yyyy", e.mod)) + resumeHint);
-            size.setTextColor(night ? android.graphics.Color.parseColor("#AAAAAA")
+            if (size != null) size.setTextColor(night ? android.graphics.Color.parseColor("#AAAAAA")
                     : android.graphics.Color.parseColor("#7A6A58"));
             // v1.96: the size+date line stayed at a fixed 13sp while
             // the row title followed the font size — on ကြီး the
             // date/size read smaller than the title above it.
-            size.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, f == 0 ? 12 : (f == 1 ? 13 : 16));
+            if (size != null) size.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, f == 0 ? 12 : (f == 1 ? 13 : 16));
             TextView state = v.findViewById(R.id.dlState);
             // v1.87: the row icon used to follow isPlaying() only —
             // the same label lie the Room and the notification card
@@ -11373,17 +11384,17 @@ public class DownloadedActivity extends Activity {
                     && (service.isPlaying()
                             || (service.isBuffering() && !service.isHoldPaused()))
                     && e.file.getAbsolutePath().equals(service.getCurrentUrl());
-            state.setText(active ? "⏸" : "▶");
+            if (state != null) state.setText(active ? "⏸" : "▶");
             // v2.01: the state icon sat at a fixed 22sp while the row
             // title (14/16/20) and size line (12/13/16) beside it
             // followed the font size — oversized on သေး, undersized
             // on ကြီး. Same step shape as the rows, one step up.
-            state.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,
+            if (state != null) state.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,
                     f == 0 ? 18 : (f == 1 ? 22 : 26));
             // v1.99: the state icon kept its layout maroon at night —
             // near-invisible on the dark card above (same row fix).
             // Gold at night, maroon by day, like the main grid's star.
-            state.setTextColor(night ? android.graphics.Color.parseColor("#C9A227")
+            if (state != null) state.setTextColor(night ? android.graphics.Color.parseColor("#C9A227")
                     : android.graphics.Color.parseColor("#7A2E1F"));
             // v2.25: playing-row pulse — the library's playing row
             // used to flip ▶/⏸ statically while the Room's playing
@@ -11398,7 +11409,7 @@ public class DownloadedActivity extends Activity {
             // bind runs here with a different active flag. A rebind
             // of the still-playing row leaves the running pulse
             // alone instead of restarting it mid-breath.
-            if (active) {
+            if (state != null && active) {
                 if (dlPulseView != state) {
                     if (dlPulse != null) dlPulse.cancel();
                     // v3.14: premium library pulse-stop fade, mirroring
@@ -11483,7 +11494,7 @@ public class DownloadedActivity extends Activity {
                         dlPulse.start();
                     }
                 }
-            } else if (dlPulseView == state) {
+            } else if (state != null && dlPulseView == state) {
                 if (dlPulse != null) dlPulse.cancel();
                 dlPulse = null;
                 dlPulseView = null;
@@ -11585,7 +11596,7 @@ public class DownloadedActivity extends Activity {
                 v.clearAnimation();
             }
             // v1.19: delete this downloaded file (confirm first; pause if playing)
-            v.findViewById(R.id.btnDlDelete).setOnClickListener(new View.OnClickListener() {
+            if (delBtn != null) delBtn.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View view) {
                     // v3.02: premium single-delete click beat — the
                     // per-row delete opens a confirm dialog like
