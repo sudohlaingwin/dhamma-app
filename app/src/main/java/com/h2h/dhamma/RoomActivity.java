@@ -6575,7 +6575,20 @@ if (snd68 >= 0) currentIndex = snd68;
         // with the list open but nothing playing dropped back to
         // the top (the playing case already jumps to the playing
         // talk, so this only fills the nothing-playing case).
-        if (roomList != null) outState.putInt("listScrollPos", roomList.getFirstVisiblePosition());
+        // v13.26 (D2): the position is a DISPLAY position in the
+        // pre-rotation view — a queue-only / filter / search row
+        // number, not a talk index — so save the talk shown at it
+        // too: the restore scrolls to the same talk in whatever
+        // view the rotation produced, instead of applying the old
+        // number to a view it was never taken in. A foreign
+        // queue-only row has no talk (-1) and saves nothing, so
+        // the restore falls back to the guarded position below.
+        if (roomList != null) {
+            outState.putInt("listScrollPos", roomList.getFirstVisiblePosition());
+            int ti26 = drawerTalkIndex(roomList.getFirstVisiblePosition());
+            if (ti26 >= 0 && ti26 < talks.size())
+                outState.putString("listScrollTalkUrl", talks.get(ti26).url);
+        }
         // v1.67: a tap queued before the bind used to vanish on
         // rotation — the fields lived only in memory, so the recreated
         // activity never knew a tap was waiting for the service.
@@ -9392,7 +9405,34 @@ if (snd67q >= 0) currentIndex = snd67q;
                 }
                 else if (roomList.getVisibility() == View.VISIBLE) {
                     int sp = savedInstanceState.getInt("listScrollPos", 0);
-                    if (sp > 0 && sp < talks.size()) roomList.setSelection(sp);
+                    // v13.26 (D2): the saved position is a DISPLAY
+                    // position in the pre-rotation view, not a talk
+                    // index — applying it against whatever view the
+                    // restore produced lands on the wrong row when
+                    // the view changed (an emptied queue/filter
+                    // falls back to the full list, where the old
+                    // number names a different talk) and is silently
+                    // lost when the view shrank below it. Scroll to
+                    // the saved talk in the restored view first —
+                    // its row, whatever view shows — and only when
+                    // that talk has no row here fall back to the raw
+                    // position, and only when the restored view is
+                    // the same view the position was taken in and
+                    // the position still exists in it; otherwise
+                    // stay at the top.
+                    String su26 = savedInstanceState.getString("listScrollTalkUrl");
+                    int ti26 = su26 != null ? talkIndexForUrl(su26) : -1;
+                    if (ti26 >= 0) {
+                        int dp26 = drawerPosOfTalk(ti26);
+                        if (dp26 > 0) roomList.setSelection(dp26);
+                    } else {
+                        String sq26 = savedInstanceState.getString("drawerSearch", "");
+                        if (sp > 0 && sp < drawerDisplayCount()
+                                && savedInstanceState.getBoolean("drawerQueueOnly", false) == drawerQueueOnly
+                                && savedInstanceState.getInt("drawerFilterMode", 0) == drawerFilterMode
+                                && sq26 != null && sq26.equals(drawerSearchQuery))
+                            roomList.setSelection(sp);
+                    }
                 }
                 // v1.69: the data-gate question interrupted by rotation
                 // — ask it again now that the list is back, so the tap
