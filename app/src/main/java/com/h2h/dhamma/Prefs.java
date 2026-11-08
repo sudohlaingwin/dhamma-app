@@ -2062,6 +2062,20 @@ public class Prefs {
                 .putInt("autoDlLastNew", Math.max(0, newCount)).apply();
     }
 
+    // v13.29 (A9): the last favourite the previous run CHECKED, "" when
+    // none yet — the next run resumes AFTER it (wrap-around), so the
+    // 20-per-run cap can no longer starve the alphabetically-last
+    // favourites run after run. A removed favourite simply has no
+    // name after it in the new sort; a new one slots in.
+    public static String autoDlResumeAfter(Context c) {
+        return sp(c).getString("autoDlResumeAfter68", "");
+    }
+
+    public static void autoDlSetResumeAfter(Context c, String name) {
+        sp(c).edit().putString("autoDlResumeAfter68",
+                name == null ? "" : name).apply();
+    }
+
     // The catalog page URL for a sayadaw name (or one of its
     // aliases), "" when the name has no page — the v11.99 maps,
     // so a renamed sayadaw still resolves.

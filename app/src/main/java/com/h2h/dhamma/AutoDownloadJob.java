@@ -180,11 +180,27 @@ public class AutoDownloadJob extends JobService {
         java.util.List<String> names =
                 new java.util.ArrayList<String>(favs);
         java.util.Collections.sort(names);
+        // v13.29 (A9): rotate the start — the old code always began
+        // at the alphabetically-first favourite, so once the first
+        // few filled the 20-per-run cap the tail favourites were
+        // never checked, run after run. Each run now resumes after
+        // the last favourite the previous run checked (wrap-around),
+        // so every favourite gets its turn within a few runs. The
+        // order inside a run stays alphabetical and the caps are
+        // unchanged; seeding is unaffected (a seed returns 0, so
+        // the loop still visits every name). The resume point is
+        // persisted even on an early break (cap / toggle-off /
+        // Wi-Fi loss / system stop) — the next run continues after
+        // the last name actually checked, never restarts from the
+        // top.
+        int start68 = startIndex68(names, Prefs.autoDlResumeAfter(this));
+        String lastChecked68 = null;
         java.util.Set<String> liveSources = liveDlSources68();
         java.util.Set<String> queued = readDlQueued68();
         pruneStaleDlQueued68(liveSources, queued);
         int totalNew = 0;
-        for (String name : names) {
+        for (int k = 0; k < names.size(); k++) {
+            String name = names.get((start68 + k) % names.size());
             if (totalNew >= Prefs.AUTO_DL_MAX_TOTAL) break;
             // v12.75: re-check the toggle every sayadaw — flipping
             // it OFF mid-run used to leave the thread fetching and
@@ -201,13 +217,26 @@ public class AutoDownloadJob extends JobService {
             // leak was HTML pages only), and a stop for lost
             // constraints never ended the run either.
             if (sStopRequested68 || !Fx.stripIsWifi(this)) break;
+            lastChecked68 = name;
             try {
                 totalNew += checkSayadaw68(name,
                         Prefs.AUTO_DL_MAX_TOTAL - totalNew,
                         liveSources, queued);
             } catch (Exception ignored) {}
         }
+        if (lastChecked68 != null) Prefs.autoDlSetResumeAfter(this, lastChecked68);
         Prefs.autoDlSetLastRun(this, System.currentTimeMillis(), totalNew);
+    }
+
+    // v13.29 (A9): first index whose name sorts AFTER `after` —
+    // the next run starts there, wrapping to 0 when `after` is
+    // the last name (or was removed and nothing sorts after it).
+    private static int startIndex68(java.util.List<String> names, String after) {
+        if (after == null || after.length() == 0) return 0;
+        for (int i = 0; i < names.size(); i++) {
+            if (names.get(i).compareTo(after) > 0) return i;
+        }
+        return 0;
     }
 
     // One favourite sayadaw: fetch + parse, seed or diff, enqueue.
