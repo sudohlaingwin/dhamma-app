@@ -2947,9 +2947,11 @@ if (snd65 >= 0) currentIndex = snd65;
                 if (!seeking) {
                     if (seekGlide != null) { seekGlide.cancel(); seekGlide = null; }
                     lastUserSeekMs = 0;
-                    seekBar.setMax(0);
-                    seekBar.setProgress(0);
-                    seekBar.setBufferedPercent(0);
+                    if (seekBar != null) {
+                        seekBar.setMax(0);
+                        seekBar.setProgress(0);
+                        seekBar.setBufferedPercent(0);
+                    }
                     if (elapsedText != null) elapsedText.setText("0:00");
                     if (totalText != null) totalText.setText("0:00");
                 }
@@ -4859,9 +4861,11 @@ if (snd65 >= 0) currentIndex = snd65;
                         if (!seeking) {
                             if (seekGlide != null) { seekGlide.cancel(); seekGlide = null; }
                             lastUserSeekMs = 0;
-                            seekBar.setMax(0);
-                            seekBar.setProgress(0);
-                            seekBar.setBufferedPercent(0);
+                            if (seekBar != null) {
+                                seekBar.setMax(0);
+                                seekBar.setProgress(0);
+                                seekBar.setBufferedPercent(0);
+                            }
                             if (elapsedText != null) elapsedText.setText("0:00");
                             if (totalText != null) totalText.setText("0:00");
                         }
@@ -4993,10 +4997,12 @@ if (snd65 >= 0) currentIndex = snd65;
                             // talk's progress over this reset.
                             if (seekGlide != null) { seekGlide.cancel(); seekGlide = null; }
                             lastUserSeekMs = 0; // v3.26: a stop voids the settle hold
-                            seekBar.setMax(0);
-                            seekBar.setProgress(0);
-                            seekBar.setBufferedPercent(0); // v4.06: a stop clears the buffered tint
-                            seekBar.setBookmarks(null); // v12.64: a stop clears the pins too — no track, no marks
+                            if (seekBar != null) {
+                                seekBar.setMax(0);
+                                seekBar.setProgress(0);
+                                seekBar.setBufferedPercent(0); // v4.06: a stop clears the buffered tint
+                                seekBar.setBookmarks(null); // v12.64: a stop clears the pins too — no track, no marks
+                            }
                             // v3.27: a stop resets the wave shape too —
                             // setPlaying(false) above froze the ended
                             // talk's ripple, so the reset bar kept
@@ -5236,14 +5242,14 @@ if (snd65 >= 0) currentIndex = snd65;
                         // jump (user seek elsewhere, replay) or a
                         // standstill (paused) sets instantly instead
                         // of gliding across the bar or to nowhere.
-                        boolean freshTrack = seekBar.getMax() != dur;
-                        seekBar.setMax(dur);
+                        boolean freshTrack = seekBar == null || seekBar.getMax() != dur;
+                        if (seekBar != null) seekBar.setMax(dur);
                         // v4.06: buffered-ahead tint on the wave —
                         // the 500ms poll already runs here, so no new
                         // timer; the service returns 0 for downloaded
                         // talks, leaving their wave untouched, and
                         // the view only redraws when the value moves.
-                        seekBar.setBufferedPercent(service.getBufferedPercent());
+                        if (seekBar != null) seekBar.setBufferedPercent(service.getBufferedPercent());
                         // v12.64: a fresh track brings its own marks
                         // — the pins above belong to the new talk, so
                         // refresh them here, once per track change.
@@ -5299,7 +5305,7 @@ if (snd65 >= 0) currentIndex = snd65;
                             totalText.setText(newTotal);
                             if (!showRemaining) Fx.fadeIn(totalText, 250);
                         }
-                        int cur = seekBar.getProgress();
+                        int cur = seekBar == null ? 0 : seekBar.getProgress();
                         // v3.26: seek-settle hold — while a user seek
                         // is still landing (service position behind
                         // the dragged target, inside 1500ms of the
@@ -5403,7 +5409,7 @@ if (snd65 >= 0) currentIndex = snd65;
                             }
                         } else if ((freshTrack && !resumeGlide) || pos == cur) {
                             if (seekGlide != null) { seekGlide.cancel(); seekGlide = null; }
-                            seekBar.setProgress(pos);
+                            if (seekBar != null) seekBar.setProgress(pos);
                             if (elapsedText != null) elapsedText.setText(formatTime(pos));
                         } else if (pos < cur) {
                             // v3.32: premium replay rewind glide — the
@@ -5441,7 +5447,7 @@ if (snd65 >= 0) currentIndex = snd65;
                             seekGlide.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
                                 @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
                                     int p = (Integer) a.getAnimatedValue();
-                                    seekBar.setProgress(p);
+                                    if (seekBar != null) seekBar.setProgress(p);
                                     if (elapsedText != null) elapsedText.setText(formatTime(p));
                                 }
                             });
@@ -5454,7 +5460,7 @@ if (snd65 >= 0) currentIndex = snd65;
                             seekGlide.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
                                 @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
                                     int p = (Integer) a.getAnimatedValue();
-                                    seekBar.setProgress(p);
+                                    if (seekBar != null) seekBar.setProgress(p);
                                     if (elapsedText != null) elapsedText.setText(formatTime(p));
                                 }
                             });
@@ -11612,10 +11618,12 @@ if (snd67q >= 0) currentIndex = snd67q;
             // progress over this clean bar until the next poll.
             if (seekGlide != null) { seekGlide.cancel(); seekGlide = null; }
             lastUserSeekMs = 0; // v3.26: a talk change voids the settle hold
-            seekBar.setMax(0);
-            seekBar.setProgress(0);
-            seekBar.setBufferedPercent(0); // v4.06: a new talk starts unbuffered
-            seekBar.setBookmarks(null); // v12.64: stale pins go with the old talk; the poll re-adds the new talk's marks once its duration arrives
+            if (seekBar != null) {
+                seekBar.setMax(0);
+                seekBar.setProgress(0);
+                seekBar.setBufferedPercent(0); // v4.06: a new talk starts unbuffered
+                seekBar.setBookmarks(null); // v12.64: stale pins go with the old talk; the poll re-adds the new talk's marks once its duration arrives
+            }
             if (elapsedText != null) elapsedText.setText("0:00");
             if (totalText != null) totalText.setText("0:00");
         }
