@@ -404,7 +404,12 @@ public class Fx {
     // library header); targets, rhythm and the fresh-open-only
     // gating are untouched.
     public static void entrance(final View... views) {
-        if (views.length == 0) return;
+        // v13.32 (M9): a null first view used to NPE inside the
+        // posted Runnable — views[0].post() + views[0].getResources()
+        // run before the per-element null check in the loop, and
+        // callers pass findViewById results straight in. With no
+        // anchor to post on the entrance is skipped.
+        if (views.length == 0 || views[0] == null) return;
         views[0].post(new Runnable() {
             @Override public void run() {
                 float dy = 24f * views[0].getResources().getDisplayMetrics().density;

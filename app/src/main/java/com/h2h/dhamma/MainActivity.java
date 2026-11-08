@@ -1602,12 +1602,16 @@ public class MainActivity extends Activity {
         favs = new HashSet<String>(getSharedPreferences("dhamma", MODE_PRIVATE)
                 .getStringSet("favs", new HashSet<String>()));
         rootView = findViewById(R.id.root);
+        // v13.32 (M9): the four header views are guarded below —
+        // a missing id used to NPE on launch (all four exist
+        // today, so this is latent robustness, same class as
+        // the v13.30 catalog guards).
         titleText = findViewById(R.id.titleText);
         // v4.12: tap the app name to glide back to the top of the
         // grid (streaming-app tap-to-top, on the existing title —
         // no new view, no new button). A tap with an empty grid is
         // a no-op; the grid itself, search and theme are untouched.
-        titleText.setOnClickListener(new View.OnClickListener() {
+        if (titleText != null) titleText.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 Fx.tap(MainActivity.this);
                 // v4.22: a scroll-to-top under an open keyboard
@@ -1637,7 +1641,7 @@ public class MainActivity extends Activity {
         // automatic fresh-open / return glides stay Room-only as
         // v11.94 left them (their anchor is lastName-based).
         // Unrecorded lib sayadaw (null) still toasts, as today.
-        titleText.setOnLongClickListener(new View.OnLongClickListener() {
+        if (titleText != null) titleText.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 String sounding = soundingSayadawNameVisual();
                 if (sounding != null && gridView != null && shown != null) {
@@ -1654,7 +1658,7 @@ public class MainActivity extends Activity {
             }
         });
         themeToggle = findViewById(R.id.themeToggle);
-        themeToggle.setOnClickListener(new View.OnClickListener() {
+        if (themeToggle != null) themeToggle.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 // v2.23: theme transition — dip, swap, rise, instead
                 // of the instant colour flash the toggle had before.
@@ -1672,7 +1676,7 @@ public class MainActivity extends Activity {
         // it — a one-gesture "auto" for listeners who never want
         // to think about the toggle. Same spin + dip as the tap;
         // an already-matching theme just blips.
-        themeToggle.setOnLongClickListener(new View.OnLongClickListener() {
+        if (themeToggle != null) themeToggle.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 int hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
                 boolean night = hour < 6 || hour >= 18;
@@ -2212,8 +2216,8 @@ public class MainActivity extends Activity {
         }
         gridView = findViewById(R.id.grid);
         adapter = new SayadawAdapter();
-        gridView.setAdapter(adapter);
-        gridView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+        if (gridView != null) gridView.setAdapter(adapter);
+        if (gridView != null) gridView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
                 Sayadaw s = shown.get(pos);
                 if (s.url == null || s.url.length() == 0 || "null".equals(s.url)) {
@@ -2302,7 +2306,7 @@ public class MainActivity extends Activity {
         // listeners instead of hunting the small star. A tap still
         // opens the chooser (or the Room for the sounding card);
         // returning true consumes the long-press so no tap fires.
-        gridView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+        if (gridView != null) gridView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
             @Override public boolean onItemLongClick(AdapterView<?> p, View v, int pos, long id) {
                 if (pos < 0 || pos >= shown.size()) return false;
                 Sayadaw s = shown.get(pos);
@@ -2374,7 +2378,7 @@ public class MainActivity extends Activity {
                 && favs != null && !favs.isEmpty()) favOnly = true;
         // v2.07: a rotated grid must not replay its entrance.
         if (savedInstanceState != null) lastGridAnimPos = Integer.MAX_VALUE;
-        searchField.addTextChangedListener(new TextWatcher() {
+        if (searchField != null) searchField.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
             @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
             @Override public void afterTextChanged(Editable e) {
@@ -2387,7 +2391,7 @@ public class MainActivity extends Activity {
         // so wiping a typed name meant deleting it letter by
         // letter. Empty query just blips; a cleared query re-runs
         // the filter through the watcher above, like a typed edit.
-        searchField.setOnLongClickListener(new View.OnLongClickListener() {
+        if (searchField != null) searchField.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 Fx.tap(MainActivity.this);
                 if (searchField.getText().length() > 0) searchField.setText("");
@@ -2434,9 +2438,9 @@ public class MainActivity extends Activity {
         // the keyboard did nothing (and a hardware Enter could drop
         // a newline into the query). The Search key now hides the
         // keyboard; the live filter already ran on every keystroke.
-        searchField.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
-        searchField.setSingleLine(true);
-        searchField.setOnEditorActionListener(new android.widget.TextView.OnEditorActionListener() {
+        if (searchField != null) searchField.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        if (searchField != null) searchField.setSingleLine(true);
+        if (searchField != null) searchField.setOnEditorActionListener(new android.widget.TextView.OnEditorActionListener() {
             @Override public boolean onEditorAction(android.widget.TextView v, int actionId, android.view.KeyEvent event) {
                 if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
                         || actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
@@ -2447,7 +2451,7 @@ public class MainActivity extends Activity {
                 return false;
             }
         });
-        if (query.length() > 0) {
+        if (searchField != null && query.length() > 0) {
             restoringSearch = true;
             searchField.setText(query);
             restoringSearch = false;
@@ -2459,7 +2463,7 @@ public class MainActivity extends Activity {
         // the position is valid right after the filter runs.
         if (savedInstanceState != null) {
             int scrollPos = savedInstanceState.getInt("scrollPos", 0);
-            if (scrollPos > 0 && scrollPos < shown.size()) gridView.setSelection(scrollPos);
+            if (gridView != null && scrollPos > 0 && scrollPos < shown.size()) gridView.setSelection(scrollPos);
         } else {
             landOnPlayingSayadawOnFreshOpen();
         }
