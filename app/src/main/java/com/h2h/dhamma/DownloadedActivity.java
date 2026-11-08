@@ -4848,6 +4848,13 @@ public class DownloadedActivity extends Activity {
             dlFilterMode = savedInstanceState.getInt("dlFilterMode", 0);
             libQueueOnly = savedInstanceState.getBoolean("libQueueOnly", false);
             String savedQ = savedInstanceState.getString("dlQuery", "");
+            dlQuery = savedQ.trim().toLowerCase();
+            // v13.16: the box text alone used to lie — setText fires
+            // before the watcher is attached (:5065), and the watcher
+            // is the only dlQuery writer, so a rotated search showed
+            // the query while the list stayed unfiltered. The filter
+            // query is restored here, in the watcher's exact
+            // normalization; the first loadList filters with it.
             if (savedQ.length() > 0) dlSearch.setText(savedQ);
             // v1.55: the scroll restore is consumed by the first
             // loadList() after creation (see loadList), so a later

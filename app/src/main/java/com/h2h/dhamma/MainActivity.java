@@ -1557,6 +1557,11 @@ public class MainActivity extends Activity {
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
         outState.putString("q", searchField != null ? searchField.getText().toString() : query);
+        // v13.16: the no-match toast guard used to die on rotation —
+        // the query survived but lastEmptyToastQuery reset to null,
+        // so deleting a char and retyping the same no-match query
+        // toasted again. Save it beside the query.
+        outState.putString("lastEmptyToastQuery", lastEmptyToastQuery);
         // v4.26: the favourites-only filter used to die on
         // rotation - only the query and scroll survived, so a
         // rotated filtered grid silently showed every sayadaw.
@@ -2352,6 +2357,10 @@ public class MainActivity extends Activity {
         searchField = findViewById(R.id.search);
         // v1.48: restore the pre-rotation query (see onSaveInstanceState).
         if (savedInstanceState != null) query = savedInstanceState.getString("q", "");
+        // v13.16: restore the no-match toast guard with the query (see
+        // onSaveInstanceState) — a rotated no-match search stays silent
+        // until a genuinely new query is typed.
+        if (savedInstanceState != null) lastEmptyToastQuery = savedInstanceState.getString("lastEmptyToastQuery", null);
         // v4.26: restore the filter with the query (guarded: an
         // emptied favourites set restores to the full grid, never
         // a blank filtered one). The onCreate applyFilter below

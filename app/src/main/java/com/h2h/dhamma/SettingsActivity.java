@@ -1001,13 +1001,14 @@ android.view.View settingsStripPrev = findViewById(R.id.nowStripPrev);
         // field, so a second rotation re-shows it again, never twice.
         if (savedInstanceState != null) {
             final String restored = savedInstanceState.getString("openPicker", null);
-            if ("font".equals(restored) || "lang".equals(restored) || "sleep".equals(restored)) {
+            if ("font".equals(restored) || "lang".equals(restored) || "sleep".equals(restored) || "clearData".equals(restored)) {
                 openPicker = restored;
                 if (root != null) root.post(new Runnable() {
                     @Override public void run() {
                         if ("font".equals(openPicker)) showFontDialog();
                         else if ("lang".equals(openPicker)) showLangDialog();
                         else if ("sleep".equals(openPicker)) showSleepDialog();
+                        else if ("clearData".equals(openPicker)) showClearDataDialog();
                     }
                 });
             }
@@ -1073,7 +1074,12 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
     // dialog above (same titles, messages, toasts and clears as before).
     private void showClearDataDialog() {
         final String[] items = {Lang.t(this, "clear_favs"), Lang.t(this, "clear_history"), Lang.t(this, "clear_played")};
-        new android.app.AlertDialog.Builder(this)
+        // v13.16: record the open chooser like font/lang/sleep, so a
+        // rotation re-shows it instead of losing it (see the onCreate
+        // restore); the dismiss listener clears it, so a dismissed
+        // chooser never re-shows.
+        openPicker = "clearData";
+        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
                 .setTitle("မှတ်တမ်း ရှင်းလင်းခြင်း")
                 .setItems(items, new android.content.DialogInterface.OnClickListener() {
                     @Override public void onClick(android.content.DialogInterface d, int which) {
@@ -1083,7 +1089,13 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                     }
                 })
                 .setNegativeButton(Lang.t(this, "btn_no_clear"), null)
-                .show();
+                .create();
+        dlg.setOnDismissListener(new android.content.DialogInterface.OnDismissListener() {
+            @Override public void onDismiss(android.content.DialogInterface d) {
+                if ("clearData".equals(openPicker)) openPicker = null;
+            }
+        });
+        dlg.show();
     }
 
     // v10.47: extracted verbatim from the btnSleep click listener so a
