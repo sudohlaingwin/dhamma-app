@@ -11890,16 +11890,17 @@ if (snd67q >= 0) currentIndex = snd67q;
                         roomPulseSettling = false;
                         roomPulseView = null;
                     }
+                    // v13.43: row views are looked up per bind — a missing row id skips the bind, never kills the list.
                     TextView fTitle = v.findViewById(R.id.talkTitle);
-                    fTitle.animate().cancel();
-                    fTitle.setAlpha(1f);
+                    if (fTitle != null) { fTitle.animate().cancel(); fTitle.setAlpha(1f); }
                     int tf = Prefs.fontSize(RoomActivity.this);
-                    ((TextView) v.findViewById(R.id.index)).setText(
+                    TextView fIdx = (TextView) v.findViewById(R.id.index);
+                    if (fIdx != null) fIdx.setText(
                             (queueLineIndexForUrl(fe.url) + 1) + ".");
-                    ((TextView) v.findViewById(R.id.index)).setTextSize(
+                    if (fIdx != null) fIdx.setTextSize(
                             android.util.TypedValue.COMPLEX_UNIT_SP,
                             tf == 0 ? 12 : (tf == 1 ? 14 : 16));
-                    fTitle.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,
+                    if (fTitle != null) fTitle.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,
                             tf == 0 ? 14 : (tf == 1 ? 16 : 20));
                     if (playedSet == null || favSet == null) refreshMarkSets();
                     boolean fPlayed = playedSet.contains(fe.url);
@@ -11955,19 +11956,19 @@ if (snd67q >= 0) currentIndex = snd67q;
                     // recycled row.
                     boolean fHeld = moveHeldUrl != null && moveHeldUrl.equals(fe.url)
                             && queueLineIndexForUrl(fe.url) >= 0;
-                    fTitle.setText((fHeld ? "✋ " : "") + (fSounding ? "⏸ " : "") + fHand + (fFav ? "★ " : "")
+                    if (fTitle != null) fTitle.setText((fHeld ? "✋ " : "") + (fSounding ? "⏸ " : "") + fHand + (fFav ? "★ " : "")
                             + (fDownloaded ? "⬇ " : "") + fQueueMark
                             + (fPlayed && !fSounding ? "✓ " : "")
                             + (fe.title.length() > 0 ? fe.title : fe.url)
                             + fResume + " · " + fe.sayadaw);
-                    fTitle.setTextColor(fSounding
+                    if (fTitle != null) fTitle.setTextColor(fSounding
                             ? android.graphics.Color.parseColor("#C9A227")
                             : android.graphics.Color.WHITE);
                     // v12.92: raised row tile — gold tile for the sounding row, glass tile otherwise; set on every bind so a recycled view never keeps a stale tile.
                     android.view.View fRowCard = v.findViewById(R.id.rowCard);
                     if (fRowCard != null) fRowCard.setBackgroundResource(fSounding ? R.drawable.drawer_row_playing : R.drawable.drawer_row);
                     if (fHeld) v.setBackgroundColor(0x33C9A227);
-                    if (fPlayed && !fSounding) fTitle.setAlpha(0.6f);
+                    if (fPlayed && !fSounding && fTitle != null) fTitle.setAlpha(0.6f);
                     return v;
                 }
             }
@@ -11994,7 +11995,8 @@ if (snd67q >= 0) currentIndex = snd67q;
             final int playIdx71 = soundingIndexForBind();
             // v7.38: line-aware queue number — a v2-spelled in-list
             // row used to read "0." in queue-only view.
-            ((TextView) v.findViewById(R.id.index)).setText((drawerQueueOnly ? (queueLineIndexForUrl(t.url) + 1) : (talkIdx + 1)) + ".");
+            TextView idxView = (TextView) v.findViewById(R.id.index);
+            if (idxView != null) idxView.setText((drawerQueueOnly ? (queueLineIndexForUrl(t.url) + 1) : (talkIdx + 1)) + ".");
             // v1.97: the Room rows never followed the font size for
             // the number (the Talks rows have since v1.96, the Room
             // title since v1.53) — on ကြီး the titles grew but the
@@ -12002,14 +12004,14 @@ if (snd67q >= 0) currentIndex = snd67q;
             // v2.03: one fontSize read per bind, not two — the number
             // and the title above each read it separately.
             int tf = Prefs.fontSize(RoomActivity.this);
-            ((TextView) v.findViewById(R.id.index)).setTextSize(
+            if (idxView != null) idxView.setTextSize(
                     android.util.TypedValue.COMPLEX_UNIT_SP, tf == 0 ? 12 : (tf == 1 ? 14 : 16));
             TextView titleView = v.findViewById(R.id.talkTitle);
             // v2.27: a pulsing title view recycled to another row
             // must stop at once, not wait for the next 500ms poll
             // tick — the poll re-arms the pulse on the true playing
             // row if it is still visible.
-            if (roomPulseView == titleView && talkIdx != playIdx71) {
+            if (titleView != null && roomPulseView == titleView && talkIdx != playIdx71) {
                 if (roomPulse != null) roomPulse.cancel();
                 roomPulse = null;
                 // v3.17: same flag clear as the pause branch — a
@@ -12044,7 +12046,7 @@ if (snd67q >= 0) currentIndex = snd67q;
             // cancelling it is clean. Visual only; the row
             // motion, marks, colours and font sizes are untouched.
             // v7.71: playing identity here is playIdx71 too (see above).
-            if (talkIdx != playIdx71) {
+            if (talkIdx != playIdx71 && titleView != null) {
                 titleView.animate().cancel();
                 titleView.setAlpha(1f);
             }
@@ -12052,7 +12054,7 @@ if (snd67q >= 0) currentIndex = snd67q;
             // v1.53: Room rows follow the Settings font size, like the
             // Talks rows since v1.26 — large text used to enlarge the
             // chooser but leave the Room list at 15sp.
-            titleView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, tf == 0 ? 14 : (tf == 1 ? 16 : 20));
+            if (titleView != null) titleView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, tf == 0 ? 14 : (tf == 1 ? 16 : 20));
             if (playedSet == null || favSet == null) refreshMarkSets();
             boolean played = playedSet.contains(t.url);
             // v1.82: same candidate names as localPathFor — a ⬇ mark
@@ -12150,8 +12152,8 @@ if (snd67q >= 0) currentIndex = snd67q;
             // ended state; pulse, ◈, ▸, ✋ and ↺ keep
             // playIdx71 untouched, as v11.15 did elsewhere.
             boolean rowPlaying116 = talkIdx == playIdx71 && !AudioService.liveEnded;
-            titleView.setText((held ? "✋ " : "") + (rowPlaying116 ? "⏸ " : "") + handMark + (fav ? "★ " : "") + (downloaded ? "⬇ " : "") + queueMark + (played && !rowPlaying116 ? "✓ " : "") + t.title + resumeMark);
-            titleView.setTextColor(rowPlaying116
+            if (titleView != null) titleView.setText((held ? "✋ " : "") + (rowPlaying116 ? "⏸ " : "") + handMark + (fav ? "★ " : "") + (downloaded ? "⬇ " : "") + queueMark + (played && !rowPlaying116 ? "✓ " : "") + t.title + resumeMark);
+            if (titleView != null) titleView.setTextColor(rowPlaying116
                     ? android.graphics.Color.parseColor("#C9A227")
                     : android.graphics.Color.WHITE);
             // v12.92: raised row tile — gold tile for the playing row, glass tile otherwise; set on every bind so a recycled view never keeps a stale tile.
@@ -12166,7 +12168,7 @@ if (snd67q >= 0) currentIndex = snd67q;
             // alpha — and the ✓ mark stays, so this adds a second
             // cue, never a replacement; a recycled row rebinds its
             // alpha here, so a dim never leaks onto another talk.
-            if (played && !rowPlaying116) titleView.setAlpha(0.6f);
+            if (played && !rowPlaying116 && titleView != null) titleView.setAlpha(0.6f);
             // v4.13: Up Next row mark — the row after the playing
             // one (wrapping like a Next tap) carries a ▸ prefix at
             // full alpha, even when already listened: it is the
@@ -12186,7 +12188,7 @@ if (snd67q >= 0) currentIndex = snd67q;
             // simply stays off until the head is consumed, exactly
             // as Up Next already reads. Normal queues unchanged:
             // firstWaitingForeignEntry is null and peek rules.
-            if (playIdx71 >= 0 && playIdx71 < talks.size() && talks.size() > 1
+            if (titleView != null && playIdx71 >= 0 && playIdx71 < talks.size() && talks.size() > 1
                     && firstWaitingForeignEntry() == null
                     && talkIdx == peekNextIndex()) { // v4.32: ▸ follows the queued head, not the list-next
                 titleView.setText("▸ " + titleView.getText().toString());
