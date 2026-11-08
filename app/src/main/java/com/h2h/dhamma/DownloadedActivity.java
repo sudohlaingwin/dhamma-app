@@ -3199,7 +3199,11 @@ public class DownloadedActivity extends Activity {
                         if (dismissUrl.length() > 0) Prefs.talkPosRemoveBoth(DownloadedActivity.this, dismissUrl);
                         Fx.tap(DownloadedActivity.this);
                         Fx.morph(v);
-                        Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "hist_cleared"), Toast.LENGTH_SHORT).show();
+                        // v13.28: this dismiss clears ONE talk's resume spot, not the
+                        // history — it used to toast hist_cleared ("History cleared"),
+                        // the key Settings' real clear-history uses. Same key as Main's
+                        // identical dismiss (resume_cleared).
+                        Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "resume_cleared"), Toast.LENGTH_SHORT).show();
                         syncDlStrip();
                         return true;
                     }
@@ -11161,6 +11165,14 @@ public class DownloadedActivity extends Activity {
                 if (q73 != null) { q73.setOnClickListener(null); q73.setEnabled(false); }
                 android.view.View d73 = v.findViewById(R.id.btnDlDelete);
                 if (d73 != null) { d73.setOnClickListener(null); d73.setEnabled(false); }
+                // v13.28: the wash + the pour are row STATE, not content — the v11.73
+                // clear above left both behind: a recycled held (✋) row rebound to a
+                // stale slot kept its gold wash, and a view recycled mid-pour kept its
+                // old fade + rise, on an empty row until the next tick prune dropped
+                // the slot. Reset both here, exactly like the normal bind below (the
+                // v5.78 wash reset, the v3.40 pour hygiene).
+                v.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+                v.clearAnimation();
                 return v;
             }
             boolean night = cachedDlNight;

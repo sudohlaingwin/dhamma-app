@@ -4044,7 +4044,10 @@ public class TalksActivity extends Activity {
                         if (dismissUrl.length() > 0) Prefs.talkPosRemoveBoth(TalksActivity.this, dismissUrl);
                         Fx.tap(TalksActivity.this);
                         Fx.morph(v);
-                        android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "hist_cleared"), android.widget.Toast.LENGTH_SHORT).show();
+                        // v13.28: same as Downloaded's dismiss — one resume spot cleared,
+                        // not the history; toast resume_cleared (Main's key), not
+                        // hist_cleared (Settings' real clear-history key).
+                        android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "resume_cleared"), android.widget.Toast.LENGTH_SHORT).show();
                         syncTalksStrip();
                         // v12.41: the row's ↺ mark reads the spot
                         // live on every bind, but the 1s tick's
