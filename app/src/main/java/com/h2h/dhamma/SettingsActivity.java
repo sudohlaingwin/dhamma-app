@@ -165,7 +165,14 @@ public class SettingsActivity extends Activity {
                 return true;
             }
         });
-        btnNoti.setOnClickListener(new View.OnClickListener() {
+        // v13.34 (Settings F5): every toggle/button listener below is
+        // null-guarded like rowFont/rowLanguage above — a toggle id
+        // missing from the layout used to throw at the first
+        // setOnClickListener and Settings exited at once (v3.80
+        // precedent), and refresh() below dereferences the same
+        // fields, so the guards live at both sites. A missing
+        // toggle is simply inert; the rest of the screen still opens.
+        if (btnNoti != null) btnNoti.setOnClickListener(new View.OnClickListener() {
             // v2.88: premium notification-toggle transition —
             // mirroring the v2.85 font-size / v2.86 default-speed /
             // v2.87 sleep-timer dips. A notification tap used to
@@ -202,7 +209,7 @@ public class SettingsActivity extends Activity {
         // lives. The mark + note already name the app-level
         // block in that case (notiBlockedState), so the target
         // and the text can never disagree.
-        btnNoti.setOnLongClickListener(new View.OnLongClickListener() {
+        if (btnNoti != null) btnNoti.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 Fx.tap(SettingsActivity.this);
                 Fx.morph(v);
@@ -227,7 +234,7 @@ public class SettingsActivity extends Activity {
                 return true;
             }
         });
-        btnAutoplay.setOnClickListener(new View.OnClickListener() {
+        if (btnAutoplay != null) btnAutoplay.setOnClickListener(new View.OnClickListener() {
             // v2.89: same themeDip as the FX/data-saver toggles —
             // the autoplay label used to flip in one frame while
             // only the button morphed. Pref set before the dip;
@@ -239,7 +246,7 @@ public class SettingsActivity extends Activity {
         // only ever reads ဖွင့်/ပိတ်, so an older listener could
         // never tell from the screen whether a finished talk
         // would continue or stop. Tap still flips silently.
-        btnAutoplay.setOnLongClickListener(new View.OnLongClickListener() {
+        if (btnAutoplay != null) btnAutoplay.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 boolean on = !Prefs.autoplay(SettingsActivity.this);
                 Prefs.setAutoplay(SettingsActivity.this, on);
@@ -270,13 +277,14 @@ public class SettingsActivity extends Activity {
         // syncLiveService() (bind flag 0 never starts a stopped
         // service; syncSettingsFromPrefs leaves an unchanged sleep
         // pref alone, so nothing else moves).
-        findViewById(R.id.rowRepeat).setOnClickListener(new View.OnClickListener() {
+        android.view.View rowRepeat = findViewById(R.id.rowRepeat);
+        if (rowRepeat != null) rowRepeat.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { Prefs.setRepeatMode(SettingsActivity.this, (Prefs.repeatMode(SettingsActivity.this) + 1) % 3); Fx.morph(v); Fx.themeDip(root, new Runnable() { @Override public void run() { refresh(); } }); syncLiveService(); }
         });
-        btnShuffle.setOnClickListener(new View.OnClickListener() {
+        if (btnShuffle != null) btnShuffle.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { Prefs.setShuffleOn(SettingsActivity.this, !Prefs.shuffleOn(SettingsActivity.this)); Fx.morph(v); Fx.themeDip(root, new Runnable() { @Override public void run() { refresh(); } }); syncLiveService(); }
         });
-        btnBackground.setOnClickListener(new View.OnClickListener() {
+        if (btnBackground != null) btnBackground.setOnClickListener(new View.OnClickListener() {
             // v2.89: same dip — the background-playback label used
             // to flip in one frame while only the button morphed.
             // Pref set before the dip; no other behaviour changed.
@@ -291,7 +299,7 @@ public class SettingsActivity extends Activity {
         // reachable only through system Settings. Tap still flips
         // the toggle; a failed deep link toasts instead of
         // crashing.
-        btnBackground.setOnLongClickListener(new View.OnLongClickListener() {
+        if (btnBackground != null) btnBackground.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 Fx.tap(SettingsActivity.this);
                 Fx.morph(v);
@@ -305,7 +313,7 @@ public class SettingsActivity extends Activity {
         });
         // v1.30: keep the screen on while listening (talks + Room screens
         // read this flag when they open)
-        btnKeepScreen.setOnClickListener(new View.OnClickListener() {
+        if (btnKeepScreen != null) btnKeepScreen.setOnClickListener(new View.OnClickListener() {
             // v2.89: same dip — the keep-screen-on label used to
             // flip in one frame while only the button morphed.
             // Pref set before the dip; no other behaviour changed.
@@ -319,7 +327,7 @@ public class SettingsActivity extends Activity {
         // that page, and it was reachable only through system
         // Settings. Tap still flips the toggle; a failed deep
         // link toasts instead of crashing.
-        btnKeepScreen.setOnLongClickListener(new View.OnLongClickListener() {
+        if (btnKeepScreen != null) btnKeepScreen.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 Fx.tap(SettingsActivity.this);
                 Fx.morph(v);
@@ -333,7 +341,7 @@ public class SettingsActivity extends Activity {
         });
         // v1.40: freeze the Room's opening shrine photo instead of
         // switching it on every talk change (v1.39 behaviour is on).
-        btnThemeAuto.setOnClickListener(new View.OnClickListener() {
+        if (btnThemeAuto != null) btnThemeAuto.setOnClickListener(new View.OnClickListener() {
             // v2.89: same dip — the shrine-photo-auto-change label
             // used to flip in one frame while only the button
             // morphed. Pref set before the dip; no other behaviour
@@ -351,7 +359,7 @@ public class SettingsActivity extends Activity {
         // each talk. With this, every Settings toggle now has a
         // long-press (system pages v4.17/4.18, sleep-cancel v4.15,
         // FX preview v4.17, these two consequence toasts v4.19).
-        btnThemeAuto.setOnLongClickListener(new View.OnLongClickListener() {
+        if (btnThemeAuto != null) btnThemeAuto.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 boolean on = !Prefs.autoTheme(SettingsActivity.this);
                 Prefs.setAutoTheme(SettingsActivity.this, on);
@@ -375,7 +383,8 @@ public class SettingsActivity extends Activity {
         // arms on a playing talk, per the Room/library sync); FX and
         // data saver flip in place, data saver re-reading its live
         // network note on the next refresh.
-        findViewById(R.id.rowSleep).setOnClickListener(new View.OnClickListener() {
+        android.view.View rowSleep = findViewById(R.id.rowSleep);
+        if (rowSleep != null) rowSleep.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 Fx.morph(v);
                 showSleepDialog();
@@ -387,7 +396,7 @@ public class SettingsActivity extends Activity {
         // the picker, so the live countdown (v4.12) clears with it
         // and a running timer is cancelled via syncLiveService,
         // exactly as turning the timer off already did (v1.56).
-        findViewById(R.id.rowSleep).setOnLongClickListener(new View.OnLongClickListener() {
+        if (rowSleep != null) rowSleep.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 Prefs.setSleepMinutes(SettingsActivity.this, 0);
                 Fx.morph(v);
@@ -397,7 +406,7 @@ public class SettingsActivity extends Activity {
                 return true;
             }
         });
-        btnFx.setOnClickListener(new View.OnClickListener() {
+        if (btnFx != null) btnFx.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { Prefs.setFxEnabled(SettingsActivity.this, !Prefs.fxEnabled(SettingsActivity.this)); Fx.morph(v); Fx.themeDip(root, new Runnable() { @Override public void run() { refresh(); } }); }
         });
         // v4.17: FX-toggle long-press previews the sounds — the
@@ -405,14 +414,14 @@ public class SettingsActivity extends Activity {
         // previewing with FX off used to mean previewing silence.
         // Fx.preview plays the blip + bell regardless of the
         // toggle, with no pref change; tap still flips FX on/off.
-        btnFx.setOnLongClickListener(new View.OnLongClickListener() {
+        if (btnFx != null) btnFx.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 Fx.morph(v);
                 Fx.preview(SettingsActivity.this);
                 return true;
             }
         });
-        btnDataSaver.setOnClickListener(new View.OnClickListener() {
+        if (btnDataSaver != null) btnDataSaver.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { Prefs.setDataSaver(SettingsActivity.this, !Prefs.dataSaver(SettingsActivity.this)); Fx.morph(v); Fx.themeDip(root, new Runnable() { @Override public void run() { refresh(); } }); }
         });
         // v12.68: Wi-Fi auto-download toggle — the data-saver
@@ -423,7 +432,7 @@ public class SettingsActivity extends Activity {
         // off. The status line under the button (refresh below)
         // says when the last check ran and how many new talks it
         // downloaded.
-        btnAutoDl.setOnClickListener(new View.OnClickListener() {
+        if (btnAutoDl != null) btnAutoDl.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 boolean on = !Prefs.autoDlEnabled(SettingsActivity.this);
                 Prefs.setAutoDlEnabled(SettingsActivity.this, on);
@@ -441,7 +450,7 @@ public class SettingsActivity extends Activity {
         // Tap still flips the toggle; a failed deep link (the
         // action needs newer system versions) toasts instead of
         // crashing.
-        btnDataSaver.setOnLongClickListener(new View.OnLongClickListener() {
+        if (btnDataSaver != null) btnDataSaver.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 Fx.tap(SettingsActivity.this);
                 Fx.morph(v);
@@ -454,12 +463,14 @@ public class SettingsActivity extends Activity {
             }
         });
         // v12.94: one row for all three clears (see showClearDataDialog).
-        findViewById(R.id.rowClearData).setOnClickListener(new View.OnClickListener() {
+        android.view.View rowClearData = findViewById(R.id.rowClearData);
+        if (rowClearData != null) rowClearData.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { Fx.morph(v); showClearDataDialog(); }
         });
         // v1.36: the downloaded library lost its main-screen button in the
         // v1.25 minimal-main redesign, so it opens from Settings now
-        findViewById(R.id.rowDownloaded).setOnClickListener(new View.OnClickListener() {
+        android.view.View rowDownloaded = findViewById(R.id.rowDownloaded);
+        if (rowDownloaded != null) rowDownloaded.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 // v3.02: premium nav click beat — the Main nav items
                 // morph before Fx.go (v2.36), but this Settings
@@ -477,7 +488,7 @@ public class SettingsActivity extends Activity {
         // Main's Player nav already uses) when a library session
         // is live and its file still exists; otherwise it opens
         // the library plain, exactly like a tap. Tap unchanged.
-        findViewById(R.id.rowDownloaded).setOnLongClickListener(new View.OnLongClickListener() {
+        if (rowDownloaded != null) rowDownloaded.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 Fx.morph(v);
                 android.content.SharedPreferences sp =
@@ -493,7 +504,8 @@ public class SettingsActivity extends Activity {
         });
         // v1.36: reset every setting to its default in one tap (history,
         // favourites, listened marks and downloads are untouched)
-        findViewById(R.id.btnResetAll).setOnClickListener(new View.OnClickListener() {
+        android.view.View btnResetAll = findViewById(R.id.btnResetAll);
+        if (btnResetAll != null) btnResetAll.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 // v3.02: same dialog-open morph as the clear buttons
                 // above. (v2.91's "no morph" was about the dialog's
@@ -650,7 +662,8 @@ public class SettingsActivity extends Activity {
         // the talk source (dhammadownload.com, direct play, never rehosted) and
         // that rights belong to the original sayadaws/site. Info dialogs only:
         // one Close button, nothing else changes on dismiss.
-        findViewById(R.id.rowTeam).setOnClickListener(new View.OnClickListener() {
+        android.view.View rowTeam = findViewById(R.id.rowTeam);
+        if (rowTeam != null) rowTeam.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 Fx.morph(v);
                 new android.app.AlertDialog.Builder(SettingsActivity.this)
@@ -660,7 +673,8 @@ public class SettingsActivity extends Activity {
                         .show();
             }
         });
-        findViewById(R.id.rowPolicy).setOnClickListener(new View.OnClickListener() {
+        android.view.View rowPolicy = findViewById(R.id.rowPolicy);
+        if (rowPolicy != null) rowPolicy.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 Fx.morph(v);
                 new android.app.AlertDialog.Builder(SettingsActivity.this)
@@ -2713,24 +2727,17 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         // v12.94: switches show the label only — the thumb IS the on/off
         // state now (no more "label: ဖွင့်/ပိတ်" text). Value rows show
         // the value only; their labels live in lblRepeat/lblSleep below.
-        btnNoti.setText(Lang.t(this, "noti") + (blockedChan != null ? " ⚠" : ""));
-        btnNoti.setChecked(Prefs.notiEnabled(this));
-        btnAutoplay.setText(Lang.t(this, "autoplay"));
-        btnAutoplay.setChecked(Prefs.autoplay(this));
+        if (btnNoti != null) { btnNoti.setText(Lang.t(this, "noti") + (blockedChan != null ? " ⚠" : "")); btnNoti.setChecked(Prefs.notiEnabled(this)); }
+        if (btnAutoplay != null) { btnAutoplay.setText(Lang.t(this, "autoplay")); btnAutoplay.setChecked(Prefs.autoplay(this)); }
         int rm = Prefs.repeatMode(this);
-        btnRepeat.setText(rm == 0 ? Lang.t(this, "off") : rm == 1 ? Lang.t(this, "repeat_all") : Lang.t(this, "repeat_one"));
-        btnShuffle.setText(Lang.t(this, "shuffle"));
-        btnShuffle.setChecked(Prefs.shuffleOn(this));
-        btnBackground.setText(Lang.t(this, "background"));
-        btnBackground.setChecked(Prefs.backgroundEnabled(this));
-        btnKeepScreen.setText(Lang.t(this, "keep_screen"));
-        btnKeepScreen.setChecked(Prefs.keepScreenOn(this));
-        btnThemeAuto.setText(Lang.t(this, "auto_theme"));
-        btnThemeAuto.setChecked(Prefs.autoTheme(this));
+        if (btnRepeat != null) btnRepeat.setText(rm == 0 ? Lang.t(this, "off") : rm == 1 ? Lang.t(this, "repeat_all") : Lang.t(this, "repeat_one"));
+        if (btnShuffle != null) { btnShuffle.setText(Lang.t(this, "shuffle")); btnShuffle.setChecked(Prefs.shuffleOn(this)); }
+        if (btnBackground != null) { btnBackground.setText(Lang.t(this, "background")); btnBackground.setChecked(Prefs.backgroundEnabled(this)); }
+        if (btnKeepScreen != null) { btnKeepScreen.setText(Lang.t(this, "keep_screen")); btnKeepScreen.setChecked(Prefs.keepScreenOn(this)); }
+        if (btnThemeAuto != null) { btnThemeAuto.setText(Lang.t(this, "auto_theme")); btnThemeAuto.setChecked(Prefs.autoTheme(this)); }
         int sl = Prefs.sleepMinutes(this);
-        btnSleep.setText(sl == 0 ? Lang.t(this, "off") : sl + Lang.t(this, "sleep_min"));
-        btnFx.setText(Lang.t(this, "fx"));
-        btnFx.setChecked(Prefs.fxEnabled(this));
+        if (btnSleep != null) btnSleep.setText(sl == 0 ? Lang.t(this, "off") : sl + Lang.t(this, "sleep_min"));
+        if (btnFx != null) { btnFx.setText(Lang.t(this, "fx")); btnFx.setChecked(Prefs.fxEnabled(this)); }
         refreshDataSaverButton54(); // v7.54: extracted verbatim, see below
         // v12.68: Wi-Fi auto-download toggle + status line — the
         // data-saver shape (label + on/off on the button, live note
