@@ -5379,9 +5379,14 @@ public class AudioService extends Service {
             } catch (Exception ignored) {}
             android.app.DownloadManager dm = (android.app.DownloadManager)
                     getSystemService(android.content.Context.DOWNLOAD_SERVICE);
+            // v13.27 (F9): filter in the provider — the status check
+            // below stays as a guard.
             android.database.Cursor c;
             try {
-                c = dm.query(new android.app.DownloadManager.Query());
+                c = dm.query(new android.app.DownloadManager.Query()
+                        .setFilterByStatus(android.app.DownloadManager.STATUS_RUNNING
+                                | android.app.DownloadManager.STATUS_PAUSED
+                                | android.app.DownloadManager.STATUS_PENDING));
             } catch (Exception ignored) {
                 return null;
             }

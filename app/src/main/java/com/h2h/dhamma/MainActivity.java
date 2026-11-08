@@ -187,8 +187,13 @@ public class MainActivity extends Activity {
             try {
                 android.app.DownloadManager dm1020 = (android.app.DownloadManager)
                         getSystemService(android.content.Context.DOWNLOAD_SERVICE);
+                // v13.27 (F9): filter in the provider — the status check
+                // below stays as a guard.
                 android.database.Cursor c1020 = dm1020.query(
-                        new android.app.DownloadManager.Query());
+                        new android.app.DownloadManager.Query()
+                                .setFilterByStatus(android.app.DownloadManager.STATUS_RUNNING
+                                        | android.app.DownloadManager.STATUS_PAUSED
+                                        | android.app.DownloadManager.STATUS_PENDING));
                 activeNames1020 = new java.util.HashSet<String>();
                 if (c1020 == null) {
                     // v11.78: a null cursor is a failed query, not an

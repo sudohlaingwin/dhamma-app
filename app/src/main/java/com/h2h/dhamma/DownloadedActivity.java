@@ -369,8 +369,13 @@ public class DownloadedActivity extends Activity {
             try {
                 android.app.DownloadManager dm1019 = (android.app.DownloadManager)
                         getSystemService(android.content.Context.DOWNLOAD_SERVICE);
+                // v13.27 (F9): filter in the provider — the status check
+                // below stays as a guard.
                 android.database.Cursor c1019 = dm1019.query(
-                        new android.app.DownloadManager.Query());
+                        new android.app.DownloadManager.Query()
+                                .setFilterByStatus(android.app.DownloadManager.STATUS_RUNNING
+                                        | android.app.DownloadManager.STATUS_PAUSED
+                                        | android.app.DownloadManager.STATUS_PENDING));
                 // v12.14: the set is created only after a non-null cursor is
                 // confirmed (Talks v11.76 / Main v11.78 port) — a null cursor
                 // used to leave an empty non-null set, so the drop loop below
@@ -5879,7 +5884,12 @@ public class DownloadedActivity extends Activity {
             } catch (Exception ignored) {}
             android.app.DownloadManager dm = (android.app.DownloadManager)
                     getSystemService(android.content.Context.DOWNLOAD_SERVICE);
-            android.database.Cursor c = dm.query(new android.app.DownloadManager.Query());
+            // v13.27 (F9): filter in the provider — the status check
+            // below stays as a guard.
+            android.database.Cursor c = dm.query(new android.app.DownloadManager.Query()
+                    .setFilterByStatus(android.app.DownloadManager.STATUS_RUNNING
+                            | android.app.DownloadManager.STATUS_PAUSED
+                            | android.app.DownloadManager.STATUS_PENDING));
             if (c != null) {
                 try {
                     int statusCol = c.getColumnIndex(android.app.DownloadManager.COLUMN_STATUS);
@@ -7088,7 +7098,12 @@ public class DownloadedActivity extends Activity {
             try {
                 android.app.DownloadManager dm = (android.app.DownloadManager)
                         getSystemService(android.content.Context.DOWNLOAD_SERVICE);
-                android.database.Cursor c = dm.query(new android.app.DownloadManager.Query());
+                // v13.27 (F9): filter in the provider — the status check
+                // below stays as a guard.
+                android.database.Cursor c = dm.query(new android.app.DownloadManager.Query()
+                        .setFilterByStatus(android.app.DownloadManager.STATUS_RUNNING
+                                | android.app.DownloadManager.STATUS_PAUSED
+                                | android.app.DownloadManager.STATUS_PENDING));
                 if (c != null) {
                     try {
                         int idCol = c.getColumnIndex(android.app.DownloadManager.COLUMN_ID);
