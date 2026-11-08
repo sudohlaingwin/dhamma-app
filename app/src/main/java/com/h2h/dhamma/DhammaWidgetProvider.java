@@ -212,9 +212,22 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
                 playPendingIntent(context, sp, hasTrack, effLastTitle));
         Intent next = new Intent(context, AudioService.class);
         next.setAction(ACTION_WIDGET_NEXT);
-        views.setOnClickPendingIntent(R.id.wg_next, PendingIntent.getService(context,
-                RC_WIDGET_NEXT, next,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+        // v13.46: a dead service must come up as a foreground service
+        // to advance; the widget tap exempts foreground-service
+        // starts only, so plain getService was refused on API 26+
+        // ("Background start not allowed") and Next was a dead tap
+        // after a swipe/kill — same shape as the Play-resume path.
+        PendingIntent nextPi;
+        if (Build.VERSION.SDK_INT >= 26) {
+            nextPi = PendingIntent.getForegroundService(context,
+                    RC_WIDGET_NEXT, next,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        } else {
+            nextPi = PendingIntent.getService(context,
+                    RC_WIDGET_NEXT, next,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        }
+        views.setOnClickPendingIntent(R.id.wg_next, nextPi);
         views.setOnClickPendingIntent(R.id.wg_body,
                 openPendingIntent(context, sp));
         return views;
@@ -226,6 +239,17 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
         if ("toggle".equals(kind)) {
             Intent toggle = new Intent(context, AudioService.class);
             toggle.setAction(AudioService.ACTION_TOGGLE);
+            // v13.46: same dead-service shape as the Play-resume path
+            // — the toggle intent built while the service is alive
+            // goes stale across a process death, and a tap inside
+            // that window was refused on API 26+ like Next. The
+            // trackless leg ends the service synchronously
+            // (stopSelf in onStartCommand), so no startForeground
+            // deadline is at risk.
+            if (Build.VERSION.SDK_INT >= 26) {
+                return PendingIntent.getForegroundService(context, RC_WIDGET_TOGGLE, toggle,
+                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            }
             return PendingIntent.getService(context, RC_WIDGET_TOGGLE, toggle,
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         }
