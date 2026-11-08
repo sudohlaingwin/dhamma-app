@@ -64,4 +64,19 @@
         android:textColor="#C9A227"
         android:textSize="18sp"
         android:textStyle="bold" />
+    <!-- v13.10 (F2): the escape hatch — a quiet text button, hidden
+         until the update is actually stuck (failed download, refused
+         install permission, or installer cancelled). Tapping it keeps
+         this version for the rest of this process; the next cold start
+         asks again. -->
+    <Button
+        android:id="@+id/updSkip"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="@android:color/transparent"
+        android:text="ဒီဗားရှင်းနဲ့ပဲ ဆက်သုံးမယ်"
+        android:textColor="#AAAAAA"
+        android:textSize="15sp"
+        android:visibility="gone" />
 </LinearLayout>

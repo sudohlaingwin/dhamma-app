@@ -37,6 +37,10 @@ import java.net.URL;
 // toast, no block. Draft releases are invisible to the checker, so a new
 // build only reaches phones once its release is published (same draft
 // rule as the 3D app: publish only on his "update လုပ်လိုက်").
+// v13.10: the block is never a trap — after a failed download, a
+// refused install permission, or a cancelled installer the dialog
+// offers "ဒီဗားရှင်းနဲ့ပဲ ဆက်သုံးမယ်" (keep this version for this
+// process; asked again on the next cold start).
 public class UpdateChecker {
     public static final String REPO = "sudohlaingwin/dhamma-app";
     public static final String APK_NAME = "dhamma-update.apk";
@@ -52,6 +56,14 @@ public class UpdateChecker {
     // Pending-update state, kept across rotation (static, process-wide).
     private static String pendingUrl = null;
     private static String pendingName = null;
+    // v13.10 (F3): the .apk asset's size from the release JSON, used
+    // to verify a download is complete before it is ever installed.
+    private static long pendingSize = -1;
+    // v13.10 (F2): the tag the user skipped this process — the
+    // once-a-minute onResume re-check must not re-block for it.
+    // Cleared on the next cold start (statics reset), so the user
+    // is asked again then.
+    private static String skippedTag = null;
     private static boolean downloading = false;
     private static int lastProgress = -1;
     private static long lastPostAt = 0;
@@ -64,10 +76,30 @@ public class UpdateChecker {
     private static TextView blockVersion;
     private static TextView blockStatus;
     private static Button blockBtn;
+    private static Button blockSkip;
     private static ProgressBar blockBar;
 
     public static boolean isBlockVisible() {
         return blockDialog != null && blockDialog.isShowing();
+    }
+
+    // v13.10 (F5): dismiss the block and drop every view ref so a
+    // rotation never leaks the old dialog's window (WindowLeaked) —
+    // called from MainActivity.onDestroy; the next onCreate re-shows
+    // the block from pendingUrl, so nothing is lost. Clears only the
+    // dialog, never the pending-update state.
+    public static void dismissBlock() {
+        try {
+            if (blockDialog != null) blockDialog.dismiss();
+        } catch (Exception ignored) {}
+        blockDialog = null;
+        blockActivity = null;
+        blockSub = null;
+        blockVersion = null;
+        blockStatus = null;
+        blockBtn = null;
+        blockSkip = null;
+        blockBar = null;
     }
 
     public static void check(final Activity activity) {
@@ -80,13 +112,19 @@ public class UpdateChecker {
         new Thread(new Runnable() {
             @Override public void run() {
                 try {
-                    String[] found = fetchLatest();
+                    Latest found = fetchLatest();
                     if (found != null) {
                         int current = currentCode(appCtx);
-                        int latest = parseCode(found[0]);
-                        if (current > 0 && latest > current) {
-                            pendingUrl = found[1];
-                            pendingName = found[0];
+                        int latest = parseCode(found.tag);
+                        // v13.10 (F2): a version skipped this process
+                        // never re-blocks until the next cold start
+                        // (the statics reset) — the once-a-minute
+                        // onResume re-check must not undo the skip.
+                        if (current > 0 && latest > current
+                                && !found.tag.equals(skippedTag)) {
+                            pendingUrl = found.url;
+                            pendingName = found.tag;
+                            pendingSize = found.size;
                             final Activity a = activity;
                             a.runOnUiThread(new Runnable() {
                                 @Override public void run() {
@@ -138,11 +176,18 @@ public class UpdateChecker {
         }
     }
 
+    // v13.10 (F4): parse only the LEADING digits after one optional
+    // 'v' — the old strip-all-digits turned "v1308-rc1" into 13081,
+    // a false update prompt. A tag outside the v<code> convention
+    // (e.g. "v13.07" -> 13) fails SAFE: never a false prompt.
     private static int parseCode(String tag) {
         try {
-            String digits = tag.replaceAll("[^0-9]", "");
-            if (digits.length() == 0) return 0;
-            return Integer.parseInt(digits);
+            String t = tag == null ? "" : tag.trim();
+            if (t.startsWith("v") || t.startsWith("V")) t = t.substring(1);
+            int i = 0;
+            while (i < t.length() && Character.isDigit(t.charAt(i))) i++;
+            if (i == 0) return 0;
+            return Integer.parseInt(t.substring(0, i));
         } catch (Exception ignored) {
             return 0;
         }
@@ -161,8 +206,8 @@ public class UpdateChecker {
         }
     }
 
-    // Returns {tag_name, browser_download_url of the first .apk asset}, or null.
-    private static String[] fetchLatest() {
+    // Returns the latest release's tag, .apk URL and asset size, or null.
+    private static Latest fetchLatest() {
         HttpURLConnection c = null;
         try {
             c = (HttpURLConnection) new URL(API_URL).openConnection();
@@ -180,6 +225,7 @@ public class UpdateChecker {
             JSONObject j = new JSONObject(sb.toString());
             String tag = j.optString("tag_name", "");
             String url = null;
+            long size = -1;
             JSONArray assets = j.optJSONArray("assets");
             if (assets != null) {
                 for (int i = 0; i < assets.length(); i++) {
@@ -188,12 +234,15 @@ public class UpdateChecker {
                     String name = a.optString("name", "");
                     if (name.toLowerCase(java.util.Locale.US).endsWith(".apk")) {
                         url = a.optString("browser_download_url", null);
+                        // v13.10 (F3): the asset's real size, for the
+                        // download verification in startDownload.
+                        size = a.optLong("size", -1);
                         break;
                     }
                 }
             }
             if (tag.length() == 0 || url == null) return null;
-            return new String[]{tag, url};
+            return new Latest(tag, url, size);
         } catch (Exception ignored) {
             return null;
         } finally {
@@ -201,10 +250,20 @@ public class UpdateChecker {
         }
     }
 
+    private static class Latest {
+        final String tag;
+        final String url;
+        final long size;
+        Latest(String tag, String url, long size) {
+            this.tag = tag;
+            this.url = url;
+            this.size = size;
+        }
+    }
+
     private static void showBlock(final Activity activity) {
-        try {
-            if (blockDialog != null) blockDialog.dismiss();
-        } catch (Exception ignored) {}
+        // v13.10 (F5): dismissBlock() also nulls the view refs.
+        dismissBlock();
         blockDialog = new Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         blockDialog.setCancelable(false);
         blockDialog.setOnKeyListener(new DialogInterface.OnKeyListener() {
@@ -218,6 +277,16 @@ public class UpdateChecker {
         blockStatus = (TextView) blockDialog.findViewById(R.id.updStatus);
         blockBtn = (Button) blockDialog.findViewById(R.id.updBtn);
         blockBar = (ProgressBar) blockDialog.findViewById(R.id.updBar);
+        // v13.10 (F2): the escape hatch — hidden until the update is
+        // actually stuck (refreshBlockUi shows it), so the blocking
+        // update still comes first.
+        blockSkip = (Button) blockDialog.findViewById(R.id.updSkip);
+        blockSkip.setText(Lang.t(activity, "upd_skip"));
+        blockSkip.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                onSkipButton(activity);
+            }
+        });
         TextView title = (TextView) blockDialog.findViewById(R.id.updTitle);
         title.setText(Lang.t(activity, "upd_title"));
         blockSub.setText(Lang.t(activity, "upd_sub"));
@@ -260,6 +329,22 @@ public class UpdateChecker {
         startDownload(activity);
     }
 
+    // v13.10 (F2): the escape hatch. The user keeps this version for
+    // the rest of this process — skippedTag stops the once-a-minute
+    // onResume re-check from re-blocking, and the next cold start
+    // (statics reset) asks again. Never deletes the downloaded file.
+    private static void onSkipButton(Activity activity) {
+        Fx.tap(activity);
+        skippedTag = pendingName;
+        pendingUrl = null;
+        pendingName = null;
+        pendingSize = -1;
+        downloadedFile = null;
+        downloadFailed = false;
+        waitingForPermission = false;
+        dismissBlock();
+    }
+
     private static boolean canInstall(Context ctx) {
         if (Build.VERSION.SDK_INT < 26) return true;
         try {
@@ -279,19 +364,36 @@ public class UpdateChecker {
         final Context appCtx = activity.getApplicationContext();
         new Thread(new Runnable() {
             @Override public void run() {
-                File out = new File(appCtx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), APK_NAME);
+                // v13.10 (F1): the whole body is guarded — a null
+                // external dir used to throw before `downloading`
+                // was cleared, leaving the button dead forever.
+                // v13.10 (F3): each attempt also verifies the file
+                // against the release asset's size, so a truncated
+                // chunked body (no Content-Length) retries instead
+                // of becoming a corrupt "downloaded" file.
                 boolean ok = false;
-                for (int attempt = 1; attempt <= MAX_ATTEMPTS && !ok; attempt++) {
-                    try {
-                        ok = downloadOnce(pendingUrl, out);
-                    } catch (Exception ignored) {
-                        ok = false;
+                File out = null;
+                try {
+                    File dir = appCtx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+                    if (dir == null) dir = appCtx.getFilesDir(); // unmounted / shared storage
+                    if (dir == null) throw new IllegalStateException("no storage dir");
+                    out = new File(dir, APK_NAME);
+                    for (int attempt = 1; attempt <= MAX_ATTEMPTS && !ok; attempt++) {
+                        try {
+                            ok = downloadOnce(pendingUrl, out)
+                                    && (pendingSize <= 0 || out.length() == pendingSize);
+                        } catch (Exception ignored) {
+                            ok = false;
+                        }
+                        if (!ok && attempt < MAX_ATTEMPTS) {
+                            try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
+                        }
                     }
-                    if (!ok && attempt < MAX_ATTEMPTS) {
-                        try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
-                    }
+                } catch (Throwable t) {
+                    ok = false;
+                } finally {
+                    downloading = false;
                 }
-                downloading = false;
                 if (ok) {
                     downloadedFile = out;
                     postToUi(new Runnable() {
@@ -390,6 +492,17 @@ public class UpdateChecker {
                 refreshBlockUi(activity);
                 return;
             }
+            // v13.10 (F3): never fire the installer on a file whose
+            // size no longer matches the release asset — a truncated
+            // file used to loop the installer forever. Drop the bad
+            // file and offer a re-download instead.
+            if (pendingSize > 0 && f.length() != pendingSize) {
+                downloadFailed = true;
+                downloadedFile = null;
+                try { f.delete(); } catch (Exception ignored) {}
+                refreshBlockUi(activity);
+                return;
+            }
             Uri uri = Uri.parse("content://com.h2h.dhamma.apkprovider/" + APK_NAME);
             Intent it = new Intent(Intent.ACTION_VIEW);
             it.setDataAndType(uri, "application/vnd.android.package-archive");
@@ -408,7 +521,8 @@ public class UpdateChecker {
     }
 
     private static void refreshBlockUi(Activity activity) {
-        if (blockSub == null || blockBtn == null || blockBar == null || blockStatus == null) return;
+        if (blockSub == null || blockBtn == null || blockSkip == null
+                || blockBar == null || blockStatus == null) return;
         if (downloading) {
             blockSub.setText(Lang.t(activity, "upd_sub"));
             int p = lastProgress < 0 ? 0 : lastProgress;
@@ -417,30 +531,41 @@ public class UpdateChecker {
             blockStatus.setText(Lang.t(activity, "upd_dl") + " " + p + "%");
             blockBtn.setEnabled(false);
             blockBtn.setText(Lang.t(activity, "upd_dl") + " " + p + "%");
+            // v13.10 (F2): no skipping mid-download — the escape
+            // appears only once the update is actually stuck.
+            blockSkip.setVisibility(View.GONE);
         } else if (downloadFailed) {
             blockBar.setVisibility(View.VISIBLE);
             blockBar.setProgress(0);
             blockStatus.setText(Lang.t(activity, "upd_fail"));
             blockBtn.setEnabled(true);
             blockBtn.setText(Lang.t(activity, "upd_fail"));
+            blockSkip.setVisibility(View.VISIBLE);
         } else if (waitingForPermission) {
             blockBar.setVisibility(View.INVISIBLE);
             blockSub.setText(Lang.t(activity, "upd_perm_sub"));
             blockStatus.setText(Lang.t(activity, "upd_perm"));
             blockBtn.setEnabled(true);
             blockBtn.setText(Lang.t(activity, "upd_perm"));
+            blockSkip.setVisibility(View.VISIBLE);
         } else if (downloadedFile != null && downloadedFile.exists()) {
             blockBar.setVisibility(View.VISIBLE);
             blockBar.setProgress(100);
             blockStatus.setText(Lang.t(activity, "upd_inst"));
             blockBtn.setEnabled(true);
             blockBtn.setText(Lang.t(activity, "upd_inst"));
+            // v13.10 (F2): the installer already opened once and the
+            // user came back — the escape is available here too.
+            blockSkip.setVisibility(View.VISIBLE);
         } else {
             blockBar.setVisibility(View.INVISIBLE);
             blockSub.setText(Lang.t(activity, "upd_sub"));
             blockStatus.setText("");
             blockBtn.setEnabled(true);
             blockBtn.setText(Lang.t(activity, "upd_btn"));
+            // v13.10 (F2): the update must be tried once before the
+            // escape appears — the blocking update still comes first.
+            blockSkip.setVisibility(View.GONE);
         }
     }
 }

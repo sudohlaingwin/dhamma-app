@@ -1542,6 +1542,10 @@ public class MainActivity extends Activity {
         GlassBlur.detach(searchField);
         GlassBlur.detach(navBar);
         GlassBlur.detach(findViewById(R.id.nowStrip));
+        // v13.10 (F5): dismiss the update block so a rotation never
+        // leaks its window (WindowLeaked) — the next onCreate re-shows
+        // it from the pending update, so nothing is lost.
+        UpdateChecker.dismissBlock();
     }
 
     // v1.48: rotating the phone used to wipe the search text (and the
