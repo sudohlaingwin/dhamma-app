@@ -571,6 +571,9 @@ public class AudioService extends Service {
                         android.widget.Toast.LENGTH_SHORT).show();
             }
             play(landed.getAbsolutePath(), titleB12, savedSeekFor(awaitUrl));
+            // v13.14 (Q10): the head is already popped above — if this prepare fails,
+            // the head returns to the front of its sayadaw's queue instead of vanishing.
+            armPendingQueueHead14(newQLines12[barePos12], awaitSayadaw);
             // v12.13: same second-hidden-end refresh as the shared tail (Case B plays
             // here, not through playForeignHead11).
             refreshPlayListForForeign13(awaitSayadaw, cat12[1], awaitUrl);
@@ -733,6 +736,21 @@ public class AudioService extends Service {
     // button went dead. Remember the error so the Room can retry
     // the same talk instead of toggling a dead player.
     private boolean trackError = false;
+    // v13.14 (Q10, queue audit sim1327): the background queue-head advances pop the head
+    // and persist the shortened queue BEFORE play() — and play() prepares async, so a
+    // prepare failure (onError, or the synchronous setDataSource catch) left the head
+    // gone with no retry: the talk vanished from the queue and the listener had to
+    // re-queue it by hand. A popped head now stays "pending" until it actually sounds:
+    // onPrepared clears the record; onError (or a synchronous play failure) puts the
+    // head line back at the FRONT of the queue it came from. Only the background
+    // advance pop sites set this record — a manual tap never does, so a manually
+    // picked talk that fails is never silently re-queued, and a fresh play() clears
+    // the record first (a tap in the prepare window supersedes the pending head like
+    // any other talk). The record is the exact persisted line, so a v2 head keeps
+    // its owner + title and returns to the right key: owner is the sayadaw key for a
+    // Room queue, null for the library queue.
+    private String pendingQueueHeadLine14 = null;
+    private String pendingQueueHeadOwner14 = null;
     // v1.69: pause tapped while a stream is still buffering — toggle()
     // used to no-op on an unprepared player, so the talk then started
     // playing anyway despite the tap. Remember the hold and honour it
@@ -1631,6 +1649,11 @@ public class AudioService extends Service {
         trackEnded = false;
         liveEnded = false;
         trackError = false;
+        // v13.14 (Q10): a fresh play supersedes any pending queue head — a tap in
+        // the prepare window moves on like any other talk, and the armed head must
+        // never be restored by a later failure of this new talk. The background pop
+        // sites arm their head AFTER this call returns.
+        clearPendingQueueHead14();
         holdPaused = false;
         // v10.87: a pending focus-gain auto-resume belongs to the OLD
         // talk, not this one — a transient loss (call) during talk A
@@ -1691,6 +1714,9 @@ public class AudioService extends Service {
             player.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
                 @Override public void onPrepared(MediaPlayer mp) {
                     prepared = true;
+                    // v13.14 (Q10): the pending queue head sounds now — its failure
+                    // window is closed, so the record is cleared, never restored.
+                    clearPendingQueueHead14();
                     // v1.69: a pause tapped while buffering (see
                     // holdPaused) means this talk opens paused, not
                     // playing — and a paused talk never gains a sleep
@@ -1854,6 +1880,14 @@ public class AudioService extends Service {
                 @Override public boolean onError(MediaPlayer mp, int what, int extra) {
                     trackError = true;
                     livePlaying = false; // v4.16
+                    // v13.14 (Q10): a failed background queue head goes back to the
+                    // front of its queue instead of vanishing — but only if this
+                    // failure is the armed head's own prepare (cross-form URL match);
+                    // a stale record is dropped without restoring, never the wrong talk.
+                    if (pendingQueueHeadLine14 != null) {
+                        if (pendingHeadMatches14(currentUrl)) restorePendingQueueHead14();
+                        else clearPendingQueueHead14();
+                    }
 
                     // v1.40: the Room never sets a listener, so a failed
                     // stream used to stall silently with no message at
@@ -2943,6 +2977,9 @@ public class AudioService extends Service {
                     // half-heard file at 0.
                     play(headFile.getAbsolutePath(), libTitleFor79(headFile),
                             savedSeekFor(headFile.getAbsolutePath()));
+                    // v13.14 (Q10): the head is already popped above — if this prepare
+                    // fails, the head returns to the front of the library queue.
+                    armPendingQueueHead14(headFile.getAbsolutePath(), null);
                     return;
                 }
                 // v11.66: a head that was in the shelf but vanished before the play above
@@ -3771,6 +3808,84 @@ public class AudioService extends Service {
     // instead of from the finished talk. A foreign head has no
     // list position (v12.11): the playList stays the old list
     // and the next hidden end defers instead of chaining.
+    // v13.14 (Q10): arm the pending queue head after a background advance popped it
+    // and called play(). Called ONLY by the background pop sites (advanceQueueHead63
+    // in-list, playForeignHead11, advanceLibInBackground79, the Case-B download
+    // re-fire) — never by a manual tap, so a manually picked talk that fails is
+    // never silently re-queued. If play() already failed synchronously (trackError
+    // set by its setDataSource catch) the head is restored at once instead of arming,
+    // because no onError will ever fire for it.
+    private void armPendingQueueHead14(String line, String owner) {
+        if (line == null || line.length() == 0) return;
+        pendingQueueHeadLine14 = line;
+        pendingQueueHeadOwner14 = owner;
+        if (trackError) restorePendingQueueHead14();
+    }
+
+    // v13.14 (Q10): put a failed background queue head back at the FRONT of the queue
+    // it was popped from. Called from onError (async prepare failure) and from
+    // armPendingQueueHead14 when play() already failed synchronously. Dedup by URL:
+    // if the head is already queued (the Room poll or the listener re-added it in
+    // the prepare window) it is not duplicated. The exact persisted line is restored,
+    // so a v2 head keeps its owner + title. Clears the record either way, so a
+    // second failure (a toggle retry of the same talk) can never restore twice.
+    private void restorePendingQueueHead14() {
+        String line = pendingQueueHeadLine14;
+        String owner = pendingQueueHeadOwner14;
+        pendingQueueHeadLine14 = null;
+        pendingQueueHeadOwner14 = null;
+        if (line == null || line.length() == 0) return;
+        try {
+            QueueEntry qe = QueueEntry.parse(line);
+            if (qe == null || qe.url.length() == 0) return;
+            if (owner == null) {
+                String raw = Prefs.savedQueueLib(this);
+                java.util.ArrayList<String> q = new java.util.ArrayList<String>();
+                if (raw != null && raw.length() > 0)
+                    for (String l : raw.split("\n")) if (l != null && l.length() > 0) q.add(l);
+                for (String l : q) {
+                    QueueEntry e = QueueEntry.parse(l);
+                    if (e != null && e.url.equals(qe.url)) return;
+                }
+                q.add(0, line);
+                Prefs.saveQueueLib(this, q);
+            } else {
+                String raw = Prefs.savedQueue(this, owner);
+                java.util.ArrayList<String> q = new java.util.ArrayList<String>();
+                if (raw != null && raw.length() > 0)
+                    for (String l : raw.split("\n")) if (l != null && l.length() > 0) q.add(l);
+                for (String l : q) {
+                    QueueEntry e = QueueEntry.parse(l);
+                    if (e != null && e.url.equals(qe.url)) return;
+                }
+                q.add(0, line);
+                Prefs.saveQueue(this, owner, q);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    // v13.14 (Q10): does the failed URL name the armed pending head? The head's
+    // persisted URL is the stream URL, but play() may have been given the offline
+    // file path, so both forms match. A mismatch means the pending record is stale,
+    // so onError drops the record without restoring rather than re-queueing the
+    // wrong talk.
+    private boolean pendingHeadMatches14(String failedUrl) {
+        if (pendingQueueHeadLine14 == null || failedUrl == null) return false;
+        QueueEntry qe = QueueEntry.parse(pendingQueueHeadLine14);
+        if (qe == null || qe.url.length() == 0) return false;
+        if (qe.url.equals(failedUrl)) return true;
+        try {
+            java.io.File f = offlineFileFor(qe.url);
+            if (f != null && f.getAbsolutePath().equals(failedUrl)) return true;
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    private void clearPendingQueueHead14() {
+        pendingQueueHeadLine14 = null;
+        pendingQueueHeadOwner14 = null;
+    }
+
     private boolean advanceQueueHead63(android.content.SharedPreferences sp,
             String raw, String[] lines, boolean manual) {
         try {
@@ -3929,6 +4044,9 @@ public class AudioService extends Service {
             sp.edit().putString("lastUrl", headUrl).putString("lastTitle", hTitle).apply();
             Prefs.savePlayList(this, raw, headIdx);
             play(hLocal != null ? hLocal.getAbsolutePath() : headUrl, hTitle, savedSeekFor(headUrl));
+            // v13.14 (Q10): the head is already popped above — if this prepare fails,
+            // the head returns to the front of lastName's queue instead of vanishing.
+            armPendingQueueHead14(qLines[headPos], lastName);
             // v11.20: background queue-head play is a branch —
             // foreground playIndex pop-or-clears forwardHistory
             // on any fresh play, but this service branch never
@@ -4050,6 +4168,10 @@ public class AudioService extends Service {
                     .putString("lastPage", headCat11[1])
                     .putString("lastPhoto", headCat11[2]).apply();
             play(forceLocal11 != null ? forceLocal11 : (hLocal11 != null ? hLocal11.getAbsolutePath() : headUrl), hTitle11, savedSeekFor(headUrl));
+            // v13.14 (Q10): the head is already carried away above — if this prepare
+            // fails, the head returns to the front of the NEW sayadaw's queue (the key
+            // the rest travelled to), never to the cleared old key.
+            armPendingQueueHead14(qLines[headPos], headSayadaw11);
             try {
                 long gen11 = clearGen95(sp);
                 String fwdRaw11 = sp.getString("forwardHistoryRaw", "");
