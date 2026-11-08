@@ -280,23 +280,39 @@ public class UpdateChecker {
         // v13.10 (F2): the escape hatch — hidden until the update is
         // actually stuck (refreshBlockUi shows it), so the blocking
         // update still comes first.
+        // v13.44: UpdateChecker blocking-dialog guards (M9/F5 class, same as
+        // Main v13.32, Settings v13.34, Talks v13.36, Downloaded v13.37,
+        // DlAdapter v13.38, Room onCreate v13.39, nowPlaying v13.40, clocks
+        // v13.41, seekBar v13.42, TalkAdapter v13.43) — every bare deref in
+        // showBlock is now null-guarded: a renamed or missing updSkip /
+        // updTitle / updSub / updVersion / updBtn id leaves that piece
+        // unwritten or unwired instead of exiting the app at the exact
+        // moment a new version is offered. The dialog still shows with
+        // whatever views exist (update button works if present, skip
+        // works if present); refreshBlockUi's entry guard already
+        // no-ops when any of its five views is missing. All ids exist
+        // in update_block.xml today, so no live behaviour changes.
         blockSkip = (Button) blockDialog.findViewById(R.id.updSkip);
-        blockSkip.setText(Lang.t(activity, "upd_skip"));
-        blockSkip.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                onSkipButton(activity);
-            }
-        });
+        if (blockSkip != null) {
+            blockSkip.setText(Lang.t(activity, "upd_skip"));
+            blockSkip.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    onSkipButton(activity);
+                }
+            });
+        }
         TextView title = (TextView) blockDialog.findViewById(R.id.updTitle);
-        title.setText(Lang.t(activity, "upd_title"));
-        blockSub.setText(Lang.t(activity, "upd_sub"));
-        blockVersion.setText(pendingName == null ? "" : pendingName);
-        blockBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                Fx.tap(activity);
-                onUpdateButton(activity);
-            }
-        });
+        if (title != null) title.setText(Lang.t(activity, "upd_title"));
+        if (blockSub != null) blockSub.setText(Lang.t(activity, "upd_sub"));
+        if (blockVersion != null) blockVersion.setText(pendingName == null ? "" : pendingName);
+        if (blockBtn != null) {
+            blockBtn.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    Fx.tap(activity);
+                    onUpdateButton(activity);
+                }
+            });
+        }
         blockActivity = activity;
         refreshBlockUi(activity);
         try {
