@@ -4840,27 +4840,40 @@ public class TalksActivity extends Activity {
                 HttpURLConnection conn = null;
                 InputStream in = null;
                 try {
-                    conn = (HttpURLConnection) new URL(pageUrl).openConnection();
-                    conn.setConnectTimeout(20000);
-                    conn.setReadTimeout(30000);
-                    conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-                    in = conn.getInputStream();
-                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                    byte[] buf = new byte[8192];
-                    int n;
-                    while ((n = in.read(buf)) > 0) baos.write(buf, 0, n);
-                    byte[] bytes = baos.toByteArray();
-                    String html = new String(bytes, "UTF-8");
-                    // v1.87: the standard meta form quotes the value
-                    // (charset="utf-8"), and the old pattern required
-                    // the value to start right after '=' — a quoted
-                    // charset never matched, so a non-UTF-8 page kept
-                    // its garbled first-decode titles. Allow the quote.
-                    Matcher cm = Pattern.compile("charset=[\"']?([A-Za-z0-9_-]+)", Pattern.CASE_INSENSITIVE).matcher(html);
-                    if (cm.find()) {
-                        try { html = new String(bytes, cm.group(1)); } catch (Exception ignored) {}
+                    // v13.25 (catalog F1): a sayadaw with no talk page
+                    // on the source site (idx 44/45 — plain text, no
+                    // link) has a null/empty pageUrl, so new URL("")
+                    // used to throw MalformedURLException and the
+                    // landing showed the failure toast + a retry
+                    // button that could never succeed. Skip the fetch:
+                    // found stays empty and err stays null, so the
+                    // landing is the clean-empty one (no-talks toast,
+                    // no retry — the v12.31 rule), and talkCleanEmpty
+                    // keeps a rotation from refetching a URL that
+                    // does not exist (v12.56 restore branch).
+                    if (pageUrl != null && pageUrl.length() > 0) {
+                        conn = (HttpURLConnection) new URL(pageUrl).openConnection();
+                        conn.setConnectTimeout(20000);
+                        conn.setReadTimeout(30000);
+                        conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+                        in = conn.getInputStream();
+                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                        byte[] buf = new byte[8192];
+                        int n;
+                        while ((n = in.read(buf)) > 0) baos.write(buf, 0, n);
+                        byte[] bytes = baos.toByteArray();
+                        String html = new String(bytes, "UTF-8");
+                        // v1.87: the standard meta form quotes the value
+                        // (charset="utf-8"), and the old pattern required
+                        // the value to start right after '=' — a quoted
+                        // charset never matched, so a non-UTF-8 page kept
+                        // its garbled first-decode titles. Allow the quote.
+                        Matcher cm = Pattern.compile("charset=[\"']?([A-Za-z0-9_-]+)", Pattern.CASE_INSENSITIVE).matcher(html);
+                        if (cm.find()) {
+                            try { html = new String(bytes, cm.group(1)); } catch (Exception ignored) {}
+                        }
+                        found.addAll(parseTalkList(pageUrl, html));
                     }
-                    found.addAll(parseTalkList(pageUrl, html));
                 } catch (Exception e) {
                     // v1.92: a null/empty message used to leave err
                     // null, so the failure fell through to the
