@@ -482,10 +482,18 @@ public class Prefs {
                     urlToIndex.put(e.url, out.size());
                     out.add(kept);
                 } else if (e.sayadaw.length() > 0) {
-                    // A v2 line for a URL already kept as bare v1:
-                    // the v2 form carries the owner — keep it.
+                    // v13.13 Q8: the CURRENT owner wins — the old
+                    // first-wins rule kept a stale v2 owner when the
+                    // same URL arrived under two owners (old name-key
+                    // vs current page-key in the alias migration),
+                    // and a stale owner makes the Room handover refuse
+                    // the head. A bare v1 line still upgrades to v2
+                    // (its owner is empty, so it differs); a
+                    // same-owner repeat is a no-op. Position stays at
+                    // first occurrence — only the owner/title refresh.
                     QueueEntry prev = QueueEntry.parse(out.get(at.intValue()));
-                    if (prev != null && prev.sayadaw.length() == 0)
+                    QueueEntry keptE = QueueEntry.parse(kept);
+                    if (prev != null && keptE != null && !keptE.sayadaw.equals(prev.sayadaw))
                         out.set(at.intValue(), kept);
                 }
             }

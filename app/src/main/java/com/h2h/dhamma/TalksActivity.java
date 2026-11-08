@@ -1851,7 +1851,38 @@ public class TalksActivity extends Activity {
                                         int added04 = 0;
                                         java.util.Set<String> keep04 = new java.util.HashSet<String>();
                                         int dispCount04 = visibleHits != null ? visibleHits.size() : talks.size();
-                                        for (int dp04 = pos; dp04 < dispCount04; dp04++) {
+                                        // v13.13 T1: the start position is re-resolved
+                                        // from the anchor talk dt.url at tap time — the
+                                        // dialog can sit open across a filter rebuild
+                                        // (the 1s strip tick rebuilds on a mark change),
+                                        // which shifts visibleHits under the captured
+                                        // pos, so the old loop queued from the wrong
+                                        // talk (or none, when the list shrank below
+                                        // pos and the toast lied "already_in_queue").
+                                        // Every other dialog verb already acts on dt,
+                                        // not on pos; this one does now too.
+                                        int start04 = -1;
+                                        if (dt != null && dt.url != null) {
+                                            for (int dp04 = 0; dp04 < dispCount04; dp04++) {
+                                                int ti04 = talkIndexAtDisplay(dp04);
+                                                if (ti04 < 0 || ti04 >= talks.size()) continue;
+                                                Talk t04 = talks.get(ti04);
+                                                if (t04 != null && dt.url.equals(t04.url)) { start04 = dp04; break; }
+                                            }
+                                        }
+                                        if (start04 < 0) {
+                                            // Anchor no longer visible (filtered out
+                                            // while the dialog sat open): queue just the anchor itself, never a stale range.
+                                            if (dt != null && dt.url != null && dt.url.length() > 0
+                                                    && !((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && dt.url.equals(talkPlayingUrl))
+                                                            || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && dt.url.equals(talkPlayingLibUrl)))
+                                                    && !talkQueue.contains(dt.url)) {
+                                                talkQueue.add(dt.url);
+                                                keep04.add(dt.url);
+                                                added04++;
+                                            }
+                                        }
+                                        if (start04 >= 0) for (int dp04 = start04; dp04 < dispCount04; dp04++) {
                                             int ti04 = talkIndexAtDisplay(dp04);
                                             if (ti04 < 0 || ti04 >= talks.size()) continue;
                                             Talk t04 = talks.get(ti04);

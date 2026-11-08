@@ -904,7 +904,12 @@ public class AudioService extends Service {
                     .getString("lastName", "");
             if (isLibSession()) {
                 String owner = Prefs.sayadawForTalk(this, "lib", currentUrl, sd);
-                if (owner != null && owner.length() > 0) sd = owner;
+                // v13.13 Q1: a non-null owner wins, even "" — "" is the
+                // v12.82 answer for an unresolvable library file (TOTAL/
+                // DAY count it, no SAY line), and the old length>0 guard
+                // discarded it, banking the listen under the stale Room
+                // lastName instead. Room sessions never reach here.
+                if (owner != null) sd = owner;
             }
             Prefs.statsAdd(this, sd, currentUrl, currentTitle, sec);
         } catch (Exception ignored) {}
@@ -4963,6 +4968,12 @@ public class AudioService extends Service {
     }
 
     private void stopPlayback() {
+        // v13.13 D1: bank the listened seconds BEFORE anything below
+        // nulls the identity — the old code never flushed here (unlike
+        // stopAndClear, play, onCompletion and pause), so up to 59
+        // banked seconds died on every stop and onDestroy's flush found
+        // a null identity. A second flush is a no-op (pending already 0).
+        flushListenStats();
         livePlaying = false; // v4.16 (covers stopAndClear + notification stop)
         // v4.04: a stop ends any sleep fade with it.
         cancelSleepFade();
