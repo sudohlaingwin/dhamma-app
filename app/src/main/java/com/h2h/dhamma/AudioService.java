@@ -403,15 +403,19 @@ public class AudioService extends Service {
                 // talk under repeat-one).
                 sp.edit().putString("lastUrl", awaitUrl)
                         .putString("lastTitle", title == null ? "" : title).apply();
-                if (title != null && title.length() > 0) {
-                    android.widget.Toast.makeText(AudioService.this,
-                            Lang.t(AudioService.this, "next_prefix") + title,
-                            android.widget.Toast.LENGTH_SHORT).show();
-                }
                 // v12.18 (slice A F6): resume from the saved spot like every other
                 // advance (foreign re-fires + plain/queue/shuffle tails all use
                 // savedSeekFor) — the 2-arg play() restarts from 0.
                 play(landed.getAbsolutePath(), title == null ? "" : title, savedSeekFor(awaitUrl));
+                // v13.53 (audit-1372 F1): the toast used to fire BEFORE play(), so a
+                // synchronous setDataSource failure showed "next: <talk>" for a talk
+                // that never played, on top of play()'s own generic failure toast.
+                // It now fires only when play() did not fail synchronously.
+                if (!trackError && title != null && title.length() > 0) {
+                    android.widget.Toast.makeText(AudioService.this,
+                            Lang.t(AudioService.this, "next_prefix") + title,
+                            android.widget.Toast.LENGTH_SHORT).show();
+                }
             } finally { try { cur.close(); } catch (Exception ignored) {} }
         } catch (Exception ignored) {}
     }
@@ -512,7 +516,13 @@ public class AudioService extends Service {
                 // moves behind the boolean: the fall-through is silent like every
                 // other background advance (no Toast in advanceInBackground58's
                 // tails), so a stale "next: <head>" must not promise a talk that
-                // never plays. soundingLineIndex96 prefers lastUrl but falls back to
+                // never plays. v13.53 (audit-1372 F1): the boolean used to cover
+                // only a pre-play throw — play()'s own setDataSource catch returned
+                // `true` with trackError set, so the toast still fired for a talk
+                // that never played. playForeignHead11 now returns `false` on that
+                // sync failure too, so the claim in this comment is finally true
+                // for both failure modes. soundingLineIndex96 prefers lastUrl but
+                // falls back to
                 // currentUrl, so the fall-through still finds the ended index even
                 // if the tail moved the anchors before failing.
                 if (playForeignHead11(sp, qLines12, headPos12, awaitUrl, awaitSayadaw,
@@ -565,15 +575,20 @@ public class AudioService extends Service {
                     }
                 }
             } catch (Exception ignored) {}
-            if (titleB12.length() > 0) {
-                android.widget.Toast.makeText(AudioService.this,
-                        Lang.t(AudioService.this, "next_prefix") + titleB12,
-                        android.widget.Toast.LENGTH_SHORT).show();
-            }
             play(landed.getAbsolutePath(), titleB12, savedSeekFor(awaitUrl));
             // v13.14 (Q10): the head is already popped above — if this prepare fails,
             // the head returns to the front of its sayadaw's queue instead of vanishing.
             armPendingQueueHead14(newQLines12[barePos12], awaitSayadaw);
+            // v13.53 (audit-1372 F1): the toast used to fire BEFORE play(), so a
+            // synchronous setDataSource failure promised "next: <talk>" for a talk
+            // that never played. It now fires only when play() did not fail
+            // synchronously; the arm above still runs either way, so the failed
+            // head is restored to the front for a later retry.
+            if (!trackError && titleB12.length() > 0) {
+                android.widget.Toast.makeText(AudioService.this,
+                        Lang.t(AudioService.this, "next_prefix") + titleB12,
+                        android.widget.Toast.LENGTH_SHORT).show();
+            }
             // v12.13: same second-hidden-end refresh as the shared tail (Case B plays
             // here, not through playForeignHead11).
             refreshPlayListForForeign13(awaitSayadaw, cat12[1], awaitUrl);
@@ -4078,6 +4093,24 @@ public class AudioService extends Service {
             // v13.14 (Q10): the head is already popped above — if this prepare fails,
             // the head returns to the front of lastName's queue instead of vanishing.
             armPendingQueueHead14(qLines[headPos], lastName);
+            // v13.53 (audit-1372 F1): play() catches its own setDataSource failure
+            // and returns normally with trackError set, so the unconditional
+            // `return true` below used to report a failed head as a handled
+            // advance — the caller never fell through to forward/shuffle/list-next
+            // and the advance died in silence. Nothing below has run yet (no
+            // forward pop, no trail step), so `false` falls through cleanly; the
+            // restored head is skipped as sounding by the next service-side Next
+            // (audit-1370 N2 precision note) and the talk after it plays. Residual,
+            // same invocation: the fall-through reuses the pre-queue idx (ended
+            // talk), so when the head IS the immediate next talk its list-next
+            // pick replays the dead head once — one wasted retry + one extra
+            // generic toast, end state identical to before (head still restored,
+            // next Next still skips it). Deliberate-retry cost, same call as the
+            // F-C single-talk wrap / F-M stale re-offer; fixing the list-next
+            // tail to skip a failed pick is F2's territory, not this slice. Async
+            // failures still go through onError, which restores the head the same
+            // way — this check only covers the sync failure onError never sees.
+            if (trackError) return false;
             // v11.20: background queue-head play is a branch —
             // foreground playIndex pop-or-clears forwardHistory
             // on any fresh play, but this service branch never
@@ -4203,6 +4236,22 @@ public class AudioService extends Service {
             // fails, the head returns to the front of the NEW sayadaw's queue (the key
             // the rest travelled to), never to the cleared old key.
             armPendingQueueHead14(qLines[headPos], headSayadaw11);
+            // v13.53 (audit-1372 F1): same sync-failure lie as the in-list sibling —
+            // the unconditional `return true` below reported a failed head as a
+            // handled advance, so Case A's toast fired and its fall-through never
+            // ran. On failure: no forward pop, no trail step (no decision taken),
+            // but the refresh below STILL runs — it was already unconditional after
+            // a sync-failed play, and the next hidden end needs the new sayadaw's
+            // list to chain in-list. The caller's fresh sounding-index read still
+            // returns -1 until the refresh lands, so the fall-through is silent
+            // and the restored head at the new key's front is the retry path
+            // (manual Next once the refresh lands). The v12.61 catch below is
+            // untouched: this is the post-play sync-failure false, that one stays
+            // the pre-play-throw false.
+            if (trackError) {
+                refreshPlayListForForeign13(headSayadaw11, headCat11[1], headUrl);
+                return false;
+            }
             try {
                 long gen11 = clearGen95(sp);
                 String fwdRaw11 = sp.getString("forwardHistoryRaw", "");
