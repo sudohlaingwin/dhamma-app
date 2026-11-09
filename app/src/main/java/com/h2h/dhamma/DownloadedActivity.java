@@ -1588,7 +1588,8 @@ public class DownloadedActivity extends Activity {
         while (true) {
             Entry cand73 = takeLibQueueHead();
             if (cand73 == null) break;
-            if (cand73.file.exists()) { qe = cand73; break; }
+            // v13.71 (audit-1369 F4): 0-byte file is not a playable download - length gate.
+            if (cand73.file.exists() && cand73.file.length() > 0) { qe = cand73; break; }
             droppedDeadQe73 = true;
         }
         if (droppedDeadQe73)
@@ -1651,7 +1652,8 @@ public class DownloadedActivity extends Activity {
         // v11.73: skip-dead-files — the poll's playLibRedoAdvance17 already refuses a redo
         // target deleted after the last scan (v11.66); this manual branch never did. The
         // pop already consumed the stack entry, so fall through to list order below.
-        if (redo17 != null && !redo17.file.exists()) {
+        // v13.71 (audit-1369 F4): 0-byte file is not a playable download - length gate.
+        if (redo17 != null && (!redo17.file.exists() || redo17.file.length() <= 0)) {
             Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "dl_file_gone"), Toast.LENGTH_SHORT).show();
             redo17 = null;
         }
@@ -1708,7 +1710,8 @@ public class DownloadedActivity extends Activity {
         // toast, no advance). Walk the same order the single pick implies — forward with
         // wrap, or a shuffled other file — for the first file still on disk; if every
         // candidate is gone, say so once and rescan instead of playing dead.
-        if (!e.file.exists()) {
+        // v13.71 (audit-1369 F4): 0-byte file is not a playable download - length gate.
+        if (!e.file.exists() || e.file.length() <= 0) {
             java.util.ArrayList<Integer> cand73 = new java.util.ArrayList<Integer>();
             boolean effShuffle73 = list.size() > 1
                     && (dlShuffle || Prefs.shuffleOn(DownloadedActivity.this));
@@ -1723,7 +1726,8 @@ public class DownloadedActivity extends Activity {
             }
             Entry live73 = null;
             for (int ci : cand73) {
-                if (list.get(ci).file.exists()) { live73 = list.get(ci); break; }
+                // v13.71 (audit-1369 F4): 0-byte file is not a playable download - length gate.
+                if (list.get(ci).file.exists() && list.get(ci).file.length() > 0) { live73 = list.get(ci); break; }
             }
             if (live73 == null) {
                 Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "dl_file_gone"), Toast.LENGTH_SHORT).show();
@@ -1977,7 +1981,8 @@ public class DownloadedActivity extends Activity {
             // redo target deleted after it must not be played dead. The pop already
             // consumed the stack entry, so returning false lets the poll's list loop
             // pick the next live file instead of dying on the generic failure toast.
-            if (!redo.file.exists()) {
+            // v13.71 (audit-1369 F4): 0-byte file is not a playable download - length gate.
+            if (!redo.file.exists() || redo.file.length() <= 0) {
                 Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "dl_file_gone"), Toast.LENGTH_SHORT).show();
                 return false;
             }
@@ -2034,7 +2039,8 @@ public class DownloadedActivity extends Activity {
                 // still be on disk; dead candidates keep dropping like stale ones.
                 boolean live = false;
                 for (Entry e : entries)
-                    if (e.file.getAbsolutePath().equals(cand) && e.file.exists()) { live = true; break; }
+                    // v13.71 (audit-1369 F4): 0-byte file is not a playable download - length gate.
+                    if (e.file.getAbsolutePath().equals(cand) && e.file.exists() && e.file.length() > 0) { live = true; break; }
                 if (live) { hit = cand; break; }
             }
             StringBuilder sb = new StringBuilder();
@@ -2134,7 +2140,8 @@ public class DownloadedActivity extends Activity {
                 : list.get((idx - 1 + list.size()) % list.size());
         // v11.73: skip-dead-files — same class as the Next list branch: walk backward
         // from the pick (wrapping, like Previous itself) for the first file still on disk.
-        if (!e.file.exists()) {
+        // v13.71 (audit-1369 F4): 0-byte file is not a playable download - length gate.
+        if (!e.file.exists() || e.file.length() <= 0) {
             java.util.ArrayList<Integer> cand73 = new java.util.ArrayList<Integer>();
             if (idx < 0) {
                 for (int ci = list.size() - 1; ci >= 0; ci--) cand73.add(ci);
@@ -2144,7 +2151,8 @@ public class DownloadedActivity extends Activity {
             }
             Entry live73 = null;
             for (int ci : cand73) {
-                if (list.get(ci).file.exists()) { live73 = list.get(ci); break; }
+                // v13.71 (audit-1369 F4): 0-byte file is not a playable download - length gate.
+                if (list.get(ci).file.exists() && list.get(ci).file.length() > 0) { live73 = list.get(ci); break; }
             }
             if (live73 == null) {
                 Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "dl_file_gone"), Toast.LENGTH_SHORT).show();
@@ -3065,7 +3073,8 @@ public class DownloadedActivity extends Activity {
                     // its own flush check (v1.92). Toast the
                     // accurate line and rescan so the stale row
                     // disappears.
-                    if (service != null && !e.file.exists()) {
+                    // v13.71 (audit-1369 F4): 0-byte file is not a playable download - length gate.
+                    if (service != null && (!e.file.exists() || e.file.length() <= 0)) {
                         Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "dl_file_gone"), Toast.LENGTH_SHORT).show();
                         loadList();
                         return;
@@ -3593,7 +3602,8 @@ public class DownloadedActivity extends Activity {
                             // once and fall through to the autoplay / list logic below (which now
                             // skips dead picks itself); autoplay-off still ends in the consume
                             // block's finished toast, which is true — the file did finish.
-                            if (rep != null && rep.file.exists()) {
+                            // v13.71 (audit-1369 F4): 0-byte file is not a playable download - length gate.
+                            if (rep != null && rep.file.exists() && rep.file.length() > 0) {
                                 saveLastLibrary(rep.file.getAbsolutePath(), rep.title);
                                 service.play(rep.file.getAbsolutePath(), rep.title);
                                 dlEndedHandledFor = cur;
@@ -3633,7 +3643,8 @@ public class DownloadedActivity extends Activity {
                             while (true) {
                                 Entry cand66 = takeLibQueueHead();
                                 if (cand66 == null) break;
-                                if (cand66.file.exists()) { qn = cand66; break; }
+                                // v13.71 (audit-1369 F4): 0-byte file is not a playable download - length gate.
+                                if (cand66.file.exists() && cand66.file.length() > 0) { qn = cand66; break; }
                                 droppedDeadQn66 = true;
                             }
                             if (droppedDeadQn66)
@@ -3740,7 +3751,8 @@ public class DownloadedActivity extends Activity {
                                     int nextIdx = -1;
                                     boolean skippedDead66 = false;
                                     for (int ci : candIdx66) {
-                                        if (shownDl.get(ci).file.exists()) { next = shownDl.get(ci); nextIdx = ci; break; }
+                                        // v13.71 (audit-1369 F4): 0-byte file is not a playable download - length gate.
+                                        if (shownDl.get(ci).file.exists() && shownDl.get(ci).file.length() > 0) { next = shownDl.get(ci); nextIdx = ci; break; }
                                         skippedDead66 = true;
                                     }
                                     if (next == null) {
@@ -4160,7 +4172,8 @@ public class DownloadedActivity extends Activity {
                 // from 0 even when the file had a saved spot — the
                 // row-tap resume (v1.90) only ran on the bound path.
                 // Same saved spot + session anchor as a live tap.
-                if (new File(p).exists()) {
+                // v13.71 (audit-1369 F4): 0-byte file is not a playable download - length gate.
+                if (new File(p).exists() && new File(p).length() > 0) {
                     saveLastLibrary(p, t);
                     // v8.13: a queued manual pick clears the trail too, except a queued
                     // continue tap (autoPlayDone + path == autoPlayPath), which resumes
@@ -4476,7 +4489,8 @@ public class DownloadedActivity extends Activity {
                 // v11.65: same deleted-after-scan guard as the row tap
                 // — a stale Random pick used to die with the generic
                 // "check internet" toast and anchor a dead file.
-                if (!e.file.exists()) {
+                // v13.71 (audit-1369 F4): 0-byte file is not a playable download - length gate.
+                if (!e.file.exists() || e.file.length() <= 0) {
                     Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "dl_file_gone"), Toast.LENGTH_SHORT).show();
                     loadList();
                     return;
@@ -4541,7 +4555,8 @@ public class DownloadedActivity extends Activity {
                 // v11.65: same deleted-after-scan guard as the row tap
                 // — a stale Play All pick used to die with the generic
                 // "check internet" toast and anchor a dead file.
-                if (!e.file.exists()) {
+                // v13.71 (audit-1369 F4): 0-byte file is not a playable download - length gate.
+                if (!e.file.exists() || e.file.length() <= 0) {
                     Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "dl_file_gone"), Toast.LENGTH_SHORT).show();
                     loadList();
                     return;
@@ -4590,7 +4605,8 @@ public class DownloadedActivity extends Activity {
                 // v11.65: same deleted-after-scan guard as the row tap
                 // — a stale shuffled pick used to die with the generic
                 // "check internet" toast and anchor a dead file.
-                if (!e.file.exists()) {
+                // v13.71 (audit-1369 F4): 0-byte file is not a playable download - length gate.
+                if (!e.file.exists() || e.file.length() <= 0) {
                     Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "dl_file_gone"), Toast.LENGTH_SHORT).show();
                     loadList();
                     return true;
@@ -4867,7 +4883,8 @@ public class DownloadedActivity extends Activity {
         // the bind never plays a file deleted mid-rotation.
         if (savedInstanceState != null) {
             String pp = savedInstanceState.getString("pendingDlPath", "");
-            if (pp.length() > 0 && new File(pp).exists()) {
+            // v13.71 (audit-1369 F4): 0-byte file is not a playable download - length gate.
+            if (pp.length() > 0 && new File(pp).exists() && new File(pp).length() > 0) {
                 pendingDlPath = pp;
                 pendingDlTitle = savedInstanceState.getString("pendingDlTitle", "");
                 pendingDlRestart = savedInstanceState.getBoolean("pendingDlRestart", false);
@@ -5238,7 +5255,8 @@ public class DownloadedActivity extends Activity {
                 // at flush). Toast the accurate line and rescan so
                 // the stale row disappears; the pre-bind queue keeps
                 // its own flush check, so this guards bound taps only.
-                if (service != null && !e.file.exists()) {
+                // v13.71 (audit-1369 F4): 0-byte file is not a playable download - length gate.
+                if (service != null && (!e.file.exists() || e.file.length() <= 0)) {
                     Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "dl_file_gone"), Toast.LENGTH_SHORT).show();
                     loadList();
                     return;
@@ -5337,7 +5355,8 @@ public class DownloadedActivity extends Activity {
                     // generic "check internet" toast and anchor a dead
                     // file. The playing-file branch above needs none:
                     // a sounding file exists by definition.
-                    if (!e.file.exists()) {
+                    // v13.71 (audit-1369 F4): 0-byte file is not a playable download - length gate.
+                    if (!e.file.exists() || e.file.length() <= 0) {
                         Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "dl_file_gone"), Toast.LENGTH_SHORT).show();
                         loadList();
                         return true;
