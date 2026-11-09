@@ -796,6 +796,15 @@ public class AudioService extends Service {
     private int autoAdvanceArmN1 = 0;
     private int autoAdvanceFailsN1 = 0;
     private final java.util.HashSet<String> autoAdvanceSkipN1 = new java.util.HashSet<String>();
+    // v13.62 (audit-1370 N2): a dead queue head used to loop forever — prepare failed,
+    // restore put it back at the front, and the next advance re-picked the same dead
+    // talk. Keep a small in-memory map of head-URL -> consecutive restore count;
+    // restore at most twice per URL per session, then drop the head from its queue
+    // and toast the accurate skip line, so the advance moves on to the next head.
+    // The count resets when the URL sounds (onPrepared); a deduped restore still
+    // counts, so a head the Room re-added in the prepare window cannot loop
+    // through the dedup leg.
+    private final java.util.HashMap<String, Integer> headRestoreCountN2 = new java.util.HashMap<String, Integer>();
     // v13.14 (Q10, queue audit sim1327): the background queue-head advances pop the head
     // and persist the shortened queue BEFORE play() — and play() prepares async, so a
     // prepare failure (onError, or the synchronous setDataSource catch) left the head
@@ -1815,6 +1824,9 @@ public class AudioService extends Service {
                     // chain is over: clear the flag, the attempt count and the skip set.
                     autoAdvancedN1 = false; autoAdvanceKindN1 = 0;
                     autoAdvanceFailsN1 = 0; autoAdvanceSkipN1.clear();
+                    // v13.62 (audit-1370 N2): the talk sounds — a restored head that
+                    // plays resets its consecutive-restore count.
+                    clearHeadRestoreCountN2(currentUrl);
                     // v1.69: a pause tapped while buffering (see
                     // holdPaused) means this talk opens paused, not
                     // playing — and a paused talk never gains a sleep
@@ -4032,6 +4044,48 @@ public class AudioService extends Service {
     // the prepare window) it is not duplicated. The exact persisted line is restored,
     // so a v2 head keeps its owner + title. Clears the record either way, so a
     // second failure (a toggle retry of the same talk) can never restore twice.
+    // v13.62 (audit-1370 N2): drop a dead queue head from its queue (lib queue when
+    // owner is null, else that sayadaw's queue). Returns true when a line was removed.
+    private boolean dropQueueHeadN2(String owner, String url) {
+        try {
+            String raw = owner == null ? Prefs.savedQueueLib(this) : Prefs.savedQueue(this, owner);
+            java.util.ArrayList<String> q = new java.util.ArrayList<String>();
+            if (raw != null && raw.length() > 0)
+                for (String l : raw.split("\n")) if (l != null && l.length() > 0) q.add(l);
+            boolean removed = false;
+            java.util.Iterator<String> it = q.iterator();
+            while (it.hasNext()) {
+                QueueEntry e = QueueEntry.parse(it.next());
+                if (e != null && e.url.equals(url)) { it.remove(); removed = true; }
+            }
+            if (removed) {
+                if (owner == null) Prefs.saveQueueLib(this, q);
+                else Prefs.saveQueue(this, owner, q);
+            }
+            return removed;
+        } catch (Exception ignored) { return false; }
+    }
+
+    // v13.62 (audit-1370 N2): the head sounds — its failure chain is over. Clear the
+    // restore count for the sounding URL in both forms: the stream URL the queue line
+    // carries, and the offline path play() may have been given instead.
+    private void clearHeadRestoreCountN2(String url) {
+        if (url == null || url.length() == 0) return;
+        headRestoreCountN2.remove(url);
+        try {
+            java.util.Iterator<String> it = headRestoreCountN2.keySet().iterator();
+            while (it.hasNext()) {
+                String key = it.next();
+                java.io.File f = offlineFileFor(key);
+                if (f != null && f.getAbsolutePath().equals(url)) it.remove();
+            }
+        } catch (Exception ignored) {}
+    }
+
+    // v13.62 (audit-1370 N2): the restore below had no give-up — a dead head looped
+    // forever (restore -> next advance re-picks it -> fails again). The count inside
+    // restores at most twice per URL per session, then drops the head from its queue
+    // and toasts the accurate skip line, so the advance moves on to the next head.
     private void restorePendingQueueHead14() {
         String line = pendingQueueHeadLine14;
         String owner = pendingQueueHeadOwner14;
@@ -4041,6 +4095,23 @@ public class AudioService extends Service {
         try {
             QueueEntry qe = QueueEntry.parse(line);
             if (qe == null || qe.url.length() == 0) return;
+            // v13.62 (audit-1370 N2): count this restore BEFORE the dedup check — a
+            // head the Room re-added in the prepare window dedups every time, so
+            // counting only real inserts would let it loop through the dedup leg.
+            Integer n = headRestoreCountN2.get(qe.url);
+            int count = (n == null ? 0 : n.intValue()) + 1;
+            headRestoreCountN2.put(qe.url, Integer.valueOf(count));
+            if (count > 2) {
+                // Give up: leave the dead head out of its queue (drop any line already
+                // there too) and say so — the next advance moves on to the next head.
+                dropQueueHeadN2(owner, qe.url);
+                try {
+                    android.widget.Toast.makeText(AudioService.this,
+                            Lang.t(AudioService.this, "dl_file_gone"),
+                            android.widget.Toast.LENGTH_SHORT).show();
+                } catch (Exception ignored) {}
+                return;
+            }
             if (owner == null) {
                 String raw = Prefs.savedQueueLib(this);
                 java.util.ArrayList<String> q = new java.util.ArrayList<String>();
