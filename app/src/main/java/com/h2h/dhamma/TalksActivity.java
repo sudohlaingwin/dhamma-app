@@ -2765,6 +2765,8 @@ public class TalksActivity extends Activity {
                         // the toast fires once. Success toasts nothing —
                         // the ⏳→⬇ row flip is the feedback, like the
                         // library receiver's own "no toast" note.
+                        // (v14.07: except a successful 0-byte landing, which toasts
+                        // download_failed — the row never flips ⏳→⬇ for a dead file.)
                         try {
                             long failId = in.getLongExtra(android.app.DownloadManager.EXTRA_DOWNLOAD_ID, -1);
                             if (failId >= 0) {
@@ -2808,6 +2810,76 @@ public class TalksActivity extends Activity {
                                             }
                                         }
                                     } finally { curFail.close(); }
+                                }
+                            }
+                        } catch (Exception ignored) {}
+                        // v14.07 (audit-1356 L1): same hole as the library receiver — a
+                        // SUCCESSFUL job landing a 0-byte file reports success, so the
+                        // failure block above stays silent, and isTalkDownloaded (length-gated
+                        // since v13.66) never flips the row ⏳→⬇: the download vanished with
+                        // no word. Toast download_failed + title for that case, same string
+                        // shape as the failure block. Gated on the source URL being a talk
+                        // this app queued (dlMap, or this list) and on the mapped file
+                        // existing with length 0 — a missing file is not toasted (deleted
+                        // between landing and this callback). Separate try, BEFORE the
+                        // card-sync block: that block returns early on !liveSession, but a
+                        // dead landing must be reported even while nothing plays. A real
+                        // landing still toasts nothing — the ⏳→⬇ row flip is the feedback.
+                        try {
+                            long doneId = in.getLongExtra(android.app.DownloadManager.EXTRA_DOWNLOAD_ID, -1);
+                            if (doneId >= 0) {
+                                android.app.DownloadManager dmDone = (android.app.DownloadManager)
+                                        getSystemService(android.content.Context.DOWNLOAD_SERVICE);
+                                android.database.Cursor curDone = dmDone.query(
+                                        new android.app.DownloadManager.Query().setFilterById(doneId));
+                                if (curDone != null) {
+                                    try {
+                                        if (curDone.moveToFirst()) {
+                                            int stColDone = curDone.getColumnIndex(android.app.DownloadManager.COLUMN_STATUS);
+                                            if (stColDone >= 0 && curDone.getInt(stColDone) == android.app.DownloadManager.STATUS_SUCCESSFUL) {
+                                                int srcColDone = curDone.getColumnIndex(android.app.DownloadManager.COLUMN_URI);
+                                                String doneUrl = srcColDone >= 0 ? curDone.getString(srcColDone) : null;
+                                                if (doneUrl != null && doneUrl.length() > 0) {
+                                                    String mappedDone = null;
+                                                    boolean oursDone = false;
+                                                    try {
+                                                        org.json.JSONObject mapDone = new org.json.JSONObject(
+                                                                getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlMap", "{}"));
+                                                        oursDone = mapDone.has(doneUrl);
+                                                        mappedDone = mapDone.optString(doneUrl, "");
+                                                    } catch (Exception ignored) {}
+                                                    if (!oursDone && talks != null) {
+                                                        for (Talk t : talks) {
+                                                            if (t != null && doneUrl.equals(t.url)) {
+                                                                oursDone = true;
+                                                                if (mappedDone == null || mappedDone.length() == 0) mappedDone = talkMappedFileName(t.url);
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+                                                    if (oursDone && mappedDone != null && mappedDone.length() > 0) {
+                                                        java.io.File landedDone = new java.io.File(
+                                                                new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                                                                        android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma"), mappedDone);
+                                                        if (landedDone.isFile() && landedDone.length() == 0) {
+                                                            String doneTitle = null;
+                                                            int titleColDone = curDone.getColumnIndex(android.app.DownloadManager.COLUMN_TITLE);
+                                                            if (titleColDone >= 0) doneTitle = curDone.getString(titleColDone);
+                                                            if ((doneTitle == null || doneTitle.length() == 0) && talks != null) {
+                                                                for (Talk t : talks) {
+                                                                    if (t != null && doneUrl.equals(t.url) && t.title != null && t.title.length() > 0) { doneTitle = t.title; break; }
+                                                                }
+                                                            }
+                                                            if (doneTitle == null || doneTitle.length() == 0) doneTitle = doneUrl;
+                                                            android.widget.Toast.makeText(TalksActivity.this,
+                                                                    Lang.t(TalksActivity.this, "download_failed") + doneTitle,
+                                                                    android.widget.Toast.LENGTH_LONG).show();
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } finally { curDone.close(); }
                                 }
                             }
                         } catch (Exception ignored) {}

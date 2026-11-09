@@ -3163,7 +3163,9 @@ if (snd65 >= 0) currentIndex = snd65;
                         // touches dlQueued only, never dlMap, so the dlMap gate still reads true
                         // after it. Title falls back COLUMN_TITLE -> this list's title -> URL.
                         // The broadcast fires once per job, so the toast fires once. Success
-                        // toasts nothing new — the existing ⬇ toast below is the feedback.
+                        // toasts nothing new — the existing ⬇ toast below is the feedback —
+                        // except a 0-byte landing (v14.07), which toasts download_failed
+                        // instead of the ⬇ line.
                         try {
                             long failId = in.getLongExtra(android.app.DownloadManager.EXTRA_DOWNLOAD_ID, -1);
                             if (failId >= 0) {
@@ -3245,7 +3247,29 @@ if (snd65 >= 0) currentIndex = snd65;
                                                     && localDone != null && localDone.contains("Dhamma/")) {
                                                 dlDoneOk = true;
                                                 String tDone = titleCol >= 0 ? cur.getString(titleCol) : null;
-                                                if (tDone != null && tDone.length() > 0)
+                                                // v14.07 (audit-1356 L1): a SUCCESSFUL job can land a 0-byte
+                                                // file — the old code toasted "⬇ downloaded" for it while the
+                                                // Room's own marks refuse the file (localPathFor is
+                                                // length-gated since v13.66), a false success. Stat the
+                                                // landed file: 0 bytes toasts download_failed + title
+                                                // instead; a missing/unparseable path fails open to the
+                                                // old ⬇ toast. dlDoneOk stays true either way — the
+                                                // rescan above already dropped the ⏳ mark, so the card
+                                                // still needs its refresh.
+                                                boolean emptyDone = false;
+                                                try {
+                                                    String pDone = android.net.Uri.parse(localDone).getPath();
+                                                    if (pDone != null) {
+                                                        java.io.File fDone = new java.io.File(pDone);
+                                                        emptyDone = fDone.isFile() && fDone.length() == 0;
+                                                    }
+                                                } catch (Exception ignored) {}
+                                                if (emptyDone) {
+                                                    String fDoneTitle = (tDone != null && tDone.length() > 0) ? tDone : localDone.substring(localDone.lastIndexOf('/') + 1);
+                                                    android.widget.Toast.makeText(RoomActivity.this,
+                                                            Lang.t(RoomActivity.this, "download_failed") + fDoneTitle,
+                                                            android.widget.Toast.LENGTH_LONG).show();
+                                                } else if (tDone != null && tDone.length() > 0)
                                                     android.widget.Toast.makeText(RoomActivity.this,
                                                             "⬇ " + tDone + Lang.t(RoomActivity.this, "room_dl_done_suffix"),
                                                             android.widget.Toast.LENGTH_SHORT).show();

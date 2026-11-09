@@ -5575,7 +5575,9 @@ public class DownloadedActivity extends Activity {
                         // prune below touches dlQueued only, never dlMap, so the gate reads
                         // true whenever this block runs. Title falls back COLUMN_TITLE -> URL.
                         // The broadcast fires once per job, so the toast fires once. Success
-                        // toasts nothing — the row appearing in the list is the feedback.
+                        // toasts nothing — the row appearing in the list is the feedback —
+                        // except a successful 0-byte landing (v14.07 block below), which
+                        // toasts download_failed because no row ever appears for it.
                         try {
                             long failId = in.getLongExtra(android.app.DownloadManager.EXTRA_DOWNLOAD_ID, -1);
                             if (failId >= 0) {
@@ -5610,6 +5612,59 @@ public class DownloadedActivity extends Activity {
                                             }
                                         }
                                     } finally { curFail.close(); }
+                                }
+                            }
+                        } catch (Exception ignored) {}
+                        // v14.07 (audit-1356 L1): a SUCCESSFUL job can still land a 0-byte
+                        // file (empty 200 body, truncated write) — DownloadManager reports
+                        // success, so the failure block above stays silent, and loadList
+                        // (v13.66) excludes the file, so no row ever appears: the download
+                        // vanished with no word. Toast download_failed + title for that
+                        // case, same string shape as the failure block. Gated on dlMap
+                        // (ours only) and on the mapped file existing with length 0 — a
+                        // missing file is not toasted (deleted between landing and this
+                        // callback, not our failure to report). Separate try, same
+                        // fire-once broadcast. Success with a real file still toasts
+                        // nothing — the row appearing is the feedback.
+                        try {
+                            long doneId = in.getLongExtra(android.app.DownloadManager.EXTRA_DOWNLOAD_ID, -1);
+                            if (doneId >= 0) {
+                                android.app.DownloadManager dmDone = (android.app.DownloadManager)
+                                        getSystemService(android.content.Context.DOWNLOAD_SERVICE);
+                                android.database.Cursor curDone = dmDone.query(
+                                        new android.app.DownloadManager.Query().setFilterById(doneId));
+                                if (curDone != null) {
+                                    try {
+                                        if (curDone.moveToFirst()) {
+                                            int stColDone = curDone.getColumnIndex(android.app.DownloadManager.COLUMN_STATUS);
+                                            if (stColDone >= 0 && curDone.getInt(stColDone) == android.app.DownloadManager.STATUS_SUCCESSFUL) {
+                                                int srcColDone = curDone.getColumnIndex(android.app.DownloadManager.COLUMN_URI);
+                                                String doneUrl = srcColDone >= 0 ? curDone.getString(srcColDone) : null;
+                                                if (doneUrl != null && doneUrl.length() > 0) {
+                                                    String mappedDone = null;
+                                                    try {
+                                                        org.json.JSONObject mapDone = new org.json.JSONObject(
+                                                                getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlMap", "{}"));
+                                                        mappedDone = mapDone.optString(doneUrl, "");
+                                                    } catch (Exception ignored) {}
+                                                    if (mappedDone != null && mappedDone.length() > 0) {
+                                                        java.io.File landedDone = new java.io.File(
+                                                                new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                                                                        android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma"), mappedDone);
+                                                        if (landedDone.isFile() && landedDone.length() == 0) {
+                                                            String doneTitle = null;
+                                                            int titleColDone = curDone.getColumnIndex(android.app.DownloadManager.COLUMN_TITLE);
+                                                            if (titleColDone >= 0) doneTitle = curDone.getString(titleColDone);
+                                                            if (doneTitle == null || doneTitle.length() == 0) doneTitle = doneUrl;
+                                                            android.widget.Toast.makeText(DownloadedActivity.this,
+                                                                    Lang.t(DownloadedActivity.this, "download_failed") + doneTitle,
+                                                                    android.widget.Toast.LENGTH_LONG).show();
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } finally { curDone.close(); }
                                 }
                             }
                         } catch (Exception ignored) {}
