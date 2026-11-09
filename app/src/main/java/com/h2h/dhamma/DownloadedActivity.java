@@ -7251,7 +7251,6 @@ public class DownloadedActivity extends Activity {
             }
             if (!drop.isEmpty()) {
                 for (String k : drop) map.remove(k);
-                sp.edit().putString("dlMap", map.toString()).apply();
                 // v11.83: the delete orphaned these URLs' dlQueued
                 // entries — no prune leg ever drops an unmapped,
                 // jobless entry (every leg keeps it: the mapped
@@ -7260,6 +7259,23 @@ public class DownloadedActivity extends Activity {
                 // "already queued": it could never be re-downloaded
                 // short of clearing prefs. The file is gone and its
                 // job is done, so the queue entry is meaningless.
+                // v13.67 (audit-1369 F12): both keys land in ONE
+                // apply() — the old code wrote dlMap, then re-read
+                // dlQueued and wrote it in a second apply(), so a
+                // process death between the two left the deleted
+                // URL's queue entry behind with no map entry (the
+                // v11.83 symptom above). Both new strings are built
+                // first — dlQueued is still re-read fresh here, after
+                // the dlMap string is built and before any write, so
+                // the second key is as current as before — then one
+                // chained editor writes them together. A dlQueued
+                // parse failure still leaves dlMap landing (the apply
+                // sits outside the try, as before). Same single-apply
+                // pass as audit-1370 C4 / F10. The resume-spot applies
+                // in the loop above stay separate (different keys,
+                // audit latent note only).
+                String newMapStr = map.toString();
+                String newQueuedStr = null;
                 try {
                     org.json.JSONArray qa = new org.json.JSONArray(sp.getString("dlQueued", "[]"));
                     org.json.JSONArray out = new org.json.JSONArray();
@@ -7269,8 +7285,12 @@ public class DownloadedActivity extends Activity {
                         if (drop.contains(u)) { qChanged = true; continue; }
                         out.put(u);
                     }
-                    if (qChanged) sp.edit().putString("dlQueued", out.toString()).apply();
+                    if (qChanged) newQueuedStr = out.toString();
                 } catch (Exception ignored) {}
+                android.content.SharedPreferences.Editor ed =
+                        sp.edit().putString("dlMap", newMapStr);
+                if (newQueuedStr != null) ed.putString("dlQueued", newQueuedStr);
+                ed.apply();
             }
         } catch (Exception ignored) {}
     }
