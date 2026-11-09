@@ -1250,6 +1250,17 @@ public class RoomActivity extends Activity {
     // play share one mark list.
     private String bookmarkTalkUrl() {
         // v12.71: sounding talk wins (pre-tick window); else indexed.
+        // v13.59 (audit-1374 F-K): a failed stream's URL is not the
+        // sounding talk — onError never clears currentUrl, so after
+        // a failure the service URL still names the dead stream and
+        // the wave pins / add / list would follow it. With a live
+        // error the indexed talk wins instead (the talk on screen;
+        // in the common case it IS the failed talk, so the answer
+        // is unchanged — the fix only bites in the pre-tick window
+        // where the service already advanced past currentIndex,
+        // and when nothing is indexed, where it now returns null
+        // instead of the dead URL).
+        if (service != null && service.hasTrackError()) return currentTalkUrl();
         String svc = service == null ? null : service.getCurrentUrl();
         if (svc != null && svc.length() > 0) return svc;
         return currentTalkUrl();
@@ -1574,6 +1585,25 @@ public class RoomActivity extends Activity {
     private int soundingIdxCache = -1;
     private String soundingIdxKey = null;
     private int soundingIndexForBind() {
+        // v13.59 (audit-1374 F-K): a failed stream's URL is not the
+        // sounding talk — onError never clears currentUrl, so the
+        // scan below would name the dead stream's row as sounding
+        // (pulse + gold). With a live error the indexed talk wins
+        // instead (the talk on screen; in the common case it IS the
+        // failed talk, so the answer is unchanged — the fix only
+        // bites in the pre-tick window where the service already
+        // advanced past currentIndex, and when nothing is indexed,
+        // where it returns -1, the bound-scan-miss rule, instead
+        // of the dead row). Before the cache lookup on purpose:
+        // the key carries no error flag, so a cached pre-failure
+        // index would otherwise survive the failure. This return
+        // writes nothing, so when the error clears the stale key
+        // either still matches (same talk retried — the cached
+        // index is right) or differs (the index moved during the
+        // error — a fresh scan runs).
+        if (service != null && service.hasTrackError())
+            return (currentIndex >= 0 && talks != null
+                    && currentIndex < talks.size()) ? currentIndex : -1;
         String svc = service == null ? null : service.getCurrentUrl();
         String idxUrl = (currentIndex >= 0 && talks != null
                 && currentIndex < talks.size())
