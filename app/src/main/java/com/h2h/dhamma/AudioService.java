@@ -2675,22 +2675,6 @@ public class AudioService extends Service {
     // instead of advancing.
     public boolean isSleepStopPending() { return sleepStopPending; }
 
-    // v4.10: failed-stream state for the Room wave — a stream that
-    // fails (onError / prepare failure) sets trackError, and the
-    // Room poll then reads active=false, so setPlaying(false)
-    // froze the wave mid-ripple exactly like a pause: only the
-    // toast/status text said it had failed, and the bar itself
-    // read as a paused talk. The poll reads this on its 500ms
-    // tick (same change-only pattern as isBuffering/isDucked/
-    // isSleepFading) and flattens the wave instead of freezing
-    // it, so a dead stream reads as dead, never as paused. A
-    // new play and an explicit stop already clear trackError
-    // (v1.67), so a stale error can never strand the flat;
-    // retry ramps the wave back up from 0 via the v3.15 ramp.
-    // The downloaded library never reads it, so its rows are
-    // untouched.
-    public boolean isTrackError() { return trackError; }
-
     public String getCurrentTitle() { return currentTitle; }
     public String getCurrentUrl() { return currentUrl; }
     public boolean hasTrack() { return currentTitle != null; }
@@ -4682,6 +4666,23 @@ public class AudioService extends Service {
         } catch (Exception ignored) { return false; }
     }
 
+    // v13.60 (audit-1374 F-G): the v4.10 doc moved here with the
+    // surviving accessor — the duplicate accessor is gone, Room's
+    // 4 call sites renamed to hasTrackError(). One flag, one name.
+    // v4.10: failed-stream state for the Room wave — a stream that
+    // fails (onError / prepare failure) sets trackError, and the
+    // Room poll then reads active=false, so setPlaying(false)
+    // froze the wave mid-ripple exactly like a pause: only the
+    // toast/status text said it had failed, and the bar itself
+    // read as a paused talk. The poll reads this on its 500ms
+    // tick (same change-only pattern as isBuffering/isDucked/
+    // isSleepFading) and flattens the wave instead of freezing
+    // it, so a dead stream reads as dead, never as paused. A
+    // new play and an explicit stop already clear trackError
+    // (v1.67), so a stale error can never strand the flat;
+    // retry ramps the wave back up from 0 via the v3.15 ramp.
+    // The downloaded library never reads it, so its rows are
+    // untouched.
     public boolean hasTrackError() { return trackError; }
 
     // v1.74: rebuild the notification card on return to a screen —

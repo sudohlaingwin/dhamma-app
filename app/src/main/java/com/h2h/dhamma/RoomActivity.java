@@ -4274,7 +4274,7 @@ if (snd65 >= 0) currentIndex = snd65;
     // sounds on resume, while the old talk is already gone.
     private boolean isThemeConfirmed(String url) {
         return service != null && isCurrentTalk(url)
-                && !service.isBuffering() && !service.isTrackError();
+                && !service.isBuffering() && !service.hasTrackError();
     }
 
     // v12.51: the poll's confirmation of a pending theme roll —
@@ -4291,7 +4291,7 @@ if (snd65 >= 0) currentIndex = snd65;
     private void maybeRollPendingTheme() {
         if (pendingThemeUrl == null) return;
         if (!service.hasTrack() || !isCurrentTalk(pendingThemeUrl)
-                || service.isTrackError()) {
+                || service.hasTrackError()) {
             pendingThemeUrl = null;
             return;
         }
@@ -4532,7 +4532,7 @@ if (snd65 >= 0) currentIndex = snd65;
                 // never re-animates on the 500ms tick, and a
                 // retry clears the flag in the service before
                 // the next play ramps the wave back up.
-                if (seekBar != null) seekBar.setStreamError(service.isTrackError());
+                if (seekBar != null) seekBar.setStreamError(service.hasTrackError());
                 if (seekBar != null) seekBar.setPlaying(active);
                 // v4.25: the sleep timer finally reads in the Room —
                 // it was set in Settings and counted down invisibly
@@ -5619,7 +5619,7 @@ if (snd65 >= 0) currentIndex = snd65;
                             });
                             seekGlide.start();
                         }
-                    } else if (service.hasTrack() && !service.isTrackError()) { // v12.74 (sim1282): a failed mid-play stream must not snap elapsed to 0:00 — the getters read 0 when unprepared, so the last real elapsed stays until a retry/replay/stop
+                    } else if (service.hasTrack() && !service.hasTrackError()) { // v12.74 (sim1282): a failed mid-play stream must not snap elapsed to 0:00 — the getters read 0 when unprepared, so the last real elapsed stays until a retry/replay/stop
                         if (elapsedText != null) elapsedText.setText(formatTime(pos));
                     }
                 }
