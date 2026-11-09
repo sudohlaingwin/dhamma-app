@@ -947,6 +947,23 @@ public class AudioService extends Service {
     // clearPendingQueueHead14, which removes both keys.
     private String pendingQueueHeadLine14 = null;
     private String pendingQueueHeadOwner14 = null;
+    // v13.98 (fifth pass slice 8, audit-1365 L4): the form play() was
+    // actually given for the armed head (stream URL, or the offline path
+    // it resolved to) — captured at arm time, in-memory only.
+    // pendingHeadMatches14's file leg goes through offlineFileFor(),
+    // which returns null once the downloaded file is gone, so a head
+    // played from a file that is deleted between the arm and the error
+    // used to mismatch and be dropped without restore even though the
+    // failed path IS this head's file. The captured form still names it,
+    // so the match survives the deletion. Captured only when the form
+    // really names this head (direct URL equality, or the offline file
+    // this stream URL maps to) — the v13.95 outer arm runs with the N1
+    // retry pick as currentUrl, which names a DIFFERENT head, so an
+    // unvalidated capture would defeat the v13.95 "not the current
+    // talk" guard. In-memory only: a process death recovers through
+    // the persisted pair + unconditional restore (v13.74), which needs
+    // no match.
+    private String pendingQueueHeadPlayForm14 = null;
     // v13.54 (audit-1372 F2, forward-stack mirror of the Q10 pending head above):
     // the background advance tails pop or wipe forwardHistoryRaw around play() —
     // the forward branch and Case B BEFORE it, shuffle / list-next / queue-head /
@@ -4348,8 +4365,24 @@ public class AudioService extends Service {
         // displaced record aside and re-arm it after any restore below.
         String prevLine97 = pendingQueueHeadLine14;
         String prevOwner97 = pendingQueueHeadOwner14;
+        String prevForm98 = pendingQueueHeadPlayForm14;
         pendingQueueHeadLine14 = line;
         pendingQueueHeadOwner14 = owner;
+        // v13.98 (audit-1365 L4): capture the form play() was given for
+        // THIS head, validated against the line — see the field note. A
+        // null capture means the current talk names a different head
+        // (the v13.95 outer arm), so the match below falls back to the
+        // two older legs.
+        pendingQueueHeadPlayForm14 = null;
+        QueueEntry qe98 = QueueEntry.parse(line);
+        if (qe98 != null && qe98.url.length() > 0 && currentUrl != null) {
+            if (qe98.url.equals(currentUrl)) pendingQueueHeadPlayForm14 = currentUrl;
+            else {
+                java.io.File f98 = offlineFileFor(qe98.url);
+                if (f98 != null && f98.getAbsolutePath().equals(currentUrl))
+                    pendingQueueHeadPlayForm14 = currentUrl;
+            }
+        }
         // v13.74 (audit-1366 F3): the record was in-memory only, so a stop
         // or process death in the prepare window lost the head — the pop
         // is already persisted, the arm was not. Persist the arm in one
@@ -4400,6 +4433,7 @@ public class AudioService extends Service {
                     && !prevQe97.url.equals(qe97.url)) {
                 pendingQueueHeadLine14 = prevLine97;
                 pendingQueueHeadOwner14 = prevOwner97;
+                pendingQueueHeadPlayForm14 = prevForm98;
                 try {
                     getSharedPreferences("dhamma", MODE_PRIVATE).edit()
                             .putString("pendingHeadLine14", prevLine97)
@@ -4476,6 +4510,7 @@ public class AudioService extends Service {
         String owner = pendingQueueHeadOwner14;
         pendingQueueHeadLine14 = null;
         pendingQueueHeadOwner14 = null;
+        pendingQueueHeadPlayForm14 = null;
         if (line == null || line.length() == 0) return;
         try {
             QueueEntry qe = QueueEntry.parse(line);
@@ -4544,12 +4579,19 @@ public class AudioService extends Service {
             java.io.File f = offlineFileFor(qe.url);
             if (f != null && f.getAbsolutePath().equals(failedUrl)) return true;
         } catch (Exception ignored) {}
+        // v13.98 (audit-1365 L4): the captured play form — the failed
+        // path IS this head's file even though the file itself is gone
+        // (offlineFileFor above returns null for a deleted file).
+        // Validated at arm time, so it can only name this head.
+        if (pendingQueueHeadPlayForm14 != null
+                && pendingQueueHeadPlayForm14.equals(failedUrl)) return true;
         return false;
     }
 
     private void clearPendingQueueHead14() {
         pendingQueueHeadLine14 = null;
         pendingQueueHeadOwner14 = null;
+        pendingQueueHeadPlayForm14 = null;
         // v13.74 (audit-1366 F3): the arm is persisted at arm time, so the
         // persisted pair dies with the in-memory record — every clear site
         // (fresh play, onPrepared, onError mismatch, restore) funnels here.
