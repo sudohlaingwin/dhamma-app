@@ -996,6 +996,10 @@ public class TalksActivity extends Activity {
     // above), dlSayadaw (this chooser knows it, like the Room's
     // recordDownloadFile) and the dlQueued mark, written together so
     // no later check can see a queue entry without its filename.
+    // v13.70 (audit-1369 F10): all three keys now land in ONE apply
+    // below, so the guarantee above holds for dlSayadaw too - the C4
+    // pass (v13.65) had joined dlMap + dlQueued only, leaving
+    // dlSayadaw in its own apply.
     private void recordTalkDownload(String url, String file) {
         // v13.68 (audit-1369 F11): dlMap/dlSayadaw/dlQueued read-modify-write - serialize on DlLock.LOCK (see DlLock).
         synchronized (DlLock.LOCK) {
@@ -1004,11 +1008,12 @@ public class TalksActivity extends Activity {
                     getSharedPreferences("dhamma", MODE_PRIVATE);
             org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
             map.put(url, file);
+            String sayStr70 = null;
             if (sayadawName != null && sayadawName.length() > 0) {
                 try {
                     org.json.JSONObject sm = new org.json.JSONObject(sp.getString("dlSayadaw", "{}"));
                     sm.put(url, sayadawName);
-                    sp.edit().putString("dlSayadaw", sm.toString()).apply();
+                    sayStr70 = sm.toString();
                 } catch (Exception ignored) {}
             }
             org.json.JSONArray queued = new org.json.JSONArray(sp.getString("dlQueued", "[]"));
@@ -1021,10 +1026,16 @@ public class TalksActivity extends Activity {
             // the Fx.stripEnqueueDownload shape. Three separate applies used
             // to tear: a death between them left the hourglass mark without
             // its filename (or the filename without its mark), and the two
-            // disagreed until a prune. dlSayadaw stays its own apply above:
-            // best-effort metadata, read with a fallback everywhere.
-            sp.edit().putString("dlMap", map.toString())
-                    .putString("dlQueued", queued.toString()).apply();
+            // disagreed until a prune.
+            // (F10, see the header above): dlSayadaw joins that same apply
+            // now - the sayadaw string is built first, in its own try
+            // exactly as before, so a corrupt dlSayadaw JSON still cannot
+            // block the record.
+            android.content.SharedPreferences.Editor ed70 = sp.edit()
+                    .putString("dlMap", map.toString())
+                    .putString("dlQueued", queued.toString());
+            if (sayStr70 != null) ed70.putString("dlSayadaw", sayStr70);
+            ed70.apply();
         } catch (Exception ignored) {}
         }
     }

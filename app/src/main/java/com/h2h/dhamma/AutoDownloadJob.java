@@ -401,12 +401,13 @@ public class AutoDownloadJob extends JobService {
             org.json.JSONObject map = new org.json.JSONObject(
                     sp.getString("dlMap", "{}"));
             map.put(url, file);
+            String sayStr70 = null;
             if (sayadawName != null && sayadawName.length() > 0) {
                 try {
                     org.json.JSONObject sm = new org.json.JSONObject(
                             sp.getString("dlSayadaw", "{}"));
                     sm.put(url, sayadawName);
-                    sp.edit().putString("dlSayadaw", sm.toString()).apply();
+                    sayStr70 = sm.toString();
                 } catch (Exception ignored) {}
             }
             org.json.JSONArray queued = new org.json.JSONArray(
@@ -420,10 +421,19 @@ public class AutoDownloadJob extends JobService {
             // the Fx.stripEnqueueDownload shape. Three separate applies used
             // to tear: a death between them left the hourglass mark without
             // its filename (or the filename without its mark), and the two
-            // disagreed until a prune. dlSayadaw stays its own apply above:
-            // best-effort metadata, read with a fallback everywhere.
-            sp.edit().putString("dlMap", map.toString())
-                    .putString("dlQueued", queued.toString()).apply();
+            // disagreed until a prune.
+            // v13.70 (audit-1369 F10): dlSayadaw joins that same apply now -
+            // the C4 pass left it in its own apply, so a death between the
+            // two still tore the record (filename + mark without its
+            // sayadaw; invisible, every reader falls back, but torn all
+            // the same). The sayadaw string is built first, in its own
+            // try exactly as before, so a corrupt dlSayadaw JSON still
+            // cannot block the record.
+            android.content.SharedPreferences.Editor ed70 = sp.edit()
+                    .putString("dlMap", map.toString())
+                    .putString("dlQueued", queued.toString());
+            if (sayStr70 != null) ed70.putString("dlSayadaw", sayStr70);
+            ed70.apply();
         } catch (Exception ignored) {}
         }
     }

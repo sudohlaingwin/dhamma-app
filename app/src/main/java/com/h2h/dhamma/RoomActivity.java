@@ -3670,29 +3670,39 @@ if (snd65 >= 0) currentIndex = snd65;
             // Both call sites (enqueueRoomDownload + the data-gate Wi-Fi leg)
             // still call addQueuedDownload right after: it now finds the URL
             // already queued and only refreshes the in-memory set, so the row
-            // still gains its hourglass at once. dlSayadaw stays its own
-            // apply below: best-effort metadata, read with a fallback.
+            // still gains its hourglass at once.
+            // v13.70 (audit-1369 F10): dlSayadaw joins that same apply now -
+            // the C4 pass left it in its own apply, so a death between the
+            // two still tore the record (filename + mark without its
+            // sayadaw; invisible, every reader falls back, but torn all
+            // the same). The sayadaw string is built first, in its own
+            // try exactly as before, so a corrupt dlSayadaw JSON still
+            // cannot block the record.
             org.json.JSONArray queued65 = new org.json.JSONArray(sp.getString("dlQueued", "[]"));
             boolean found65 = false;
             for (int i = 0; i < queued65.length(); i++) {
                 if (url.equals(queued65.optString(i))) { found65 = true; break; }
             }
             if (!found65) queued65.put(url);
-            sp.edit().putString("dlMap", map.toString())
-                    .putString("dlQueued", queued65.toString()).apply();
             // v5.45: record this download's sayadaw beside dlMap
             // (Fx.stripLibSayadaw) — this Room is the only place
             // that knows it, so a later library session can name
             // the talk's sayadaw on its strips, share text and
             // card instead of a generic line. Older downloads
             // simply have no entry, and every reader falls back.
+            String sayStr70 = null;
             if (sayadawName != null && sayadawName.length() > 0) {
                 try {
                     org.json.JSONObject sm = new org.json.JSONObject(sp.getString("dlSayadaw", "{}"));
                     sm.put(url, sayadawName);
-                    sp.edit().putString("dlSayadaw", sm.toString()).apply();
+                    sayStr70 = sm.toString();
                 } catch (Exception ignored) {}
             }
+            android.content.SharedPreferences.Editor ed70 = sp.edit()
+                    .putString("dlMap", map.toString())
+                    .putString("dlQueued", queued65.toString());
+            if (sayStr70 != null) ed70.putString("dlSayadaw", sayStr70);
+            ed70.apply();
         } catch (Exception ignored) {}
         }
     }
