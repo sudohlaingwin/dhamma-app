@@ -4356,6 +4356,26 @@ public class AudioService extends Service {
                     .apply();
         } catch (Exception ignored) {}
         if (trackError) restorePendingQueueHead14();
+        // v13.95 (audit-1366 F1-sync): a sync-failed head whose N1 retry
+        // already moved on — the retry pick's play() cleared trackError
+        // before this arm ran, so the leg above never fires and the head
+        // was silently lost when the pick sounded (onPrepared clears the
+        // record) or mismatch-cleared if the pick also failed. The head
+        // is still identifiable: tryAutoAdvanceRetryN1 put its URL in the
+        // N1 skip set, which only a sounding talk / manual play / the cap
+        // clears — so membership here means it failed in THIS chain.
+        // Restore it at once like the trackError leg. Guarded on the head
+        // NOT being the current talk: when the retry's list-next tail
+        // replayed the same head and it is now buffering, the normal
+        // pending record must stand (onError restores it if it fails
+        // async, onPrepared clears it when it sounds) — restoring it
+        // would strand a sounding talk in its own queue.
+        else {
+            QueueEntry qe95 = QueueEntry.parse(line);
+            if (qe95 != null && qe95.url.length() > 0
+                    && autoAdvanceSkippedN1(qe95.url)
+                    && !pendingHeadMatches14(currentUrl)) restorePendingQueueHead14();
+        }
     }
 
     // v13.73 (audit-1366 F2): manual-play arm — the Room's playIndex drops a
