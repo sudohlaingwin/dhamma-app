@@ -1149,6 +1149,37 @@ public class RoomActivity extends Activity {
             if (queueLineUrl(queueUrls.get(i)).equals(url)) return i;
         return -1;
     }
+
+    // v13.52 (audit-1373 F2 / audit-1374 F-F): the v4.43 ahead-drop,
+    // with a restored failed head preserved. A background failure
+    // restores its queue head at position 0 (AudioService
+    // restorePendingQueueHead14); the plain subList(0, qi + 1) clear
+    // then deleted that restored head without it ever being played
+    // or retried whenever the user played a talk behind it. The
+    // failed line is excluded from the clear — everything ahead of
+    // it and behind it up to qi still drops, so it ends up at queue
+    // front, still skipped as sounding by peek and still counted as
+    // sounding by the header, exactly like a service-restart resumed
+    // talk (v5.85). When the tapped talk IS the failed talk (a retry
+    // tap, f == qi) the line is likewise kept: the retry may fail
+    // again, and a kept head is the sounding state, not a leak.
+    // NOTE: this guard only sees a LIVE failure (failedUrl needs the
+    // service flag); a head whose failure was superseded by a later
+    // successful play carries no marker after the restore, so the
+    // already-holding call site below is unreachable-with-live-error
+    // today (its :11180 guard requires !hasTrackError) and its guard
+    // call is symmetry/defense only.
+    private void dropQueueAheadUpTo(int qi) {
+        if (qi < 0 || queueUrls.isEmpty()) return;
+        int end = Math.min(qi + 1, queueUrls.size());
+        int fi = -1;
+        for (int i = 0; i < end; i++) {
+            if (isFailedUrl(queueLineUrl(queueUrls.get(i)))) { fi = i; break; }
+        }
+        if (fi < 0) { queueUrls.subList(0, end).clear(); return; }
+        queueUrls.subList(fi + 1, end).clear();
+        queueUrls.subList(0, fi).clear();
+    }
     // v11.81: no-track Play starts the talk ON SCREEN, not talk 0 — after a
     // notification/sleep stop the poll clears currentIndex only on its next tick, so
     // until then the Room still shows the stopped talk; starting talk 0 was a
@@ -1587,15 +1618,20 @@ public class RoomActivity extends Activity {
     // fallback as the over-fire hazard (a dead session's stale
     // lastUrl, or a library session sounding while this Room
     // is open), but it was never fixed in the fallback
-    // itself: with no track loaded (notification stop, track
-    // error, service death with rebind pending) the indexed
+    // itself: with no track loaded (notification stop,
+    // service death with rebind pending) the indexed
     // talk was named as sounding, so the header "· ◈ N"
     // read one too low, the clear dialog undercounted
     // waiting talks, and the queue-only gate could open a
     // drawer whose only row was not playing. Bound, a track
     // is live when the service holds one (paused still
-    // counts — only a stopped/failed/cleared track reads
-    // false); unbound, the liveSession + liveHasTrack
+    // counts — and a failed track still reads live, since the
+    // service keeps its title until a stop; only a
+    // stopped/cleared track reads false). v13.52 (audit-1374
+    // F-E): the old "failed reads false" wording contradicted
+    // the code — the failure-aware skip is explicit now via
+    // failedUrl(), not via this liveness read. Unbound, the
+    // liveSession + liveHasTrack
     // mirrors, exactly like isSoundingTalk.
     private boolean hasLiveTrackForQueue() {
         if (service != null) return service.hasTrack();
@@ -1757,6 +1793,11 @@ public class RoomActivity extends Activity {
             if (cur != null && e.url.equals(cur)) continue;
             if (isSoundingTalk(e.url)) continue;
             if (e.isV2() && isSoundingForeignTalk(e.url, e.sayadaw)) continue;
+            // v13.52 (audit-1374 F1): explicit failed-talk skip — bound
+            // it is a no-op today (cur already names it), but the skip
+            // no longer depends on the sounding identity alone, and
+            // the F-D unbound leg plugs in here.
+            if (isFailedUrl(e.url)) continue;
             return e;
         }
         return null;
@@ -3956,6 +3997,28 @@ if (snd65 >= 0) currentIndex = snd65;
         if (cur.equals(url)) return true;
         String local = localPathFor(url);
         return local != null && local.equals(cur);
+    }
+
+    // v13.52 (audit-1373 F1 / audit-1374 F-B-F-F): the failed talk,
+    // made explicit. Until now the pickers skipped a failed talk only
+    // incidentally, because onError never clears currentUrl so the
+    // sounding identity still matched it (audit-1374 section 2). That
+    // breaks wherever the identity breaks (forward step, scan misses,
+    // unbound windows). Bound only: the flag lives in the service, so
+    // an unbound Room returns null and keeps today's behaviour — the
+    // unbound leg (liveTrackError static) is a separate follow-up
+    // slice (audit-1374 F-D), not this one. Both URL forms: the
+    // service holds the stream URL for a failed stream but the local
+    // file path for a failed offline play (playIndex :11706 passes
+    // local when downloaded), so isFailedUrl reuses isCurrentTalk's
+    // localPathFor equivalence instead of a bare equals.
+    private String failedUrl() {
+        if (service == null || !service.hasTrackError()) return null;
+        return service.getCurrentUrl();
+    }
+    private boolean isFailedUrl(String u) {
+        if (u == null || failedUrl() == null) return false;
+        return isCurrentTalk(u);
     }
 
     // v11.29: unbound-window sounding mirror for the two drop legs
@@ -9998,6 +10061,7 @@ if (snd67q >= 0) currentIndex = snd67q;
             // and every Next/auto-advance tap still name the next
             // WAITING talk exactly as v5.85 promised.
             if (found >= 0 && curUrl85 != null && qu.equals(curUrl85)) continue;
+            if (isFailedUrl(qu)) continue; // v13.52: the failed talk is never "next" (F1)
             if (found >= 0) { if (firstMatch < 0) firstMatch = found; }
             // v7.08: a foreign v2 line is WAITING, not stale -- it
             // has no index here by design, and pruning it would
@@ -10023,7 +10087,12 @@ if (snd67q >= 0) currentIndex = snd67q;
         // nothing, and Up Next / the mark / the preview name the
         // same talk the next tap will play.
         int fwd26 = forwardTopIndex26();
-        if (fwd26 >= 0) return fwd26;
+        // v13.52 (audit-1374 F-B): a forward top naming the failed talk
+        // is skipped, not returned — after a history-back the talk just
+        // left can be the dead one, and Next must advance past it. The
+        // entry stays on the stack (peek never pops), so Previous can
+        // still reach it and a later successful play clears the flag.
+        if (fwd26 >= 0 && !isFailedUrl(talks.get(fwd26).url)) return fwd26;
         // v4.36: shuffle — the hand queue above still outranks it
         // (a queued talk is an explicit order), but with no queue
         // the next talk is a cached random pick, not list-next.
@@ -10053,7 +10122,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                 // consume still agree on the same pick, and the
                 // forward step above still outranks this branch.
                 for (int i = 0; i < talks.size(); i++)
-                    if (talks.get(i).url.equals(shuffleNextUrl) && i != snd69 && !prevHistory.contains(shuffleNextUrl)) return i;
+                    if (talks.get(i).url.equals(shuffleNextUrl) && i != snd69 && !prevHistory.contains(shuffleNextUrl) && !isFailedUrl(talks.get(i).url)) return i; // v13.52: never shuffle-pick the failed talk (F1)
             }
             // v7.47: a fresh shuffle pick used to exclude only the
             // current talk, so with shuffle on a just-heard talk
@@ -10073,6 +10142,7 @@ if (snd67q >= 0) currentIndex = snd67q;
             java.util.ArrayList<Integer> pool = new java.util.ArrayList<Integer>();
             for (int i = 0; i < talks.size(); i++) {
                 if (i == snd69) continue;
+                if (isFailedUrl(talks.get(i).url)) continue; // v13.52: never shuffle-pick the failed talk (F1)
                 if (!prevHistory.contains(talks.get(i).url)) pool.add(i);
             }
             int pick;
@@ -10085,6 +10155,13 @@ if (snd67q >= 0) currentIndex = snd67q;
             shuffleNextUrl = talks.get(pick).url;
             return pick;
         }
+        // v13.52 (audit-1374 F-C, decided): with a single talk the wrap
+        // returns the failed talk itself — a deliberate retry, matching
+        // the Play-toggle / row-tap retry of a failed stream, and the
+        // only honest Next when there is nothing else to advance to.
+        // Returning -1 here would surface handleNext's wrong
+        // "playing_not_in_list" toast instead. Multi-talk lists step
+        // past the failed talk, since eff69 names it.
         if (eff69 >= 0 && eff69 < talks.size()) return (eff69 + 1) % talks.size();
         return 0;
     }
@@ -11191,7 +11268,11 @@ if (snd67q >= 0) currentIndex = snd67q;
             // IndexOutOfBounds when the held talk was in the back
             // half of the queue). One subList clear drops the
             // ahead entries AND the held talk together, no shift.
-            if (qiHeld >= 0) { queueUrls.subList(0, qiHeld + 1).clear(); saveQueue(null, true); if (adapter != null) adapter.notifyDataSetChanged(); }
+            // v13.52: ahead-drop via the helper — a restored failed head
+            // ahead of the held talk is preserved (F2). Unreachable
+            // with a live error today (:11180 needs !hasTrackError);
+            // symmetry with the fresh-play site below.
+            if (qiHeld >= 0) { dropQueueAheadUpTo(qiHeld); saveQueue(null, true); if (adapter != null) adapter.notifyDataSetChanged(); }
             // v1.92: refresh the last* anchors here too — a talk
             // first started from the downloaded library (its file,
             // no sayadaw page) and then opened in its Room used to
@@ -11672,7 +11753,9 @@ if (snd67q >= 0) currentIndex = snd67q;
         // with IndexOutOfBounds in the back half of the queue)
         // while the tapped talk stayed queued. One clear of
         // 0..qi drops the ahead entries and the tapped talk.
-        if (qi >= 0) { queueUrls.subList(0, qi + 1).clear(); saveQueue(null, true); if (adapter != null) adapter.notifyDataSetChanged(); }
+        // v13.52: ahead-drop via the helper — a restored failed head
+        // ahead of the tapped talk is preserved (F2), not deleted.
+        if (qi >= 0) { dropQueueAheadUpTo(qi); saveQueue(null, true); if (adapter != null) adapter.notifyDataSetChanged(); }
         // v8.23: play-point anchors deferred to real play — the
         // v8.22 fresh-Room seed's pre-bind boundary, closed.
         // The pre-bind call used to set currentIndex = idx and
