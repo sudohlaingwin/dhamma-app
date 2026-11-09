@@ -2689,10 +2689,35 @@ public class MainActivity extends Activity {
         // per query (typing on does not re-toast), and only from a
         // real keystroke — the onCreate/rotation applyFilter stays
         // silent so a rotated no-match search does not nag again.
+        // v13.81 (Main F1): the no-match toast was filter-blind — with
+        // the favourites-only filter on, a sayadaw who EXISTS but is
+        // not a favourite read as "not in the app at all" ("ဆရာတော်
+        // ရှာမတွေ့ပါ"). When the query matches someone in the full
+        // catalogue, say the fav-only word instead; a query matching
+        // nobody anywhere keeps the plain not-found word, so a
+        // garbage query never claims the name exists. The mirror
+        // pass below reuses the filter loop's match (name + group,
+        // NFC + digit-fold + flat) without the favOnly gate; the
+        // once-per-query guard and the silent paths are untouched.
         if (allowToast && q.length() > 0 && shown.isEmpty()
                 && !q.equals(lastEmptyToastQuery)) {
             lastEmptyToastQuery = q;
-            Toast.makeText(this, Lang.t(this, "sayadaw_not_found"),
+            String toastKey = "sayadaw_not_found";
+            if (favOnly) {
+                for (Sayadaw s : all) {
+                    String n = Fx.foldDigits(java.text.Normalizer.normalize(s.name,
+                            java.text.Normalizer.Form.NFC).toLowerCase());
+                    String g = s.group == null ? "" : Fx.foldDigits(java.text.Normalizer.normalize(s.group,
+                            java.text.Normalizer.Form.NFC).toLowerCase());
+                    if (n.indexOf(q) >= 0 || g.indexOf(q) >= 0
+                            || Fx.stripWhitespace(n).indexOf(qFlat) >= 0
+                            || Fx.stripWhitespace(g).indexOf(qFlat) >= 0) {
+                        toastKey = "sayadaw_not_found_fav";
+                        break;
+                    }
+                }
+            }
+            Toast.makeText(this, Lang.t(this, toastKey),
                     Toast.LENGTH_SHORT).show();
         } else if (!shown.isEmpty()) {
             lastEmptyToastQuery = null;
