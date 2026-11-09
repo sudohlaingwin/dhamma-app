@@ -3660,7 +3660,24 @@ if (snd65 >= 0) currentIndex = snd65;
                     getSharedPreferences("dhamma", MODE_PRIVATE);
             org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
             map.put(url, filename);
-            sp.edit().putString("dlMap", map.toString()).apply();
+            // v13.65 (audit-1370 C4): dlMap + dlQueued land in ONE apply() —
+            // the Fx.stripEnqueueDownload shape. recordDownloadFile used to
+            // write dlMap alone and the call sites wrote dlQueued later via
+            // addQueuedDownload, so a death between them left the filename
+            // without its hourglass mark (or the mark without its filename).
+            // Both call sites (enqueueRoomDownload + the data-gate Wi-Fi leg)
+            // still call addQueuedDownload right after: it now finds the URL
+            // already queued and only refreshes the in-memory set, so the row
+            // still gains its hourglass at once. dlSayadaw stays its own
+            // apply below: best-effort metadata, read with a fallback.
+            org.json.JSONArray queued65 = new org.json.JSONArray(sp.getString("dlQueued", "[]"));
+            boolean found65 = false;
+            for (int i = 0; i < queued65.length(); i++) {
+                if (url.equals(queued65.optString(i))) { found65 = true; break; }
+            }
+            if (!found65) queued65.put(url);
+            sp.edit().putString("dlMap", map.toString())
+                    .putString("dlQueued", queued65.toString()).apply();
             // v5.45: record this download's sayadaw beside dlMap
             // (Fx.stripLibSayadaw) — this Room is the only place
             // that knows it, so a later library session can name

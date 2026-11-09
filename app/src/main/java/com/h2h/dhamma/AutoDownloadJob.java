@@ -390,7 +390,6 @@ public class AutoDownloadJob extends JobService {
             org.json.JSONObject map = new org.json.JSONObject(
                     sp.getString("dlMap", "{}"));
             map.put(url, file);
-            sp.edit().putString("dlMap", map.toString()).apply();
             if (sayadawName != null && sayadawName.length() > 0) {
                 try {
                     org.json.JSONObject sm = new org.json.JSONObject(
@@ -406,7 +405,14 @@ public class AutoDownloadJob extends JobService {
                 if (url.equals(queued.optString(i))) { found = true; break; }
             }
             if (!found) queued.put(url);
-            sp.edit().putString("dlQueued", queued.toString()).apply();
+            // v13.65 (audit-1370 C4): dlMap + dlQueued land in ONE apply() —
+            // the Fx.stripEnqueueDownload shape. Three separate applies used
+            // to tear: a death between them left the hourglass mark without
+            // its filename (or the filename without its mark), and the two
+            // disagreed until a prune. dlSayadaw stays its own apply above:
+            // best-effort metadata, read with a fallback everywhere.
+            sp.edit().putString("dlMap", map.toString())
+                    .putString("dlQueued", queued.toString()).apply();
         } catch (Exception ignored) {}
     }
 
