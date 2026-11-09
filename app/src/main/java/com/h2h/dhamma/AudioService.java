@@ -908,6 +908,16 @@ public class AudioService extends Service {
     private int autoAdvanceArmN1 = 0;
     private int autoAdvanceFailsN1 = 0;
     private final java.util.HashSet<String> autoAdvanceSkipN1 = new java.util.HashSet<String>();
+    // v13.94 (trail-push follow-up): retry-suppression depth for the
+    // hidden-trail recorders — tryAutoAdvanceRetryN1 re-invokes the
+    // advance with lastUrl/currentUrl naming the FAILED talk, so the
+    // re-invoked tails' trail step would record that never-heard
+    // talk as "ended" (a phantom Previous step; the outer
+    // invocation's own push still records the genuinely ended
+    // talk when it returns). A depth, not a boolean, so nested
+    // retries (cap 3) nest cleanly; only the synchronous re-invoke
+    // is covered, which is exactly the tails' extent.
+    private int suppressTrailDepthN1 = 0;
     // v13.62 (audit-1370 N2): a dead queue head used to loop forever — prepare failed,
     // restore put it back at the front, and the next advance re-picked the same dead
     // talk. Keep a small in-memory map of head-URL -> consecutive restore count;
@@ -3529,6 +3539,9 @@ public class AudioService extends Service {
     // copy of this helper in DownloadedActivity.
     private void noteLibTrail11(String ended, String next) {
         try {
+            // v13.94: same retry suppression as pushHiddenTrail08 —
+            // inside a kind-2 retry, currentUrl is the failed file.
+            if (suppressTrailDepthN1 > 0) return;
             if (ended == null || ended.length() == 0
                     || next == null || next.length() == 0
                     || ended.equals(next)) return;
@@ -3641,6 +3654,12 @@ public class AudioService extends Service {
     private void pushHiddenTrail08(android.content.SharedPreferences sp,
             String endedStreamUrl, String newUrl) {
         try {
+            // v13.94: inside an N1 retry re-invoke the "ended" talk is
+            // the FAILED talk (lastUrl names it) — record nothing;
+            // the outer invocation's push records the genuinely
+            // ended talk. Natural advances and the awaited re-fire
+            // never run under this depth, so they are unaffected.
+            if (suppressTrailDepthN1 > 0) return;
             if (endedStreamUrl == null || endedStreamUrl.length() == 0) return;
             if (endedStreamUrl.equals(newUrl)) return;
             long gen95 = clearGen95(sp);
@@ -4307,8 +4326,16 @@ public class AudioService extends Service {
         }
         int kind = autoAdvanceKindN1;
         autoAdvancedN1 = false; autoAdvanceKindN1 = 0;
-        if (kind == 2) advanceLibInBackground79(false);
-        else advanceInBackground58(false);
+        // v13.94: suppress trail recording for this re-invoke — its
+        // tails' "ended" talk is the failed one (lastUrl names it),
+        // and the outer invocation's push already owns the genuinely
+        // ended talk. The awaited re-fire and natural advances never
+        // run under this depth, so they record exactly as before.
+        suppressTrailDepthN1++;
+        try {
+            if (kind == 2) advanceLibInBackground79(false);
+            else advanceInBackground58(false);
+        } finally { suppressTrailDepthN1--; }
         return true;
     }
     private void armPendingQueueHead14(String line, String owner) {
