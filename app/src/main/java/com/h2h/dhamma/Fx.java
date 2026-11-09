@@ -1347,6 +1347,57 @@ public class Fx {
         }
     }
 
+    // v14.10 (audit-1367 L2): the Wi-Fi Network object behind the
+    // stripIsWifi verdict above — same decision rule, but returning
+    // the network instead of a boolean, so a caller can bind a
+    // socket to it (Network.openConnection) instead of the default
+    // route. Null means "no Wi-Fi to bind to" — the caller must
+    // skip the fetch, never fall back to a plain connection.
+    // VPN case: the active network is the VPN, so the scan returns
+    // the CONNECTED Wi-Fi network underneath it — the bound fetch
+    // then rides Wi-Fi directly, outside the tunnel, for one
+    // anonymous public page GET (no credentials, generic UA). That
+    // is deliberate: the data-saver promise ("the job never spends
+    // mobile data") wins over tunnel routing for this fetch, and a
+    // VPN Network object would keep working if the VPN re-established
+    // over mobile after a Wi-Fi drop, leaving the leak open.
+    public static android.net.Network stripWifiNetwork(Context ctx) {
+        try {
+            android.net.ConnectivityManager cm = (android.net.ConnectivityManager)
+                    ctx.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm == null) return null;
+            if (android.os.Build.VERSION.SDK_INT >= 23) {
+                android.net.Network net = cm.getActiveNetwork();
+                if (net != null) {
+                    android.net.NetworkCapabilities nc = cm.getNetworkCapabilities(net);
+                    if (nc != null) {
+                        if (nc.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI))
+                            return net;
+                        if (nc.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)) {
+                            try {
+                                for (android.net.Network n : cm.getAllNetworks()) {
+                                    android.net.NetworkInfo ni2 = cm.getNetworkInfo(n);
+                                    if (ni2 != null && ni2.isConnected()
+                                            && ni2.getType() == android.net.ConnectivityManager.TYPE_WIFI)
+                                        return n;
+                                }
+                            } catch (Exception ignored) {}
+                            return null;
+                        }
+                        return null;
+                    }
+                }
+            }
+            android.net.NetworkInfo info = cm.getActiveNetworkInfo();
+            if (info != null && info.isConnected()
+                    && info.getType() == android.net.ConnectivityManager.TYPE_WIFI)
+                return cm.getActiveNetwork();
+            return null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     private static java.io.File stripDownloadsFile(String name) {
         return new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
                 android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + name);

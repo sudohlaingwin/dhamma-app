@@ -19,7 +19,10 @@ import android.content.Context;
 // so a just-enqueued file is never missed and never doubled.
 // The job never spends mobile data: the scheduler constraint is
 // NETWORK_TYPE_UNMETERED AND the run re-checks Wi-Fi itself
-// (Fx.stripIsWifi, the VPN-aware rule) before fetching anything.
+// (Fx.stripIsWifi, the VPN-aware rule) before fetching anything,
+// and the fetch itself is bound to the Wi-Fi network (v14.10,
+// audit-1367 L2), so a Wi-Fi loss mid-fetch fails the fetch
+// instead of finishing it over mobile data.
 // One bad sayadaw page never kills the run (per-sayadaw
 // try/catch). No in-app toast — the last-check status lives only on
 // the Settings screen; the system still posts one DownloadManager
@@ -393,12 +396,25 @@ public class AutoDownloadJob extends JobService {
     // (TalksActivity.loadTalks): same timeouts, same UA, same
     // charset re-decode. Null on any failure; the caller skips
     // that sayadaw.
+    // v14.10 (audit-1367 L2): the socket is BOUND to the Wi-Fi
+    // network (Fx.stripWifiNetwork + Network.openConnection),
+    // not opened on the default route. The pre-fetch re-check
+    // (:241) only guarded the fetch START — once a plain
+    // connection was open, a Wi-Fi loss mid-fetch let the socket
+    // finish over mobile data (one small HTML page; the v13.20
+    // comment already owned that leak). A bound socket dies
+    // with its network instead: Wi-Fi gone mid-fetch fails the
+    // fetch (null here, sayadaw skipped this run, retried next
+    // run) and no byte ever rides mobile data. Null network =
+    // no fetch at all — fail-closed, same as the re-check.
     private String fetchPageHtml68(String pageUrl) {
         java.net.HttpURLConnection conn = null;
         java.io.InputStream in = null;
         try {
+            android.net.Network wifi = Fx.stripWifiNetwork(this);
+            if (wifi == null) return null;
             conn = (java.net.HttpURLConnection)
-                    new java.net.URL(pageUrl).openConnection();
+                    wifi.openConnection(new java.net.URL(pageUrl));
             conn.setConnectTimeout(20000);
             conn.setReadTimeout(30000);
             conn.setRequestProperty("User-Agent", "Mozilla/5.0");
