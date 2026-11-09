@@ -62,6 +62,17 @@ public class AutoDownloadJob extends JobService {
     // re-checks below.
     private static volatile boolean sStopRequested68 = false;
 
+    // v14.13 (audit-1367 L6): the connection the worker thread is
+    // currently reading from, so onStopJob can end a blocked fetch
+    // at once instead of waiting out its 30s read timeout (see
+    // onStopJob). Volatile: written by the worker, read by the
+    // main thread. Only ever one worker thread (sRunInFlight68),
+    // so the field can only name this run's fetch; cleared in
+    // fetchPageHtml68's finally, and only when it still names
+    // that fetch, so a stale reference can never disconnect a
+    // later run's connection.
+    private static volatile java.net.HttpURLConnection sActiveFetch68 = null;
+
     // v12.75: schedule-once — if the periodic job is already
     // pending, leave it alone. AOSP replaces a same-id job on
     // re-schedule and re-anchors its 6h window at now, so the old
@@ -175,6 +186,21 @@ public class AutoDownloadJob extends JobService {
         // Never reschedule: the periodic job re-fires on its own
         // rhythm, and a stopped one-off seed is covered by it.
         sStopRequested68 = true;
+        // v14.13 (audit-1367 L6): end a blocked fetch at once —
+        // the worker can be sitting in in.read() with a 30s
+        // timeout, and the flag alone only reaches it between
+        // sayadaws. disconnect() from this thread makes the
+        // read throw, the fetch returns null, the sayadaw is
+        // skipped, and the loop breaks on the flag — so
+        // jobFinished lands promptly instead of up to 30s
+        // later. Null (no fetch in flight) or already finished
+        // (field cleared) is a no-op; a double disconnect is
+        // harmless, and the fetch's own finally disconnects
+        // again the same way.
+        java.net.HttpURLConnection active68 = sActiveFetch68;
+        if (active68 != null) {
+            try { active68.disconnect(); } catch (Exception ignored) {}
+        }
         return false;
     }
 
@@ -283,6 +309,17 @@ public class AutoDownloadJob extends JobService {
                         Prefs.AUTO_DL_MAX_TOTAL - totalNew,
                         liveSources, queued);
             } catch (Exception ignored) {}
+            // v14.13 (audit-1367 L8): persist the resume point per
+            // sayadaw, not only at run end — a process death
+            // mid-run used to lose the whole run's rotation
+            // progress, so the next run re-fetched every sayadaw
+            // already checked (cheap pure diffs, but wasted page
+            // fetches). One tiny apply per sayadaw; the end-of-run
+            // write below stays as the final word, same value.
+            // The name counts as checked exactly as before
+            // (lastChecked68 is assigned before the call), so a
+            // sayadaw whose check threw is still recorded.
+            Prefs.autoDlSetResumeAfter(this, name);
         }
         if (lastChecked68 != null) Prefs.autoDlSetResumeAfter(this, lastChecked68);
         Prefs.autoDlSetLastRun(this, System.currentTimeMillis(), totalNew);
@@ -430,6 +467,7 @@ public class AutoDownloadJob extends JobService {
             if (wifi == null) return null;
             conn = (java.net.HttpURLConnection)
                     wifi.openConnection(new java.net.URL(pageUrl));
+            sActiveFetch68 = conn; // v14.13 (audit-1367 L6): onStopJob disconnects this
             conn.setConnectTimeout(20000);
             conn.setReadTimeout(30000);
             conn.setRequestProperty("User-Agent", "Mozilla/5.0");
@@ -452,6 +490,7 @@ public class AutoDownloadJob extends JobService {
         } catch (Exception ignored) {
             return null;
         } finally {
+            if (sActiveFetch68 == conn) sActiveFetch68 = null; // v14.13 (audit-1367 L6)
             if (in != null) { try { in.close(); } catch (Exception ignored) {} }
             if (conn != null) { try { conn.disconnect(); } catch (Exception ignored) {} }
         }
