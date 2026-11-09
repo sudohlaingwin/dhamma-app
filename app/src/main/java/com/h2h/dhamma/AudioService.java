@@ -552,6 +552,13 @@ public class AudioService extends Service {
                     .putString("lastPhoto", cat12[2]).apply();
             // v11.20 shape: a queue play pop-or-clears the forward stack — the Room's
             // v8.28 reconcile adopts the shrinkage on return, same as the tail.
+            // v13.54 (audit-1372 F2): the pop-or-clear below runs BEFORE play(), so
+            // its pre-mutation stack is captured for the arm after play() — the arm
+            // must follow play(), because play() clears the pending record. A null
+            // after-value means no mutation happened (empty stack / cleared window).
+            String fwdBeforeB12 = null;
+            String fwdAfterB12 = null;
+            long fwdGenB12 = -1;
             try {
                 long genB12 = clearGen95(sp);
                 String fwdRawB12 = sp.getString("forwardHistoryRaw", "");
@@ -569,9 +576,13 @@ public class AudioService extends Service {
                                 fwdSbB12.append(fwdStackB12.get(fiB12));
                             }
                             sp.edit().putString("forwardHistoryRaw", fwdSbB12.toString()).apply();
+                            fwdAfterB12 = fwdSbB12.toString();
                         } else {
                             sp.edit().remove("forwardHistoryRaw").apply();
+                            fwdAfterB12 = "";
                         }
+                        fwdBeforeB12 = fwdRawB12;
+                        fwdGenB12 = genB12;
                     }
                 }
             } catch (Exception ignored) {}
@@ -579,6 +590,12 @@ public class AudioService extends Service {
             // v13.14 (Q10): the head is already popped above — if this prepare fails,
             // the head returns to the front of its sayadaw's queue instead of vanishing.
             armPendingQueueHead14(newQLines12[barePos12], awaitSayadaw);
+            // v13.54 (audit-1372 F2): the forward pop-or-clear above ran BEFORE play(),
+            // so a failed prepare would lose the redo step for good — arm the
+            // pre-mutation stack (null after-value = no mutation, nothing to arm).
+            // A sync failure restores it at once, an async failure in onError, and a
+            // sounding talk drops the record in onPrepared.
+            if (fwdAfterB12 != null) armPendingForward14(fwdBeforeB12, fwdAfterB12, fwdGenB12);
             // v13.53 (audit-1372 F1): the toast used to fire BEFORE play(), so a
             // synchronous setDataSource failure promised "next: <talk>" for a talk
             // that never played. It now fires only when play() did not fail
@@ -776,6 +793,23 @@ public class AudioService extends Service {
     // Room queue, null for the library queue.
     private String pendingQueueHeadLine14 = null;
     private String pendingQueueHeadOwner14 = null;
+    // v13.54 (audit-1372 F2, forward-stack mirror of the Q10 pending head above):
+    // the background advance tails pop or wipe forwardHistoryRaw around play() —
+    // the forward branch and Case B BEFORE it, shuffle / list-next / queue-head /
+    // foreign tails AFTER it — and a prepare failure (sync, trackError, or async,
+    // onError) used to lose the redo step for good, with no restore anywhere
+    // (contrast armPendingQueueHead14, which exists only for queue heads). A
+    // mutated stack now stays "pending" until it actually sounds: onPrepared
+    // clears the record; onError (or a synchronous play failure) writes the
+    // pre-mutation stack back. Only the background advance tails arm this record
+    // — a manual tap never does, and a fresh play() clears it first (a tap in the
+    // prepare window supersedes the pending stack like any other talk). The record
+    // keeps the post-mutation value + the history-clear generation, so the restore
+    // only fires when nothing else rewrote the key since the arm — a Room rewrite
+    // or a history clear drops the record instead of resurrecting a stale stack.
+    private String pendingForwardBefore14 = null;
+    private String pendingForwardAfter14 = null;
+    private long pendingForwardGen14 = -1;
     // v1.69: pause tapped while a stream is still buffering — toggle()
     // used to no-op on an unprepared player, so the talk then started
     // playing anyway despite the tap. Remember the hold and honour it
@@ -1679,8 +1713,11 @@ public class AudioService extends Service {
         // v13.14 (Q10): a fresh play supersedes any pending queue head — a tap in
         // the prepare window moves on like any other talk, and the armed head must
         // never be restored by a later failure of this new talk. The background pop
-        // sites arm their head AFTER this call returns.
+        // sites arm their head AFTER this call returns. v13.54 (audit-1372 F2):
+        // same for a pending forward-stack restore — a fresh play supersedes the
+        // advance that armed it, so its failure must never resurrect the old stack.
         clearPendingQueueHead14();
+        clearPendingForward14();
         holdPaused = false;
         // v10.87: a pending focus-gain auto-resume belongs to the OLD
         // talk, not this one — a transient loss (call) during talk A
@@ -1743,7 +1780,10 @@ public class AudioService extends Service {
                     prepared = true;
                     // v13.14 (Q10): the pending queue head sounds now — its failure
                     // window is closed, so the record is cleared, never restored.
+                    // v13.54 (audit-1372 F2): same for the forward stack — the new
+                    // talk sounds, so the pop/wipe that armed the restore stands.
                     clearPendingQueueHead14();
+                    clearPendingForward14();
                     // v1.69: a pause tapped while buffering (see
                     // holdPaused) means this talk opens paused, not
                     // playing — and a paused talk never gains a sleep
@@ -1916,6 +1956,12 @@ public class AudioService extends Service {
                         if (pendingHeadMatches14(currentUrl)) restorePendingQueueHead14();
                         else clearPendingQueueHead14();
                     }
+                    // v13.54 (audit-1372 F2): same window for the forward stack — a
+                    // background advance that popped/wiped it and then failed to
+                    // prepare gets the redo step back; the restore itself is guarded
+                    // (post-mutation value + generation must still match), so a stack
+                    // the Room rewrote — or a history clear — is never clobbered.
+                    if (pendingForwardBefore14 != null) restorePendingForward14();
 
                     // v1.40: the Room never sets a listener, so a failed
                     // stream used to stall silently with no message at
@@ -3539,6 +3585,15 @@ public class AudioService extends Service {
                             sp.edit().putString("lastUrl", fUrl).putString("lastTitle", fTitle).apply();
                             Prefs.savePlayList(this, raw, fIdx);
                             play(fLocal != null ? fLocal.getAbsolutePath() : fUrl, fTitle, savedSeekFor(fUrl));
+                            // v13.54 (audit-1372 F2): the popped stack was written above
+                            // BEFORE play() — the old code never checked whether the new
+                            // talk actually sounded, so a failed prepare (sync or async)
+                            // lost the redo step for good. Arm the pre-pop stack (fwdRaw)
+                            // with its post-pop value: a sync failure restores it at once,
+                            // an async failure restores it in onError, and a sounding talk
+                            // drops the record in onPrepared. The guards stop the restore
+                            // from clobbering a stack the Room (or a clear) rewrote meanwhile.
+                            armPendingForward14(fwdRaw, fSb.toString(), gen95);
                             int eTab27 = lines[idx].indexOf('\t');
                             pushHiddenTrail08(sp, eTab27 >= 0 ? lines[idx].substring(0, eTab27) : lines[idx], fUrl);
                             return;
@@ -3608,8 +3663,18 @@ public class AudioService extends Service {
                     // returns it first, so a shuffle play is never
                     // the forward target). A single-talk pick == idx
                     // replays the same talk, so the stack stays.
-                    if (pick != idx) {
+                    // v13.54 (audit-1372 F2): the wipe below runs AFTER play() but used
+                    // to run unconditionally — a failed prepare (sync, trackError, or
+                    // async, onError) lost the redo step for good. Skip the wipe when
+                    // play() already failed synchronously, and arm the pre-wipe stack
+                    // so an async failure restores it (onError) while a sounding talk
+                    // drops the record (onPrepared). The after-value is "" (key
+                    // removed) and the generation guards the restore against a
+                    // history clear or a Room rewrite in the prepare window.
+                    if (pick != idx && !trackError) {
+                        String fwdBeforeSh = sp.getString("forwardHistoryRaw", "");
                         try { sp.edit().remove("forwardHistoryRaw").apply(); } catch (Exception ignored) {}
+                        armPendingForward14(fwdBeforeSh, "", clearGen95(sp));
                     }
                     // v8.08: hidden-trail step (single-talk pick ==
                     // ended talk records nothing via the guard).
@@ -3687,8 +3752,13 @@ public class AudioService extends Service {
             // Repeat-one (nx == idx) and the single-talk wrap
             // (nx == idx) replay the same talk, so the stack
             // stays valid, like the library v11.19 repeat-one rule.
-            if (nx != idx) {
+            // v13.54 (audit-1372 F2): same unconditional wipe as the shuffle branch
+            // above — skip it when play() already failed synchronously, and arm
+            // the pre-wipe stack so an async failure restores it in onError.
+            if (nx != idx && !trackError) {
+                String fwdBeforeNx = sp.getString("forwardHistoryRaw", "");
                 try { sp.edit().remove("forwardHistoryRaw").apply(); } catch (Exception ignored) {}
+                armPendingForward14(fwdBeforeNx, "", clearGen95(sp));
             }
             // v8.08: hidden-trail step (repeat-one replay == ended
             // talk records nothing via the guard).
@@ -3932,6 +4002,56 @@ public class AudioService extends Service {
         pendingQueueHeadOwner14 = null;
     }
 
+    // v13.54 (audit-1372 F2): arm the pending forward-stack restore after a
+    // background advance mutated forwardHistoryRaw and called play(). Called ONLY
+    // by the background advance tails (advanceInBackground58 forward / shuffle /
+    // list-next, advanceQueueHead63 in-list, playForeignHead11, Case B re-fire) —
+    // never by a manual tap. If play() already failed synchronously (trackError
+    // set by its setDataSource catch) the stack is restored at once instead of
+    // arming, because no onError will ever fire for it. Post-play mutation sites
+    // skip their wipe entirely on trackError and arm only on success, so the
+    // immediate-restore leg fires only for the pre-play sites (forward branch,
+    // Case B), whose mutation already happened before play() ran.
+    private void armPendingForward14(String beforeRaw, String afterRaw, long gen) {
+        if (beforeRaw == null || beforeRaw.length() == 0) return;
+        pendingForwardBefore14 = beforeRaw;
+        pendingForwardAfter14 = afterRaw == null ? "" : afterRaw;
+        pendingForwardGen14 = gen;
+        if (trackError) restorePendingForward14();
+    }
+
+    // v13.54 (audit-1372 F2): write the pre-mutation forward stack back. Called
+    // from onError (async prepare failure) and from armPendingForward14 when play()
+    // already failed synchronously. Guarded: the current value must still be the
+    // post-mutation value and the history-clear generation unchanged — otherwise
+    // the Room rewrote the stack (or a clear removed it) after the arm, and the
+    // record is dropped without restoring, never the wrong stack. Clears the
+    // record either way, so a second failure can never restore twice.
+    private void restorePendingForward14() {
+        String before = pendingForwardBefore14;
+        String after = pendingForwardAfter14;
+        long gen = pendingForwardGen14;
+        pendingForwardBefore14 = null;
+        pendingForwardAfter14 = null;
+        pendingForwardGen14 = -1;
+        if (before == null || before.length() == 0) return;
+        try {
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            if (clearGen95(sp) != gen) return;
+            String cur = sp.getString("forwardHistoryRaw", "");
+            if (cur == null) cur = "";
+            if (!cur.equals(after == null ? "" : after)) return;
+            sp.edit().putString("forwardHistoryRaw", before).apply();
+        } catch (Exception ignored) {}
+    }
+
+    private void clearPendingForward14() {
+        pendingForwardBefore14 = null;
+        pendingForwardAfter14 = null;
+        pendingForwardGen14 = -1;
+    }
+
     private boolean advanceQueueHead63(android.content.SharedPreferences sp,
             String raw, String[] lines, boolean manual) {
         try {
@@ -4134,6 +4254,7 @@ public class AudioService extends Service {
                     // the key, so write nothing back; the head play
                     // above is a queue play, unaffected by the clear.
                     if (!fwdStack20.isEmpty() && clearGen95(sp) == gen95) {
+                        String fwdAfter20;
                         if (fwdStack20.get(fwdStack20.size() - 1).equals(headUrl)) {
                             fwdStack20.remove(fwdStack20.size() - 1);
                             StringBuilder fwdSb20 = new StringBuilder();
@@ -4142,9 +4263,17 @@ public class AudioService extends Service {
                                 fwdSb20.append(fwdStack20.get(fi20));
                             }
                             sp.edit().putString("forwardHistoryRaw", fwdSb20.toString()).apply();
+                            fwdAfter20 = fwdSb20.toString();
                         } else {
                             sp.edit().remove("forwardHistoryRaw").apply();
+                            fwdAfter20 = "";
                         }
+                        // v13.54 (audit-1372 F2): this block runs after play() and after
+                        // the v13.53 sync-failure return, so the sync half is already
+                        // safe — but an async prepare failure still lost the redo step
+                        // for good. Arm the pre-mutation stack so onError restores it
+                        // and onPrepared drops the record.
+                        armPendingForward14(fwdRaw20, fwdAfter20, gen95);
                     }
                 }
             } catch (Exception ignored) {}
@@ -4264,6 +4393,7 @@ public class AudioService extends Service {
                     // already removed the key, so write nothing back; the head play above is a
                     // queue play, unaffected by the clear.
                     if (!fwdStack11.isEmpty() && clearGen95(sp) == gen11) {
+                        String fwdAfter11;
                         if (fwdStack11.get(fwdStack11.size() - 1).equals(headUrl)) {
                             fwdStack11.remove(fwdStack11.size() - 1);
                             StringBuilder fwdSb11 = new StringBuilder();
@@ -4272,9 +4402,15 @@ public class AudioService extends Service {
                                 fwdSb11.append(fwdStack11.get(fi11));
                             }
                             sp.edit().putString("forwardHistoryRaw", fwdSb11.toString()).apply();
+                            fwdAfter11 = fwdSb11.toString();
                         } else {
                             sp.edit().remove("forwardHistoryRaw").apply();
+                            fwdAfter11 = "";
                         }
+                        // v13.54 (audit-1372 F2): same async-failure hole as the in-list
+                        // sibling — the v13.53 sync-failure return already guards this
+                        // block, so only the onError half needs the arm.
+                        armPendingForward14(fwdRaw11, fwdAfter11, gen11);
                     }
                 }
             } catch (Exception ignored) {}
