@@ -340,9 +340,9 @@ public class DownloadedActivity extends Activity {
     // LANDS, so a FAILED or system-cancelled job left its entry (and
     // the paused card's hourglass) behind until some Room/Talks
     // rescan happened to prune it. Mirrors the Talks v7.77/v10.17
-    // rule exactly: drop once the mapped file has landed in
-    // Downloads/Dhamma, or once no live DownloadManager job owns the
-    // URL (PENDING/RUNNING/PAUSED, or unknown status, app-scoped by
+    // rule exactly: drop once a non-empty file for the URL has landed
+    // (shared DlLanded definition), or once no live DownloadManager job
+    // owns the URL (PENDING/RUNNING/PAUSED, or unknown status, app-scoped by
     // source URL or a Downloads/Dhamma destination). A failed query
     // keeps everything, like the Room/Talks rule, so a transient read
     // failure never drops a live queue. Returns the dropped URLs
@@ -420,17 +420,24 @@ public class DownloadedActivity extends Activity {
                     } finally { c1019.close(); }
                 }
             } catch (Exception ignored) { activeNames1019 = null; }
-            java.io.File dir1019 = new java.io.File(
-                    android.os.Environment.getExternalStoragePublicDirectory(
-                            android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
             java.util.Iterator<String> it1019 = queued1019.iterator();
             while (it1019.hasNext()) {
                 String url1019 = it1019.next();
                 String mapped1019 = map1019.has(url1019)
                         ? map1019.optString(url1019, "") : null;
                 if (mapped1019 != null && mapped1019.length() == 0) mapped1019 = null;
-                boolean landed1019 = mapped1019 != null
-                        && new java.io.File(dir1019, mapped1019).isFile();
+                // v13.69 (audit-1369 F13): the landed leg is the shared
+                // DlLanded definition now - a non-empty file (length > 0)
+                // under Downloads/Dhamma for this URL, mapped name or
+                // filename candidate, claim-guarded, never a live job's
+                // destination (activeNames1019 + activeSources1019; a
+                // null activeNames on a failed query is the old leg's
+                // no-exclusion path). The old leg counted a bare
+                // isFile() on the mapped name only, so a 0-byte file
+                // counted as landed and a legacy file under a candidate
+                // name never did. dir1019 dies with it (only used there).
+                boolean landed1019 = DlLanded.isDownloaded(this, url1019,
+                        activeNames1019, activeSources1019);
                 if (landed1019) { it1019.remove(); dropped1019.add(url1019); continue; }
                 if (activeSources1019.contains(url1019)) continue;
                 if (activeNames1019 != null) {

@@ -3878,7 +3878,17 @@ if (snd65 >= 0) currentIndex = snd65;
         java.util.Iterator<String> it = queuedDownloads.iterator();
         while (it.hasNext()) {
             String url = it.next();
-            if (isDownloadedFile(url)) { it.remove(); changed = true; continue; }
+            // v13.69 (audit-1369 F13): the landed leg is the shared
+            // DlLanded definition now - the same non-empty-file /
+            // mapped-or-candidate / claim-guarded check Talks,
+            // Library, Main and Settings use. isDownloadedFile stays
+            // for every other call site (cache-only, bind-cheap); the
+            // prune reads the disk live instead, with the refresh set
+            // as the in-progress exclusion - the set the old cache leg
+            // excluded on, fresh from the refreshDownloadedSet that
+            // runs right before both prune call sites - plus the
+            // prune's live sources.
+            if (DlLanded.isDownloaded(this, url, inProgressDlFiles, activeSources)) { it.remove(); changed = true; continue; }
             if (activeSources.contains(url)) continue;
             if (activeNames != null) {
                 String mapped = mappedFileName(url);

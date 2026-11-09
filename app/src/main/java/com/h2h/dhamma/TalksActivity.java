@@ -215,7 +215,8 @@ public class TalksActivity extends Activity {
     // nothing pending) — the talk could never be re-downloaded from here
     // until that sayadaw's Room happened to be opened. The prune mirrors the
     // Room's rule exactly: a queued URL drops once its file has landed
-    // (isTalkDownloaded, map + candidates + claim guard) or once no live
+    // (shared DlLanded definition: non-empty file, map + candidates +
+    // claim guard, never a live job's destination) or once no live
     // DownloadManager job owns it (PENDING/RUNNING/PAUSED, or unknown
     // status, app-scoped by source URL or a Downloads/Dhamma destination,
     // the v7.20 scope — a finished job's lingering row and another app's
@@ -292,7 +293,17 @@ public class TalksActivity extends Activity {
             java.util.Iterator<String> it = queued.iterator();
             while (it.hasNext()) {
                 String url = it.next();
-                if (isTalkDownloaded(url)) { it.remove(); changed = true; continue; }
+                // v13.69 (audit-1369 F13): the landed leg is the shared
+                // DlLanded definition now - the same non-empty-file /
+                // mapped-or-candidate / claim-guarded check Room,
+                // Library, Main and Settings use, with this prune's
+                // freshly refreshed in-progress names as the exclusion
+                // (the same set isTalkDownloaded excluded on) plus the
+                // prune's live sources. isTalkDownloaded stays for the
+                // scan, the rows and the strips; the prune no longer
+                // warms talkDlFileCache - the 30s scan below rebuilds
+                // it on the same gate.
+                if (DlLanded.isDownloaded(this, url, talkInProgressDlNames, activeSources)) { it.remove(); changed = true; continue; }
                 if (activeSources.contains(url)) continue;
                 if (activeNames != null) {
                     String mapped = talkMappedFileName(url);

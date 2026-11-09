@@ -151,9 +151,10 @@ public class MainActivity extends Activity {
     // that FAILED, was cancelled, or was cleared left its ⏳ on the
     // ↺ strip until some Room/Talks/Library rescan pruned it.
     // Mirrors the Talks v7.77/v10.17 rule, Main-adapted (no talk
-    // list, so no landed-file check — a landed job's DM row is
-    // STATUS_SUCCESSFUL, hence not a live row, so its entry drops
-    // by the same no-live-job rule).
+    // list): the landed leg is the shared DlLanded definition, and
+    // a landed job's DM row is STATUS_SUCCESSFUL, hence not a live
+    // row, so its entry drops by the landed leg or the same
+    // no-live-job rule.
     // v12.15: the unmapped keep ends here. The v10.20 keep cited
     // "the Talks conservative branch", but Talks abandoned that
     // branch in v11.86 and Room (v11.85) / Library (v12.14)
@@ -240,6 +241,13 @@ public class MainActivity extends Activity {
             java.util.Iterator<String> it1020 = queued1020.iterator();
             while (it1020.hasNext()) {
                 String url1020 = it1020.next();
+                // v13.69 (audit-1369 F13): the landed leg is the shared
+                // DlLanded definition now - Main had none; a landed
+                // file's entry used to drop only by the no-live-job
+                // rule below. Same drop, one definition everywhere.
+                if (DlLanded.isDownloaded(this, url1020, activeNames1020, activeSources1020)) {
+                    it1020.remove(); dropped1020.add(url1020); continue;
+                }
                 if (activeSources1020.contains(url1020)) continue;
                 String mapped1020 = map1020.optString(url1020, "");
                 if (mapped1020.length() > 0) {

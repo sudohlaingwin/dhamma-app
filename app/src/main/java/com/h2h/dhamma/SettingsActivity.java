@@ -1261,9 +1261,10 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
     // was cancelled, or was cleared left its ⏳ on the ↺ strip
     // until some Room/Talks/Library/Main rescan pruned it.
     // Mirrors the Main v10.20 rule, Settings-adapted (no talk
-    // list, so no landed-file check — a landed job's DM row is
-    // STATUS_SUCCESSFUL, hence not a live row, so its entry drops
-    // by the same no-live-job rule).
+    // list): the landed leg is the shared DlLanded definition, and
+    // a landed job's DM row is STATUS_SUCCESSFUL, hence not a live
+    // row, so its entry drops by the landed leg or the same
+    // no-live-job rule.
     // v12.15: the unmapped keep ends here. The v10.21 keep cited
     // "the Talks conservative branch", but Talks abandoned that
     // branch in v11.86 and Room (v11.85) / Library (v12.14) /
@@ -1346,6 +1347,13 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
             java.util.Iterator<String> it1021 = queued1021.iterator();
             while (it1021.hasNext()) {
                 String url1021 = it1021.next();
+                // v13.69 (audit-1369 F13): the landed leg is the shared
+                // DlLanded definition now - Settings had none; a landed
+                // file's entry used to drop only by the no-live-job
+                // rule below. Same drop, one definition everywhere.
+                if (DlLanded.isDownloaded(this, url1021, activeNames1021, activeSources1021)) {
+                    it1021.remove(); dropped1021.add(url1021); continue;
+                }
                 if (activeSources1021.contains(url1021)) continue;
                 String mapped1021 = map1021.optString(url1021, "");
                 if (mapped1021.length() > 0) {
