@@ -5963,6 +5963,48 @@ if (snd65 >= 0) currentIndex = snd65;
                                 });
                             }
                         }
+                    } else if (curEnded != null
+                            && (endedHandledFor == null || !endedHandledFor.equals(curEnded))) {
+                        // v13.79 (audit-1363 F2): the ended talk is no longer nameable in this
+                        // Room's list — the site list reloaded shorter mid-session (the v1.51
+                        // scenario the guard above names) or currentIndex is -1 after the
+                        // stale-row resync-miss branch — so the guard above fails, endedHandledFor
+                        // is never set, and the poll retried the dead guard every 500 ms forever
+                        // with no toast and no advance while the service correctly deferred to
+                        // the on-top Room. Stop here instead, once per ended track: mark the
+                        // end handled, mirror the sleep branches above (a one-shot stop is
+                        // consumed with its toast; a bedtime stop stays silent), mark the talk
+                        // played under its URL, and say the autoplay-off "finished" word with
+                        // the service's title. The advance half is a separate design decision
+                        // (audit-1363 F2 follow-up): the poll cannot call the private
+                        // advanceInBackground58 — either expose a service advance entry (the
+                        // v13.76 two-arg form already skips the foreground defer) or advance
+                        // from the service's saved list via playIndex.
+                        endedHandledFor = curEnded;
+                        try {
+                            java.util.Set<String> played = new java.util.HashSet<String>(
+                                    getSharedPreferences("dhamma", MODE_PRIVATE)
+                                            .getStringSet("playedTalks", new java.util.HashSet<String>()));
+                            if (played.add(curEnded)) {
+                                getSharedPreferences("dhamma", MODE_PRIVATE).edit()
+                                        .putStringSet("playedTalks", played).apply();
+                                refreshMarkSets();
+                            }
+                        } catch (Exception ignored) {}
+                        if (service.isSleepEndOfTalk()) {
+                            service.consumeSleepEndOfTalk();
+                            Toast.makeText(RoomActivity.this,
+                                    Lang.t(RoomActivity.this, "sleep_end_stopped"),
+                                    Toast.LENGTH_LONG).show();
+                        } else if (service.isSleepStopPending()) {
+                            // No toast, no advance — playback stops at bedtime, as above.
+                        } else {
+                            adapter.notifyDataSetChanged();
+                            String endedTitle79 = service.getCurrentTitle();
+                            Toast.makeText(RoomActivity.this,
+                                    Lang.t(RoomActivity.this, "dl_finished_prefix") + (endedTitle79 != null && endedTitle79.length() > 0 ? endedTitle79 : curEnded),
+                                    Toast.LENGTH_SHORT).show();
+                        }
                     }
                 }
             }

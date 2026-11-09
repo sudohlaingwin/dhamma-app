@@ -2639,6 +2639,16 @@ public class AudioService extends Service {
             boolean wasEnded = trackEnded;
             trackEnded = false;
             liveEnded = false;
+            // v13.79 (audit-1363 F1): a talk that ended mid-bedtime-fade leaves the fade
+            // runnable armed until its next 200 ms step; a Play tap inside that window
+            // reaches resume(), not play(), so the still-armed runnable kept stepping the
+            // volume down and paused the replay ~3 s later with no toast. Cancel it for
+            // an ended replay — a replay is a new listen (v10.89) — before the fade-in
+            // guard below, so the guard restores full volume; play() already cancels
+            // at :1724. The flag clear inside cancelSleepFade only fires while a fade
+            // is live, so the audit's L1 stale-flag case (fade already exited) and a
+            // plain pause-resume (wasEnded false) are both untouched.
+            if (wasEnded) cancelSleepFade();
             // v11.23: a fired one-shot must not ride into a replay —
             // play() consumes it before a manual pick after the stop
             // (v8.38), but this resume() replay entry never did, so
