@@ -3404,6 +3404,18 @@ public class DownloadedActivity extends Activity {
     private Handler refreshHandler = new Handler();
     private final Runnable refreshRunnable = new Runnable() {
         @Override public void run() {
+            // v14.03: re-post in finally — a throw inside syncDlStrip,
+            // refreshLibQueuePreview or the service-end block below used
+            // to kill the 1s tick outright, freezing strip title/clock/
+            // progress/glyph plus the footer and queue preview until the
+            // next onPause/onResume cycle. Main got the same guard in
+            // v11.78 and Talks in v11.76; the library tick was the last
+            // one without it (the 2026-11-06 strip audit's Slice B
+            // claimed all four ticks shared the guard — true only for
+            // Main + Talks). No early return lives in this body, and
+            // every step runs on the UI thread, so the re-post cannot
+            // resurrect a tick stopped by onPause/onDestroy.
+            try {
             // v7.45: rebind the shelf rows when a row mark changes
             // under the library — the Room drawer's v7.43 gap and
             // the chooser's v7.44 gap, restated here (see the
@@ -4078,7 +4090,7 @@ public class DownloadedActivity extends Activity {
             // set changed, so percents tick up without touching
             // the delete/return fade guards in updateTotal.
             try { if (scanDlProgress()) updateTotal(); } catch (Exception ignored) {}
-            refreshHandler.postDelayed(this, 1000);
+            } finally { refreshHandler.postDelayed(this, 1000); }
         }
     };
 

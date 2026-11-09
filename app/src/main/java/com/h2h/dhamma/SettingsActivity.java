@@ -2139,11 +2139,24 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         stripTick = new Runnable() {
             @Override public void run() {
                 if (stripTick == null) return;
-                syncSettingsStrip();
-                refreshDownloadedButton53(); // v7.53: button counts follow the strip tick
-                refreshDataSaverButton54(); // v7.54: network note follows the strip tick
-                refreshBlockedChannelMark88(); // v11.88: ⚠ mark follows the strip tick
-                stripHandler.postDelayed(this, 1000);
+                // v14.03: re-post in finally — a throw inside syncSettingsStrip
+                // (or the button refreshes below) used to kill the 1s tick
+                // outright, freezing strip title/clock/progress/glyph plus
+                // the download/data-saver/blocked marks until the next
+                // onPause/onResume cycle. Main got the same guard in v11.78
+                // and Talks in v11.76; Settings was the last strip without
+                // it (the 2026-11-06 strip audit's Slice B claimed all four
+                // ticks shared the guard — true only for Main + Talks).
+                // The null guard keeps a tick stopped mid-run from
+                // resurrecting, Main's shape.
+                try {
+                    syncSettingsStrip();
+                    refreshDownloadedButton53(); // v7.53: button counts follow the strip tick
+                    refreshDataSaverButton54(); // v7.54: network note follows the strip tick
+                    refreshBlockedChannelMark88(); // v11.88: ⚠ mark follows the strip tick
+                } finally {
+                    if (stripTick != null) stripHandler.postDelayed(this, 1000);
+                }
             }
         };
         stripHandler.post(stripTick);
