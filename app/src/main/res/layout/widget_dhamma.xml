@@ -3,7 +3,15 @@
      views only (LinearLayout / TextView / ImageButton). 4x1 cells:
      app name, talk title + sayadaw, Play/Pause + Next. The whole
      body (wg_body) opens the Room; the two buttons talk to the
-     service, never to an activity. -->
+     service, never to an activity.
+     v13.84 (large-font clip note, widget-audit-1346): paddingTop /
+     paddingBottom 10dp -> 6dp. Content was ~112dp at default font
+     vs minHeight 112dp, so Large (1.15x) overflowed 5.9dp and
+     Largest (1.3x) 11.6dp, the icons surviving by 0.4dp only
+     (sim1415.py, phone font k=1.362). Now 104.1dp at default,
+     109.9dp at Large (fits), 115.6dp at Largest — only transparent
+     button padding cut, icons clear by 8.4dp. Margins, text sizes,
+     48dp buttons, minHeight and resizeMode untouched. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/wg_body"
     android:layout_width="match_parent"
@@ -12,8 +20,8 @@
     android:background="@drawable/widget_bg"
     android:paddingLeft="14dp"
     android:paddingRight="10dp"
-    android:paddingTop="10dp"
-    android:paddingBottom="10dp">
+    android:paddingTop="6dp"
+    android:paddingBottom="6dp">
 
     <TextView
         android:id="@+id/wg_app"

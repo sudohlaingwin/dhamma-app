@@ -2761,6 +2761,13 @@ public class MainActivity extends Activity {
             boolean night = cachedNight;
             v.setBackgroundResource(night ? R.drawable.card_bg_night : R.drawable.card_bg);
             ImageLoader.load(MainActivity.this, s.photo, s.name, (CircleImageView) v.findViewById(R.id.photo));
+            // v13.85 (Main L3, M9/F5 row sweep — main-talks-recheck-1355): the card views
+            // were dereferenced bare, like the onCreate sites v13.37 closed — a renamed
+            // or missing row id NPEd the whole grid bind. Same shape as Downloaded
+            // v13.38 / Room v13.43: each use is null-guarded, so a missing id leaves its
+            // view unbound instead of failing the bind. Both ids exist in
+            // row_sayadaw_h.xml today, so no live behaviour changes; the photo view is
+            // already safe (ImageLoader.load null-guards its target).
             TextView nameView = v.findViewById(R.id.name);
             // v5.44: explicit now-playing mark on the grid card — the
             // sounding sayadaw already breathes (armMainPulseFor
@@ -2792,11 +2799,11 @@ public class MainActivity extends Activity {
             boolean gridPlaying = !AudioService.liveEnded
                     && soundingVisual != null
                     && soundingVisual.equals(s.name);
-            nameView.setText(gridPlaying ? "▶ " + s.name : s.name);
-            nameView.setTextColor(gridPlaying ? Color.parseColor("#C9A227")
+            if (nameView != null) nameView.setText(gridPlaying ? "▶ " + s.name : s.name);
+            if (nameView != null) nameView.setTextColor(gridPlaying ? Color.parseColor("#C9A227")
                     : (night ? Color.WHITE : Color.parseColor("#3B2314")));
-            nameView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, cachedNameSize);
-            armMainPulseFor(nameView, s.name);
+            if (nameView != null) nameView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, cachedNameSize);
+            if (nameView != null) armMainPulseFor(nameView, s.name);
             String g = s.group == null ? "" : s.group;
             // v1.92: the tap guard below already refuses a literal
             // "null" page_url, but this suffix missed it — such a
@@ -2804,9 +2811,9 @@ public class MainActivity extends Activity {
             // refused with no visible reason. Same condition both places.
             if (s.url == null || s.url.length() == 0 || "null".equals(s.url)) g += Lang.t(MainActivity.this, "sayadaw_no_link_suffix");
             TextView groupView = v.findViewById(R.id.group);
-            groupView.setText(g);
-            groupView.setTextColor(night ? Color.parseColor("#AAAAAA") : Color.parseColor("#7A6A58"));
-            groupView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, cachedGroupSize);
+            if (groupView != null) groupView.setText(g);
+            if (groupView != null) groupView.setTextColor(night ? Color.parseColor("#AAAAAA") : Color.parseColor("#7A6A58"));
+            if (groupView != null) groupView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, cachedGroupSize);
             // v2.07: staggered grid entrance — portraits fade + grow
             // in one after another, cascading across the grid.
             if (pos > lastGridAnimPos) {

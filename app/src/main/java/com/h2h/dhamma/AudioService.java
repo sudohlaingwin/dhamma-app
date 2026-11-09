@@ -428,12 +428,91 @@ public class AudioService extends Service {
                 // index from the ENDED talk (soundingLineIndex96 prefers lastUrl) and
                 // replayed this talk once, skipping the true next talk (or the ended
                 // talk under repeat-one).
+                // v13.88 (hidden-trail follow-up, the 18:15 run's note): capture
+                // the ended talk's stream URL BEFORE the anchor move below —
+                // lastUrl still names it here, while currentUrl may already be
+                // the landed file's path and the move overwrites it with the
+                // awaited URL. The trail step needs the stream form: the Room's
+                // drain matches entries against its list URLs, so a path-form
+                // entry would sit unclaimed in the trail forever.
+                String endedPl10 = sp.getString("lastUrl", "");
                 sp.edit().putString("lastUrl", awaitUrl)
                         .putString("lastTitle", title == null ? "" : title).apply();
                 // v12.18 (slice A F6): resume from the saved spot like every other
                 // advance (foreign re-fires + plain/queue/shuffle tails all use
                 // savedSeekFor) — the 2-arg play() restarts from 0.
+                // v13.87 (plain awaited path forward-stack inconsistency,
+                // the follow-up the 18:09 run handed off): every sibling
+                // advance pop-or-clears the forward stack when it plays a
+                // fresh talk — the forward branch pops the entry it plays,
+                // shuffle / list-next wipe it as a branch, Case B
+                // pop-or-clears before its play — but this plain re-fire
+                // played its talk and left the stack untouched. A gated
+                // shuffle / list-next pick recorded here can land while
+                // the stack still holds the ended talk (the forward loop
+                // skips it as fIdx == idx and falls through), so the next
+                // Next replayed the already-heard talk instead of
+                // advancing — and the Room reconcile cannot fix it (it
+                // only adopts shrinkage or pops a top equal to the
+                // SOUNDING talk). Same shape as Case B: pop the top when
+                // it IS the awaited talk (a gated forward pick), clear
+                // the whole stack otherwise (a branch), captured before
+                // play() and armed after it — a sync failure restores
+                // at once, an async failure in onError, a sounding talk
+                // drops the record in onPrepared.
+                String fwdBeforePl10 = null;
+                String fwdAfterPl10 = null;
+                long fwdGenPl10 = -1;
+                try {
+                    long genPl10 = clearGen95(sp);
+                    String fwdRawPl10 = sp.getString("forwardHistoryRaw", "");
+                    if (fwdRawPl10 != null && fwdRawPl10.length() > 0) {
+                        String[] fwdPartsPl10 = fwdRawPl10.split("\\n");
+                        java.util.ArrayList<String> fwdStackPl10 = new java.util.ArrayList<String>();
+                        for (String fpPl10 : fwdPartsPl10)
+                            if (fpPl10 != null && fpPl10.length() > 0) fwdStackPl10.add(fpPl10);
+                        if (!fwdStackPl10.isEmpty() && clearGen95(sp) == genPl10) {
+                            if (fwdStackPl10.get(fwdStackPl10.size() - 1).equals(awaitUrl)) {
+                                fwdStackPl10.remove(fwdStackPl10.size() - 1);
+                                StringBuilder fwdSbPl10 = new StringBuilder();
+                                for (int fiPl10 = 0; fiPl10 < fwdStackPl10.size(); fiPl10++) {
+                                    if (fiPl10 > 0) fwdSbPl10.append("\n");
+                                    fwdSbPl10.append(fwdStackPl10.get(fiPl10));
+                                }
+                                sp.edit().putString("forwardHistoryRaw", fwdSbPl10.toString()).apply();
+                                fwdAfterPl10 = fwdSbPl10.toString();
+                            } else {
+                                sp.edit().remove("forwardHistoryRaw").apply();
+                                fwdAfterPl10 = "";
+                            }
+                            fwdBeforePl10 = fwdRawPl10;
+                            fwdGenPl10 = genPl10;
+                        }
+                    }
+                } catch (Exception ignored) {}
                 play(landed.getAbsolutePath(), title == null ? "" : title, savedSeekFor(awaitUrl));
+                // v13.87: the forward pop-or-clear above ran BEFORE play(), so a
+                // failed prepare would lose the redo step for good — arm the
+                // pre-mutation stack (null after-value = no mutation, nothing to
+                // arm). Same arm as Case B above.
+                if (fwdAfterPl10 != null) armPendingForward14(fwdBeforePl10, fwdAfterPl10, fwdGenPl10);
+                // v13.88: hidden-trail step, same shape as the forward / shuffle /
+                // list-next tails — the Room's return correctors drain-or-push only
+                // the single stale-index talk, so without this step a chained hidden
+                // advance after the awaited landing mis-orders the Previous walk:
+                // the awaited step's ended talk lands AFTER the later trail entries
+                // (inverted), or drops out entirely when the awaited step sits
+                // mid-chain. A single awaited step was already covered by the
+                // fallback push, so this changes nothing there. Gated on
+                // !trackError (v8.08: only after a successful play; same gate as
+                // the toast below) — a sync failure records nothing and the
+                // fallback push gives the identical outcome, since no chain can
+                // follow a failed play; an async failure records the step exactly
+                // like the siblings' unconditional push (the step names the ENDED
+                // talk, which was heard). A same-URL re-fire (single-talk gated
+                // replay) records nothing via pushHiddenTrail08's own guard, like
+                // the siblings' repeat-one rule.
+                if (!trackError) pushHiddenTrail08(sp, endedPl10, awaitUrl);
                 // v13.53 (audit-1372 F1): the toast used to fire BEFORE play(), so a
                 // synchronous setDataSource failure showed "next: <talk>" for a talk
                 // that never played, on top of play()'s own generic failure toast.
@@ -2538,6 +2617,55 @@ public class AudioService extends Service {
         resume();
     }
 
+    // v13.86 (resumeMode+held+landed corner — the follow-up the
+    // 08:43 run documented, not bundled): restart the HELD stream
+    // talk from its downloaded file, in place, at the given spot.
+    // The corner: a held talk whose file has landed can never
+    // switch to the file — playIndex no-ops on already-holding
+    // (it only re-marks the row), resumeBypassGate would stream
+    // on mobile data the listener explicitly declined by choosing
+    // Wi-Fi, and resume() resumes the held STREAM player (the
+    // gate's file check passes once the file lands, but the player
+    // still holds the stream source). So the Room's gate dialog
+    // Wi-Fi branch fell through to a toast + a bind that can never
+    // fire, and the listener sat with a downloaded talk they could
+    // not play without stopping the session first. This is the
+    // service-side restart-from-local that corner needs: the local
+    // file costs no mobile data, so no gate approval is spent or
+    // needed, and the held spot carries over via the seek.
+    // Guards: a track must be held; the held source must be the
+    // stream URL itself (an already-local player needs no switch,
+    // and a background advance between the Room's check and this
+    // call changes currentUrl, so a stale URL refuses instead of
+    // playing the wrong talk's file); the file must exist non-empty
+    // (offlineFileFor already length-gates and skips in-progress
+    // downloads, so a 0-byte or partial file refuses here, and
+    // play()'s own v13.64 guard is the backstop). Returns false
+    // on any refusal — the caller falls back to the pre-fix
+    // behaviour. A success is a fresh play of the same talk from
+    // its file: play() clears the gate hold and the await record,
+    // re-saves the outgoing spot (same talk, same position) and
+    // flushes the stats bank, exactly like the Room's fresh-play
+    // path (playIndex :12084), which passes the local path the
+    // same way. One documented trade: the restart is a fresh
+    // play, so a pause-suspended sleep timer restarts full-length
+    // from the pref like any fresh play (play() clears the
+    // remainder; onPrepared arms the pref minutes) instead of
+    // keeping the remainder as resume() would — only play() can
+    // switch the data source, and the manual workaround (stop the
+    // session, retap) goes through play() too, so the restart
+    // behaves exactly like it. The stop still happens; only the
+    // countdown restarts.
+    public boolean restartHeldFromLocal(String url, int seekMs) {
+        if (url == null || currentUrl == null || currentTitle == null) return false;
+        if (!currentUrl.startsWith("http://") && !currentUrl.startsWith("https://")) return false;
+        if (!url.equals(currentUrl)) return false;
+        java.io.File local = offlineFileFor(url);
+        if (local == null) return false;
+        play(local.getAbsolutePath(), currentTitle, seekMs);
+        return true;
+    }
+
     // v11.46: the fresh-play gate answer "stream" — approve this
     // talk for the session, so its later pauses resume without
     // re-asking. Called by the Room after a bypassed play starts;
@@ -4376,7 +4504,8 @@ public class AudioService extends Service {
     // v13.54 (audit-1372 F2): arm the pending forward-stack restore after a
     // background advance mutated forwardHistoryRaw and called play(). Called only
     // by the advance tails (advanceInBackground58 forward / shuffle / list-next,
-    // advanceQueueHead63 in-list, playForeignHead11, Case B re-fire) — whether the
+    // advanceQueueHead63 in-list, playForeignHead11, Case B re-fire, the plain
+    // awaited re-fire (v13.87)) — whether the
     // advance was a background auto-advance or a manual Next (widget / headset /
     // car / notification), which reaches the same tails via advanceInBackground58(true).
     // v13.61 (audit-1374 F-J): the old wording was wrong —
@@ -4387,7 +4516,7 @@ public class AudioService extends Service {
     // arming, because no onError will ever fire for it. Post-play mutation sites
     // skip their wipe entirely on trackError and arm only on success, so the
     // immediate-restore leg fires only for the pre-play sites (forward branch,
-    // Case B), whose mutation already happened before play() ran.
+    // Case B, plain awaited re-fire), whose mutation already happened before play() ran.
     private void armPendingForward14(String beforeRaw, String afterRaw, long gen) {
         if (beforeRaw == null || beforeRaw.length() == 0) return;
         pendingForwardBefore14 = beforeRaw;

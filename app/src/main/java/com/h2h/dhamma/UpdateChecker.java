@@ -72,6 +72,15 @@ public class UpdateChecker {
     private static long lastPostAt = 0;
     private static File downloadedFile = null;
     private static boolean downloadFailed = false;
+    // v13.89 (F5): true once fireInstaller actually launched the
+    // system installer for the current pending update — the
+    // onResume re-fire below must not re-open it after the user
+    // cancelled it and came back. Reset per download cycle in
+    // startDownload (a re-download in a second rotation gap
+    // re-fires too); no reset in onSkipButton — the skip clears
+    // pendingUrl, so the re-fire branch is unreachable until the
+    // next download cycle resets the flag anyway.
+    private static boolean installerFired = false;
     private static boolean waitingForPermission = false;
     private static Dialog blockDialog = null;
     private static Activity blockActivity = null;
@@ -167,7 +176,24 @@ public class UpdateChecker {
                 // shows progress; without permission it re-shows the
                 // permission prompt. Same for a Settings return without
                 // granting: refreshBlockUi re-shows that state too.
-                refreshBlockUi(activity);
+                // v13.89 (F5): a download that finished inside the
+                // rotation gap never auto-opened the installer — its
+                // completion post dropped (blockActivity was null
+                // after the old onDestroy) and the re-shown dialog
+                // reads "Opening installer…" for an installer that
+                // is not opening. Re-fire once here: the file is
+                // downloaded, the installer never fired (a
+                // user-cancelled installer already set the flag, so
+                // this never re-fires after a cancel), and we are
+                // not mid-download, failed, or waiting on install
+                // permission (that leg fires above). The v12.99
+                // refresh still runs in the else for those cases.
+                if (downloadedFile != null && downloadedFile.exists()
+                        && !installerFired && !downloadFailed && !downloading) {
+                    fireInstaller(activity);
+                } else {
+                    refreshBlockUi(activity);
+                }
             }
             return;
         }
@@ -397,6 +423,11 @@ public class UpdateChecker {
         downloadFailed = false;
         lastProgress = -1;
         downloadedFile = null;
+        // v13.89 (F5): a re-download in a second rotation gap must
+        // re-fire too — without this the flag stays true from the
+        // previous cycle (the size-mismatch retry path) and the
+        // second gap would lose its auto-fire all over again.
+        installerFired = false;
         refreshBlockUi(activity);
         final Context appCtx = activity.getApplicationContext();
         new Thread(new Runnable() {
@@ -578,6 +609,12 @@ public class UpdateChecker {
             it.setDataAndType(uri, "application/vnd.android.package-archive");
             it.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             activity.startActivity(it);
+            // v13.89 (F5): the installer actually launched — the
+            // onResume re-fire below must not re-open it after the
+            // user cancels and comes back. Set only on a successful
+            // start: a throw jumps to the catch, which marks the
+            // download failed and drops the file.
+            installerFired = true;
             if (blockStatus != null) blockStatus.setText(Lang.t(activity, "upd_inst"));
             if (blockBtn != null) {
                 blockBtn.setEnabled(false);

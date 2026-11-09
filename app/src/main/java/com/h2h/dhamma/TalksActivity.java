@@ -4428,13 +4428,19 @@ public class TalksActivity extends Activity {
             // v1.96: the row number stayed at a fixed 14sp while the
             // title beside it followed the font size — on ကြီး the
             // numbers read a size smaller than the titles they count.
+            // v13.85 (Talks L3, M9/F5 row sweep — main-talks-recheck-1355): the row views
+            // were dereferenced bare, like the onCreate sites v13.36 closed — a renamed
+            // or missing row id NPEd the whole list bind. Same shape as Downloaded
+            // v13.38 / Room v13.43: each use is null-guarded, so a missing id leaves its
+            // view unbound instead of failing the bind. Both ids exist in row_talk.xml
+            // today, so no live behaviour changes; cardInner was already guarded.
             TextView indexView = v.findViewById(R.id.index);
             // v12.85: the row number is the list number (the
             // queue-only view is deleted); a queued row still
             // carries its ◈N mark below.
-            indexView.setText((talkIdx + 1) + ".");
+            if (indexView != null) indexView.setText((talkIdx + 1) + ".");
             int idxF = cachedFont;
-            indexView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, idxF == 0 ? 12 : (idxF == 1 ? 14 : 16));
+            if (indexView != null) indexView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, idxF == 0 ? 12 : (idxF == 1 ? 14 : 16));
             TextView titleView = v.findViewById(R.id.talkTitle);
             // v4.48: queued rows carry their queue position
             // ("◈1 ") like the Room drawer rows — mark only,
@@ -4570,7 +4576,7 @@ public class TalksActivity extends Activity {
             // exactly-one-claimant rule keeps a dual-claimed file
             // unmarked rather than marking the wrong talk.
             String playedMark = (!rowPlaying && !rowPlayingLib && talkPlayedCache.contains(rowUrl)) ? "✓ " : "";
-            titleView.setText((held ? "✋ " : "") + ((rowPlaying || rowPlayingLib) ? "▶ " : "") + qMark + favMark + offMark + playedMark + talks.get(talkIdx).title + resumeMark);
+            if (titleView != null) titleView.setText((held ? "✋ " : "") + ((rowPlaying || rowPlayingLib) ? "▶ " : "") + qMark + favMark + offMark + playedMark + talks.get(talkIdx).title + resumeMark);
             // v1.52: rows fade + rise in once when first shown
             if (pos > lastAnimPos) {
                 lastAnimPos = pos;
@@ -4608,8 +4614,8 @@ public class TalksActivity extends Activity {
                 v.clearAnimation();
             }
             int tf = cachedFont;
-            titleView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, tf == 0 ? 14 : (tf == 1 ? 16 : 20));
-            titleView.setTextColor((rowPlaying || rowPlayingLib)
+            if (titleView != null) titleView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, tf == 0 ? 14 : (tf == 1 ? 16 : 20));
+            if (titleView != null) titleView.setTextColor((rowPlaying || rowPlayingLib)
                     ? android.graphics.Color.parseColor("#C9A227")
                     : (cachedNight
                     ? android.graphics.Color.WHITE

@@ -11251,6 +11251,23 @@ if (snd67q >= 0) currentIndex = snd67q;
                                                     playIndex(ri57, seekMs, true);
                                                     return;
                                                 }
+                                                // v13.86 (resumeMode+held+landed corner — the follow-up the
+                                                // 08:43 run documented, not bundled): the held talk's file
+                                                // has landed, but playIndex above would only re-mark it
+                                                // (already-holding) and resumeBypassGate would stream on
+                                                // mobile data the listener explicitly declined by choosing
+                                                // Wi-Fi, so the local file was unreachable from this branch
+                                                // — the old fall-through toasted "already queued" and bound
+                                                // a live id that never exists for a finished job. Restart
+                                                // the held player from the downloaded file in place:
+                                                // restartHeldFromLocal costs no mobile data, so no gate
+                                                // approval is spent or needed, and the resume spot carries
+                                                // over. A refusal (the file vanished between this check
+                                                // and the service's, or the service moved on) falls through
+                                                // to the old toast+bind below — the pre-fix behaviour.
+                                                if (ri57 >= 0 && held57) {
+                                                    if (service.restartHeldFromLocal(t.url, seekMs)) return;
+                                                }
                                                 // v12.10: the queued job IS the awaited download when this talk
                                                 // is the deferred advance — bind its live id so the landing
                                                 // still re-fires (no fresh enqueue, so no fresh id exists).

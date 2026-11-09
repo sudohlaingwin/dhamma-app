@@ -27,6 +27,84 @@ public class RoomView extends View {
     private Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private Path path = new Path();
     private RectF rect = new RectF();
+    // v13.90 (render L1): per-frame Rect/RectF allocations hoisted
+    // to reused fields — onDraw runs at 20 fps on every talk, so the
+    // old `new RectF` at every bitmap/oval site was steady small-object
+    // GC churn. dst/prevDst/midDst get their own fields because all
+    // three stay live through the crossfade overlays; every other site
+    // sets the shared `rect` and draws it at once. Gradients: v13.91
+    // hoisted the three alpha-only halo/glow gradients after per-site
+    // variance analysis (sim1428); flame/smoke/aura radii genuinely
+    // vary each frame and stay per-frame, by design.
+    private final Rect srcRect = new Rect();
+    private final RectF dstRect = new RectF();
+    private final RectF prevDstRect = new RectF();
+    private final RectF midDstRect = new RectF();
+    // v13.91 (render L1 gradients, part 2): the three live-scene
+    // halo/glow gradients hoisted — per-site variance analysis of
+    // all 25 gradient allocations (sim1428): these three are
+    // alpha-only frame-varying (centre/radius static per layout,
+    // only the centre alpha breathes/pulses with litBlend), so the
+    // cached gradient carries full-alpha colour and paint.setAlpha
+    // carries the frame-varying alpha — the drawn pixel is identical
+    // (shader alpha x paint alpha). NOT hoisted, by design: the
+    // photo-scene aura loops (radius swells 3% with breath), the
+    // flame glow (centre sways, height flickers, random component)
+    // and smoke puffs (per-puff growing radius) — all genuinely
+    // frame-varying in geometry, not just alpha. The photo scene
+    // itself is dead code (0 callers); the drawn-fallback statics
+    // (wall/body/lap/head/pedestal/candles/lamps/cups/water) are
+    // fully static per size/theme — hoisted in v13.92 (sim1429)
+    // with a rebuild hook on setTheme + onSizeChanged; the
+    // fallback halo/wash fold the incoming paint alpha in, because
+    // it is NOT 255 at those sites (ray leftover / cup rim 200).
+    // v13.93 (sim1430): the SAME gap existed on the live path —
+    // the AI halo reads the wash leftover (28/16/52, 255 day-only)
+    // and the AI lamp glow reads the last mote's alpha (0..110),
+    // so the plain v13.91 setAlpha(A) + restore-255 brightened
+    // the halo, the lamp glow AND the flame glow discs (which read
+    // the lamp site's restored alpha). Both live sites now fold
+    // the exact incoming alpha in and restore it at once, same
+    // shape as v13.92. The theme halo is exact at P=255 and is
+    // untouched; flame() itself is untouched.
+    private RadialGradient aiHaloGrad;
+    private float aiHaloHx, aiHaloHy, aiHaloR;
+    private RadialGradient aiLampGrad;
+    private float aiLampGx, aiLampGy, aiLampR;
+    private RadialGradient themeHaloGrad;
+    private float themeHaloHx, themeHaloHy, themeHaloR;
+    private int themeHaloTheme = -1;
+    // v13.92 (render L1 gradients, part 3): the drawn-fallback statics
+    // hoisted — per-site variance analysis (sim1429): wall, body, lap,
+    // head, pedestal, candles, lamp bowls, cup glass and cup water are
+    // fully static per (w, h, theme); the halo and wash are alpha-only
+    // frame-varying (same shape as the v13.91 hoists) BUT their
+    // incoming paint alpha is NOT 255 — the halo reads the ray loop's
+    // leftover alpha and the wash reads the cup rim's 200 — so the
+    // cached gradients carry full-alpha centres and each draw site
+    // folds the exact incoming alpha (read back with paint.getAlpha())
+    // into paint.setAlpha and restores it at once. Rebuilt by
+    // rebuildFallbackGradients(), called from setTheme and
+    // onSizeChanged — the only two writers of (theme, w/h/u). wallGrad
+    // (L7) is repurposed: it used to be a hardcoded classic-colours
+    // gradient assigned in onSizeChanged and never read; it is now the
+    // cached THEME wall gradient. The fallback runs only when aiImage
+    // == null (first-load failure path); the live AI/theme scenes keep
+    // their v13.91 hoists untouched. Flame/smoke/aura radii genuinely
+    // vary each frame and stay per-frame, by design.
+    private RadialGradient fbHaloGrad;
+    private RadialGradient fbBodyGrad;
+    private LinearGradient fbLapGrad;
+    private RadialGradient fbHeadGrad;
+    private LinearGradient fbPedestalGrad;
+    private LinearGradient fbCandleGradL;
+    private LinearGradient fbCandleGradR;
+    private final RadialGradient[] fbLampGrads = new RadialGradient[3];
+    private final LinearGradient[] fbCupGlassGrads = new LinearGradient[3];
+    private LinearGradient fbCupWaterGrad;
+    private RadialGradient fbWashGrad;
+    private boolean hasPrevDst;
+    private boolean hasMidDst;
     private Random random = new Random();
     private boolean lit = false;
     // v4.11: sleep-fade dim — the v4.04 bedtime fade lowered the
@@ -566,9 +644,11 @@ public class RoomView extends View {
         aiDstW = w * fit;
         paint.setShader(null);
         paint.setAlpha(255);
-        c.drawBitmap(aiImage,
-                new Rect(0, srcTop, iw, srcBot),
-                new RectF(aiDstL, 0, aiDstL + aiDstW, aiDstH), paint);
+        // v13.90 (render L1): reused src/dst rects — one call, no
+        // allocation per frame; nothing else reads rect in this scene.
+        srcRect.set(0, srcTop, iw, srcBot);
+        rect.set(aiDstL, 0, aiDstL + aiDstW, aiDstH);
+        c.drawBitmap(aiImage, srcRect, rect, paint);
         // time-of-day light wash per hour slot (v12.48: aiLightSlot
         // is the hour band from setPhoto, never the theme — the wash
         // branches below were dead until then, because the slot
@@ -590,11 +670,31 @@ public class RoomView extends View {
             float breath = (float) Math.sin(tt * 0.0016);
             float pulse = 0.78f + 0.22f * breath;
             // breathing halo glow over the baked ring
-            paint.setShader(new RadialGradient(hx, hy, 130 * u * fit,
-                    Color.argb((int) ((26 + 60 * litBlend) * (0.85f + 0.15f * breath)), 255, 215, 90),
-                    Color.TRANSPARENT, Shader.TileMode.CLAMP));
+            // v13.91: hoisted — geometry (hx, hy, 130*u*fit) is static
+            // per layout and only the centre alpha breathes per frame,
+            // so the cached gradient carries full-alpha colour and
+            // paint.setAlpha carries the frame-varying alpha; rebuilt
+            // only when the geometry key changes.
+            // v13.93: the v13.91 "drawn pixel is identical" claim
+            // assumed the incoming paint alpha was 255 — it is the
+            // wash leftover here (28 night / 16 morning / 52 dusk,
+            // 255 day-only), so the plain setAlpha(A) + restore-255
+            // brightened the halo up to ~16x on morning. The frame
+            // alpha is folded with the exact incoming alpha read back
+            // from the paint, and the incoming alpha is restored at
+            // once — the rays/motes below setColor per iteration and
+            // never saw the restore either way.
+            if (aiHaloGrad == null || hx != aiHaloHx || hy != aiHaloHy || 130 * u * fit != aiHaloR)
+                aiHaloGrad = new RadialGradient(hx, hy, 130 * u * fit,
+                        Color.argb(255, 255, 215, 90),
+                        Color.TRANSPARENT, Shader.TileMode.CLAMP);
+            aiHaloHx = hx; aiHaloHy = hy; aiHaloR = 130 * u * fit;
+            int aiHaloIn = paint.getAlpha();
+            paint.setShader(aiHaloGrad);
+            paint.setAlpha((int) ((26 + 60 * litBlend) * (0.85f + 0.15f * breath)) * aiHaloIn / 255);
             c.drawCircle(hx, hy, 130 * u * fit, paint);
             paint.setShader(null);
+            paint.setAlpha(aiHaloIn);
             // ROTATING halo rays — real movement, not just
             // bright/dim: 24 thin rays turning one full turn in
             // ~2 min, each shimmering. This is what "alive" means
@@ -623,11 +723,29 @@ public class RoomView extends View {
                 c.drawCircle(mx, my, 2 * u * fit, paint);
             }
             // warm lamp glow rising from the oil lamps
-            paint.setShader(new RadialGradient(aiX(0.222f), aiY(0.655f), 200 * u * fit,
-                    Color.argb((int) (40 * pulse * litBlend), 255, 170, 60),
-                    Color.TRANSPARENT, Shader.TileMode.CLAMP));
+            // v13.91: hoisted, same shape as the halo above — centre
+            // and radius static per layout, only the alpha pulses per
+            // frame (40*pulse*litBlend), so paint.setAlpha carries it.
+            // v13.93: same incoming-alpha gap as the halo — the last
+            // mote (i=11) leaves paint alpha (int)(110*litBlend*tw),
+            // tw in [0,1], so P is in [0,110], NEVER 255: the plain
+            // setAlpha(A2) + restore-255 brightened the glow AND the
+            // flame glow discs below it (flame() draws its glow with
+            // the current paint alpha). Fold the exact incoming
+            // alpha in and restore it at once; the flames then read
+            // the mote leftover again, exactly as before v13.91.
+            float lgx = aiX(0.222f), lgy = aiY(0.655f);
+            if (aiLampGrad == null || lgx != aiLampGx || lgy != aiLampGy || 200 * u * fit != aiLampR)
+                aiLampGrad = new RadialGradient(lgx, lgy, 200 * u * fit,
+                        Color.argb(255, 255, 170, 60),
+                        Color.TRANSPARENT, Shader.TileMode.CLAMP);
+            aiLampGx = lgx; aiLampGy = lgy; aiLampR = 200 * u * fit;
+            int aiLampIn = paint.getAlpha();
+            paint.setShader(aiLampGrad);
+            paint.setAlpha((int) (40 * pulse * litBlend) * aiLampIn / 255);
             c.drawRect(aiDstL, aiY(0.45f), aiDstL + aiDstW, aiDstH, paint);
             paint.setShader(null);
+            paint.setAlpha(aiLampIn);
             // live flames on the lamps' own wicks, bigger now
             // v9.38 TRIM (his video 2026-11-02 ~23:14 +07 "နဲနဲများတယ်"):
             // v9.36 bases measured EXACT on the baked wicks (gaps
@@ -743,18 +861,29 @@ public class RoomView extends View {
         float dw = w * s, dh = fullH * s, left = (w - dw) / 2f;
         paint.setShader(null);
         paint.setAlpha(255);
-        c.drawBitmap(aiImage, null, new RectF(left, 0, left + dw, dh), paint);
+        // v13.90 (render L1): reused rect — set and drawn at once.
+        rect.set(left, 0, left + dw, dh);
+        c.drawBitmap(aiImage, null, rect, paint);
         float hx = left + THEME_HEAD[aiTheme][0] * dw;
         float hy = THEME_HEAD[aiTheme][1] * dh;
         int anim = THEME_ANIM[aiTheme];
         int[] glow = THEME_GLOW[aiTheme];
         if (litBlend > 0.01f) {
             float breath = (float) Math.sin(tt * THEME_PULSE[aiTheme]);
-            paint.setShader(new RadialGradient(hx, hy, 130 * u * s,
-                    Color.argb((int) ((26 + 60 * litBlend) * (0.85f + 0.15f * breath)), glow[0], glow[1], glow[2]),
-                    Color.TRANSPARENT, Shader.TileMode.CLAMP));
+            // v13.91: hoisted, same shape as the AI halo — geometry
+            // static per layout, glow RGB per aiTheme, only the alpha
+            // breathes; aiTheme is part of the key so a theme change
+            // rebuilds with the new glow colours.
+            if (themeHaloGrad == null || hx != themeHaloHx || hy != themeHaloHy || 130 * u * s != themeHaloR || aiTheme != themeHaloTheme)
+                themeHaloGrad = new RadialGradient(hx, hy, 130 * u * s,
+                        Color.argb(255, glow[0], glow[1], glow[2]),
+                        Color.TRANSPARENT, Shader.TileMode.CLAMP);
+            themeHaloHx = hx; themeHaloHy = hy; themeHaloR = 130 * u * s; themeHaloTheme = aiTheme;
+            paint.setShader(themeHaloGrad);
+            paint.setAlpha((int) ((26 + 60 * litBlend) * (0.85f + 0.15f * breath)));
             c.drawCircle(hx, hy, 130 * u * s, paint);
             paint.setShader(null);
+            paint.setAlpha(255);
             paint.setStyle(Paint.Style.FILL);
             if (anim == 1) {
                 for (int i = 0; i < 14; i++) {
@@ -897,7 +1026,10 @@ public class RoomView extends View {
         // driftMs, exactly as in v2.26/v2.72.
         float driftYPx = 0.004f * h * (float) Math.cos(theta);
         float dw = bw * scale * drift, dh = bh * scale * drift;
-        RectF dst = new RectF((w - dw) / 2f + panPx, (h - dh) / 2f + driftYPx, (w + dw) / 2f + panPx, (h + dh) / 2f + driftYPx);
+        // v13.90 (render L1): dst/prevDst/midDst are reused fields —
+        // all three stay live through the crossfade overlays below,
+        // so they get their own fields, not the shared rect.
+        dstRect.set((w - dw) / 2f + panPx, (h - dh) / 2f + driftYPx, (w + dw) / 2f + panPx, (h + dh) / 2f + driftYPx);
         paint.setShader(null);
         // v3.09: crossfade progress for the drawn overlays below —
         // the flames/halo used to jump to the NEW photo's positions
@@ -906,8 +1038,8 @@ public class RoomView extends View {
         // no crossfade is running, so every non-talk-change frame
         // is pixel-identical to before.
         float crossP = 1f;
-        RectF prevDst = null;
-        RectF midDst = null;
+        hasPrevDst = false;
+        hasMidDst = false;
         if (prevPhoto != null) {
             float p = Math.min(1f, (SystemClock.uptimeMillis() - fadeStart) / (float) FADE_MS);
             crossP = p;
@@ -924,8 +1056,9 @@ public class RoomView extends View {
             // never shows a position step either.
             // v2.74: it drifts vertically with the same driftYPx too.
             float pdw = pbw * pscale * drift, pdh = pbh * pscale * drift;
-            prevDst = new RectF((w - pdw) / 2f + panPx, (h - pdh) / 2f + driftYPx,
+            prevDstRect.set((w - pdw) / 2f + panPx, (h - pdh) / 2f + driftYPx,
                     (w + pdw) / 2f + panPx, (h + pdh) / 2f + driftYPx);
+            hasPrevDst = true;
             // v3.12: the outgoing photo used to draw at alpha
             // (1 - p) with the incoming drawn at p OVER it, so the
             // outgoing layer was attenuated twice: at mid-fade it
@@ -940,35 +1073,36 @@ public class RoomView extends View {
             // and the v3.09/v3.10 overlay rides are already in
             // exactly these weights (litFade = p, outFade = 1 - p),
             // so halo/flames stay glued to their photos.
-            c.drawBitmap(prevPhoto, null, prevDst, paint);
+            c.drawBitmap(prevPhoto, null, prevDstRect, paint);
             // v3.21: the mid layer (see setPhoto) draws at its frozen
             // alpha fading out with the new fade, so a retarget
             // starts from the exact visible frame: at p = 0 this is
             // base opaque + mid at its frozen alpha, the frame
             // before the retarget; at p = 1 only the new photo
-            // remains. Its own centre-crop rect, like prevDst.
+            // remains. Its own centre-crop rect, like prevDstRect.
             if (midPhoto != null) {
                 float mbw = midPhoto.getWidth(), mbh = midPhoto.getHeight();
                 float mscale = Math.max(w / mbw, h / mbh);
                 float mdw = mbw * mscale * drift, mdh = mbh * mscale * drift;
-                midDst = new RectF((w - mdw) / 2f + panPx, (h - mdh) / 2f + driftYPx,
+                midDstRect.set((w - mdw) / 2f + panPx, (h - mdh) / 2f + driftYPx,
                         (w + mdw) / 2f + panPx, (h + mdh) / 2f + driftYPx);
+                hasMidDst = true;
                 paint.setAlpha((int) (255 * midAlpha * (1f - p)));
-                c.drawBitmap(midPhoto, null, midDst, paint);
+                c.drawBitmap(midPhoto, null, midDstRect, paint);
                 paint.setAlpha(255);
             }
             paint.setAlpha((int) (255 * p));
-            c.drawBitmap(bm, null, dst, paint);
+            c.drawBitmap(bm, null, dstRect, paint);
             paint.setAlpha(255);
             if (p >= 1f) { prevPhoto = null; midPhoto = null; midAlpha = 0f; }
             else postInvalidateDelayed(50);
         } else {
-            c.drawBitmap(bm, null, dst, paint);
+            c.drawBitmap(bm, null, dstRect, paint);
         }
         // head position converted through the photo's centre-crop rect,
         // so it tracks the statue on every screen shape
-        float hx = dst.left + PHOTO_HEAD[photoIndex][0] * dst.width();
-        float hy = dst.top + PHOTO_HEAD[photoIndex][1] * dst.height();
+        float hx = dstRect.left + PHOTO_HEAD[photoIndex][0] * dstRect.width();
+        float hy = dstRect.top + PHOTO_HEAD[photoIndex][1] * dstRect.height();
         // v1.88: the incense base is shared by the lit-only smoke spawn
         // below and the sticks themselves, which now draw paused too
         // (see after the if/else) instead of vanishing with the flames.
@@ -1026,7 +1160,7 @@ public class RoomView extends View {
                 float[] fp = PHOTO_FLAMES[photoIndex][i];
                 // v2.13: flames ignite small and grow to full height
                 // with the blend instead of popping in at full size.
-                flame(c, dst.left + fp[0] * dst.width(), dst.top + fp[1] * dst.height(),
+                flame(c, dstRect.left + fp[0] * dstRect.width(), dstRect.top + fp[1] * dstRect.height(),
                         fp[2] * u * (0.35f + 0.65f * litFade), i * 1.7f + 0.6f, litFade);
             }
             // incense smoke: thin wisps rising from the stick tips
@@ -1045,18 +1179,18 @@ public class RoomView extends View {
             // the old photo itself was only ~2% faded, a small pop
             // on every talk change. They now fade out with
             // (1 - crossP) at the OLD photo's head/lamp positions
-            // (prevDst), so the light hands over instead of
+            // (prevDstRect), so the light hands over instead of
             // swapping. At crossP = 1 this block draws nothing
             // (outFade = 0) and every non-crossfade frame is
             // pixel-identical; the screen-fixed lamp glow and the
             // sticks/embers below are untouched — they never
             // belonged to either photo.
-            if (prevPhoto != null && prevDst != null && prevPhotoIndex != photoIndex
+            if (prevPhoto != null && hasPrevDst && prevPhotoIndex != photoIndex
                     && prevPhotoIndex >= 0 && prevPhotoIndex < PHOTO_HEAD.length) {
                 float outFade = litBlend * (1f - crossP);
                 if (outFade > 0.01f) {
-                    float ohx = prevDst.left + PHOTO_HEAD[prevPhotoIndex][0] * prevDst.width();
-                    float ohy = prevDst.top + PHOTO_HEAD[prevPhotoIndex][1] * prevDst.height();
+                    float ohx = prevDstRect.left + PHOTO_HEAD[prevPhotoIndex][0] * prevDstRect.width();
+                    float ohy = prevDstRect.top + PHOTO_HEAD[prevPhotoIndex][1] * prevDstRect.height();
                     for (int[] a : aura) {
                         paint.setShader(new RadialGradient(ohx, ohy, a[0] * u * (1f + 0.03f * breath),
                                 Color.argb((int) (a[1] * pulse * outFade), 255, 215, 90),
@@ -1066,7 +1200,7 @@ public class RoomView extends View {
                     paint.setShader(null);
                     for (int i = 0; i < PHOTO_FLAMES[prevPhotoIndex].length; i++) {
                         float[] fp = PHOTO_FLAMES[prevPhotoIndex][i];
-                        flame(c, prevDst.left + fp[0] * prevDst.width(), prevDst.top + fp[1] * prevDst.height(),
+                        flame(c, prevDstRect.left + fp[0] * prevDstRect.width(), prevDstRect.top + fp[1] * prevDstRect.height(),
                                 fp[2] * u * (0.35f + 0.65f * outFade), i * 1.7f + 0.6f, outFade);
                     }
                 }
@@ -1080,12 +1214,12 @@ public class RoomView extends View {
             // litBlend * midAlpha * (1 - crossP), 0 at the end of
             // the new fade, and every non-retarget frame is
             // untouched (midPhoto null outside a retarget).
-            if (midPhoto != null && midDst != null && midPhotoIndex != photoIndex
+            if (midPhoto != null && hasMidDst && midPhotoIndex != photoIndex
                     && midPhotoIndex >= 0 && midPhotoIndex < PHOTO_HEAD.length) {
                 float midFade = litBlend * midAlpha * (1f - crossP);
                 if (midFade > 0.01f) {
-                    float mhx = midDst.left + PHOTO_HEAD[midPhotoIndex][0] * midDst.width();
-                    float mhy = midDst.top + PHOTO_HEAD[midPhotoIndex][1] * midDst.height();
+                    float mhx = midDstRect.left + PHOTO_HEAD[midPhotoIndex][0] * midDstRect.width();
+                    float mhy = midDstRect.top + PHOTO_HEAD[midPhotoIndex][1] * midDstRect.height();
                     for (int[] a : aura) {
                         paint.setShader(new RadialGradient(mhx, mhy, a[0] * u * (1f + 0.03f * breath),
                                 Color.argb((int) (a[1] * pulse * midFade), 255, 215, 90),
@@ -1095,7 +1229,7 @@ public class RoomView extends View {
                     paint.setShader(null);
                     for (int i = 0; i < PHOTO_FLAMES[midPhotoIndex].length; i++) {
                         float[] fp = PHOTO_FLAMES[midPhotoIndex][i];
-                        flame(c, midDst.left + fp[0] * midDst.width(), midDst.top + fp[1] * midDst.height(),
+                        flame(c, midDstRect.left + fp[0] * midDstRect.width(), midDstRect.top + fp[1] * midDstRect.height(),
                                 fp[2] * u * (0.35f + 0.65f * midFade), i * 1.7f + 0.6f, midFade);
                     }
                 }
@@ -1119,10 +1253,10 @@ public class RoomView extends View {
             // on a paused talk change it used to jump to the new
             // head position while the old photo was still fading
             // out; now the old faint halo fades out with it.
-            if (prevPhoto != null && prevDst != null && prevPhotoIndex != photoIndex
+            if (prevPhoto != null && hasPrevDst && prevPhotoIndex != photoIndex
                     && prevPhotoIndex >= 0 && prevPhotoIndex < PHOTO_HEAD.length) {
-                float ohx = prevDst.left + PHOTO_HEAD[prevPhotoIndex][0] * prevDst.width();
-                float ohy = prevDst.top + PHOTO_HEAD[prevPhotoIndex][1] * prevDst.height();
+                float ohx = prevDstRect.left + PHOTO_HEAD[prevPhotoIndex][0] * prevDstRect.width();
+                float ohy = prevDstRect.top + PHOTO_HEAD[prevPhotoIndex][1] * prevDstRect.height();
                 paint.setShader(new RadialGradient(ohx, ohy, 190 * u,
                         Color.argb((int) (18 * (1f - litBlend) * (1f - crossP)), 255, 215, 90),
                         Color.TRANSPARENT, Shader.TileMode.CLAMP));
@@ -1133,10 +1267,10 @@ public class RoomView extends View {
             // paused mid-fade retarget it used to jump with the new
             // photo's halo while the mid photo was still fading
             // out; it now fades with the mid layer itself.
-            if (midPhoto != null && midDst != null && midPhotoIndex != photoIndex
+            if (midPhoto != null && hasMidDst && midPhotoIndex != photoIndex
                     && midPhotoIndex >= 0 && midPhotoIndex < PHOTO_HEAD.length) {
-                float mhx = midDst.left + PHOTO_HEAD[midPhotoIndex][0] * midDst.width();
-                float mhy = midDst.top + PHOTO_HEAD[midPhotoIndex][1] * midDst.height();
+                float mhx = midDstRect.left + PHOTO_HEAD[midPhotoIndex][0] * midDstRect.width();
+                float mhy = midDstRect.top + PHOTO_HEAD[midPhotoIndex][1] * midDstRect.height();
                 paint.setShader(new RadialGradient(mhx, mhy, 190 * u,
                         Color.argb((int) (18 * (1f - litBlend) * midAlpha * (1f - crossP)), 255, 215, 90),
                         Color.TRANSPARENT, Shader.TileMode.CLAMP));
@@ -1220,11 +1354,64 @@ public class RoomView extends View {
         }
     }
 
+    // v13.92 (render L1 gradients, part 3): rebuilds every cached
+    // drawn-fallback gradient from the CURRENT (w, h, u, theme) —
+    // called from setTheme (theme changed) and onSizeChanged (size
+    // changed), the only two writers. When the view is not laid out
+    // yet (w == 0) every cached gradient is nulled; onDraw returns
+    // early on w == 0 and the next onSizeChanged rebuilds, so a draw
+    // site never sees a null. Geometry is copied EXACTLY from the
+    // inline sites this replaces (same coordinates, same colours);
+    // the halo and wash centres are full-alpha here — their
+    // frame-varying alpha rides on paint.setAlpha at the draw site,
+    // folded with the incoming alpha (see the halo/wash sites).
+    private void rebuildFallbackGradients() {
+        if (w == 0) {
+            wallGrad = null;
+            fbHaloGrad = null;
+            fbBodyGrad = null;
+            fbLapGrad = null;
+            fbHeadGrad = null;
+            fbPedestalGrad = null;
+            fbCandleGradL = null;
+            fbCandleGradR = null;
+            for (int i = 0; i < 3; i++) { fbLampGrads[i] = null; fbCupGlassGrads[i] = null; }
+            fbCupWaterGrad = null;
+            fbWashGrad = null;
+            return;
+        }
+        float cx = w / 2f;
+        float floorY = h * 0.76f;
+        float altarY = h * 0.40f;
+        float headY = h * 0.14f;
+        float headR = 34 * u;
+        wallGrad = new LinearGradient(0, 0, 0, floorY, theme.wallTop, theme.wallBottom, Shader.TileMode.CLAMP);
+        fbHaloGrad = new RadialGradient(cx, headY, headR * 2.6f, theme.halo, Color.TRANSPARENT, Shader.TileMode.CLAMP);
+        fbBodyGrad = new RadialGradient(cx - 30 * u, headY + headR + 30 * u, 130 * u, theme.goldLight, theme.goldDark, Shader.TileMode.CLAMP);
+        fbLapGrad = new LinearGradient(0, altarY - 70 * u, 0, altarY - 34 * u, theme.goldLight, theme.goldDark, Shader.TileMode.CLAMP);
+        fbHeadGrad = new RadialGradient(cx - 12 * u, headY - 14 * u, headR * 1.4f, theme.goldLight, theme.goldDark, Shader.TileMode.CLAMP);
+        fbPedestalGrad = new LinearGradient(0, altarY - 36 * u, 0, altarY - 8 * u, theme.goldLight, shade(theme.goldDark, 0.65f), Shader.TileMode.CLAMP);
+        fbCandleGradL = new LinearGradient(cx - 108 * u, 0, cx - 96 * u, 0, Color.parseColor("#FFFFFF"), shade(theme.candleLight, 0.85f), Shader.TileMode.CLAMP);
+        fbCandleGradR = new LinearGradient(cx + 96 * u, 0, cx + 108 * u, 0, Color.parseColor("#FFFFFF"), shade(theme.candleLight, 0.85f), Shader.TileMode.CLAMP);
+        float lampY = altarY + 46 * u;
+        float[] lampX = {cx - 62 * u, cx, cx + 62 * u};
+        for (int i = 0; i < 3; i++)
+            fbLampGrads[i] = new RadialGradient(lampX[i] - 5 * u, lampY, 20 * u, theme.lampLight, shade(theme.lampLight, 0.45f), Shader.TileMode.CLAMP);
+        float trayY = altarY + 92 * u;
+        float[] cupX = {cx - 46 * u, cx, cx + 46 * u};
+        for (int i = 0; i < 3; i++)
+            fbCupGlassGrads[i] = new LinearGradient(cupX[i] - 13 * u, 0, cupX[i] + 13 * u, 0, Color.argb(170, 220, 235, 245), Color.argb(170, 160, 195, 215), Shader.TileMode.CLAMP);
+        float cupTop = trayY - 26 * u;
+        float cupBot = trayY + 10 * u;
+        fbCupWaterGrad = new LinearGradient(0, cupTop + 6 * u, 0, cupBot, theme.waterLight, theme.waterDark, Shader.TileMode.CLAMP);
+        fbWashGrad = new RadialGradient(cx, altarY + 80 * u, 260 * u, Color.rgb(255, 170, 60), Color.TRANSPARENT, Shader.TileMode.CLAMP);
+    }
+
     public void setTheme(int idx) {
         if (idx < 0 || idx >= THEMES.length) idx = 0;
         themeIndex = idx;
         theme = THEMES[idx];
-        wallGrad = null;
+        rebuildFallbackGradients();
         invalidate();
     }
 
@@ -1340,10 +1527,14 @@ public class RoomView extends View {
                 break;
             case 7: // clouds
                 paint.setColor(Color.argb(70, 255, 255, 255));
-                c.drawOval(new RectF(20 * u, 30 * u, 110 * u, 62 * u), paint);
-                c.drawOval(new RectF(60 * u, 18 * u, 140 * u, 54 * u), paint);
-                c.drawOval(new RectF(w - 150 * u, 110 * u, w - 60 * u, 140 * u), paint);
-                c.drawOval(new RectF(w - 110 * u, 98 * u, w - 30 * u, 128 * u), paint);
+                rect.set(20 * u, 30 * u, 110 * u, 62 * u);
+                c.drawOval(rect, paint);
+                rect.set(60 * u, 18 * u, 140 * u, 54 * u);
+                c.drawOval(rect, paint);
+                rect.set(w - 150 * u, 110 * u, w - 60 * u, 140 * u);
+                c.drawOval(rect, paint);
+                rect.set(w - 110 * u, 98 * u, w - 30 * u, 128 * u);
+                c.drawOval(rect, paint);
                 break;
             default:
                 break;
@@ -1579,8 +1770,7 @@ public class RoomView extends View {
         // animator is not already running, starts it so paused
         // puffs keep draining instead of freezing mid-air).
         applyPendingSmoke();
-        wallGrad = new LinearGradient(0, 0, 0, h * 0.75f,
-                Color.parseColor("#3A2415"), Color.parseColor("#5A3A20"), Shader.TileMode.CLAMP);
+        rebuildFallbackGradients();
     }
 
     // one wispy smoke puff: soft radial gradient, never a hard bubble
@@ -1720,7 +1910,7 @@ public class RoomView extends View {
         }
 
         // wall + floor (from the current theme)
-        paint.setShader(new LinearGradient(0, 0, 0, floorY, theme.wallTop, theme.wallBottom, Shader.TileMode.CLAMP));
+        paint.setShader(wallGrad);
         c.drawRect(0, 0, w, floorY, paint);
         paint.setShader(null);
         paint.setColor(theme.floor);
@@ -1768,15 +1958,24 @@ public class RoomView extends View {
                     cx + (float) Math.cos(a) * r2, headY + (float) Math.sin(a) * r2, paint);
         }
         paint.setStyle(Paint.Style.FILL);
-        paint.setShader(new RadialGradient(cx, headY, headR * 2.6f,
-                Color.argb((int) ((30 + 80 * litBlend) * haloBreath), Color.red(theme.halo), Color.green(theme.halo), Color.blue(theme.halo)),
-                Color.TRANSPARENT, Shader.TileMode.CLAMP));
+        // v13.92: hoisted — the cached gradient carries full-alpha
+        // theme.halo and paint.setAlpha carries the frame alpha, BUT
+        // the incoming paint alpha here is the ray loop's leftover
+        // (int)(150*shimmer) of the last ray, NOT 255: v13.91's plain
+        // setAlpha(A) + restore-255 would brighten the halo AND the
+        // body below it (which still reads the leftover alpha). So
+        // the frame alpha is folded with the exact incoming alpha
+        // read back from the paint, and the incoming alpha is
+        // restored at once so the body draws exactly as before.
+        int haloIn = paint.getAlpha();
+        paint.setShader(fbHaloGrad);
+        paint.setAlpha((int) ((30 + 80 * litBlend) * haloBreath) * haloIn / 255);
         c.drawCircle(cx, headY, headR * 2.6f, paint);
         paint.setShader(null);
+        paint.setAlpha(haloIn);
 
         // buddha body (gold robe) — radial gold gives the round 3D form
-        paint.setShader(new RadialGradient(cx - 30 * u, headY + headR + 30 * u, 130 * u,
-                theme.goldLight, theme.goldDark, Shader.TileMode.CLAMP));
+        paint.setShader(fbBodyGrad);
         // shoulders to lap
         path.reset();
         path.moveTo(cx - 52 * u, headY + headR + 6 * u);
@@ -1806,8 +2005,7 @@ public class RoomView extends View {
         c.drawPath(path, paint);
         paint.setStyle(Paint.Style.FILL);
         // lap / crossed legs — light on top, shaded below = rounded legs
-        paint.setShader(new LinearGradient(0, altarY - 70 * u, 0, altarY - 34 * u,
-                theme.goldLight, theme.goldDark, Shader.TileMode.CLAMP));
+        paint.setShader(fbLapGrad);
         rect.set(cx - 92 * u, altarY - 70 * u, cx + 92 * u, altarY - 34 * u);
         c.drawOval(rect, paint);
         paint.setShader(null);
@@ -1818,14 +2016,16 @@ public class RoomView extends View {
         // body read as seated, but the meditation pose had no hands.
         // Two overlapping ovals, palms up, resting on the crossed legs.
         paint.setColor(shade(theme.goldDark, 0.8f));
-        c.drawOval(new RectF(cx - 26 * u, altarY - 56 * u, cx + 2 * u, altarY - 42 * u), paint);
+        rect.set(cx - 26 * u, altarY - 56 * u, cx + 2 * u, altarY - 42 * u);
+        c.drawOval(rect, paint);
         paint.setColor(theme.goldLight);
-        c.drawOval(new RectF(cx - 2 * u, altarY - 56 * u, cx + 26 * u, altarY - 42 * u), paint);
+        rect.set(cx - 2 * u, altarY - 56 * u, cx + 26 * u, altarY - 42 * u);
+        c.drawOval(rect, paint);
         paint.setColor(shade(theme.goldDark, 0.7f));
-        c.drawOval(new RectF(cx - 6 * u, altarY - 52 * u, cx + 6 * u, altarY - 46 * u), paint);
+        rect.set(cx - 6 * u, altarY - 52 * u, cx + 6 * u, altarY - 46 * u);
+        c.drawOval(rect, paint);
         // head — radial gold + a soft highlight on the cheek
-        paint.setShader(new RadialGradient(cx - 12 * u, headY - 14 * u, headR * 1.4f,
-                theme.goldLight, theme.goldDark, Shader.TileMode.CLAMP));
+        paint.setShader(fbHeadGrad);
         c.drawCircle(cx, headY, headR, paint);
         paint.setShader(null);
         paint.setColor(Color.parseColor("#FFF2B0"));
@@ -1851,19 +2051,20 @@ public class RoomView extends View {
         paint.setColor(theme.robe);
         c.drawCircle(cx, headY - 12 * u, 3 * u, paint);
         // lotus pedestal — bevel: bright top edge, shaded base
-        paint.setShader(new LinearGradient(0, altarY - 36 * u, 0, altarY - 8 * u,
-                theme.goldLight, shade(theme.goldDark, 0.65f), Shader.TileMode.CLAMP));
+        paint.setShader(fbPedestalGrad);
         rect.set(cx - 100 * u, altarY - 36 * u, cx + 100 * u, altarY - 8 * u);
         c.drawRoundRect(rect, 10 * u, 10 * u, paint);
         paint.setShader(null);
         paint.setColor(Color.argb(140, 255, 242, 176));
-        c.drawRoundRect(new RectF(cx - 100 * u, altarY - 36 * u, cx + 100 * u, altarY - 30 * u), 10 * u, 10 * u, paint);
+        rect.set(cx - 100 * u, altarY - 36 * u, cx + 100 * u, altarY - 30 * u);
+        c.drawRoundRect(rect, 10 * u, 10 * u, paint);
         paint.setColor(theme.goldLight);
         for (int i = -3; i <= 3; i++) {
             rect.set(cx + i * 26 * u - 12 * u, altarY - 52 * u, cx + i * 26 * u + 12 * u, altarY - 30 * u);
             c.drawOval(rect, paint);
             paint.setColor(Color.parseColor("#FFF2B0"));
-            c.drawOval(new RectF(cx + i * 26 * u - 8 * u, altarY - 50 * u, cx + i * 26 * u + 2 * u, altarY - 40 * u), paint);
+            rect.set(cx + i * 26 * u - 8 * u, altarY - 50 * u, cx + i * 26 * u + 2 * u, altarY - 40 * u);
+            c.drawOval(rect, paint);
             paint.setColor(theme.goldLight);
         }
 
@@ -1906,19 +2107,21 @@ public class RoomView extends View {
         // candles (tall, sides of altar) — cylinder gradient: bright
         // stripe on the left, shade on the right, wax top + a drip
         float candleY = altarY + 30 * u;
-        paint.setShader(new LinearGradient(cx - 108 * u, 0, cx - 96 * u, 0,
-                Color.parseColor("#FFFFFF"), shade(theme.candleLight, 0.85f), Shader.TileMode.CLAMP));
+        paint.setShader(fbCandleGradL);
         c.drawRect(cx - 108 * u, candleY - 52 * u, cx - 96 * u, candleY, paint);
-        paint.setShader(new LinearGradient(cx + 96 * u, 0, cx + 108 * u, 0,
-                Color.parseColor("#FFFFFF"), shade(theme.candleLight, 0.85f), Shader.TileMode.CLAMP));
+        paint.setShader(fbCandleGradR);
         c.drawRect(cx + 96 * u, candleY - 52 * u, cx + 108 * u, candleY, paint);
         paint.setShader(null);
         paint.setColor(Color.parseColor("#FFF8DC"));
-        c.drawOval(new RectF(cx - 108 * u, candleY - 56 * u, cx - 96 * u, candleY - 48 * u), paint);
-        c.drawOval(new RectF(cx + 96 * u, candleY - 56 * u, cx + 108 * u, candleY - 48 * u), paint);
+        rect.set(cx - 108 * u, candleY - 56 * u, cx - 96 * u, candleY - 48 * u);
+        c.drawOval(rect, paint);
+        rect.set(cx + 96 * u, candleY - 56 * u, cx + 108 * u, candleY - 48 * u);
+        c.drawOval(rect, paint);
         paint.setColor(Color.parseColor("#FFF3C4"));
-        c.drawOval(new RectF(cx - 100 * u, candleY - 30 * u, cx - 96 * u, candleY - 12 * u), paint);
-        c.drawOval(new RectF(cx + 104 * u, candleY - 38 * u, cx + 108 * u, candleY - 20 * u), paint);
+        rect.set(cx - 100 * u, candleY - 30 * u, cx - 96 * u, candleY - 12 * u);
+        c.drawOval(rect, paint);
+        rect.set(cx + 104 * u, candleY - 38 * u, cx + 108 * u, candleY - 20 * u);
+        c.drawOval(rect, paint);
         paint.setColor(Color.parseColor("#5A3A20"));
         c.drawRect(cx - 104 * u, candleY - 56 * u, cx - 100 * u, candleY - 50 * u, paint);
         c.drawRect(cx + 100 * u, candleY - 56 * u, cx + 104 * u, candleY - 50 * u, paint);
@@ -1934,16 +2137,17 @@ public class RoomView extends View {
         float[] lampX = {cx - 62 * u, cx, cx + 62 * u};
         float[] lampPhase = {0.7f, 2.4f, 5.0f};
         for (int i = 0; i < 3; i++) {
-            paint.setShader(new RadialGradient(lampX[i] - 5 * u, lampY, 20 * u,
-                    theme.lampLight, shade(theme.lampLight, 0.45f), Shader.TileMode.CLAMP));
+            paint.setShader(fbLampGrads[i]);
             rect.set(lampX[i] - 18 * u, lampY - 6 * u, lampX[i] + 18 * u, lampY + 12 * u);
             c.drawOval(rect, paint);
             paint.setShader(null);
             // dark oil surface on top, with a glint
             paint.setColor(Color.parseColor("#2B1A08"));
-            c.drawOval(new RectF(lampX[i] - 14 * u, lampY - 8 * u, lampX[i] + 14 * u, lampY + 2 * u), paint);
+            rect.set(lampX[i] - 14 * u, lampY - 8 * u, lampX[i] + 14 * u, lampY + 2 * u);
+            c.drawOval(rect, paint);
             paint.setColor(Color.argb(150, 255, 220, 130));
-            c.drawOval(new RectF(lampX[i] - 8 * u, lampY - 6 * u, lampX[i] - 2 * u, lampY - 2 * u), paint);
+            rect.set(lampX[i] - 8 * u, lampY - 6 * u, lampX[i] - 2 * u, lampY - 2 * u);
+            c.drawOval(rect, paint);
             paint.setColor(Color.parseColor("#3A2415"));
             c.drawLine(lampX[i], lampY - 8 * u, lampX[i], lampY - 2 * u, paint);
             if (litBlend > 0.01f) flame(c, lampX[i], lampY - 6 * u, 20 * u * (0.35f + 0.65f * litBlend), lampPhase[i], litBlend);
@@ -1985,8 +2189,7 @@ public class RoomView extends View {
             float cupTop = trayY - 26 * u;
             float cupBot = trayY + 10 * u;
             // glass body: pale vertical gradient, darker rim at the base
-            paint.setShader(new LinearGradient(cupX[i] - 13 * u, 0, cupX[i] + 13 * u, 0,
-                    Color.argb(170, 220, 235, 245), Color.argb(170, 160, 195, 215), Shader.TileMode.CLAMP));
+            paint.setShader(fbCupGlassGrads[i]);
             path.reset();
             path.moveTo(cupX[i] - 13 * u, cupTop);
             path.lineTo(cupX[i] + 13 * u, cupTop);
@@ -1996,8 +2199,7 @@ public class RoomView extends View {
             c.drawPath(path, paint);
             paint.setShader(null);
             // water inside: clear blue, filled to just below the rim
-            paint.setShader(new LinearGradient(0, cupTop + 6 * u, 0, cupBot,
-                    theme.waterLight, theme.waterDark, Shader.TileMode.CLAMP));
+            paint.setShader(fbCupWaterGrad);
             path.reset();
             path.moveTo(cupX[i] - 11 * u, cupTop + 6 * u);
             path.lineTo(cupX[i] + 11 * u, cupTop + 6 * u);
@@ -2011,14 +2213,16 @@ public class RoomView extends View {
             // snapping to flat the frame play stops.
             float shimmer = litBlend * (float) Math.sin(t * 0.004 + i * 1.7f) * 1.2f * u;
             paint.setColor(Color.parseColor("#EAF7FC"));
-            c.drawOval(new RectF(cupX[i] - 11 * u, cupTop + 4 * u, cupX[i] + 11 * u, cupTop + 9 * u), paint);
+            rect.set(cupX[i] - 11 * u, cupTop + 4 * u, cupX[i] + 11 * u, cupTop + 9 * u);
+            c.drawOval(rect, paint);
             paint.setColor(Color.argb(180, 255, 255, 255));
             c.drawLine(cupX[i] - 7 * u + shimmer, cupTop + 8 * u, cupX[i] - 7 * u + shimmer, cupBot - 5 * u, paint);
             // glass rim highlight
             paint.setColor(Color.argb(200, 255, 255, 255));
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeWidth(1.5f * u);
-            c.drawOval(new RectF(cupX[i] - 13 * u, cupTop - 2 * u, cupX[i] + 13 * u, cupTop + 3 * u), paint);
+            rect.set(cupX[i] - 13 * u, cupTop - 2 * u, cupX[i] + 13 * u, cupTop + 3 * u);
+            c.drawOval(rect, paint);
             paint.setStyle(Paint.Style.FILL);
         }
 
@@ -2028,11 +2232,17 @@ public class RoomView extends View {
         // washing it out, and breathes with the halo.
         if (litBlend > 0.01f) {
             float glowPulse = 0.78f + 0.22f * (float) Math.sin(t * 0.0016);
-            paint.setShader(new RadialGradient(cx, altarY + 80 * u, 260 * u,
-                    Color.argb((int) (42 * glowPulse * litBlend), 255, 170, 60),
-                    Color.TRANSPARENT, Shader.TileMode.CLAMP));
+            // v13.92: hoisted, same incoming-alpha rule as the halo
+            // above — the cup-rim highlight leaves paint alpha 200
+            // here, so the frame alpha is folded with the exact
+            // incoming alpha and restored at once, leaving the smoke
+            // below at the same 200 it always had.
+            int washIn = paint.getAlpha();
+            paint.setShader(fbWashGrad);
+            paint.setAlpha((int) (42 * glowPulse * litBlend) * washIn / 255);
             c.drawRect(0, altarY - 40 * u, w, h, paint);
             paint.setShader(null);
+            paint.setAlpha(washIn);
         }
 
         // smoke (only rises while lit; fades out after stop)
