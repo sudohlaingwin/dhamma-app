@@ -176,6 +176,34 @@ public class Prefs {
         ed.apply();
     }
 
+    // v13.56 (Room handover torn-carry fix — the mirror of v13.55's
+    // carryQueueForeign11, opposite direction): handoverToForeignTalk
+    // used to clear the OLD sayadaw's key with one saveQueue call and
+    // save the carried queue under the NEW sayadaw with a second (the
+    // saveQueue funnel's final persist); a process death between the
+    // two apply()s lost the queue from BOTH keys — old cleared, new
+    // unwritten. One Editor transaction now: either both keys land
+    // or neither does, and a death mid-carry leaves the pre-handover
+    // state (old key intact, new key untouched), which the handover
+    // simply re-runs on the next Next tap. Put order is the Room's
+    // old order — clear first, carried second — so the same-sayadaw
+    // degenerate case still ends with the carried list (the Room's
+    // old clear-then-save result); carryQueueForeign11 puts the
+    // clear last, so ITS degenerate case ends cleared (the service's
+    // old save-then-clear result). Empty sides are skipped, exactly
+    // like saveQueue's early return. Lines are joined by
+    // joinQueueLines11, byte-identical to a plain saveQueue.
+    public static void carryQueueHandover11(Context c, String toSayadaw,
+            java.util.ArrayList<String> carried, String fromSayadaw) {
+        migrateQueueKeys99(c);
+        SharedPreferences.Editor ed = sp(c).edit();
+        if (fromSayadaw != null && fromSayadaw.length() > 0)
+            ed.putString(queueKeyFor99(c, fromSayadaw), "");
+        if (toSayadaw != null && toSayadaw.length() > 0)
+            ed.putString(queueKeyFor99(c, toSayadaw), joinQueueLines11(carried));
+        ed.apply();
+    }
+
     // v4.57: downloaded-library hand queue — one shared key, not
     // per sayadaw: the library is a single shelf, not one list per
     // sayadaw, so a per-sayadaw key would be meaningless here.

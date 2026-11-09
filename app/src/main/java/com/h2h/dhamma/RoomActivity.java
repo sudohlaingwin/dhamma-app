@@ -1036,7 +1036,24 @@ public class RoomActivity extends Activity {
                 }
             } catch (Exception ignored) {}
         }
-        Prefs.saveQueue(this, sayadawName, queueUrls);
+        // v13.56 (Room handover torn-carry fix): when a handover
+        // armed clearQueueSayadawOnSave11, the persist below also
+        // clears the sayadaw being left — in the SAME Editor
+        // transaction as the new key's write, so a process death
+        // can no longer land between the clear and the save and
+        // lose the queue from both keys. A death before the apply
+        // leaves the pre-handover state (old key intact, new key
+        // untouched — the handover simply re-runs on the next Next
+        // tap). Consumed here, so no other saveQueue call can
+        // inherit it; this persist always runs, so the field
+        // cannot leak past this call.
+        if (clearQueueSayadawOnSave11 != null) {
+            Prefs.carryQueueHandover11(this, sayadawName, queueUrls,
+                    clearQueueSayadawOnSave11);
+            clearQueueSayadawOnSave11 = null;
+        } else {
+            Prefs.saveQueue(this, sayadawName, queueUrls);
+        }
         lastQueueUrls03 = new java.util.ArrayList<String>(queueUrls);
         // v10.36: drawer search empty-line sync on a live queue change -- every
         // drawer queue verb funnels through here and already rebinds the adapter,
@@ -1993,9 +2010,9 @@ public class RoomActivity extends Activity {
                 + (sayadawGroup == null || sayadawGroup.length() == 0
                         ? "" : " · " + sayadawGroup));
         refreshSayadawPhoto();
-        // v8.59: the queue MOVED with this handover — clear the
-        // old sayadaw's saved key (the carried copy below is now
-        // the live queue, saved under the new sayadaw by the
+        // v8.59: the queue MOVED with this handover — the old
+        // sayadaw's saved key must be cleared (the carried copy is
+        // now the live queue, saved under the new sayadaw by the
         // saveQueue() after this). Without this, a fresh Room for
         // the old sayadaw restored the pre-handover queue and
         // re-offered talks the new session already played, as a
@@ -2003,12 +2020,16 @@ public class RoomActivity extends Activity {
         // a load failure in the new session still keeps its
         // foreign entry in the NEW key (v7.23), and a walk back
         // re-carries the live queue under the old name again.
-        Prefs.saveQueue(RoomActivity.this, leaving,
-                new java.util.ArrayList<String>());
+        // v13.56: the clear NO LONGER runs here as its own apply()
+        // — a death between it and the funnel's save left the queue
+        // in NEITHER key. It is armed below and written by the
+        // funnel's final persist in the same Editor transaction as
+        // the new key (see clearQueueSayadawOnSave11).
         // v12.02: the carried queue is not in the new sayadaw's saved read
         // yet, so the funnel's stale drop would wipe it -- keep every
-        // carried URL. The old key was cleared above, so this still
-        // replaces the new key with the carried queue, exactly as before.
+        // carried URL. The old key is cleared by the same persist below
+        // (v13.56), so this still replaces the new key with the carried
+        // queue, exactly as before.
         // v12.03: adopt=false -- the replace must not merge the new key's
         // old entries back in (sim1203 case 7).
         java.util.Set<String> keepHandover02 = new java.util.HashSet<String>();
@@ -2016,6 +2037,10 @@ public class RoomActivity extends Activity {
             String u02 = queueLineUrl(line02);
             if (u02.length() > 0) keepHandover02.add(u02);
         }
+        // v13.56: arm the old-key clear for the funnel's persist —
+        // the single transaction that also writes the carried queue
+        // under the new sayadaw (see the funnel's final persist).
+        clearQueueSayadawOnSave11 = leaving;
         saveQueue(keepHandover02, false);
         loadTalks(true);
         return true;
@@ -2242,6 +2267,14 @@ public class RoomActivity extends Activity {
     // have replaced historyBackUrl since. Cleared at every site that
     // clears the index; travels in the bundle with the question.
     private String pendingGateBackUrl = null;
+    // v13.56 (Room handover torn-carry fix): the sayadaw whose saved
+    // queue key the NEXT saveQueue funnel persist must clear, in the
+    // SAME Editor transaction as the new key's write. Set by
+    // handoverToForeignTalk one statement before its saveQueue call
+    // and consumed (nulled) by the funnel's final persist, so no
+    // other saveQueue call can inherit it; a leaked value would only
+    // clear a key the handover was going to clear anyway.
+    private String clearQueueSayadawOnSave11 = null;
     // v11.46: is the pending gate question a RESUME question
     // (a held paused talk refused by the service gate) rather
     // than a fresh-play question? The two answer differently:
