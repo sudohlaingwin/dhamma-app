@@ -929,6 +929,25 @@ public class AudioService extends Service {
     // alone (the pre-fix behaviour), never a wrong anchor.
     private String advanceEndedUrlN1 = null;
     private String advanceEndedTitleN1 = null;
+    // v14.00 (audit-1365 S4-library, fifth pass slice 10): the library mirror of
+    // the pair above — the file an advanceLibInBackground79 continues FROM
+    // (absolute path + title from the shelf at advance entry), plus the retry
+    // anchor the N1 retry hands the re-invoked advance. The Room fix rewrites
+    // lastUrl because the Room advance anchors on the persisted lastUrl; the
+    // library advance anchors on the in-memory currentUrl, which is ALSO the
+    // sounding identity the queue branch (a head equal to currentUrl is
+    // skipped, never popped) and the v13.95 arm (a head is restored at once
+    // only when it is NOT the current talk) rely on — rewriting currentUrl
+    // to the ended file would re-pop the failed head on the retry and defeat
+    // its own restore guard. So the re-anchor lives in its own field: the
+    // retry sets it, the re-invoked advance consumes it at entry for the
+    // shelf scan only, and currentUrl keeps naming the failed head until the
+    // retry's pick sounds. In-memory only, like the Room pair: a process
+    // death loses the snapshot and the retry leaves the anchor alone (the
+    // pre-fix behaviour), never a wrong anchor.
+    private String advanceEndedLibPathN1 = null;
+    private String advanceEndedLibTitleN1 = null;
+    private String advanceLibRetryAnchorN1 = null;
     // v13.62 (audit-1370 N2): a dead queue head used to loop forever — prepare failed,
     // restore put it back at the front, and the next advance re-picked the same dead
     // talk. Keep a small in-memory map of head-URL -> consecutive restore count;
@@ -3265,6 +3284,12 @@ public class AudioService extends Service {
     // the track change, and cannot double-advance.
     private void advanceLibInBackground79(boolean manual) {
         try {
+            // v14.00 (audit-1365 S4-library): consume the retry anchor FIRST —
+            // every exit below must clear it, so a retry re-invoke that defers
+            // (library on top, sleep-end, ...) never leaves a stale anchor for
+            // a later natural advance to mistake for its own ended file.
+            String anchorPath00 = advanceLibRetryAnchorN1;
+            advanceLibRetryAnchorN1 = null;
             if (currentUrl == null || currentUrl.length() == 0) return;
             android.content.SharedPreferences sp =
                     getSharedPreferences("dhamma", MODE_PRIVATE);
@@ -3278,10 +3303,27 @@ public class AudioService extends Service {
             if (!manual && (sleepFading || sleepStopPending)) return;
             java.util.ArrayList<java.io.File> shelf = shelfFiles79();
             if (shelf == null) return;
+            // v14.00: a retry re-invoke scans from the ended file (the anchor),
+            // not from the failed head — see reanchorLibRetryAfterFailedHeadN1.
+            // A vanished ended file (deleted between the advance entry and the
+            // retry) falls back to currentUrl, the pre-fix behaviour.
+            String scanUrl00 = anchorPath00 != null && anchorPath00.length() > 0
+                    ? anchorPath00 : currentUrl;
             int idx = -1;
             for (int i = 0; i < shelf.size(); i++)
-                if (shelf.get(i).getAbsolutePath().equals(currentUrl)) { idx = i; break; }
+                if (shelf.get(i).getAbsolutePath().equals(scanUrl00)) { idx = i; break; }
+            if (idx < 0 && !scanUrl00.equals(currentUrl)) {
+                for (int i = 0; i < shelf.size(); i++)
+                    if (shelf.get(i).getAbsolutePath().equals(currentUrl)) { idx = i; break; }
+            }
             if (idx < 0) return;
+            // v14.00 (audit-1365 S4-library): snapshot the ended file this advance
+            // continues from — the queue-head pop below overwrites currentUrl with
+            // the head, so the N1 retry re-anchors from this, not from the failed
+            // head. A retry re-invoke re-snapshots the same file (its scan ran
+            // from the anchor), so the refresh is idempotent there.
+            advanceEndedLibPathN1 = shelf.get(idx).getAbsolutePath();
+            advanceEndedLibTitleN1 = libTitleFor79(shelf.get(idx));
             int mode = Prefs.repeatMode(this);
             // v11.66: skip-dead-files — the shelf was fresh at scan time, but a file
             // deleted between scan and play (cleanup app, split-screen Files) must not
@@ -4386,6 +4428,54 @@ public class AudioService extends Service {
                     .putString("lastTitle", advanceEndedTitleN1 != null ? advanceEndedTitleN1 : "").apply();
         } catch (Exception ignored) {}
     }
+    // v14.00 (audit-1365 S4-library, fifth pass slice 10): the library mirror of
+    // reanchorRetryAfterFailedHeadN1. A failed queue-head pop overwrote
+    // currentUrl with the head before play(), so the N1 retry's re-invoked
+    // advanceLibInBackground79 anchored on the head and its list-next tail
+    // replayed the just-ended file (head one shelf slot before it) or an older
+    // file (head earlier still) — the Room S4 shape over the shelf instead of
+    // the saved list. When the failed pick's shelf position sits at or before
+    // the ended file's, hand the retry the ended file as its anchor: the
+    // re-invoked advance then continues list-next from the ended file, and its
+    // shuffle pool excludes the ended file again instead of the failed head. A
+    // failed pick AFTER the ended file (the list-next pick itself, or a
+    // shuffle/redo pick past it) already anchors past it, so it is left
+    // alone — re-anchoring there would replay the failed pick until the N1
+    // cap. A pick with no shelf line, a missing snapshot, or a vanished
+    // ended file leaves the anchor untouched. The anchor is a SEPARATE
+    // field, not a currentUrl rewrite: currentUrl is also the sounding
+    // identity — the queue branch skips a head equal to it, and the v13.95
+    // arm restores only a head that is NOT the current talk — so rewriting
+    // it would re-pop the failed head on the retry and defeat its own
+    // restore guard. The persisted lastLibPath/lastLibTitle are rewritten
+    // too, like the Room's lastUrl/lastTitle, so Main's nav and the
+    // notification tap follow the ended file, not the failed head, when the
+    // retry plays nothing. The failed URL may name the stream form (a head
+    // played from its stream URL maps back to this file), so the shelf scan
+    // matches both forms, exactly like the Room helper.
+    private void reanchorLibRetryAfterFailedHeadN1(String failedUrl) {
+        try {
+            if (advanceEndedLibPathN1 == null || advanceEndedLibPathN1.length() == 0) return;
+            if (failedUrl == null || failedUrl.length() == 0) return;
+            java.util.ArrayList<java.io.File> shelf = shelfFiles79();
+            if (shelf == null) return;
+            java.io.File failedFile00 = offlineFileFor(failedUrl);
+            int endedIdx = -1, failedIdx = -1;
+            for (int i = 0; i < shelf.size(); i++) {
+                String p = shelf.get(i).getAbsolutePath();
+                if (p.equals(advanceEndedLibPathN1)) endedIdx = i;
+                if (p.equals(failedUrl)) failedIdx = i;
+                else if (failedFile00 != null && failedFile00.getAbsolutePath().equals(p)) failedIdx = i;
+            }
+            if (endedIdx < 0 || failedIdx < 0) return;
+            if (failedIdx > endedIdx) return;
+            advanceLibRetryAnchorN1 = advanceEndedLibPathN1;
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            sp.edit().putString("lastLibPath", advanceEndedLibPathN1)
+                    .putString("lastLibTitle", advanceEndedLibTitleN1 != null ? advanceEndedLibTitleN1 : "").apply();
+        } catch (Exception ignored) {}
+    }
     // Re-invoke the matching advance past the failed talk. Returns false when
     // this failure is not an auto-advance (a manual pick's failure is the user's
     // to retry, v1.58) or the per-session cap is spent; the caller then falls
@@ -4404,10 +4494,13 @@ public class AudioService extends Service {
         int kind = autoAdvanceKindN1;
         autoAdvancedN1 = false; autoAdvanceKindN1 = 0;
         // v13.99 (audit-1365 S4): re-anchor the retry when the failed pick
-        // sits at or before the ended talk (see the helper) — the Room
-        // advance only; a library retry (kind 2) anchors on currentUrl over
-        // the shelf, not on lastUrl, so it is left alone.
-        if (kind != 2) reanchorRetryAfterFailedHeadN1(failedUrl);
+        // sits at or before the ended talk (see the helpers) — the Room
+        // advance anchors on the persisted lastUrl, the library advance on
+        // the in-memory currentUrl over the shelf, so each kind has its own
+        // helper: the Room one rewrites lastUrl, the library one hands the
+        // re-invoked advance a separate anchor field (v14.00).
+        if (kind == 2) reanchorLibRetryAfterFailedHeadN1(failedUrl);
+        else reanchorRetryAfterFailedHeadN1(failedUrl);
         // v13.94: suppress trail recording for this re-invoke — its
         // tails' "ended" talk is the failed one (lastUrl names it),
         // and the outer invocation's push already owns the genuinely
