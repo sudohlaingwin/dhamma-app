@@ -782,6 +782,20 @@ public class AudioService extends Service {
     // button went dead. Remember the error so the Room can retry
     // the same talk instead of toggling a dead player.
     private boolean trackError = false;
+    // v13.60 (audit-1370 N1): a failed AUTO-advanced talk used to stall the session in
+    // silence — the advance picked a dead talk, prepare failed, and nothing ever
+    // re-advanced. The three background advances arm immediately before their play()
+    // call (kind 1 = Room advance58, 2 = library advance79); play() consumes the arm
+    // into the durable flag, so any other play() entry is a manual pick and clears
+    // the flag instead. onError / the sync setDataSource catch then re-invoke the
+    // matching advance with the failed URL in the one-shot skip set, so it picks the
+    // FOLLOWING talk; a per-session attempt cap (3) stops a list of dead URLs from
+    // spinning. A sounding talk (onPrepared) or a manual play ends the chain.
+    private boolean autoAdvancedN1 = false;
+    private int autoAdvanceKindN1 = 0;
+    private int autoAdvanceArmN1 = 0;
+    private int autoAdvanceFailsN1 = 0;
+    private final java.util.HashSet<String> autoAdvanceSkipN1 = new java.util.HashSet<String>();
     // v13.14 (Q10, queue audit sim1327): the background queue-head advances pop the head
     // and persist the shortened queue BEFORE play() — and play() prepares async, so a
     // prepare failure (onError, or the synchronous setDataSource catch) left the head
@@ -1714,6 +1728,15 @@ public class AudioService extends Service {
         liveEnded = false;
         trackError = false;
         liveTrackError = false; // v13.53: a fresh play clears the failure
+        // v13.60 (audit-1370 N1): consume the auto-advance arm — see the field note.
+        // A manual play() entry clears the chain (attempt count + skip set included):
+        // the user took over, so a later failure of this talk is theirs to retry.
+        if (autoAdvanceArmN1 != 0) {
+            autoAdvancedN1 = true; autoAdvanceKindN1 = autoAdvanceArmN1; autoAdvanceArmN1 = 0;
+        } else {
+            autoAdvancedN1 = false; autoAdvanceKindN1 = 0;
+            autoAdvanceFailsN1 = 0; autoAdvanceSkipN1.clear();
+        }
         // v13.14 (Q10): a fresh play supersedes any pending queue head — a tap in
         // the prepare window moves on like any other talk, and the armed head must
         // never be restored by a later failure of this new talk. The background pop
@@ -1788,6 +1811,10 @@ public class AudioService extends Service {
                     // talk sounds, so the pop/wipe that armed the restore stands.
                     clearPendingQueueHead14();
                     clearPendingForward14();
+                    // v13.60 (audit-1370 N1): the talk sounds — the auto-advance failure
+                    // chain is over: clear the flag, the attempt count and the skip set.
+                    autoAdvancedN1 = false; autoAdvanceKindN1 = 0;
+                    autoAdvanceFailsN1 = 0; autoAdvanceSkipN1.clear();
                     // v1.69: a pause tapped while buffering (see
                     // holdPaused) means this talk opens paused, not
                     // playing — and a paused talk never gains a sleep
@@ -1979,6 +2006,10 @@ public class AudioService extends Service {
                     showNotification(false);
                     notifyState();
                     updateSession();
+                    // v13.60 (audit-1370 N1): a failed auto-advanced talk re-advances past
+                    // it (skip set + cap); a manual pick's failure falls through to the
+                    // existing stop state, unchanged.
+                    tryAutoAdvanceRetryN1(currentUrl);
                     return true;
                 }
             });
@@ -2060,6 +2091,11 @@ public class AudioService extends Service {
             showNotification(false);
             notifyState();
             updateSession();
+            // v13.60 (audit-1370 N1): same re-advance as onError above — a sync
+            // setDataSource failure of an auto-advanced talk moves on to the
+            // following talk instead of stalling. Bounded by the same cap; the
+            // caller's own trackError fall-throughs still apply after this returns.
+            tryAutoAdvanceRetryN1(currentUrl);
         }
     }
 
@@ -2978,11 +3014,16 @@ public class AudioService extends Service {
             // falls through to the queue / redo / list logic below, unanchored.
             // v11.77: a manual Next ignores repeat-one, like the Room's manual Next
             // (consumeNextIndex) — repeat-one is an end-of-talk loop order, not a Next order.
-            if (!manual && mode == 2 && shelf.get(idx).exists()) {
+            // v13.60 (audit-1370 N1): repeat-one replays the sounding file — skip it when
+            // it is in the one-shot skip set (it just failed as an auto-advance) and fall
+            // through to the queue / redo / list logic below, like the Room side.
+            if (!manual && mode == 2 && shelf.get(idx).exists()
+                    && !autoAdvanceSkippedN1(shelf.get(idx).getAbsolutePath())) {
                 java.io.File rep = shelf.get(idx);
                 sp.edit().putString("lastKind", "lib")
                         .putString("lastLibPath", rep.getAbsolutePath())
                         .putString("lastLibTitle", libTitleFor79(rep)).apply();
+                if (!manual) armAutoAdvanceN1(2);
                 play(rep.getAbsolutePath(), libTitleFor79(rep));
                 return;
             }
@@ -3047,6 +3088,7 @@ public class AudioService extends Service {
                     // v12.20: resume the pick's saved spot (Room-
                     // advance parity) — the 2-arg play restarted a
                     // half-heard file at 0.
+                    if (!manual) armAutoAdvanceN1(2);
                     play(headFile.getAbsolutePath(), libTitleFor79(headFile),
                             savedSeekFor(headFile.getAbsolutePath()));
                     // v13.14 (Q10): the head is already popped above — if this prepare
@@ -3150,6 +3192,7 @@ public class AudioService extends Service {
                         noteLibTrail11(currentUrl, redoFile19.getAbsolutePath());
                         // v12.20: resume the pick's saved spot (see
                         // the queue-head branch above).
+                        if (!manual) armAutoAdvanceN1(2);
                         play(redoFile19.getAbsolutePath(), libTitleFor79(redoFile19),
                                 savedSeekFor(redoFile19.getAbsolutePath()));
                         return;
@@ -3204,6 +3247,7 @@ public class AudioService extends Service {
             sp.edit().remove("libRedoTrail").apply();
             // v12.20: resume the pick's saved spot (see the
             // queue-head branch above).
+            if (!manual) armAutoAdvanceN1(2);
             play(next.getAbsolutePath(), libTitleFor79(next),
                     savedSeekFor(next.getAbsolutePath()));
         } catch (Exception ignored) {}
@@ -3486,7 +3530,19 @@ public class AudioService extends Service {
             int nx;
             // v11.77: a manual Next ignores repeat-one, like the Room's manual Next
             // (consumeNextIndex) — repeat-one is an end-of-talk loop order, not a Next order.
-            if (mode == 2 && !manual) nx = idx;
+            // v13.60 (audit-1370 N1): repeat-one is the one branch that replays the
+            // sounding talk — every other branch already skips it (queue head via
+            // currentUrl, forward via fIdx == idx, shuffle via the pool, list-next
+            // via idx + 1). When the sounding talk is in the one-shot skip set it
+            // just failed, so fall through to the queue / forward / shuffle /
+            // list-next pick below instead of replaying the dead talk.
+            boolean repOne60 = (mode == 2 && !manual);
+            if (repOne60) {
+                int sTab60 = lines[idx].indexOf('\t');
+                String sUrl60 = sTab60 >= 0 ? lines[idx].substring(0, sTab60) : lines[idx];
+                if (autoAdvanceSkippedN1(sUrl60)) repOne60 = false;
+            }
+            if (repOne60) nx = idx;
             else {
                 // v7.63: queue head before plain list-next, but
                 // only with autoplay on (the Room's autoplay-off
@@ -3572,6 +3628,7 @@ public class AudioService extends Service {
                             sp.edit().putString("forwardHistoryRaw", fSb.toString()).apply();
                             sp.edit().putString("lastUrl", fUrl).putString("lastTitle", fTitle).apply();
                             Prefs.savePlayList(this, raw, fIdx);
+                            if (!manual) armAutoAdvanceN1(1);
                             play(fLocal != null ? fLocal.getAbsolutePath() : fUrl, fTitle, savedSeekFor(fUrl));
                             // v13.54 (audit-1372 F2): the popped stack was written above
                             // BEFORE play() — the old code never checked whether the new
@@ -3643,6 +3700,7 @@ public class AudioService extends Service {
                     // 0 like the foreground does; savedSeekFor used to resume it from the last
                     // checkpoint, so a headset/car Next mid-talk replayed the last seconds and
                     // looked dead. Auto-advance is unaffected (completion already cleared the spot).
+                    if (!manual) armAutoAdvanceN1(1);
                     play(pLocal != null ? pLocal.getAbsolutePath() : pUrl, pTitle, pick == idx ? 0 : savedSeekFor(pUrl));
                     // v11.20: background shuffle play is a branch
                     // too — same forward invalidation as the queue
@@ -3734,6 +3792,7 @@ public class AudioService extends Service {
             // v11.84: a single-talk wrap (nx == idx) is the same replay as mode 2 — a manual Next
             // must restart from 0, not from the last checkpoint (same dead-Next symptom as the
             // shuffle branch above).
+            if (!manual) armAutoAdvanceN1(1);
             play(nLocal != null ? nLocal.getAbsolutePath() : nUrl, nTitle, (mode == 2 || nx == idx) ? 0 : savedSeekFor(nUrl));
             // v11.20: background list-next play is a branch too
             // — same forward invalidation as the branches above.
@@ -3925,6 +3984,40 @@ public class AudioService extends Service {
     // If play() already failed synchronously (trackError
     // set by its setDataSource catch) the head is restored at once instead of arming,
     // because no onError will ever fire for it.
+    // v13.60 (audit-1370 N1): arm / skip-test / retry for the failed-auto-advance
+    // chain (see the field note above trackError).
+    private void armAutoAdvanceN1(int kind) { autoAdvanceArmN1 = kind; }
+    // One-shot skip test: the failed URL is recorded in whatever form play()
+    // received it (stream URL or offline path), so a candidate stream URL matches
+    // directly or through its offline file — the same cross-form rule as
+    // pendingHeadMatches14 below.
+    private boolean autoAdvanceSkippedN1(String streamUrl) {
+        if (streamUrl == null || streamUrl.length() == 0) return false;
+        if (autoAdvanceSkipN1.contains(streamUrl)) return true;
+        java.io.File f = offlineFileFor(streamUrl);
+        return f != null && autoAdvanceSkipN1.contains(f.getAbsolutePath());
+    }
+    // Re-invoke the matching advance past the failed talk. Returns false when
+    // this failure is not an auto-advance (a manual pick's failure is the user's
+    // to retry, v1.58) or the per-session cap is spent; the caller then falls
+    // through to the existing stop state. The flag is cleared BEFORE the re-invoke
+    // so the re-invoked advance's own arm is the only live one — a return without
+    // playing leaves nothing stale behind.
+    private boolean tryAutoAdvanceRetryN1(String failedUrl) {
+        if (!autoAdvancedN1) return false;
+        if (failedUrl != null && failedUrl.length() > 0) autoAdvanceSkipN1.add(failedUrl);
+        autoAdvanceFailsN1++;
+        if (autoAdvanceFailsN1 > 3) {
+            autoAdvancedN1 = false; autoAdvanceKindN1 = 0;
+            autoAdvanceFailsN1 = 0; autoAdvanceSkipN1.clear();
+            return false;
+        }
+        int kind = autoAdvanceKindN1;
+        autoAdvancedN1 = false; autoAdvanceKindN1 = 0;
+        if (kind == 2) advanceLibInBackground79(false);
+        else advanceInBackground58(false);
+        return true;
+    }
     private void armPendingQueueHead14(String line, String owner) {
         if (line == null || line.length() == 0) return;
         pendingQueueHeadLine14 = line;
@@ -4173,6 +4266,7 @@ public class AudioService extends Service {
             }
             if (headPos < 0) return unknownSeen52;
             if (headForeign11) {
+                if (!manual) armAutoAdvanceN1(1);
                 return playForeignHead11(sp, qLines, headPos, headUrl, headSayadaw11,
                         headTitle11, headCat11, lines, null);
             }
@@ -4208,6 +4302,7 @@ public class AudioService extends Service {
             }
             sp.edit().putString("lastUrl", headUrl).putString("lastTitle", hTitle).apply();
             Prefs.savePlayList(this, raw, headIdx);
+            if (!manual) armAutoAdvanceN1(1);
             play(hLocal != null ? hLocal.getAbsolutePath() : headUrl, hTitle, savedSeekFor(headUrl));
             // v13.14 (Q10): the head is already popped above — if this prepare fails,
             // the head returns to the front of lastName's queue instead of vanishing.
