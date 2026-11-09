@@ -2456,8 +2456,15 @@ public class DownloadedActivity extends Activity {
                 String lTitle = rsp.getString("lastLibTitle", "");
                 String lPath = rsp.getString("lastLibPath", "");
                 boolean lMatch = false;
+                // v14.01 (Settings F1 library half, all four strips):
+                // a 0-byte file is not downloaded — the strip used to
+                // claim ⬇ for a dead stub. The in-progress exception
+                // keeps the v11.58 order (a live job reads ⏳ before
+                // any exists/length check, like stripResumeDownloadMark).
                 if (lPath.length() > 0 && rPos > 5000 && rSavedUrl.length() > 0
-                        && new java.io.File(lPath).isFile()) {
+                        && new java.io.File(lPath).isFile()
+                        && (new java.io.File(lPath).length() > 0
+                            || Fx.stripInProgressDlFilenames(DownloadedActivity.this, rsp).contains(new java.io.File(lPath).getName()))) {
                     if (rSavedUrl.equals(lPath)) lMatch = true;
                     else {
                         try {

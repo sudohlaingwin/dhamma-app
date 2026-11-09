@@ -1826,8 +1826,15 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                 String lTitle = sp.getString("lastLibTitle", "");
                 String lPath = sp.getString("lastLibPath", "");
                 boolean lMatch = false;
+                // v14.01 (Settings F1 library half, all four strips):
+                // a 0-byte file is not downloaded — the strip used to
+                // claim ⬇ for a dead stub. The in-progress exception
+                // keeps the v11.58 order (a live job reads ⏳ before
+                // any exists/length check, like stripResumeDownloadMark).
                 if (lPath.length() > 0 && rPos > 5000 && rSavedUrl.length() > 0
-                        && new java.io.File(lPath).isFile()) {
+                        && new java.io.File(lPath).isFile()
+                        && (new java.io.File(lPath).length() > 0
+                            || Fx.stripInProgressDlFilenames(SettingsActivity.this, sp).contains(new java.io.File(lPath).getName()))) {
                     if (rSavedUrl.equals(lPath)) lMatch = true;
                     else {
                         try {
