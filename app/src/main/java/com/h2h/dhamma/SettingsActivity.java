@@ -2328,6 +2328,24 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         // Only the other talks' spots go, which is what was asked.
         e.remove("talkPosMap");
         e.remove("forwardHistoryRaw").remove("hiddenTrail");
+        // v14.04 (L7, sixth pass slice 3): the same class, stats side —
+        // a Settings clear erased history / resume spots / trails but
+        // left "listenStats66" behind, while the History screen's own
+        // clear path (HistoryActivity.confirmClear) calls
+        // Prefs.statsClear — so after a clear the total hours / day
+        // streak / most-listened sayadaw / recent rows still counted
+        // exactly the listens just erased, and statsRecent still
+        // listed erased talks. One removal in this same editor, both
+        // branches like the keys above: the live talk's stats ride
+        // Prefs.statsAdd's read-modify-write (AudioService
+        // flushListenStats re-reads the store on every 60-banked-
+        // second flush and on pause/stop/end/destroy), so a mid-play
+        // clear keeps only what the live talk banks after it — the
+        // flush lands the banked seconds on the fresh store and
+        // nothing pre-clear resurrects, same reasoning as talkPosMap
+        // (v8.33). The literal mirrors Prefs.STATS_KEY; sim1472 pins
+        // the two equal.
+        e.remove("listenStats66");
         // v8.35: the same class, library side — libPrevTrail /
         // libTrailNext are the downloaded library's heard-history
         // stacks (AudioService.noteLibTrail11 calls them "the shelf
