@@ -4824,7 +4824,14 @@ public class AudioService extends Service {
     // talk abandons the write, as does a second handover superseding this one), and
     // an already-stored identical list is a no-op (a Room that loaded the same list
     // meanwhile makes the write identical — same page order, same "url<TAB>title"
-    // lines — so no clobber is possible). A failed or empty fetch abandons silently.
+    // lines — so no clobber is possible; v13.77: that claim was FALSE until the
+    // v12.87 mirror in fetchPlayListRaw13 below — the service kept the first title
+    // for a duplicated URL while the Room replaced a filename fallback with a later
+    // real title, so the raws differed for identical HTML and the worker overwrote
+    // the Room's fresher list. The remaining content-change race — the site edits
+    // the page between the worker's fetch and the Room's load — needs a
+    // write-generation guard and stays a follow-up slice). A failed or empty fetch
+    // abandons silently.
     private void refreshPlayListForForeign13(final String sayadaw13, final String page13,
             final String headUrl13) {
         if (sayadaw13 == null || sayadaw13.length() == 0 || page13 == null
@@ -4885,6 +4892,9 @@ public class AudioService extends Service {
                     java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.DOTALL);
             java.util.regex.Matcher m13 = pat13.matcher(html13);
             java.util.Map<String, String> seen13 = new java.util.LinkedHashMap<String, String>();
+            // v13.77 (audit-1364 suggested slice): v12.87 mirror — URLs whose
+            // stored title is the filename fallback (see the dedup below).
+            java.util.Set<String> seenFallback13 = new java.util.HashSet<String>();
             while (m13.find()) {
                 String href13 = m13.group(1) != null ? m13.group(1)
                         : (m13.group(2) != null ? m13.group(2) : m13.group(3));
@@ -4892,6 +4902,10 @@ public class AudioService extends Service {
                 if (href13.indexOf('\n') >= 0 || href13.indexOf('\r') >= 0
                         || href13.indexOf('\t') >= 0) continue;
                 String title13 = cleanTitle13(m13.group(4));
+                // v13.77: remember whether this title is the filename fallback,
+                // so a later duplicate link with a real title can replace it
+                // (the Room loader's v12.87 rule, mirrored here).
+                boolean titleFallback13 = title13.length() == 0;
                 if (title13.length() == 0)
                     title13 = decodePct13(href13.substring(href13.lastIndexOf('/') + 1));
                 String abs13;
@@ -4899,7 +4913,21 @@ public class AudioService extends Service {
                     abs13 = new java.net.URL(base13, href13.replace("&amp;", "&")
                             .replace(" ", "%20")).toString();
                 } catch (Exception ignored) { continue; }
-                if (!seen13.containsKey(abs13)) seen13.put(abs13, title13);
+                // v13.77: a duplicate URL keeps the first title — unless the
+                // first was the filename fallback and this one is a real title,
+                // which replaces it (Room v12.87, mirrored). Before this the
+                // service kept the first title unconditionally, so its raw
+                // differed from the Room's for identical HTML and the
+                // identical-list guard in refreshPlayListForForeign13 could
+                // not stop the worker overwriting a fresher Room-loaded list
+                // with filename titles.
+                if (!seen13.containsKey(abs13)) {
+                    seen13.put(abs13, title13);
+                    if (titleFallback13) seenFallback13.add(abs13);
+                } else if (!titleFallback13 && seenFallback13.contains(abs13)) {
+                    seen13.put(abs13, title13);
+                    seenFallback13.remove(abs13);
+                }
             }
             StringBuilder sb13 = new StringBuilder();
             for (java.util.Map.Entry<String, String> e13 : seen13.entrySet()) {
