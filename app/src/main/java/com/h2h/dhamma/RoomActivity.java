@@ -11500,45 +11500,10 @@ if (snd67q >= 0) currentIndex = snd67q;
         // same-talk replay/resume still keeps its altar, and a
         // failed stream now keeps the old one too.
         requestThemeForTalk(talks.get(idx).url);
-        // v5.16: record the talk being left on the shuffle history
-        // (prevIdx was captured at the top of playIndex, before any
-        // move). The already-holding early return above never
-        // reaches here, so a re-tap of the sounding talk pushes
-        // nothing; a history-back play consumes its marker instead
-        // of pushing (see historyBackUrl), so stepping back twice
-        // walks further back instead of bouncing forward.
-        if (historyBackUrl != null && historyBackUrl.equals(talks.get(idx).url)) {
-            historyBackUrl = null;
-            // v8.26: the back-step really plays, so record the talk
-            // left behind as the forward step (see the field note).
-            // A gate-cancel never reaches here, so a cancelled
-            // back-step pushes nothing — the v8.15 restore of the
-            // popped prevHistory entry stays exact, with no forward
-            // entry to undo. The already-holding branch above never
-            // reaches here either, so a back-step landing on an
-            // already-sounding talk records no phantom forward step.
-            if (prevIdx >= 0 && prevIdx < talks.size() && !talks.get(prevIdx).url.equals(talks.get(idx).url)) {
-                pushForwardHistory26(talks.get(prevIdx).url);
-            }
-        } else {
-            if (prevIdx >= 0 && prevIdx < talks.size() && !talks.get(prevIdx).url.equals(talks.get(idx).url)) {
-                pushPrevHistory16(talks.get(prevIdx).url);
-            }
-            // v8.26: forward pop-or-clear — playing the pending
-            // forward target consumes it (the remaining stack stays,
-            // so repeated Next walks forward through every back-step
-            // in order, and playIndex's prev push above lets a later
-            // Previous walk back again); any other fresh play is a
-            // branch that invalidates the redo, so the stack clears.
-            // The already-holding branch never reaches here, so a
-            // re-tap of the sounding talk clears nothing.
-            if (!forwardHistory.isEmpty() && forwardHistory.get(forwardHistory.size() - 1).equals(talks.get(idx).url)) {
-                forwardHistory.remove(forwardHistory.size() - 1);
-            } else {
-                forwardHistory.clear();
-            }
-            saveForwardHistory27(); // v8.27: always, even empty -- see the field note
-        }
+        // v13.58 (audit-1371 F3): the v5.16 history block used to sit
+        // here, before the queue branch — moved past it, beside the
+        // fresh-play anchors below, so a queued-then-discarded tap
+        // writes no history. See the block there.
         // v8.22: fresh-Room switch seed — the v8.21 walk-back
         // chain's last hole. playIndex only ever pushed the
         // INDEXED talk being left (prevIdx), so in a FRESH Room
@@ -11858,6 +11823,60 @@ if (snd67q >= 0) currentIndex = snd67q;
         // v13.52: ahead-drop via the helper — a restored failed head
         // ahead of the tapped talk is preserved (F2), not deleted.
         if (qi >= 0) { dropQueueAheadUpTo(qi); saveQueue(null, true); if (adapter != null) adapter.notifyDataSetChanged(); }
+        // v13.58 (audit-1371 F3): the v5.16 history block moved here,
+        // past the service==null queue branch, beside the other
+        // real-play anchors — it used to run BEFORE the queue, so a
+        // tap queued for the bind already pushed prevHistory and
+        // popped/cleared forwardHistory, and a tap discarded before
+        // the bind (sayadaw switch, Room finish) left a phantom
+        // Previous step and a wiped redo stack behind; a history-back
+        // tap was worse — the marker was consumed pre-bind, so the
+        // bind replay took the else branch (phantom prev push +
+        // forward wipe) and a switch discard lost the popped entry
+        // outright (its restore sees a null marker). Now a queued tap
+        // writes no history at all: the bind replay runs this block
+        // exactly once, like a bound tap, and a discarded tap leaves
+        // prev/forward/historyBackUrl untouched. The gate-cancel and
+        // already-holding rules are unchanged (neither reaches here).
+        // v5.16: record the talk being left on the shuffle history
+        // (prevIdx was captured at the top of playIndex, before any
+        // move). The already-holding early return above never
+        // reaches here, so a re-tap of the sounding talk pushes
+        // nothing; a history-back play consumes its marker instead
+        // of pushing (see historyBackUrl), so stepping back twice
+        // walks further back instead of bouncing forward.
+        if (historyBackUrl != null && historyBackUrl.equals(talks.get(idx).url)) {
+            historyBackUrl = null;
+            // v8.26: the back-step really plays, so record the talk
+            // left behind as the forward step (see the field note).
+            // A gate-cancel never reaches here, so a cancelled
+            // back-step pushes nothing — the v8.15 restore of the
+            // popped prevHistory entry stays exact, with no forward
+            // entry to undo. The already-holding branch above never
+            // reaches here either, so a back-step landing on an
+            // already-sounding talk records no phantom forward step.
+            if (prevIdx >= 0 && prevIdx < talks.size() && !talks.get(prevIdx).url.equals(talks.get(idx).url)) {
+                pushForwardHistory26(talks.get(prevIdx).url);
+            }
+        } else {
+            if (prevIdx >= 0 && prevIdx < talks.size() && !talks.get(prevIdx).url.equals(talks.get(idx).url)) {
+                pushPrevHistory16(talks.get(prevIdx).url);
+            }
+            // v8.26: forward pop-or-clear — playing the pending
+            // forward target consumes it (the remaining stack stays,
+            // so repeated Next walks forward through every back-step
+            // in order, and playIndex's prev push above lets a later
+            // Previous walk back again); any other fresh play is a
+            // branch that invalidates the redo, so the stack clears.
+            // The already-holding branch never reaches here, so a
+            // re-tap of the sounding talk clears nothing.
+            if (!forwardHistory.isEmpty() && forwardHistory.get(forwardHistory.size() - 1).equals(talks.get(idx).url)) {
+                forwardHistory.remove(forwardHistory.size() - 1);
+            } else {
+                forwardHistory.clear();
+            }
+            saveForwardHistory27(); // v8.27: always, even empty -- see the field note
+        }
         // v8.23: play-point anchors deferred to real play — the
         // v8.22 fresh-Room seed's pre-bind boundary, closed.
         // The pre-bind call used to set currentIndex = idx and
