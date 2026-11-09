@@ -4340,6 +4340,14 @@ public class AudioService extends Service {
     }
     private void armPendingQueueHead14(String line, String owner) {
         if (line == null || line.length() == 0) return;
+        // v13.97 (fifth pass slice 7, queue-head async hole): the arm below
+        // overwrites the slot — if the N1 retry's own arm already armed a
+        // different head (the retry pick, still buffering), a restore-at-once
+        // in this arm would destroy that record and the pick would be lost
+        // from its queue on a later async failure (sim1456 S7). Keep the
+        // displaced record aside and re-arm it after any restore below.
+        String prevLine97 = pendingQueueHeadLine14;
+        String prevOwner97 = pendingQueueHeadOwner14;
         pendingQueueHeadLine14 = line;
         pendingQueueHeadOwner14 = owner;
         // v13.74 (audit-1366 F3): the record was in-memory only, so a stop
@@ -4355,7 +4363,8 @@ public class AudioService extends Service {
                     .putString("pendingHeadOwner14", owner == null ? "" : owner)
                     .apply();
         } catch (Exception ignored) {}
-        if (trackError) restorePendingQueueHead14();
+        boolean restored97 = false;
+        if (trackError) { restorePendingQueueHead14(); restored97 = true; }
         // v13.95 (audit-1366 F1-sync): a sync-failed head whose N1 retry
         // already moved on — the retry pick's play() cleared trackError
         // before this arm ran, so the leg above never fires and the head
@@ -4374,7 +4383,30 @@ public class AudioService extends Service {
             QueueEntry qe95 = QueueEntry.parse(line);
             if (qe95 != null && qe95.url.length() > 0
                     && autoAdvanceSkippedN1(qe95.url)
-                    && !pendingHeadMatches14(currentUrl)) restorePendingQueueHead14();
+                    && !pendingHeadMatches14(currentUrl)) { restorePendingQueueHead14(); restored97 = true; }
+        }
+        // v13.97: re-arm the record displaced by the restore above — a
+        // different head only (the same head's record is the one just
+        // restored, and re-arming it would strand it pending after it is
+        // already back in its queue). The retry pick's failure window
+        // stays open exactly as its own arm established it: onError
+        // restores it on an async failure, onPrepared clears it when it
+        // sounds. The persisted pair is re-written too, so a process
+        // death in the pick's prepare window still recovers it (v13.74).
+        if (restored97 && prevLine97 != null && prevLine97.length() > 0) {
+            QueueEntry prevQe97 = QueueEntry.parse(prevLine97);
+            QueueEntry qe97 = QueueEntry.parse(line);
+            if (prevQe97 != null && qe97 != null && prevQe97.url.length() > 0
+                    && !prevQe97.url.equals(qe97.url)) {
+                pendingQueueHeadLine14 = prevLine97;
+                pendingQueueHeadOwner14 = prevOwner97;
+                try {
+                    getSharedPreferences("dhamma", MODE_PRIVATE).edit()
+                            .putString("pendingHeadLine14", prevLine97)
+                            .putString("pendingHeadOwner14", prevOwner97 == null ? "" : prevOwner97)
+                            .apply();
+                } catch (Exception ignored) {}
+            }
         }
     }
 
