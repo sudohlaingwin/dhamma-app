@@ -3913,10 +3913,16 @@ public class AudioService extends Service {
     // list position (v12.11): the playList stays the old list
     // and the next hidden end defers instead of chaining.
     // v13.14 (Q10): arm the pending queue head after a background advance popped it
-    // and called play(). Called ONLY by the background pop sites (advanceQueueHead63
-    // in-list, playForeignHead11, advanceLibInBackground79, the Case-B download
-    // re-fire) — never by a manual tap, so a manually picked talk that fails is
-    // never silently re-queued. If play() already failed synchronously (trackError
+    // and called play(). Called only when a queue head was popped by an advance:
+    // the background pop sites (advanceQueueHead63 in-list, playForeignHead11,
+    // advanceLibInBackground79, the Case-B download re-fire) — and a manual Next
+    // (widget / headset / car / notification) that skips to the head, which reaches
+    // the same pop sites via advanceInBackground58(true) / advanceLibInBackground79(true).
+    // v13.61 (audit-1374 F-J): the old wording was wrong — a manual Next DOES arm
+    // (it pops the head, same as an auto-advance). The real invariant is narrower:
+    // never by a direct row tap / direct play of a picked talk, so a manually picked
+    // talk that fails is never silently re-queued.
+    // If play() already failed synchronously (trackError
     // set by its setDataSource catch) the head is restored at once instead of arming,
     // because no onError will ever fire for it.
     private void armPendingQueueHead14(String line, String owner) {
@@ -3991,10 +3997,15 @@ public class AudioService extends Service {
     }
 
     // v13.54 (audit-1372 F2): arm the pending forward-stack restore after a
-    // background advance mutated forwardHistoryRaw and called play(). Called ONLY
-    // by the background advance tails (advanceInBackground58 forward / shuffle /
-    // list-next, advanceQueueHead63 in-list, playForeignHead11, Case B re-fire) —
-    // never by a manual tap. If play() already failed synchronously (trackError
+    // background advance mutated forwardHistoryRaw and called play(). Called only
+    // by the advance tails (advanceInBackground58 forward / shuffle / list-next,
+    // advanceQueueHead63 in-list, playForeignHead11, Case B re-fire) — whether the
+    // advance was a background auto-advance or a manual Next (widget / headset /
+    // car / notification), which reaches the same tails via advanceInBackground58(true).
+    // v13.61 (audit-1374 F-J): the old wording was wrong —
+    // a manual Next DOES reach these tails. The real invariant is narrower: never
+    // by a direct row tap / direct play of a picked talk, which mutates no forward
+    // stack and so has nothing to arm. If play() already failed synchronously (trackError
     // set by its setDataSource catch) the stack is restored at once instead of
     // arming, because no onError will ever fire for it. Post-play mutation sites
     // skip their wipe entirely on trackError and arm only on success, so the
