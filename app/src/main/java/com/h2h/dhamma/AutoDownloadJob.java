@@ -434,11 +434,19 @@ public class AutoDownloadJob extends JobService {
                             android.os.Environment.DIRECTORY_DOWNLOADS),
                     "Dhamma");
             String mapped = mappedFileName68(url);
-            if (mapped != null && new java.io.File(dir, mapped).exists())
+            // v13.66 (audit-1369 F8 length-gate pass): a 0-byte file is not
+            // downloaded — the old exists-only check skipped the URL on every
+            // later auto-download run, so a failed download that left a dead
+            // file was NEVER re-downloaded. This is the one 0-byte site that
+            // blocked recovery; with the gate the next run re-enqueues it.
+            if (mapped != null && new java.io.File(dir, mapped).exists()
+                    && new java.io.File(dir, mapped).length() > 0)
                 return true;
+            // v13.66: same length gate as the mapped branch above (audit-1369 F8).
             for (String name : fileNameCandidates68(url)) {
                 if (fileClaimedByOther68(name, url)) continue;
-                if (new java.io.File(dir, name).exists()) return true;
+                if (new java.io.File(dir, name).exists()
+                        && new java.io.File(dir, name).length() > 0) return true;
             }
         } catch (Exception ignored) {}
         return false;

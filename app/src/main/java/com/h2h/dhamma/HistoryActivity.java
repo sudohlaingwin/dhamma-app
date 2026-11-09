@@ -291,7 +291,12 @@ public class HistoryActivity extends Activity {
         // route below, which toasts as it does today.
         if (e.url.startsWith("/")) {
             java.io.File f = new java.io.File(e.url);
-            if (f.isFile()) {
+            // v13.66 (audit-1369 F9 length-gate pass): a 0-byte file is not a
+            // playable download — the old exists-only check fired
+            // ACTION_PLAY_FILE with the dead path (and wrote the poisoned
+            // lib anchors first). A dead file now falls through to the Room
+            // route below, which toasts as it does for a deleted file.
+            if (f.isFile() && f.length() > 0) {
                 String title = e.title != null && e.title.length() > 0
                         ? e.title : f.getName();
                 getSharedPreferences("dhamma", MODE_PRIVATE).edit()

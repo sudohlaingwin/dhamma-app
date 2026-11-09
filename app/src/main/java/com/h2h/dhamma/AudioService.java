@@ -1262,8 +1262,15 @@ public class AudioService extends Service {
         if ("lib".equals(sp.getString("lastKind", ""))) {
             String libPath = sp.getString("lastLibPath", "");
             String libTitle = sp.getString("lastLibTitle", "");
+            // v13.66 (audit-1369 F5 length-gate pass): a 0-byte file is not a
+            // library session to resume — the old exists-only check replayed
+            // the dead file on every widget tap (the anchor-poisoning loop:
+            // a failed tap saved lastLibPath first). A dead file now falls
+            // through to the Room anchors below, like a deleted one; the
+            // play()-top guard (v13.64) is the backstop if one ever slips in.
             if (libPath.length() > 0 && libTitle.length() > 0
-                    && new java.io.File(libPath).isFile()) {
+                    && new java.io.File(libPath).isFile()
+                    && new java.io.File(libPath).length() > 0) {
                 play(libPath, libTitle, savedSeekFor(libPath));
                 showNotification(false);
                 return true;

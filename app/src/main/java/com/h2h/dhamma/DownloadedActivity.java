@@ -5968,8 +5968,15 @@ public class DownloadedActivity extends Activity {
                 // empty library.
                 java.util.Set<String> inProg = inProgressDlFilenames();
                 for (File f : files) {
+                    // v13.66 (audit-1369 F1 length-gate pass): a 0-byte file left by a
+                    // failed / cancelled / killed download is not a finished download —
+                    // the v11.55 in-progress exclusion only covers live jobs, so the dead
+                    // file used to sit in this list as if downloaded and every play path
+                    // could pick it. The play()-top guard (v13.64) already refuses it
+                    // with the accurate toast; this gate keeps it out of the library
+                    // altogether, mirroring refreshDownloadedSet :3393 / Settings :2524.
                     if (f.isFile() && f.getName().toLowerCase().endsWith(".mp3")
-                            && !inProg.contains(f.getName())) mp3s.add(f);
+                            && !inProg.contains(f.getName()) && f.length() > 0) mp3s.add(f);
                 }
                 Collections.sort(mp3s, new Comparator<File>() {
                     @Override public int compare(File a, File b) {

@@ -1446,11 +1446,20 @@ public class Fx {
                         && inProg.contains(name))
                     return STRIP_DL_QUEUED;
             }
-            if (map.has(url) && stripDownloadsFile(map.getString(url)).exists())
+            // v13.66 (audit-1369 F6 length-gate pass): a 0-byte file is not
+            // downloaded — the strip used to show the download mark for a dead
+            // file while the Room (length-gated downloadedFiles set) showed no
+            // mark and the service refused to play it offline. The length()
+            // stat is the same cost class as exists() on the 1s strip tick
+            // (v1.57). stripResumeDownloadMark below carries the same gate.
+            if (map.has(url) && stripDownloadsFile(map.getString(url)).exists()
+                    && stripDownloadsFile(map.getString(url)).length() > 0)
                 return STRIP_DL_HIDDEN;
+            // v13.66: same length gate as the mapped branch above (audit-1369 F6).
             for (String name : stripFileNameCandidates(url)) {
                 if (!stripFileClaimedByOther(sp, name, url)
-                        && stripDownloadsFile(name).exists())
+                        && stripDownloadsFile(name).exists()
+                        && stripDownloadsFile(name).length() > 0)
                     return STRIP_DL_HIDDEN;
             }
             org.json.JSONArray queued = new org.json.JSONArray(sp.getString("dlQueued", "[]"));
@@ -1579,11 +1588,15 @@ public class Fx {
                         && inProg.contains(name))
                     return " \u23F3";
             }
-            if (map.has(url) && stripDownloadsFile(map.getString(url)).exists())
+            // v13.66: same length gate as stripDownloadState above (audit-1369 F6).
+            if (map.has(url) && stripDownloadsFile(map.getString(url)).exists()
+                    && stripDownloadsFile(map.getString(url)).length() > 0)
                 return " \u2B07";
+            // v13.66: same length gate as stripDownloadState above (audit-1369 F6).
             for (String name : stripFileNameCandidates(url)) {
                 if (!stripFileClaimedByOther(sp, name, url)
-                        && stripDownloadsFile(name).exists())
+                        && stripDownloadsFile(name).exists()
+                        && stripDownloadsFile(name).length() > 0)
                     return " \u2B07";
             }
             org.json.JSONArray queued = new org.json.JSONArray(sp.getString("dlQueued", "[]"));

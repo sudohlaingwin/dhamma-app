@@ -4001,13 +4001,19 @@ if (snd65 >= 0) currentIndex = snd65;
             // streams until its download really lands.
             if (mapped != null && !inProgressDlFiles.contains(mapped)) {
                 java.io.File f = downloadsFile(mapped);
-                if (f.exists()) return f.getAbsolutePath();
+                // v13.66 (audit-1369 F2 length-gate pass): a 0-byte file is not an
+                // offline file — returning its path made the data-saver gate read
+                // "downloaded" (no ask shown) and the play path fail offline with
+                // the wrong toast. Mirrors AudioService.offlineFileFor, which has
+                // gated on length since v13.48.
+                if (f.exists() && f.length() > 0) return f.getAbsolutePath();
             }
+            // v13.66: same length gate as the mapped branch above (audit-1369 F2).
             for (String name : fileNameCandidates(url)) {
                 if (fileClaimedByOther(name, url)) continue;
                 if (inProgressDlFiles.contains(name)) continue;
                 java.io.File f = downloadsFile(name);
-                if (f.exists()) return f.getAbsolutePath();
+                if (f.exists() && f.length() > 0) return f.getAbsolutePath();
             }
             return null;
         } catch (Exception ignored) { return null; }

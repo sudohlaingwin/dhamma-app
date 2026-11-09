@@ -1017,7 +1017,13 @@ public class TalksActivity extends Activity {
             java.io.File dir = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
                     android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
             String mapped = talkMappedFileName(url);
+            // v13.66 (audit-1369 F7 length-gate pass): a 0-byte file is not
+            // downloaded — the chooser used to show the download mark for a dead
+            // file, and the Talks prune's downloaded leg then dropped its queue
+            // mark, so the talk read as "downloaded" while Room and the service
+            // both refused it offline. The in-progress exclusion stays first.
             if (mapped != null && new java.io.File(dir, mapped).exists()
+                    && new java.io.File(dir, mapped).length() > 0
                     && !talkInProgressDlNames.contains(mapped)) {
                 talkDlFileCache.put(url, mapped); // v5.59: remember the match for the ↺ hint
                 return true;
@@ -1043,9 +1049,11 @@ public class TalksActivity extends Activity {
             // in the loop below still applies.
             if (stripped.length() > 0 && !stripped.toLowerCase().endsWith(".mp3"))
                 cands.add(stripped + ".mp3");
+            // v13.66: same length gate as the mapped branch above (audit-1369 F7).
             for (String name : cands)
                 if (!talkFileClaimedByOther(name, url) && !talkInProgressDlNames.contains(name)
-                        && new java.io.File(dir, name).exists()) {
+                        && new java.io.File(dir, name).exists()
+                        && new java.io.File(dir, name).length() > 0) {
                     talkDlFileCache.put(url, name); // v5.59: remember the match for the ↺ hint
                     return true;
                 }
