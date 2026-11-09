@@ -1764,6 +1764,43 @@ public class AudioService extends Service {
         // advance that armed it, so its failure must never resurrect the old stack.
         clearPendingQueueHead14();
         clearPendingForward14();
+        // v13.64 (audit-1370 C1/C2/N4/N5): a 0-byte local file must never reach
+        // prepare — it used to fail in onError with the misleading "check
+        // internet" toast and no auto-advance (C1). One shared guard here, at
+        // the top of play(), closes it for every direct-path caller at once:
+        // library row taps (C2), History ACTION_PLAY_FILE + widget resume (N4),
+        // library background advance (N5). A local path must be a real file
+        // with length() > 0. On refusal set trackError (the Room retry reads
+        // it), toast the accurate file-gone line, refresh notification/state/
+        // session like onError does, and re-advance past the dead talk when
+        // this play came from an auto-advance (N1 retry) — then return before
+        // touching the player. The identity + N1 arm + pending-head/forward
+        // clears above already ran, so the failure lands on the dead talk,
+        // not the old one; a stream URL is never a File and passes through.
+        if (url != null) {
+            java.io.File localFileC1 = new java.io.File(url);
+            if (localFileC1.isFile() && localFileC1.length() <= 0) {
+                trackError = true;
+                liveTrackError = true; // v13.53: mirror for the unbound Room
+                livePlaying = false; // v4.16
+                prepared = false;
+                bufferedPercent = 0; // a refused talk has nothing buffered
+                if (listener != null) listener.onError(Lang.t(AudioService.this, "dl_file_gone"));
+                try {
+                    android.widget.Toast.makeText(AudioService.this,
+                            Lang.t(AudioService.this, "dl_file_gone"), android.widget.Toast.LENGTH_LONG).show();
+                } catch (Exception ignored) {}
+                showNotification(false);
+                notifyState();
+                updateSession();
+                // v13.60 (audit-1370 N1): same re-advance as onError — a 0-byte
+                // library pick reached through the background advance skips to
+                // the following talk instead of stalling; a manual pick's failure
+                // falls through to the existing stop state, unchanged.
+                tryAutoAdvanceRetryN1(currentUrl);
+                return;
+            }
+        }
         holdPaused = false;
         // v10.87: a pending focus-gain auto-resume belongs to the OLD
         // talk, not this one — a transient loss (call) during talk A
