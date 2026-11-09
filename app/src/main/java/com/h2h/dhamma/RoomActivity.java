@@ -5975,11 +5975,7 @@ if (snd65 >= 0) currentIndex = snd65;
                         // end handled, mirror the sleep branches above (a one-shot stop is
                         // consumed with its toast; a bedtime stop stays silent), mark the talk
                         // played under its URL, and say the autoplay-off "finished" word with
-                        // the service's title. The advance half is a separate design decision
-                        // (audit-1363 F2 follow-up): the poll cannot call the private
-                        // advanceInBackground58 — either expose a service advance entry (the
-                        // v13.76 two-arg form already skips the foreground defer) or advance
-                        // from the service's saved list via playIndex.
+                        // the service's title — or advance, when one is due (v13.80 below).
                         endedHandledFor = curEnded;
                         try {
                             java.util.Set<String> played = new java.util.HashSet<String>(
@@ -5998,6 +5994,57 @@ if (snd65 >= 0) currentIndex = snd65;
                                     Toast.LENGTH_LONG).show();
                         } else if (service.isSleepStopPending()) {
                             // No toast, no advance — playback stops at bedtime, as above.
+                        } else if (Prefs.repeatMode(RoomActivity.this) == 2
+                                || Prefs.autoplay(RoomActivity.this)) {
+                            // v13.80 (audit-1363 F2 advance half): delegate the advance to the
+                            // service — it advances from its saved list (lastUrl anchor), which
+                            // still names the sounding talk even though this Room's list does
+                            // not. Repeat-one outranks autoplay-off here exactly as in the
+                            // nameable branch above; autoplay-off + not-repeat-one falls to
+                            // the stop below. play() clears trackEnded synchronously, so the
+                            // read below is the delegate's verdict, not a buffering race.
+                            service.advanceFromRoomPoll();
+                            if (!service.hasTrackEnded() && !service.hasTrackError()) {
+                                // The next talk started (or the same talk replayed) — announce
+                                // it like the nameable advance above ("နောက်: ", replay word
+                                // for a same-talk repeat-one replay); the poll's resync
+                                // correctors adopt the new sounding talk on the next tick.
+                                adapter.notifyDataSetChanged();
+                                String newUrl80 = service.getCurrentUrl();
+                                String newTitle80 = service.getCurrentTitle();
+                                String showTitle80 = newTitle80 != null && newTitle80.length() > 0 ? newTitle80 : (newUrl80 != null ? newUrl80 : curEnded);
+                                if (newUrl80 != null && newUrl80.equals(curEnded)) {
+                                    Toast.makeText(RoomActivity.this,
+                                            Lang.t(RoomActivity.this, "replay_prefix") + showTitle80,
+                                            Toast.LENGTH_SHORT).show();
+                                } else {
+                                    Toast.makeText(RoomActivity.this,
+                                            Lang.t(RoomActivity.this, "next_prefix") + (favSet != null && newUrl80 != null && favSet.contains(newUrl80) ? "★ " : "") + showTitle80,
+                                            Toast.LENGTH_SHORT).show();
+                                }
+                            } else if (!service.hasTrackError()) {
+                                // The delegate stopped without playing — repeat-off at the last
+                                // talk, a data-gated pick, or an unfindable sounding line. A
+                                // gated pick recorded its await in the service (v13.75), and
+                                // play() clears the record, so a value here is this end's gate:
+                                // say the gate word so the listener taps the next talk (or its
+                                // Wi-Fi download re-fires the advance); otherwise the finished
+                                // word, same text as the autoplay-off branch above.
+                                adapter.notifyDataSetChanged();
+                                String await80 = AudioService.awaitAdvanceUrl(RoomActivity.this);
+                                if (await80 != null && await80.length() > 0) {
+                                    Toast.makeText(RoomActivity.this,
+                                            Lang.t(RoomActivity.this, "mobile_no_autoplay"),
+                                            Toast.LENGTH_LONG).show();
+                                } else {
+                                    String endedTitle80 = service.getCurrentTitle();
+                                    Toast.makeText(RoomActivity.this,
+                                            Lang.t(RoomActivity.this, "dl_finished_prefix") + (endedTitle80 != null && endedTitle80.length() > 0 ? endedTitle80 : curEnded),
+                                            Toast.LENGTH_SHORT).show();
+                                }
+                            }
+                            // else: trackError — the service already toasted the failure
+                            // (0-byte refusal / prepare error); stay silent here.
                         } else {
                             adapter.notifyDataSetChanged();
                             String endedTitle79 = service.getCurrentTitle();

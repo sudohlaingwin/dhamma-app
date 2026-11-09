@@ -263,6 +263,19 @@ public class AudioService extends Service {
         } catch (Exception ignored) {}
     }
 
+    // v13.80 (audit-1363 F2 advance half): read the deferred-advance record
+    // the Room's unnameable-end branch checks after delegating — a non-empty
+    // URL means the delegate stopped on a data-gated pick (the gated branches
+    // record it before returning); empty means it stopped for another reason
+    // (repeat-off at the last talk, unfindable sounding line). play() clears
+    // the record, so a value read here belongs to this end, never a stale one.
+    public static String awaitAdvanceUrl(android.content.Context c) {
+        try {
+            return c.getSharedPreferences("dhamma", android.content.Context.MODE_PRIVATE)
+                    .getString(AWAIT_URL10, "");
+        } catch (Exception ignored) { return ""; }
+    }
+
     // v12.62 (AudioService audit Finding 4): the in-progress download
     // filenames are now cached — offlineFileFor() + shelfFiles79()
     // used to re-run a full DownloadManager query (every download
@@ -3582,6 +3595,22 @@ public class AudioService extends Service {
 
     private void advanceInBackground58(boolean manual) {
         advanceInBackground58(manual, false);
+    }
+
+    // v13.80 (audit-1363 F2 advance half): the Room poll's unnameable-end branch
+    // delegates here — the ended talk is not in the Room's list, so the poll
+    // cannot advance from its own stale list (playIndex indexes talks). The
+    // service advances from its saved list anchored on lastUrl
+    // (soundingLineIndex96), never on the Room's currentIndex, with the full
+    // policy: repeat-one replay, hand-queue head (incl. foreign), forward
+    // stack, shuffle, list-next, repeat-off stop, data gates (await recorded).
+    // The two-arg form skips the foreground defer: the poll already consumed
+    // this end (endedHandledFor set before the call, cleared only while
+    // playing), so nothing is pre-empted — the same skip the v13.76 awaited
+    // re-fire already relies on. Autoplay-off + not-repeat-one never reaches
+    // here (the Room gates the call); the service re-checks anyway.
+    public void advanceFromRoomPoll() {
+        advanceInBackground58(false, true);
     }
 
     // v13.76 (audit-1364 F3): the awaited re-fire's fall-through calls this
