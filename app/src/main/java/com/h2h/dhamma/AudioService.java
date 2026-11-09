@@ -691,6 +691,14 @@ public class AudioService extends Service {
     // cleared in stopPlayback()/onDestroy() with the other live
     // fields; null means "no track", never "unknown".
     public static volatile String liveTitle = null;
+    // v13.53 (audit-1374 F-D): live failure mirror for the unbound Room —
+    // the bound screens read hasTrackError(), but a Room whose bind is
+    // pending/dropped cannot ask, so the failed talk's identity (the
+    // currentUrl + this flag) is mirrored here like liveHasTrack/liveUrl.
+    // Set beside every trackError set, cleared beside every trackError
+    // clear plus onCreate/onDestroy, so a stale true never outlives the
+    // session. Read only through the Room's failedUrl() unbound leg.
+    public static volatile boolean liveTrackError = false;
     // v4.25: a sleep timer is armed or pause-suspended — Main's mini
     // strip reads this on its 1s tick (no bind, like livePlaying),
     // because the strip otherwise cannot know a timer is running.
@@ -1046,6 +1054,7 @@ public class AudioService extends Service {
         super.onCreate();
         liveSession = true; // v3.91: a session is loaded from here on
         liveHasTrack = false; // v10.40: fresh instance, no track yet
+        liveTrackError = false; // v13.53: fresh instance, no failure yet
         posHandler.postDelayed(posRunnable, 15000);
         try {
             // v11.00: the five download-complete receivers already
@@ -1651,6 +1660,7 @@ public class AudioService extends Service {
         trackEnded = false;
         liveEnded = false;
         trackError = false;
+        liveTrackError = false; // v13.53: a fresh play clears the failure
         // v13.14 (Q10): a fresh play supersedes any pending queue head — a tap in
         // the prepare window moves on like any other talk, and the armed head must
         // never be restored by a later failure of this new talk. The background pop
@@ -1881,6 +1891,7 @@ public class AudioService extends Service {
             player.setOnErrorListener(new MediaPlayer.OnErrorListener() {
                 @Override public boolean onError(MediaPlayer mp, int what, int extra) {
                     trackError = true;
+                    liveTrackError = true; // v13.53: mirror for the unbound Room
                     livePlaying = false; // v4.16
                     // v13.14 (Q10): a failed background queue head goes back to the
                     // front of its queue instead of vanishing — but only if this
@@ -1961,6 +1972,7 @@ public class AudioService extends Service {
             notifyState();
         } catch (Exception e) {
             trackError = true;
+            liveTrackError = true; // v13.53: mirror for the unbound Room
             livePlaying = false; // v4.16
 
             if (listener != null) listener.onError(Lang.t(AudioService.this, "play_failed_prefix") + e.getMessage());
@@ -3460,6 +3472,14 @@ public class AudioService extends Service {
                     String fwdRaw = sp.getString("forwardHistoryRaw", "");
                     if (fwdRaw != null && fwdRaw.length() > 0) {
                         String[] fwdParts = fwdRaw.split("\n");
+                        // v13.53 (audit-1375 F-M, settled): a forward top naming a
+                        // previously-failed talk is re-offered here — the :3477
+                        // just-ended exclusion only covers the live failure, and
+                        // once another talk plays the flag clears with no record
+                        // kept. Deliberate retry, same call as the Room F-C
+                        // single-talk wrap: the replay fails again with the
+                        // standard toast and consumes the entry, so the Next
+                        // after it moves on. No failure memory is kept.
                         for (int fi = fwdParts.length - 1; fi >= 0; fi--) {
                             String fu = fwdParts[fi];
                             if (fu == null || fu.length() == 0) continue;
@@ -5165,6 +5185,7 @@ public class AudioService extends Service {
         // stale pending seek behind, so the cleared session still
         // carried the dead track's state into whatever came next.
         trackError = false;
+        liveTrackError = false; // v13.53: mirror clears with the flag
         pendingSeekMs = 0;
         holdPaused = false;
         // v1.57: an explicit "stop completely" really ends the session —
@@ -6657,6 +6678,7 @@ public class AudioService extends Service {
         flushListenStats();
         liveSession = false; // v3.91: no session, no auto-scroll
         liveHasTrack = false; // v10.40: no session, no track
+        liveTrackError = false; // v13.53 (audit-1375 F-N): stop paths that bypass stopAndClear (ACTION_STOP, task-removed) still reach onDestroy, so a static mirror must clear here or it sits stale-true until the next onCreate
         liveEnded = false;
         liveSleepEndOfTalk = false; // v4.82: no session, no one-shot
         if (mediaSession != null) {

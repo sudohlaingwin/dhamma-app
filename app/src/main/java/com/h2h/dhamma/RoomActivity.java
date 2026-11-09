@@ -4004,21 +4004,48 @@ if (snd65 >= 0) currentIndex = snd65;
     // incidentally, because onError never clears currentUrl so the
     // sounding identity still matched it (audit-1374 section 2). That
     // breaks wherever the identity breaks (forward step, scan misses,
-    // unbound windows). Bound only: the flag lives in the service, so
-    // an unbound Room returns null and keeps today's behaviour — the
-    // unbound leg (liveTrackError static) is a separate follow-up
-    // slice (audit-1374 F-D), not this one. Both URL forms: the
-    // service holds the stream URL for a failed stream but the local
-    // file path for a failed offline play (playIndex :11706 passes
-    // local when downloaded), so isFailedUrl reuses isCurrentTalk's
-    // localPathFor equivalence instead of a bare equals.
+    // unbound windows). Both URL forms: the service holds the stream
+    // URL for a failed stream but the local file path for a failed
+    // offline play (playIndex :11706 passes local when downloaded), so
+    // isFailedUrl reuses isCurrentTalk's localPathFor equivalence
+    // instead of a bare equals.
+    // v13.53 (audit-1374 F-D / audit-1375): the unbound leg. Bound,
+    // the flag lives in the service; unbound, the service mirrors it
+    // in the liveTrackError static, read exactly like the
+    // isSoundingTalk mirror below: live session + live track + live
+    // failure, lastKind "room", lastName == this sayadaw, then prefs
+    // lastUrl names the failed talk (every play-caller writes lastUrl
+    // before play(), and nothing rewrites it after a failure, so it
+    // stays the failed talk until the next play clears the flag).
+    // Own-room only: a failed foreign head writes lastName == its own
+    // sayadaw, so this gate returns null for it — documented gap, the
+    // foreign leg needs the owner threaded through isFailedUrl.
     private String failedUrl() {
-        if (service == null || !service.hasTrackError()) return null;
-        return service.getCurrentUrl();
+        if (service != null) {
+            if (!service.hasTrackError()) return null;
+            return service.getCurrentUrl();
+        }
+        if (!AudioService.liveSession || !AudioService.liveHasTrack || !AudioService.liveTrackError) return null;
+        try {
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            if (!"room".equals(sp.getString("lastKind", ""))) return null;
+            if (sayadawName == null || !sayadawName.equals(sp.getString("lastName", ""))) return null;
+            String last = sp.getString("lastUrl", "");
+            if (last == null || last.length() == 0) return null;
+            return last;
+        } catch (Exception ignored) { return null; }
     }
     private boolean isFailedUrl(String u) {
-        if (u == null || failedUrl() == null) return false;
-        return isCurrentTalk(u);
+        if (u == null) return false;
+        String failed = failedUrl();
+        if (failed == null) return false;
+        if (service != null) return isCurrentTalk(u);
+        // Unbound: compare u against the prefs lastUrl in both forms,
+        // mirroring isSoundingTalk's legs below.
+        if (failed.equals(u)) return true;
+        String local = localPathFor(u);
+        return local != null && local.equals(failed);
     }
 
     // v11.29: unbound-window sounding mirror for the two drop legs
@@ -10092,6 +10119,14 @@ if (snd67q >= 0) currentIndex = snd67q;
         // left can be the dead one, and Next must advance past it. The
         // entry stays on the stack (peek never pops), so Previous can
         // still reach it and a later successful play clears the flag.
+        // v13.53 (audit-1375 F-M, settled): the guard above is
+        // live-flag-only — once another talk plays, the flag clears
+        // and no record of the failure remains, so a forward top
+        // naming a previously-failed talk is re-offered on the next
+        // Next. That is a deliberate retry, not a bug (same call as
+        // the F-C single-talk wrap): one wasted replay + the standard
+        // failure toast, and the replay consumes the forward entry,
+        // so the Next after that moves on. No failure memory is kept.
         if (fwd26 >= 0 && !isFailedUrl(talks.get(fwd26).url)) return fwd26;
         // v4.36: shuffle — the hand queue above still outranks it
         // (a queued talk is an explicit order), but with no queue
