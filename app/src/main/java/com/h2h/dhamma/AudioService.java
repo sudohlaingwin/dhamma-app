@@ -963,13 +963,19 @@ public class AudioService extends Service {
     // gone with no retry: the talk vanished from the queue and the listener had to
     // re-queue it by hand. A popped head now stays "pending" until it actually sounds:
     // onPrepared clears the record; onError (or a synchronous play failure) puts the
-    // head line back at the FRONT of the queue it came from. Only the background
-    // advance pop sites set this record — a manual tap never does, so a manually
-    // picked talk that fails is never silently re-queued, and a fresh play() clears
-    // the record first (a tap in the prepare window supersedes the pending head like
-    // any other talk). The record is the exact persisted line, so a v2 head keeps
-    // its owner + title and returns to the right key: owner is the sayadaw key for a
-    // Room queue, null for the library queue.
+    // head line back at the FRONT of the queue it came from. The advance pop sites
+    // set this record — whether the advance was a background auto-advance or a manual
+    // Next (widget / headset / car / notification), which reaches the same pop sites
+    // via advanceInBackground58(true) / advanceLibInBackground79(true) — and a Room
+    // row tap on a QUEUED talk arms it too, via armManualQueueHead14 (v13.73, the
+    // drop IS the pop). The real invariant is narrower (audit-1374 F-J, fifth pass
+    // slice 13): never by a direct play of a picked LIST talk — it was never in the
+    // queue, so there is nothing to restore, and a manually picked list talk that
+    // fails is never silently re-queued. A fresh play() clears the record first (a
+    // tap in the prepare window supersedes the pending head like any other talk). The
+    // record is the exact persisted line, so a v2 head keeps its owner + title and
+    // returns to the right key: owner is the sayadaw key for a Room queue, null for
+    // the library queue.
     // v13.74 (audit-1366 F3): the arm is also persisted in prefs at arm time
     // (pendingHeadLine14 / pendingHeadOwner14) — a stop or process death in
     // the prepare window no longer loses the head; stopPlayback restores it
@@ -1002,12 +1008,17 @@ public class AudioService extends Service {
     // (contrast armPendingQueueHead14, which exists only for queue heads). A
     // mutated stack now stays "pending" until it actually sounds: onPrepared
     // clears the record; onError (or a synchronous play failure) writes the
-    // pre-mutation stack back. Only the background advance tails arm this record
-    // — a manual tap never does, and a fresh play() clears it first (a tap in the
-    // prepare window supersedes the pending stack like any other talk). The record
-    // keeps the post-mutation value + the history-clear generation, so the restore
-    // only fires when nothing else rewrote the key since the arm — a Room rewrite
-    // or a history clear drops the record instead of resurrecting a stale stack.
+    // pre-mutation stack back. The advance tails arm this record — whether the advance
+    // was a background auto-advance or a manual Next (widget / headset / car /
+    // notification), which reaches the same tails via advanceInBackground58(true)
+    // (audit-1374 F-J, fifth pass slice 13 — the old "only the background advance
+    // tails" wording was wrong); never by a direct row tap / direct play of a picked
+    // talk, which mutates no forward stack and so has nothing to arm. A fresh play()
+    // clears it first (a tap in the prepare window supersedes the pending stack like
+    // any other talk). The record keeps the post-mutation value + the history-clear
+    // generation, so the restore only fires when nothing else rewrote the key since
+    // the arm — a Room rewrite or a history clear drops the record instead of
+    // resurrecting a stale stack.
     private String pendingForwardBefore14 = null;
     private String pendingForwardAfter14 = null;
     private long pendingForwardGen14 = -1;
