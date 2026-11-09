@@ -551,7 +551,11 @@ public class AudioService extends Service {
                     }
                     return;
                 }
-                advanceInBackground58(false);
+                // v13.76 (audit-1364 F3): the fall-through passes fromAwaitedRefire
+                // so the foreground defer above does not swallow it (see the
+                // defer's comment) — the Room poll already consumed this end
+                // and cannot re-offer the head.
+                advanceInBackground58(false, true);
                 return;
             }
             // Case B: the head is a bare line in the new key — it plays now, so pop it
@@ -3567,6 +3571,13 @@ public class AudioService extends Service {
     }
 
     private void advanceInBackground58(boolean manual) {
+        advanceInBackground58(manual, false);
+    }
+
+    // v13.76 (audit-1364 F3): the awaited re-fire's fall-through calls this
+    // two-arg form with fromAwaitedRefire76 — see the foreground defer
+    // below. Every other caller keeps the one-arg form, defer intact.
+    private void advanceInBackground58(boolean manual, boolean fromAwaitedRefire76) {
         try {
             if (currentUrl == null || currentUrl.length() == 0) return;
             android.content.SharedPreferences sp =
@@ -3601,7 +3612,19 @@ public class AudioService extends Service {
             // press is a new listen; play() clears the flag).
             if (!manual && (sleepFading || sleepStopPending)) return;
             String topSd = RoomActivity.topRoomSayadaw;
-            if (!manual && topSd != null && topSd.equals(sp.getString("lastName", ""))) return;
+            // v13.76 (audit-1364 F3): the awaited re-fire's fall-through skips
+            // this defer — when playForeignHead11 failed before the anchor
+            // move, the old Room is still on top and lastName is still the
+            // old sayadaw, so the defer swallowed the recovery and the
+            // listener sat in silence. Skipping it here pre-empts nothing:
+            // the Room poll already consumed this end (endedHandledFor,
+            // cleared only while playing), so it will not re-offer the
+            // head; the fall-through re-consults the queue (a not-yet-popped
+            // head is retried once) and otherwise plays the next in-list
+            // talk. A natural end keeps the defer (one-arg form). The sleep
+            // guards below are NOT bypassed — the receiver checked them
+            // before the re-fire.
+            if (!manual && !fromAwaitedRefire76 && topSd != null && topSd.equals(sp.getString("lastName", ""))) return;
             if (!manual && isSleepEndOfTalk()) return;
             String raw = Prefs.playListRaw(this);
             if (raw == null || raw.length() == 0) return;
@@ -3689,11 +3712,20 @@ public class AudioService extends Service {
                             String fUrl = fTab >= 0 ? fLine.substring(0, fTab) : fLine;
                             if (fUrl.length() == 0) continue;
                             java.io.File fLocal = offlineFileFor(fUrl);
+                            String fTitle = fTab >= 0 ? fLine.substring(fTab + 1) : "";
                             if (Prefs.dataSaver(this) && !isWifi58() && fLocal == null) {
+                                // v13.75 (audit-1364 F2): record the gated pick here, in the
+                                // service — the Room poll's end block is the only other
+                                // recorder and it runs only when the same Room returns, so
+                                // a hidden end left the gated next unrecorded and a later
+                                // Wi-Fi download of it landed silently. The receiver
+                                // re-fires on the URL (v13.57: job -1 is unbound, URL is
+                                // the identity); the Room re-records the same values on
+                                // return, idempotent. Manual records too (same gap).
+                                awaitAdvanceSet(this, fUrl, fTitle);
                                 if (manual) toastGateDeferred58();
                                 return;
                             }
-                            String fTitle = fTab >= 0 ? fLine.substring(fTab + 1) : "";
                             // v11.95: a clear inside the read→play
                             // window (see clearGen95) — the pick
                             // comes from a pre-clear stack, so do
@@ -3775,6 +3807,10 @@ public class AudioService extends Service {
                     if (pUrl.length() == 0) return;
                     java.io.File pLocal = offlineFileFor(pUrl);
                     if (Prefs.dataSaver(this) && !isWifi58() && pLocal == null) {
+                        // v13.75 (audit-1364 F2): same service-side record as the forward
+                        // gate above — a hidden shuffle end left the gated pick
+                        // unrecorded, so its Wi-Fi download landed silently.
+                        awaitAdvanceSet(this, pUrl, pTitle);
                         if (manual) toastGateDeferred58();
                         return;
                     }
@@ -3851,6 +3887,10 @@ public class AudioService extends Service {
             if (nUrl.length() == 0) return;
             java.io.File nLocal = offlineFileFor(nUrl);
             if (Prefs.dataSaver(this) && !isWifi58() && nLocal == null) {
+                // v13.75 (audit-1364 F2): same service-side record as the forward /
+                // shuffle gates above — a hidden list-next end left the gated
+                // pick unrecorded, so its Wi-Fi download landed silently.
+                awaitAdvanceSet(this, nUrl, nTitle);
                 if (manual) toastGateDeferred58();
                 return;
             }
@@ -4441,6 +4481,15 @@ public class AudioService extends Service {
                         continue;
                     }
                     if (Prefs.dataSaver(this) && !isWifi58() && qf == null) {
+                        // v13.75 (audit-1364 F2): same service-side record, foreign
+                        // form — the Room's noteGatedForeignAdvanceTarget is the
+                        // only other recorder and it runs only when the old Room
+                        // returns; a hidden end left the gated foreign head
+                        // unrecorded, so its Wi-Fi download landed silently.
+                        // Title fallback mirrors the Room's (title, else URL).
+                        awaitAdvanceSetForeign(this, qu,
+                                qe.title != null && qe.title.length() > 0 ? qe.title : qu,
+                                qe.sayadaw);
                         if (manual) toastGateDeferred58();
                         return true;
                     }
@@ -4479,9 +4528,18 @@ public class AudioService extends Service {
                         headTitle11, headCat11, lines, null);
             }
             java.io.File hLocal = offlineFileFor(headUrl);
+            String hLine = lines[headIdx];
+            int hTab = hLine.indexOf('\t');
+            String hTitle = hTab >= 0 ? hLine.substring(hTab + 1) : "";
             if (Prefs.dataSaver(this) && !isWifi58() && hLocal == null) {
                 // v12.09: manual-only toast (see toastGateDeferred58) — a natural end still
                 // defers silently to the Room poll's gate toast on return.
+                // v13.75 (audit-1364 F2): same service-side record as the other
+                // gates — a hidden end with a gated queue head left it
+                // unrecorded, so its Wi-Fi download landed silently. The
+                // head is peeked, never popped (v7.23), so the receiver's
+                // re-fire still finds it first in the queue.
+                awaitAdvanceSet(this, headUrl, hTitle);
                 if (manual) toastGateDeferred58();
                 return true;
             }
@@ -4490,9 +4548,6 @@ public class AudioService extends Service {
                 if (i != headPos) rest.add(qLines[i]);
             }
             Prefs.saveQueue(this, lastName, rest);
-            String hLine = lines[headIdx];
-            int hTab = hLine.indexOf('\t');
-            String hTitle = hTab >= 0 ? hLine.substring(hTab + 1) : "";
             // v8.08: the ended talk's stream form, for the hidden
             // trail — currentUrl may be the offline path, so map it
             // back through the saved list exactly like the caller's
