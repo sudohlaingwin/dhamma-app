@@ -47,6 +47,15 @@ public class PlaylistActivity extends Activity {
     private BaseAdapter adapter;
     private boolean night;
     private java.util.Map<String, String[]> catCache;
+    // v14.06 (F4, sixth pass slice 5): rotation-restore track for
+    // the open new-list / delete-confirm dialogs - the dialog refs
+    // (+ the live EditText) let onSaveInstanceState read what is
+    // open; the dismiss listeners clear them on a normal close.
+    // curList itself is saved by key, like Settings' openPicker.
+    private AlertDialog newListDialog;
+    private EditText newListEdit;
+    private AlertDialog deleteDialog;
+    private String deleteListName;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -108,7 +117,28 @@ public class PlaylistActivity extends Activity {
                 }
             });
         }
-        showLists();
+        // v14.06 (F4, sixth pass slice 5): restore the rotation
+        // state - the plain curList field used to die with the
+        // recreate, and onCreate's bare showLists() dumped the
+        // user from an open list back to the lists screen. A
+        // restored list that no longer exists (deleted while the
+        // activity was away) falls back to the lists screen; the
+        // open dialogs come back too, same shape as
+        // SettingsActivity's openPicker restore.
+        String restoredList = savedInstanceState != null
+                ? savedInstanceState.getString("curList") : null;
+        if (restoredList != null
+                && Prefs.playlistNames(this).contains(restoredList))
+            showDetail(restoredList);
+        else showLists();
+        String restoredNew = savedInstanceState != null
+                ? savedInstanceState.getString("newListText") : null;
+        if (restoredNew != null) showNewListDialogWithText(restoredNew);
+        String restoredDel = savedInstanceState != null
+                ? savedInstanceState.getString("deleteList") : null;
+        if (restoredDel != null
+                && Prefs.playlistNames(this).contains(restoredDel))
+            confirmDeleteList(restoredDel);
     }
 
     @Override protected void onResume() {
@@ -122,6 +152,24 @@ public class PlaylistActivity extends Activity {
     @Override public void onBackPressed() {
         if (curList != null) { showLists(); return; }
         super.onBackPressed();
+    }
+
+    // v14.06 (F4): rotation state - the open list and any open
+    // dialog. onSaveInstanceState runs while the dialogs are
+    // still alive, so the typed new-list name reads live; the
+    // isShowing guards keep a normally-dismissed dialog from
+    // being saved as open. HistoryActivity needs none of this:
+    // it is stateless (refresh() in onCreate + onResume).
+    @Override protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        if (curList != null) outState.putString("curList", curList);
+        if (newListDialog != null && newListDialog.isShowing()
+                && newListEdit != null)
+            outState.putString("newListText",
+                    newListEdit.getText().toString());
+        if (deleteDialog != null && deleteDialog.isShowing()
+                && deleteListName != null)
+            outState.putString("deleteList", deleteListName);
     }
 
     private int titleColor() { return night ? 0xFFFFFFFF : 0xFF3B2314; }
@@ -242,7 +290,13 @@ public class PlaylistActivity extends Activity {
     }
 
     private void confirmDeleteList(final String name) {
-        new AlertDialog.Builder(this)
+        // v14.06 (F4): track the open dialog so rotation re-shows
+        // it instead of dropping the confirm - the name is saved
+        // in onSaveInstanceState and re-shown from onCreate; the
+        // dismiss listener clears the track so a normally-closed
+        // dialog is never mistaken for an open one.
+        deleteListName = name;
+        AlertDialog dlg = new AlertDialog.Builder(this)
                 .setTitle(Lang.t(this, "pl_delete_title"))
                 .setMessage(name)
                 .setPositiveButton(Lang.t(this, "pl_delete_btn"),
@@ -256,14 +310,33 @@ public class PlaylistActivity extends Activity {
                     }
                 })
                 .setNegativeButton(Lang.t(this, "btn_no_clear"), null)
-                .show();
+                .create();
+        dlg.setOnDismissListener(new DialogInterface.OnDismissListener() {
+            @Override public void onDismiss(DialogInterface d) {
+                deleteDialog = null;
+                deleteListName = null;
+            }
+        });
+        deleteDialog = dlg;
+        dlg.show();
     }
 
     private void showNewListDialog() {
+        showNewListDialogWithText(null);
+    }
+
+    // v14.06 (F4): the initial text is the rotation restore - a
+    // typed-but-unsaved name survives the recreate instead of
+    // being lost with the dialog. The dialog + its EditText are
+    // tracked so onSaveInstanceState can read the live text; the
+    // dismiss listener clears the track on a normal close.
+    private void showNewListDialogWithText(String initial) {
         final EditText et = new EditText(this);
         et.setHint(Lang.t(this, "pl_name_hint"));
         et.setSingleLine(true);
-        new AlertDialog.Builder(this)
+        if (initial != null) et.setText(initial);
+        newListEdit = et;
+        AlertDialog dlg = new AlertDialog.Builder(this)
                 .setTitle(Lang.t(this, "pl_new"))
                 .setView(et)
                 .setPositiveButton(Lang.t(this, "pl_create"),
@@ -306,7 +379,15 @@ public class PlaylistActivity extends Activity {
                     }
                 })
                 .setNegativeButton(Lang.t(this, "btn_no_clear"), null)
-                .show();
+                .create();
+        dlg.setOnDismissListener(new DialogInterface.OnDismissListener() {
+            @Override public void onDismiss(DialogInterface d) {
+                newListDialog = null;
+                newListEdit = null;
+            }
+        });
+        newListDialog = dlg;
+        dlg.show();
     }
 
     // Sayadaw -> {group, page_url, photo_url} from the bundled

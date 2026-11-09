@@ -38,19 +38,27 @@
         android:textColor="#FFFFFF"
         android:textSize="16sp"
         android:visibility="gone" />
-    <ListView
-        android:id="@+id/plList"
+    <!-- v14.06 (F5, sixth pass slice 5): same bottom-edge
+         empty text as History - the FrameLayout centers it in
+         the list area; ids unchanged, so refreshEmpty() works
+         as before. -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_marginTop="12dp"
-        android:layout_weight="1" />
-    <TextView
-        android:id="@+id/plEmpty"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:gravity="center"
-        android:textColor="@color/muted"
-        android:textSize="15sp"
-        android:visibility="gone" />
+        android:layout_weight="1">
+        <ListView
+            android:id="@+id/plList"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+        <TextView
+            android:id="@+id/plEmpty"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:textColor="@color/muted"
+            android:textSize="15sp"
+            android:visibility="gone" />
+    </FrameLayout>
 </LinearLayout>

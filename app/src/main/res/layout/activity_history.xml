@@ -125,19 +125,28 @@
         android:textColor="@color/maroon"
         android:textSize="16sp"
         android:textStyle="bold" />
-    <ListView
-        android:id="@+id/hsList"
+    <!-- v14.06 (F5, sixth pass slice 5): the empty text used to
+         sit AFTER the weight-1 list, so it rendered at the very
+         bottom of the screen. The FrameLayout centers it in the
+         list area instead; ids unchanged, so HistoryActivity's
+         manual visibility code works as before. -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_marginTop="8dp"
-        android:layout_weight="1" />
-    <TextView
-        android:id="@+id/hsEmpty"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:gravity="center"
-        android:textColor="@color/muted"
-        android:textSize="15sp"
-        android:visibility="gone" />
+        android:layout_weight="1">
+        <ListView
+            android:id="@+id/hsList"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+        <TextView
+            android:id="@+id/hsEmpty"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:textColor="@color/muted"
+            android:textSize="15sp"
+            android:visibility="gone" />
+    </FrameLayout>
 </LinearLayout>
