@@ -375,6 +375,16 @@ public class AudioService extends Service {
                     if (off != null) landed = off;
                 }
                 if (landed == null || !landed.exists() || landed.length() <= 0) {
+                    // v13.63 (audit-1370 N3): the gated next talk's download landed
+                    // as a 0-byte file — the refusal is correct (a 0-byte file must
+                    // never play), but abandoning the record in silence left playback
+                    // stopped after the ended talk with no explanation. Say so with
+                    // the accurate file-gone line before clearing the record.
+                    try {
+                        android.widget.Toast.makeText(AudioService.this,
+                                Lang.t(AudioService.this, "dl_file_gone"),
+                                android.widget.Toast.LENGTH_SHORT).show();
+                    } catch (Exception ignored) {}
                     awaitAdvanceClear(this);
                     return;
                 }
