@@ -11896,6 +11896,9 @@ if (snd67q >= 0) currentIndex = snd67q;
         // entry; a cancel or a Wi-Fi download choice never
         // reaches here, so the entry stays queued.
         int qi = queueLineIndexForUrl(talks.get(idx).url);
+        // v13.73 (audit-1366 F2): capture the queued line BEFORE the drop below —
+        // the arm after play() needs the exact persisted line (v2 owner + title).
+        String droppedLineF2 = (qi >= 0 && qi < queueUrls.size()) ? queueUrls.get(qi) : null;
         // v10.82: same shift bug as the already-holding branch
         // above — clear(0, qi) moved the tapped talk to index 0,
         // so remove(qi) then dropped a later talk (or crashed
@@ -11990,6 +11993,19 @@ if (snd67q >= 0) currentIndex = snd67q;
         // playback, no mobile data, same title and resume position.
         String local = localPathFor(t.url);
         service.play(local != null ? local : t.url, t.title, seekMs);
+        // v13.73 (audit-1366 F2): the drop above popped this talk out of the hand
+        // queue, so a prepare failure must put it back like the background pop
+        // sites do — arm the dropped line AFTER play() (play() clears the old
+        // record + the error flag first; a sync failure restores at once in the
+        // arm, an async failure in onError). Only when the line really left the
+        // queue: a retried failed head is preserved by the drop, so it needs no
+        // arm; a list talk (qi < 0) never entered the queue either. Owner is
+        // this Room's queue key — the line is restored under the key it was
+        // dropped from, foreign v2 line included. A gate-cancel never reaches
+        // here (the drop sits past the gate), so no stale arm survives a cancel.
+        if (droppedLineF2 != null && sayadawName != null && sayadawName.length() > 0
+                && queueLineIndexForUrl(t.url) < 0)
+            service.armManualQueueHead14(droppedLineF2, sayadawName);
         // v11.46: a bypassed STREAM play is a gate approval for
         // this talk's session — its later pauses must resume
         // without re-asking (the service gate checks this). An

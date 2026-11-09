@@ -499,6 +499,9 @@ public class AudioService extends Service {
                     for (int i = 0; i < newQLines12.length; i++) {
                         QueueEntry q12 = QueueEntry.parse(newQLines12[i]);
                         if (q12 == null || q12.url.length() == 0) continue;
+                        // v13.73 (audit-1366 F1, settled): the sounding talk is skipped
+                        // here in both forms — including a failed one, which is never
+                        // "next" (same direction as the Room's isFailedUrl, v13.52).
                         if (q12.url.equals(currentUrl)) continue;
                         java.io.File qf12 = offlineFileFor(q12.url);
                         if (qf12 != null && qf12.getAbsolutePath().equals(currentUrl)) continue;
@@ -645,6 +648,9 @@ public class AudioService extends Service {
             if (qe == null) continue;
             String qu = qe.url;
             if (qu.length() == 0) continue;
+            // v13.73 (audit-1366 F1, settled): the sounding talk is skipped here
+            // in both forms — including a failed one, which is never "next"
+            // (same direction as the Room's isFailedUrl, v13.52).
             if (qu.equals(currentUrl)) continue;
             java.io.File qf = offlineFileFor(qu);
             if (qf != null && qf.getAbsolutePath().equals(currentUrl)) continue;
@@ -4045,8 +4051,10 @@ public class AudioService extends Service {
     // the same pop sites via advanceInBackground58(true) / advanceLibInBackground79(true).
     // v13.61 (audit-1374 F-J): the old wording was wrong — a manual Next DOES arm
     // (it pops the head, same as an auto-advance). The real invariant is narrower:
-    // never by a direct row tap / direct play of a picked talk, so a manually picked
-    // talk that fails is never silently re-queued.
+    // never by a direct row tap / direct play of a picked LIST talk, so a manually
+    // picked list talk that fails is never silently re-queued. v13.73 (audit-1366
+    // F2): a row tap on a QUEUED talk DOES arm (via armManualQueueHead14) — the
+    // drop IS the pop, so the same failure window applies as a background pop.
     // If play() already failed synchronously (trackError
     // set by its setDataSource catch) the head is restored at once instead of arming,
     // because no onError will ever fire for it.
@@ -4089,6 +4097,18 @@ public class AudioService extends Service {
         pendingQueueHeadLine14 = line;
         pendingQueueHeadOwner14 = owner;
         if (trackError) restorePendingQueueHead14();
+    }
+
+    // v13.73 (audit-1366 F2): manual-play arm — the Room's playIndex drops a
+    // queued talk from the hand queue on real play, exactly like a background
+    // pop, so the same failure window applies: a prepare failure after the
+    // drop must put the line back. The Room calls this AFTER service.play()
+    // (play() clears the old record + the error flag first; a sync failure
+    // restores at once in the arm, an async failure in onError). A list talk
+    // never arms — it was never in the queue, so there is nothing to restore;
+    // a retried failed head the drop preserved never arms either (still queued).
+    public void armManualQueueHead14(String line, String owner) {
+        armPendingQueueHead14(line, owner);
     }
 
     // v13.14 (Q10): put a failed background queue head back at the FRONT of the queue
@@ -4318,6 +4338,9 @@ public class AudioService extends Service {
                 if (qe == null) continue;
                 String qu = qe.url;
                 if (qu.length() == 0) continue;
+                // v13.73 (audit-1366 F1, settled): the sounding talk is skipped
+                // here in both forms — including a failed one, which is never
+                // "next" (same direction as the Room's isFailedUrl, v13.52).
                 if (qu.equals(currentUrl)) continue;
                 java.io.File qf = offlineFileFor(qu);
                 if (qf != null && qf.getAbsolutePath().equals(currentUrl)) continue;
