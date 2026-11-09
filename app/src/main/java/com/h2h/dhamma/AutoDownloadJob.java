@@ -239,6 +239,26 @@ public class AutoDownloadJob extends JobService {
             // leak was HTML pages only), and a stop for lost
             // constraints never ended the run either.
             if (sStopRequested68 || !Fx.stripIsWifi(this)) break;
+            // v14.08 (audit-1367 L1): refresh the queue snapshot per
+            // sayadaw — the run snapshots dlQueued once at the top, so
+            // a foreground Talks/Room/strip enqueue landing after the
+            // snapshot but before this sayadaw's check was invisible
+            // to the job, and the job could enqueue the same talk a
+            // second time (one duplicate DownloadManager job for the
+            // same destination file). The Room gate's already-queued
+            // check reads dlQueued only (roomIsDlQueued + the gate's
+            // qa73 read), so the window is real for the Room path;
+            // the Talks path was already shielded by the file-exists
+            // leg. Re-reading fresh under DlLock and MERGING
+            // (add-only) can only add skips: a mark pruned elsewhere
+            // since the snapshot stays in the set for this run, so
+            // the worst case is a one-run delay before that talk is
+            // re-offered, never a lost download. The job's own
+            // enqueues below keep adding to the same set, so the
+            // merge never drops one.
+            synchronized (DlLock.LOCK) {
+                queued.addAll(readDlQueued68());
+            }
             lastChecked68 = name;
             try {
                 totalNew += checkSayadaw68(name,
