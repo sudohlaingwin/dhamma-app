@@ -2315,7 +2315,10 @@ public class TalksActivity extends Activity {
                 // v4.93: a restored search starts at the top of its
                 // results — the saved position means the full list.
                 // v4.94: same rule for a restored filter view.
-                if (searchQuery.length() == 0 && filterMode == 0 && scrollPos > 0 && scrollPos < scrollLimit) list.setSelection(scrollPos);
+                // v14.09 (Talks L1, sim1478): the same `list` local
+                // the v13.36 T5 guard protects at setAdapter — the
+                // restore-branch setSelection below it was bare.
+                if (list != null && searchQuery.length() == 0 && filterMode == 0 && scrollPos > 0 && scrollPos < scrollLimit) list.setSelection(scrollPos);
                 restored = true;
                 // v12.54: restore the return-scroll anchor saved above,
                 // so a rotation does not re-glide to the same talk.
@@ -2628,7 +2631,13 @@ public class TalksActivity extends Activity {
                 || (cachedLang != null && !Prefs.lang(this).equals(cachedLang));
         if (themeChanged && root != null) {
             Fx.themeDip(root, new Runnable() {
-                @Override public void run() { applyTheme(); }
+                // v14.09 (Talks L2, sim1478): the header's Up Next
+                // line reads talkQueue, and applyTheme refreshes
+                // it — so re-refresh the header here, after the
+                // dip's swap, or it keeps the pre-dip queue until
+                // the next tick (<=1s). The non-dip path below
+                // already refreshes the header after applyTheme.
+                @Override public void run() { applyTheme(); refreshFavHeader(); }
             });
         } else {
             applyTheme();
