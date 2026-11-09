@@ -11046,6 +11046,40 @@ if (snd67q >= 0) currentIndex = snd67q;
                                                 }
                                             } catch (Exception ignored) {}
                                             if (alreadyQueued73) {
+                                                // v13.57 (audit-1371 F2): the queued job may already
+                                                // have LANDED — a finished job yields no live id
+                                                // (liveDownloadIdFor counts RUNNING/PAUSED/PENDING
+                                                // only), so the bind below never fired and the
+                                                // deferred advance died silently behind the
+                                                // "already queued" toast: no later completion event
+                                                // can re-fire a download that already landed. If the
+                                                // file is on disk, play it now instead — the listener
+                                                // asked for this talk, the wait is over, and a fresh
+                                                // play() supersedes the await record in the service
+                                                // (AudioService :1655), so nothing can re-fire it
+                                                // later. The length guard matters: localPathFor
+                                                // returns a 0-byte file (audit-1368 F2, still open),
+                                                // so a bare non-null path is not proof the talk plays
+                                                // — only a non-empty file plays here. A talk that
+                                                // left the list (re-fetch) or a held talk in
+                                                // resumeMode falls through to the old toast+bind
+                                                // below: the record survives for a later service
+                                                // re-fire, and a held talk is never resumed as a
+                                                // stream here — the listener chose Wi-Fi, never
+                                                // mobile data, so resumeBypassGate (the stream
+                                                // answer's held path) would spend data unapproved,
+                                                // while playIndex would only re-mark it
+                                                // (already-holding).
+                                                String landed57 = localPathFor(t.url);
+                                                boolean landedOk57 = landed57 != null
+                                                        && new java.io.File(landed57).length() > 0;
+                                                int ri57 = landedOk57 ? talkIndexForUrl(t.url) : -1;
+                                                boolean held57 = resumeMode && service != null
+                                                        && service.hasTrack() && isCurrentTalk(t.url);
+                                                if (ri57 >= 0 && !held57) {
+                                                    playIndex(ri57, seekMs, true);
+                                                    return;
+                                                }
                                                 // v12.10: the queued job IS the awaited download when this talk
                                                 // is the deferred advance — bind its live id so the landing
                                                 // still re-fires (no fresh enqueue, so no fresh id exists).

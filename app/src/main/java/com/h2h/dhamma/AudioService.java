@@ -325,16 +325,20 @@ public class AudioService extends Service {
         try {
             android.content.SharedPreferences sp = getSharedPreferences("dhamma", MODE_PRIVATE);
             String awaitUrl = sp.getString(AWAIT_URL10, "");
-            long awaitJob = sp.getLong(AWAIT_JOB10, -1);
-            // Not our download (or nothing awaited, or no job bound yet): leave the
-            // record — its own job may still be in flight, and a later completion must
-            // still find it. The job id is NOT the identity check: a duplicate live job
-            // for the same URL (gate enqueue + a Talks batch/single enqueue, or a
-            // re-queue after a stall) can land first, and the bound job can fail while
-            // the other succeeds — v12.18: the COLUMN_URI check below is the identity
-            // (same URL = same talk), so a landing for the awaited URL re-fires
-            // whichever job carried it. A different URL still returns untouched.
-            if (awaitUrl.length() == 0 || awaitJob < 0) return;
+            // v13.57 (audit-1371 F2 second half + audit-1370 C3): the job id is
+            // NOT the identity check — the COLUMN_URI check below is (v12.18) —
+            // so a completion for the awaited URL re-fires even when no job was
+            // ever bound (awaitJob < 0): an unbound enqueue (audit-1368 F1 sites)
+            // or a gate re-queue whose bind never landed. Only an empty record
+            // returns early now; a different URL still returns untouched at the
+            // COLUMN_URI check, a failed download still keeps the record (the
+            // status check below), and a stale record is abandoned by the session
+            // guards below, so the relaxation cannot fire a wrong talk. The
+            // already-landed case still needs the Room-side bind-time check
+            // (v13.57, gate Wi-Fi branch): no completion event fires for a file
+            // that landed before any bind. The awaitJob read goes away with the
+            // guard — nothing below it ever used the id.
+            if (awaitUrl.length() == 0) return;
             android.app.DownloadManager dm = (android.app.DownloadManager)
                     getSystemService(android.content.Context.DOWNLOAD_SERVICE);
             if (dm == null) return;
