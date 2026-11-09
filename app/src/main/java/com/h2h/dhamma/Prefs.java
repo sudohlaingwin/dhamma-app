@@ -116,6 +116,16 @@ public class Prefs {
     public static void saveQueue(Context c, String sayadaw, java.util.ArrayList<String> urls) {
         migrateQueueKeys99(c);
         if (sayadaw == null || sayadaw.length() == 0) return;
+        // v13.55 (audit-1372 F3): the join lives in joinQueueLines11
+        // below so the foreign-head carry writes byte-identical lines.
+        sp(c).edit().putString(queueKeyFor99(c, sayadaw), joinQueueLines11(urls)).apply();
+    }
+
+    // v13.55 (audit-1372 F3): the newline-join shared by saveQueue above
+    // and the foreign-head carry below — one source of truth for the
+    // filter, so the carry can never drift from the plain save.
+    // Byte-identical output to the old inline loop in saveQueue.
+    private static String joinQueueLines11(java.util.ArrayList<String> urls) {
         StringBuilder sb = new StringBuilder();
         for (String u : urls) {
             if (u == null || u.length() == 0) continue;
@@ -139,7 +149,31 @@ public class Prefs {
             if (sb.length() > 0) sb.append("\n");
             sb.append(u);
         }
-        sp(c).edit().putString(queueKeyFor99(c, sayadaw), sb.toString()).apply();
+        return sb.toString();
+    }
+
+    // v13.55 (audit-1372 F3): the foreign-head queue carry — the rest of
+    // the queue travels to the new sayadaw's key and the old key is
+    // cleared — in ONE Editor transaction. playForeignHead11 used to do
+    // this as two saveQueue calls (two apply()s); a process death between
+    // them left the queue duplicated across both keys: the carried rest
+    // under the new sayadaw AND the full queue, head included, still
+    // under the old sayadaw, so a fresh Room for the old sayadaw
+    // re-offered talks already moved away. One apply() makes the carry
+    // atomic — either both keys land or neither does — and a death
+    // mid-carry leaves the pre-carry state, which the head restore
+    // (armPendingQueueHead14) already handles. Empty sides are skipped,
+    // exactly like saveQueue's early return; the same sayadaw on both
+    // sides still ends cleared, exactly like the old two writes.
+    public static void carryQueueForeign11(Context c, String toSayadaw,
+            java.util.ArrayList<String> carried, String fromSayadaw) {
+        migrateQueueKeys99(c);
+        SharedPreferences.Editor ed = sp(c).edit();
+        if (toSayadaw != null && toSayadaw.length() > 0)
+            ed.putString(queueKeyFor99(c, toSayadaw), joinQueueLines11(carried));
+        if (fromSayadaw != null && fromSayadaw.length() > 0)
+            ed.putString(queueKeyFor99(c, fromSayadaw), "");
+        ed.apply();
     }
 
     // v4.57: downloaded-library hand queue — one shared key, not

@@ -4344,8 +4344,16 @@ public class AudioService extends Service {
                 }
                 carried11.add(line11);
             }
-            Prefs.saveQueue(this, headSayadaw11, carried11);
-            Prefs.saveQueue(this, lastName, new java.util.ArrayList<String>());
+            // v13.55 (audit-1372 F3): the two saveQueue calls were two
+            // separate apply()s — a process death between them left the
+            // queue duplicated across both keys (carried rest under the
+            // new sayadaw AND the full queue, head included, still under
+            // the old sayadaw). One Editor transaction now — either both
+            // keys land or neither does; a death mid-carry leaves the
+            // pre-carry state, which the head restore below already
+            // handles (armPendingQueueHead14 returns the head to the NEW
+            // key's front — the key the rest travelled to).
+            Prefs.carryQueueForeign11(this, headSayadaw11, carried11, lastName);
             // v8.63 preview fallback: a title-less v2 line names its URL rather than blank.
             String hTitle11 = headTitle11 != null && headTitle11.length() > 0 ? headTitle11 : headUrl;
             String ended11 = null;
