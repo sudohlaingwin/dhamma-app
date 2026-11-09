@@ -4009,10 +4009,22 @@ public class TalksActivity extends Activity {
             // Resume strips show no clock (they return before the
             // live branch), so a flip there is invisible until the
             // next live session, which then shows the chosen mode.
+            // v13.82 (Talks F1): the flip is a no-op there — the sub
+            // line is only a clock control while a live session is
+            // showing (mirror of Main's v13.12 M7 guard).
             android.widget.TextView stripSub = findViewById(R.id.nowStripSub);
             if (stripSub != null) {
                 stripSub.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) {
+                        // v13.82 (Talks F1, sim1412): the flip is a live-mode
+                        // affordance only — a resume strip shows no
+                        // clock, so a flip there was invisible at tap
+                        // time and silently re-timed the next live
+                        // session. In resume mode (same live recheck
+                        // as the dismiss branch, v12.57) the tap is a
+                        // deliberate no-op instead of a silent mutation.
+                        // Mirror of Main's v13.12 M7 guard.
+                        if (talksResumeStripMode || !AudioService.liveSession || !AudioService.liveHasTrack) return;
                         Prefs.setStripClockRemaining(TalksActivity.this, !Prefs.stripClockRemaining(TalksActivity.this));
                         Fx.tap(TalksActivity.this);
                         syncTalksStrip();
