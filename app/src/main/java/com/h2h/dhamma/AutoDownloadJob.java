@@ -72,13 +72,28 @@ public class AutoDownloadJob extends JobService {
     // the guard through schedule(). A disabled toggle schedules
     // nothing (an existing job is left alone — the toggle-off path
     // cancels it explicitly).
+    // v14.11 (audit-1367 L3): the guard now compares the pending
+    // job's interval first. A persisted job survives app updates,
+    // so if a future version ever changed PERIOD_MS68, the old
+    // schedule-once return would keep the OLD rhythm forever —
+    // the new period would never take effect on an updating
+    // device. Only a period mismatch cancels + rebuilds; a
+    // matching interval still leaves the job (and its window)
+    // untouched, so the v12.75 behaviour is unchanged in the
+    // common case. getIntervalMillis() is API 24+ (minSdk 24)
+    // and returns 0 for a non-periodic job, which also mismatches
+    // and rebuilds — the fail-safe direction.
     public static void schedule(Context c) {
         try {
             if (c == null || !Prefs.autoDlEnabled(c)) return;
             JobScheduler js = (JobScheduler)
                     c.getSystemService(Context.JOB_SCHEDULER_SERVICE);
             if (js == null) return;
-            if (js.getPendingJob(JOB_ID_AUTO_DL68) != null) return;
+            JobInfo pending = js.getPendingJob(JOB_ID_AUTO_DL68);
+            if (pending != null) {
+                if (pending.getIntervalMillis() == PERIOD_MS68) return;
+                js.cancel(JOB_ID_AUTO_DL68);
+            }
             JobInfo info = new JobInfo.Builder(JOB_ID_AUTO_DL68,
                     new ComponentName(c, AutoDownloadJob.class))
                     .setRequiredNetworkType(JobInfo.NETWORK_TYPE_UNMETERED)
