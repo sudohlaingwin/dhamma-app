@@ -21,8 +21,14 @@ import android.content.Context;
 // NETWORK_TYPE_UNMETERED AND the run re-checks Wi-Fi itself
 // (Fx.stripIsWifi, the VPN-aware rule) before fetching anything.
 // One bad sayadaw page never kills the run (per-sayadaw
-// try/catch). No notification, no toast — the last-check status
-// lives only on the Settings screen. No new UI anywhere else.
+// try/catch). No in-app toast — the last-check status lives only on
+// the Settings screen; the system still posts one DownloadManager
+// "Download complete" notification per landed talk, because the
+// request uses VISIBILITY_VISIBLE_NOTIFY_COMPLETED (v13.71,
+// audit-1367 F6: the old "No notification" line was wrong about
+// that. VISIBILITY_HIDDEN would need the DOWNLOAD_WITHOUT_NOTIFICATION
+// permission, which the manifest does not declare, so the flag stays
+// and the comment now says so). No new UI anywhere else.
 public class AutoDownloadJob extends JobService {
     static final int JOB_ID_AUTO_DL68 = 6801;
     static final int JOB_ID_AUTO_DL_SEED68 = 6802;
@@ -101,6 +107,13 @@ public class AutoDownloadJob extends JobService {
                     .setRequiredNetworkType(JobInfo.NETWORK_TYPE_UNMETERED)
                     .setMinimumLatency(0)
                     .setOverrideDeadline(SEED_DEADLINE_MS68)
+                    // v13.71 (audit-1367 F5): the seed survives a reboot
+                    // now — without setPersisted the one-off seed vanished
+                    // on a reboot inside its ~1-minute window (or a process
+                    // death mid-seed-run) and the next periodic run, up to
+                    // 6h later, was the only cover. RECEIVE_BOOT_COMPLETED
+                    // is already declared for the persisted periodic job.
+                    .setPersisted(true)
                     .build();
             js.schedule(info);
         } catch (Exception ignored) {}
@@ -295,23 +308,54 @@ public class AutoDownloadJob extends JobService {
         for (String u : fresh) {
             if (isDownloadedOrQueued68(u, liveSources, queued)) skip.add(u);
         }
+        // v13.71 (audit-1367 F2 repair): un-know the talks a previous
+        // run stranded — known, still on the page, never landed (not
+        // in skip), but with a dlMap entry proving an enqueue once
+        // happened. The old rule marked a talk known the moment
+        // dm.enqueue() succeeded, so a download that then failed (404,
+        // server drop, storage) stayed known forever: the prune drops
+        // its queue mark, the file never lands, and the diff below
+        // still excludes it via `known`. Dropping those URLs here
+        // re-offers them this run. Seeded-only talks have no dlMap
+        // entry and are untouched; a talk deleted in-app has none
+        // either (delete prunes dlMap), so an intentional delete is
+        // never re-offered.
+        java.util.Set<String> dlMapKeys = dlMapKeys68();
+        java.util.List<String> stuck = new java.util.ArrayList<String>();
+        for (String u : fresh) {
+            if (known.contains(u) && !skip.contains(u)
+                    && dlMapKeys.contains(u)) stuck.add(u);
+        }
+        if (!stuck.isEmpty()) {
+            Prefs.autoDlDropKnown(this, page, stuck);
+            known.removeAll(stuck);
+        }
         java.util.List<String> toDl =
                 Prefs.autoDlDiffPure(fresh, known, skip);
         if (toDl.size() > budget) toDl = toDl.subList(0, budget);
-        // Only what actually landed becomes known: the enqueued
-        // talks, plus the ones skipped as already downloaded. A
-        // talk cut off by the per-sayadaw / total cap, or one whose
+        // v13.71 (audit-1367 F2): only what has verifiably LANDED
+        // becomes known now. `skip` mixes landed with in-flight (a
+        // live job or a queue mark), and the old code marked every
+        // skipped URL known — plus every URL the moment dm.enqueue()
+        // succeeded — so a download that failed after enqueue stayed
+        // known forever (see the repair above). Landed is a non-zero
+        // file on disk with no live job and no queue mark behind it:
+        // a partial file still downloading is already non-zero, so
+        // the live/queued exclusion is what keeps a mid-download
+        // file from reading as landed. An enqueued talk stays unknown
+        // until a later run sees it landed; a failed one is simply
+        // not in skip and not known, so the next run re-offers it.
+        // A talk cut off by the per-sayadaw / total cap, or one whose
         // enqueue just failed, stays UNKNOWN, so the next run picks
         // it up — the cap is a rate limit, not a "first 5 only"
         // filter, and a failed enqueue must be retried, never
         // forgotten.
         java.util.List<String> mark = new java.util.ArrayList<String>();
-        for (String u : fresh) if (skip.contains(u)) mark.add(u);
+        for (String u : fresh) if (isLandedFile68(u, liveSources, queued)) mark.add(u);
         int n = 0;
         for (String u : toDl) {
             if (enqueueTalk68(u, titles.get(u), name)) {
                 n++;
-                mark.add(u);
                 queued.add(u);
                 liveSources.add(u);
             }
@@ -472,6 +516,55 @@ public class AutoDownloadJob extends JobService {
             }
         } catch (Exception ignored) {}
         return false;
+    }
+
+    // v13.71 (audit-1367 F2): has this talk verifiably landed — a
+    // non-zero file on disk with no live DownloadManager job and no
+    // queue mark behind it? The file legs mirror
+    // isDownloadedOrQueued68 (mapped name wins, then unclaimed
+    // candidates, both length-gated v13.66 F8); the live/queued
+    // exclusion is what separates a finished file from a partial one
+    // still downloading (a partial is already non-zero). A URL that
+    // only ever seeded is never landed here — it stays known from
+    // the seed, untouched.
+    private boolean isLandedFile68(String url,
+            java.util.Set<String> liveSources,
+            java.util.Set<String> queued) {
+        if (url == null) return false;
+        try {
+            if (liveSources != null && liveSources.contains(url)) return false;
+            if (queued != null && queued.contains(url)) return false;
+            java.io.File dir = new java.io.File(
+                    android.os.Environment.getExternalStoragePublicDirectory(
+                            android.os.Environment.DIRECTORY_DOWNLOADS),
+                    "Dhamma");
+            String mapped = mappedFileName68(url);
+            if (mapped != null && new java.io.File(dir, mapped).exists()
+                    && new java.io.File(dir, mapped).length() > 0)
+                return true;
+            for (String name : fileNameCandidates68(url)) {
+                if (fileClaimedByOther68(name, url)) continue;
+                if (new java.io.File(dir, name).exists()
+                        && new java.io.File(dir, name).length() > 0) return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    // v13.71 (audit-1367 F2 repair): the URLs this app has ever
+    // enqueued (dlMap keys), read once per sayadaw check — the
+    // discriminator between "seeded, never enqueued" (no entry)
+    // and "enqueued once, never landed" (entry, no file).
+    private java.util.Set<String> dlMapKeys68() {
+        java.util.Set<String> out = new java.util.HashSet<String>();
+        try {
+            org.json.JSONObject map = new org.json.JSONObject(
+                    getSharedPreferences("dhamma", MODE_PRIVATE)
+                            .getString("dlMap", "{}"));
+            java.util.Iterator<String> keys = map.keys();
+            while (keys.hasNext()) out.add(keys.next());
+        } catch (Exception ignored) {}
+        return out;
     }
 
     // Candidate basenames for a URL — the chooser's isTalkDownloaded

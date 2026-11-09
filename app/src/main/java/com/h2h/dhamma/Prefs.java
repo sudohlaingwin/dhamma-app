@@ -2337,6 +2337,54 @@ public class Prefs {
         } catch (Exception ignored) { return false; }
     }
 
+    // v13.71 (audit-1367 F2 repair): drop URLs from the known set
+    // for one page — the un-know half of the auto-download retry.
+    // Returns the new raw store, or null when nothing changes (no
+    // URL to drop, or none of them is known for this page). Only
+    // this page's lines are touched; other pages' lines pass through
+    // verbatim, and malformed lines drop on the rewrite exactly as
+    // autoDlAddKnownPure already does.
+    static String autoDlDropKnownPure(String raw, String pageUrl,
+            java.util.List<String> urls) {
+        if (pageUrl == null || pageUrl.length() == 0
+                || urls == null || urls.isEmpty()) return null;
+        if (raw == null || raw.length() == 0) return null;
+        java.util.Set<String> drop = new java.util.HashSet<String>();
+        for (String u : urls) {
+            if (u != null && u.length() > 0) drop.add(u);
+        }
+        if (drop.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder();
+        boolean changed = false;
+        for (String line : raw.split("\n")) {
+            int t = line.indexOf('\t');
+            if (t <= 0) continue;
+            String p = line.substring(0, t);
+            String u = line.substring(t + 1);
+            if (p.equals(pageUrl) && drop.contains(u)) {
+                changed = true;
+                continue;
+            }
+            if (sb.length() > 0) sb.append('\n');
+            sb.append(line);
+        }
+        if (!changed) return null;
+        return sb.toString();
+    }
+
+    // Write the pure-core result back. Returns false when nothing
+    // was dropped.
+    public static boolean autoDlDropKnown(Context c, String pageUrl,
+            java.util.List<String> urls) {
+        if (c == null) return false;
+        try {
+            String next = autoDlDropKnownPure(autoDlKnownRaw(c), pageUrl, urls);
+            if (next == null) return false;
+            sp(c).edit().putString(AUTO_DL_KNOWN_KEY, next).apply();
+            return true;
+        } catch (Exception ignored) { return false; }
+    }
+
     // v12.69: hand-queue WAITING count — the drawer-header rule
     // (sim1272 finding) as a pure core, so every ◈ reader counts
     // the same number the Room drawer header already shows:
