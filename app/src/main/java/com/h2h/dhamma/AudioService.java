@@ -4564,11 +4564,50 @@ public class AudioService extends Service {
     // skip their wipe entirely on trackError and arm only on success, so the
     // immediate-restore leg fires only for the pre-play sites (forward branch,
     // Case B, plain awaited re-fire), whose mutation already happened before play() ran.
+    // v13.96 (fifth pass slice 6): the single slot used to be clobbered by the
+    // outer arm of a sync-failure retry chain — the retry's arm ran INSIDE
+    // play() (tryAutoAdvanceRetryN1 re-invokes the advance before the caller's
+    // arm runs), so the outer arm overwrote the retry pick's record, and the
+    // outer restore's guard (current stack must still equal the outer
+    // after-value) then failed because the retry had mutated the stack again —
+    // on the pick's async failure NEITHER mutation was restored and both redo
+    // steps were lost (the forward-stack twin of audit-1366 F1-sync, which
+    // v13.95 closed for the queue head). Chain instead of overwriting: when a
+    // record is already pending and the new arm's mutation abuts it — the new
+    // after-value equals the pending before-value (this mutation ran BEFORE the
+    // pending one: forward branch / Case B / in-list, which mutate before
+    // play()) or the new before-value equals the pending after-value (this
+    // mutation ran AFTER it: queue-head / foreign tails, which mutate after
+    // play()) — store the oldest before with the newest after, so one onError
+    // restores the pre-chain stack. The generation travels with the
+    // before-value it guards, so a clear anywhere in the window still blocks
+    // the restore. A pick that sounds still drops the record in onPrepared, so
+    // the failed talk's redo step is consumed when the session moves on
+    // (v13.53 deliberate retry; the talk itself still sounds one talk later
+    // through the queue, v13.95) — chaining only changes the both-failed
+    // outcome, where nothing sounded and the pre-chain stack is the truth.
+    // A record can only be pending at arm time from the same retry chain:
+    // play() clears the slot at entry, so the only arms between the clear and
+    // this one are the retry's tails; a Room rewrite in between makes the
+    // abutment fail and the arm falls back to a plain overwrite, guarded as
+    // before. Chains compose across levels (cap 3), and at the true cap the
+    // trackError leg restores the oldest before at the outermost unwind.
     private void armPendingForward14(String beforeRaw, String afterRaw, long gen) {
         if (beforeRaw == null || beforeRaw.length() == 0) return;
-        pendingForwardBefore14 = beforeRaw;
-        pendingForwardAfter14 = afterRaw == null ? "" : afterRaw;
-        pendingForwardGen14 = gen;
+        String effBefore = beforeRaw;
+        String effAfter = afterRaw == null ? "" : afterRaw;
+        long effGen = gen;
+        if (pendingForwardBefore14 != null) {
+            if (effAfter.equals(pendingForwardBefore14)) {
+                effAfter = pendingForwardAfter14;
+            } else if (beforeRaw.equals(pendingForwardAfter14)) {
+                effBefore = pendingForwardBefore14;
+                effGen = pendingForwardGen14;
+            }
+        }
+        pendingForwardBefore14 = effBefore;
+        pendingForwardAfter14 = effAfter;
+        pendingForwardGen14 = effGen;
         if (trackError) restorePendingForward14();
     }
 
