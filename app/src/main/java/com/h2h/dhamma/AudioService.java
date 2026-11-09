@@ -4817,7 +4817,7 @@ public class AudioService extends Service {
     // runs behind it — a slow or failed fetch just leaves today behaviour (that end
     // still defers; the write, when it lands, fixes the ends after it). No data gate
     // on the fetch: a Room loads its list on mobile data too, and this is tens of KB
-    // of HTML, not audio. The write is guarded three ways: the fetched list must name
+    // of HTML, not audio. The write is guarded four ways: the fetched list must name
     // the head URL (a list that cannot resolve the sounding talk chains nothing, and
     // a wrong-page fetch must never overwrite the stored list), the session must still
     // be this foreign talk (lastName + lastUrl unchanged — a manual move to another
@@ -4829,8 +4829,11 @@ public class AudioService extends Service {
     // for a duplicated URL while the Room replaced a filename fallback with a later
     // real title, so the raws differed for identical HTML and the worker overwrote
     // the Room's fresher list. The remaining content-change race — the site edits
-    // the page between the worker's fetch and the Room's load — needs a
-    // write-generation guard and stays a follow-up slice). A failed or empty fetch
+    // the page between the worker's fetch and the Room's load — v13.78
+    // closes it with a write-generation guard: the fetch-start time is
+    // recorded, and a stored list written after it is fresher than
+    // anything this fetch saw, so the write is abandoned instead of
+    // overwriting it with older content). A failed or empty fetch
     // abandons silently.
     private void refreshPlayListForForeign13(final String sayadaw13, final String page13,
             final String headUrl13) {
@@ -4838,6 +4841,16 @@ public class AudioService extends Service {
                 || page13.length() == 0 || headUrl13 == null || headUrl13.length() == 0) return;
         new Thread(new Runnable() {
             @Override public void run() {
+                // v13.78 (audit-1364 content-change race): the fetch takes
+                // seconds; the site can edit the page meanwhile and the Room
+                // can load + save the newer list before this write lands. A
+                // stored list written after this fetch started is fresher
+                // than anything this fetch saw, so abandon instead of
+                // overwriting it with older content. The guard errs safe: a
+                // same-content rewrite (advance path) or a clock jump can
+                // only make us skip a refresh, never clobber fresher
+                // content — the next Room open or handover refreshes it.
+                final long fetchStart13 = System.currentTimeMillis();
                 String raw13 = fetchPlayListRaw13(page13);
                 if (raw13 == null || raw13.length() == 0) return;
                 boolean namesHead13 = false;
@@ -4854,6 +4867,7 @@ public class AudioService extends Service {
                     if (!sayadaw13.equals(sp.getString("lastName", ""))) return;
                     if (!headUrl13.equals(sp.getString("lastUrl", ""))) return;
                     if (raw13.equals(Prefs.playListRaw(AudioService.this))) return;
+                    if (Prefs.playListWriteMs(AudioService.this) > fetchStart13) return;
                     Prefs.savePlayList(AudioService.this, raw13, -1);
                 } catch (Exception ignored) {}
             }

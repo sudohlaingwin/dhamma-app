@@ -1031,9 +1031,18 @@ public class Prefs {
     // (Prefs.playIndex had zero call sites; AudioService re-derives
     // the index by scanning the raw list), so only the list is
     // persisted now. The idx parameter stays for the callers.
+    // v13.78 (audit-1364 content-change race): stamp every list write
+    // with its wall time in the SAME apply, so the foreign-refresh
+    // worker can tell a fresher write from a stale one.
     public static void savePlayList(Context c, String raw, int idx) {
         if (raw == null) raw = "";
-        sp(c).edit().putString("playList57", raw).apply();
+        sp(c).edit().putString("playList57", raw)
+                .putLong("playListWriteMs", System.currentTimeMillis()).apply();
+    }
+
+    // v13.78: wall time of the last savePlayList write, 0 when never written.
+    public static long playListWriteMs(Context c) {
+        return sp(c).getLong("playListWriteMs", 0);
     }
 
     public static String playListRaw(Context c) {
