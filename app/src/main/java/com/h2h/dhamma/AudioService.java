@@ -918,6 +918,17 @@ public class AudioService extends Service {
     // retries (cap 3) nest cleanly; only the synchronous re-invoke
     // is covered, which is exactly the tails' extent.
     private int suppressTrailDepthN1 = 0;
+    // v13.99 (audit-1365 S4, fifth pass slice 9): the talk an auto-advance
+    // continues FROM — the ended talk at advance entry (stream URL + title
+    // from the saved list). A failed queue-head pop overwrites lastUrl with
+    // the head before play(), so the N1 retry's re-invoked advance anchored
+    // on the head and its list-next tail replayed the just-ended talk (S4:
+    // B ended, head H failed, retry replayed B instead of playing C) or an
+    // older talk when the head sits earlier in the list. In-memory only: a
+    // process death loses the snapshot, and the retry then leaves the anchor
+    // alone (the pre-fix behaviour), never a wrong anchor.
+    private String advanceEndedUrlN1 = null;
+    private String advanceEndedTitleN1 = null;
     // v13.62 (audit-1370 N2): a dead queue head used to loop forever — prepare failed,
     // restore put it back at the front, and the next advance re-picked the same dead
     // talk. Keep a small in-memory map of head-URL -> consecutive restore count;
@@ -3836,6 +3847,11 @@ public class AudioService extends Service {
             // scan named the first claimant of a dual-claimed file.
             int idx = soundingLineIndex96(lines, sp);
             if (idx < 0) return;
+            // v13.99 (audit-1365 S4): snapshot the ended talk this advance
+            // continues from — the queue-head pop below overwrites lastUrl
+            // with the head, so the N1 retry re-anchors from this, not from
+            // the failed head (see reanchorRetryAfterFailedHeadN1).
+            { int eTab99 = lines[idx].indexOf('\t'); advanceEndedUrlN1 = eTab99 >= 0 ? lines[idx].substring(0, eTab99) : lines[idx]; advanceEndedTitleN1 = eTab99 >= 0 ? lines[idx].substring(eTab99 + 1) : ""; }
             int mode = Prefs.repeatMode(this);
             int nx;
             // v11.77: a manual Next ignores repeat-one, like the Room's manual Next
@@ -4326,6 +4342,50 @@ public class AudioService extends Service {
         java.io.File f = offlineFileFor(streamUrl);
         return f != null && autoAdvanceSkipN1.contains(f.getAbsolutePath());
     }
+    // v13.99 (audit-1365 S4, fifth pass slice 9): the N1 retry re-invokes the
+    // advance past the failed talk, but a failed queue-head pop overwrote
+    // lastUrl with the head — so the re-invoked advance anchored on the head
+    // and its list-next tail replayed the just-ended talk (S4: B ended, head
+    // H at list index 1 failed, retry replayed B at index 2 instead of
+    // playing C at index 3) or an older talk when the head sits earlier in
+    // the list. Re-anchor lastUrl to the ended talk (snapshotted at advance
+    // entry) when the failed pick's line sits at or before the ended talk's
+    // line: the retry then continues list-next from the ended talk. A failed
+    // pick AFTER the ended talk (the list-next pick itself, or a forward /
+    // shuffle pick past it) already anchors past the ended talk, so it is
+    // left alone — re-anchoring there would replay the failed pick until the
+    // N1 cap. A foreign head (no line here), a missing snapshot, or a
+    // library retry leaves the anchor untouched. The failed URL may be the
+    // offline-file form (a downloaded head plays by path), so the line scan
+    // matches both forms, exactly like soundingLineIndex96's fallback.
+    private void reanchorRetryAfterFailedHeadN1(String failedUrl) {
+        try {
+            if (advanceEndedUrlN1 == null || advanceEndedUrlN1.length() == 0) return;
+            if (failedUrl == null || failedUrl.length() == 0) return;
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            String raw = Prefs.playListRaw(this);
+            if (raw == null || raw.length() == 0) return;
+            String[] lines = raw.split("\n");
+            int endedIdx = -1, failedIdx = -1;
+            for (int i = 0; i < lines.length; i++) {
+                String line = lines[i];
+                if (line == null || line.length() == 0) continue;
+                int tab = line.indexOf('\t');
+                String u = tab >= 0 ? line.substring(0, tab) : line;
+                if (u.equals(advanceEndedUrlN1)) endedIdx = i;
+                if (u.equals(failedUrl)) failedIdx = i;
+                else {
+                    java.io.File f = offlineFileFor(u);
+                    if (f != null && f.getAbsolutePath().equals(failedUrl)) failedIdx = i;
+                }
+            }
+            if (endedIdx < 0 || failedIdx < 0) return;
+            if (failedIdx > endedIdx) return;
+            sp.edit().putString("lastUrl", advanceEndedUrlN1)
+                    .putString("lastTitle", advanceEndedTitleN1 != null ? advanceEndedTitleN1 : "").apply();
+        } catch (Exception ignored) {}
+    }
     // Re-invoke the matching advance past the failed talk. Returns false when
     // this failure is not an auto-advance (a manual pick's failure is the user's
     // to retry, v1.58) or the per-session cap is spent; the caller then falls
@@ -4343,6 +4403,11 @@ public class AudioService extends Service {
         }
         int kind = autoAdvanceKindN1;
         autoAdvancedN1 = false; autoAdvanceKindN1 = 0;
+        // v13.99 (audit-1365 S4): re-anchor the retry when the failed pick
+        // sits at or before the ended talk (see the helper) — the Room
+        // advance only; a library retry (kind 2) anchors on currentUrl over
+        // the shelf, not on lastUrl, so it is left alone.
+        if (kind != 2) reanchorRetryAfterFailedHeadN1(failedUrl);
         // v13.94: suppress trail recording for this re-invoke — its
         // tails' "ended" talk is the failed one (lastUrl names it),
         // and the outer invocation's push already owns the genuinely
