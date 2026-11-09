@@ -41,7 +41,6 @@
                  name on TOP, talk title BELOW it and smaller — the reverse
                  of the v5.30 Spotify order. -->
             <LinearLayout
-                android:id="@+id/roomSayadawRow"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical"

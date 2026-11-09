@@ -27,6 +27,7 @@
         android:id="@+id/wg_app"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:text="တရားတော်"
         android:textSize="12sp"
         android:textColor="#E8C878"
         android:maxLines="1" />
@@ -36,6 +37,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
+        android:text="တရားတစ်ပုဒ် ရွေးပါ"
         android:textSize="16sp"
         android:textStyle="bold"
         android:textColor="#FFFFFF"
@@ -57,7 +59,8 @@
             android:textSize="13sp"
             android:textColor="#CCFFFFFF"
             android:maxLines="1"
-            android:ellipsize="end" />
+            android:ellipsize="end"
+            android:visibility="gone" />
 
         <ImageButton
             android:id="@+id/wg_play"
