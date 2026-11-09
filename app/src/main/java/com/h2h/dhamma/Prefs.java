@@ -357,6 +357,8 @@ public class Prefs {
     // they were — worst case the orphan persists, as today — and
     // migration must never break launch.
     public static void migrateQueueKeys99(Context c) {
+        // v13.68 (audit-1369 F11): dlMap/dlSayadaw/dlQueued read-modify-write - serialize on DlLock.LOCK (see DlLock).
+        synchronized (DlLock.LOCK) {
         if (sMigDone99) return;
         sMigDone99 = true;
         try {
@@ -420,6 +422,7 @@ public class Prefs {
             } catch (Exception ignored) {}
             if (changed) ed.apply();
         } catch (Exception ignored) {}
+        }
     }
 
     // Pure core of the migration — no Android types, so a standalone

@@ -1616,6 +1616,8 @@ public class Fx {
     // be enqueued; the caller toasts the failure.
     public static boolean stripEnqueueDownload(Context ctx,
             android.content.SharedPreferences sp, boolean wifiOnly) {
+        // v13.68 (audit-1369 F11): dlMap/dlSayadaw/dlQueued read-modify-write - serialize on DlLock.LOCK (see DlLock).
+        synchronized (DlLock.LOCK) {
         try {
             String url = stripFavUrl(ctx, sp);
             String title = sp.getString("lastTitle", "");
@@ -1665,6 +1667,7 @@ public class Fx {
             return true;
         } catch (Exception ignored) {
             return false;
+        }
         }
     }
 

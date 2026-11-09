@@ -170,6 +170,8 @@ public class MainActivity extends Activity {
     // Returns the dropped URLs (empty when nothing dropped or on
     // any failure); writes back only when something actually dropped.
     private java.util.Set<String> pruneMainQueuedDownloads1020() {
+        // v13.68 (audit-1369 F11): dlMap/dlSayadaw/dlQueued read-modify-write - serialize on DlLock.LOCK (see DlLock).
+        synchronized (DlLock.LOCK) {
         java.util.Set<String> dropped1020 = new java.util.HashSet<String>();
         try {
             android.content.SharedPreferences sp1020 =
@@ -269,6 +271,7 @@ public class MainActivity extends Activity {
             }
             return dropped1020;
         } catch (Exception ignored) { return dropped1020; }
+        }
     }
 
     // v12.15: filename candidates for a queued URL (Room fileNameCandidates,

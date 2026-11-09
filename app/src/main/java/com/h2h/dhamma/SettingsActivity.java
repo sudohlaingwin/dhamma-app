@@ -1281,6 +1281,8 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
     // Returns the dropped URLs (empty when nothing dropped or on
     // any failure); writes back only when something actually dropped.
     private java.util.Set<String> pruneSettingsQueuedDownloads1021() {
+        // v13.68 (audit-1369 F11): dlMap/dlSayadaw/dlQueued read-modify-write - serialize on DlLock.LOCK (see DlLock).
+        synchronized (DlLock.LOCK) {
         java.util.Set<String> dropped1021 = new java.util.HashSet<String>();
         try {
             android.content.SharedPreferences sp1021 =
@@ -1375,6 +1377,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
             }
             return dropped1021;
         } catch (Exception ignored) { return dropped1021; }
+        }
     }
 
     // v12.15: filename candidates for a queued URL (Room fileNameCandidates,

@@ -229,6 +229,8 @@ public class TalksActivity extends Activity {
     // never per bind and never on the 1s strip tick, so scrolling and the
     // strip stay cheap; the caller rebinds when it drops anything.
     private boolean pruneTalkQueuedDownloads() {
+        // v13.68 (audit-1369 F11): dlMap/dlSayadaw/dlQueued read-modify-write - serialize on DlLock.LOCK (see DlLock).
+        synchronized (DlLock.LOCK) {
         talkRefreshInProgressDlNames(true); // v11.57: fresh set before the downloaded-drop below
         try {
             org.json.JSONArray arr = new org.json.JSONArray(
@@ -347,6 +349,7 @@ public class TalksActivity extends Activity {
             }
             return changed;
         } catch (Exception ignored) { return false; }
+        }
     }
 
     private void refreshTalkRowMarks(boolean forceDl) {
@@ -983,6 +986,8 @@ public class TalksActivity extends Activity {
     // recordDownloadFile) and the dlQueued mark, written together so
     // no later check can see a queue entry without its filename.
     private void recordTalkDownload(String url, String file) {
+        // v13.68 (audit-1369 F11): dlMap/dlSayadaw/dlQueued read-modify-write - serialize on DlLock.LOCK (see DlLock).
+        synchronized (DlLock.LOCK) {
         try {
             android.content.SharedPreferences sp =
                     getSharedPreferences("dhamma", MODE_PRIVATE);
@@ -1010,6 +1015,7 @@ public class TalksActivity extends Activity {
             sp.edit().putString("dlMap", map.toString())
                     .putString("dlQueued", queued.toString()).apply();
         } catch (Exception ignored) {}
+        }
     }
 
     private boolean isTalkDownloaded(String url) {

@@ -352,6 +352,8 @@ public class DownloadedActivity extends Activity {
     // v11.76), %XX decode (Room v11.81 / Talks v11.86), map-less drop
     // (Room v11.85 / Talks v11.86).
     private java.util.Set<String> pruneLibQueuedDownloads1019() {
+        // v13.68 (audit-1369 F11): dlMap/dlSayadaw/dlQueued read-modify-write - serialize on DlLock.LOCK (see DlLock).
+        synchronized (DlLock.LOCK) {
         java.util.Set<String> dropped1019 = new java.util.HashSet<String>();
         try {
             android.content.SharedPreferences sp1019 =
@@ -461,6 +463,7 @@ public class DownloadedActivity extends Activity {
             }
         } catch (Exception ignored) { return new java.util.HashSet<String>(); }
         return dropped1019;
+        }
     }
 
     // v12.14: filename candidates for a queued URL (Room fileNameCandidates,
@@ -7105,6 +7108,8 @@ public class DownloadedActivity extends Activity {
     // entries on their next rescan anyway, this just makes the
     // delete-all itself total at once.
     private void cancelLiveDownloads() {
+        // v13.68 (audit-1369 F11): dlMap/dlSayadaw/dlQueued read-modify-write - serialize on DlLock.LOCK (see DlLock).
+        synchronized (DlLock.LOCK) {
         try {
             android.content.SharedPreferences sp =
                     getSharedPreferences("dhamma", MODE_PRIVATE);
@@ -7165,9 +7170,12 @@ public class DownloadedActivity extends Activity {
                 } catch (Exception ignored) {}
             }
         } catch (Exception ignored) {}
+        }
     }
 
     private void pruneDlMapForFilenames(java.util.Set<String> deletedNames) {
+        // v13.68 (audit-1369 F11): dlMap/dlSayadaw/dlQueued read-modify-write - serialize on DlLock.LOCK (see DlLock).
+        synchronized (DlLock.LOCK) {
         if (deletedNames == null || deletedNames.isEmpty()) return;
         try {
             android.content.SharedPreferences sp =
@@ -7293,6 +7301,7 @@ public class DownloadedActivity extends Activity {
                 ed.apply();
             }
         } catch (Exception ignored) {}
+        }
     }
 
     // v4.57: the library's own queue menu — the Talks chooser's

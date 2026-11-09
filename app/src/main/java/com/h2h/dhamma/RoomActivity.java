@@ -3655,6 +3655,8 @@ if (snd65 >= 0) currentIndex = snd65;
     }
 
     private void recordDownloadFile(String url, String filename) {
+        // v13.68 (audit-1369 F11): dlMap/dlSayadaw/dlQueued read-modify-write - serialize on DlLock.LOCK (see DlLock).
+        synchronized (DlLock.LOCK) {
         try {
             android.content.SharedPreferences sp =
                     getSharedPreferences("dhamma", MODE_PRIVATE);
@@ -3692,6 +3694,7 @@ if (snd65 >= 0) currentIndex = snd65;
                 } catch (Exception ignored) {}
             }
         } catch (Exception ignored) {}
+        }
     }
 
     // v4.01: Wi-Fi-queued download mark — a talk queued from the data
@@ -3735,11 +3738,16 @@ if (snd65 >= 0) currentIndex = snd65;
     }
 
     private void addQueuedDownload(String url) {
+        // v13.68 (audit-1369 F11): dlMap/dlSayadaw/dlQueued read-modify-write - serialize on DlLock.LOCK (see DlLock).
+        synchronized (DlLock.LOCK) {
         refreshQueuedSet();
         if (queuedDownloads.add(url)) persistQueuedSet();
+        }
     }
 
     private boolean pruneQueuedDownloads() {
+        // v13.68 (audit-1369 F11): dlMap/dlSayadaw/dlQueued read-modify-write - serialize on DlLock.LOCK (see DlLock).
+        synchronized (DlLock.LOCK) {
         refreshQueuedSet();
         if (queuedDownloads.isEmpty()) {
             // v4.24: no queue, no progress — drop stale percents so
@@ -3895,6 +3903,7 @@ if (snd65 >= 0) currentIndex = snd65;
         }
         if (changed) persistQueuedSet();
         return changed;
+        }
     }
 
     // v1.90: the filename a new Wi-Fi download must use — the mapped

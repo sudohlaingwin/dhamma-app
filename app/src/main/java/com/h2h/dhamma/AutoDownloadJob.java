@@ -196,8 +196,17 @@ public class AutoDownloadJob extends JobService {
         int start68 = startIndex68(names, Prefs.autoDlResumeAfter(this));
         String lastChecked68 = null;
         java.util.Set<String> liveSources = liveDlSources68();
-        java.util.Set<String> queued = readDlQueued68();
-        pruneStaleDlQueued68(liveSources, queued);
+        // v13.68 (audit-1369 F11): the snapshot read + the stale-prune
+        // write-back are ONE critical section - a UI prune dropping B
+        // between the read and the write-back used to be resurrected
+        // by the prune's stale-snapshot write, and a UI record landing
+        // between them was lost the same way. pruneStaleDlQueued68
+        // re-enters the same lock below (synchronized is re-entrant).
+        java.util.Set<String> queued;
+        synchronized (DlLock.LOCK) {
+            queued = readDlQueued68();
+            pruneStaleDlQueued68(liveSources, queued);
+        }
         int totalNew = 0;
         for (int k = 0; k < names.size(); k++) {
             String name = names.get((start68 + k) % names.size());
@@ -384,6 +393,8 @@ public class AutoDownloadJob extends JobService {
     }
 
     private void recordDownload68(String url, String file, String sayadawName) {
+        // v13.68 (audit-1369 F11): dlMap/dlSayadaw/dlQueued read-modify-write - serialize on DlLock.LOCK (see DlLock).
+        synchronized (DlLock.LOCK) {
         try {
             android.content.SharedPreferences sp =
                     getSharedPreferences("dhamma", MODE_PRIVATE);
@@ -414,6 +425,7 @@ public class AutoDownloadJob extends JobService {
             sp.edit().putString("dlMap", map.toString())
                     .putString("dlQueued", queued.toString()).apply();
         } catch (Exception ignored) {}
+        }
     }
 
     // Is this talk already on the phone (file exists) or already
@@ -617,6 +629,8 @@ public class AutoDownloadJob extends JobService {
     // Only writes when something drops.
     private void pruneStaleDlQueued68(java.util.Set<String> liveSources,
             java.util.Set<String> queued) {
+        // v13.68 (audit-1369 F11): dlMap/dlSayadaw/dlQueued read-modify-write - serialize on DlLock.LOCK (see DlLock).
+        synchronized (DlLock.LOCK) {
         try {
             if (queued == null || queued.isEmpty()) return;
             boolean changed = false;
@@ -639,5 +653,6 @@ public class AutoDownloadJob extends JobService {
                         .putString("dlQueued", out.toString()).apply();
             }
         } catch (Exception ignored) {}
+        }
     }
 }
