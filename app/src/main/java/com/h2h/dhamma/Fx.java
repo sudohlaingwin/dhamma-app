@@ -1109,6 +1109,22 @@ public class Fx {
         }
         return b.toString();
     }
+    // v14.05 (sixth pass slice 4): exception detail for user-visible
+    // error toasts. Java string-concats a null message as the literal
+    // "null", so a null-message exception (an NPE's message is null)
+    // used to show "…: null" to the listener. Return "" instead: the
+    // toast then shows the bare prefix, which is honest. Deliberately
+    // NOT the v1.92 internet_error fallback — that fit the loaders
+    // (a load failure is a network failure), but these four call sites
+    // are a catalog open and download enqueues, where the failure is
+    // usually local (bad URI / unavailable DownloadManager / bad
+    // asset), so "internet error" would mislead. Empty counts too:
+    // a blank detail adds nothing either way.
+    public static String errDetail(Exception e) {
+        if (e == null) return "";
+        String m = e.getMessage();
+        return (m == null || m.length() == 0) ? "" : m;
+    }
     public static boolean titleMatches(String title, String query) {
         if (title == null || query == null || query.length() == 0) return false;
         try {

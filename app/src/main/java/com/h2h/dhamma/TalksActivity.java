@@ -2027,7 +2027,7 @@ public class TalksActivity extends Activity {
                                             recordTalkDownload(dt.url, file70);
                                         } catch (Exception e) {
                                             android.widget.Toast.makeText(TalksActivity.this,
-                                                    Lang.t(TalksActivity.this, "download_failed") + e.getMessage(), android.widget.Toast.LENGTH_LONG).show();
+                                                    Lang.t(TalksActivity.this, "download_failed") + Fx.errDetail(e), android.widget.Toast.LENGTH_LONG).show();
                                             return;
                                         }
                                         // The hourglass at once: refreshTalkRowMarks(true)

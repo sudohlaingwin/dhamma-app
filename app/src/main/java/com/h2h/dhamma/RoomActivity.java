@@ -3634,7 +3634,7 @@ if (snd65 >= 0) currentIndex = snd65;
             recordDownloadFile(t.url, file71);
         } catch (Exception e) {
             android.widget.Toast.makeText(RoomActivity.this,
-                    Lang.t(RoomActivity.this, "download_failed") + e.getMessage(), android.widget.Toast.LENGTH_LONG).show();
+                    Lang.t(RoomActivity.this, "download_failed") + Fx.errDetail(e), android.widget.Toast.LENGTH_LONG).show();
             return;
         }
         // The hourglass at once: addQueuedDownload + the rescan
@@ -11358,7 +11358,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                                                     Lang.t(RoomActivity.this, "dl_room_wifi_queued"), android.widget.Toast.LENGTH_LONG).show();
                                         } catch (Exception e) {
                                             android.widget.Toast.makeText(RoomActivity.this,
-                                                    Lang.t(RoomActivity.this, "download_failed") + e.getMessage(), android.widget.Toast.LENGTH_LONG).show();
+                                                    Lang.t(RoomActivity.this, "download_failed") + Fx.errDetail(e), android.widget.Toast.LENGTH_LONG).show();
                                         }
                                     }
                                 })

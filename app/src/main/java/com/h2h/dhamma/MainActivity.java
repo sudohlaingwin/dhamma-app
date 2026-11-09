@@ -2575,7 +2575,7 @@ public class MainActivity extends Activity {
                 all.add(new Sayadaw(o.optString("name", ""), o.optString("group", ""), url, photo));
             }
         } catch (Exception e) {
-            Toast.makeText(this, Lang.t(this, "catalog_open_failed") + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, Lang.t(this, "catalog_open_failed") + Fx.errDetail(e), Toast.LENGTH_LONG).show();
         } finally {
             // v1.66: same stream-leak class as the talk loaders —
             // a read dying mid-catalog used to skip the close.
