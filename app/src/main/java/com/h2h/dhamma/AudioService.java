@@ -834,6 +834,11 @@ public class AudioService extends Service {
     // any other talk). The record is the exact persisted line, so a v2 head keeps
     // its owner + title and returns to the right key: owner is the sayadaw key for a
     // Room queue, null for the library queue.
+    // v13.74 (audit-1366 F3): the arm is also persisted in prefs at arm time
+    // (pendingHeadLine14 / pendingHeadOwner14) — a stop or process death in
+    // the prepare window no longer loses the head; stopPlayback restores it
+    // and onCreate recovers a persisted arm. Every clear goes through
+    // clearPendingQueueHead14, which removes both keys.
     private String pendingQueueHeadLine14 = null;
     private String pendingQueueHeadOwner14 = null;
     // v13.54 (audit-1372 F2, forward-stack mirror of the Q10 pending head above):
@@ -1147,6 +1152,13 @@ public class AudioService extends Service {
         liveSession = true; // v3.91: a session is loaded from here on
         liveHasTrack = false; // v10.40: fresh instance, no track yet
         liveTrackError = false; // v13.53: fresh instance, no failure yet
+        // v13.74 (audit-1366 F3): a process death in the prepare window left
+        // the armed head in prefs (see armPendingQueueHead14) with no live
+        // service to restore it — recover it here, on the next service
+        // create, before any play can clear the record: the head was never
+        // heard, so it goes back to the front of its queue (same dedup +
+        // N2 give-up as the onError restore).
+        recoverPersistedPendingHead14();
         posHandler.postDelayed(posRunnable, 15000);
         try {
             // v11.00: the five download-complete receivers already
@@ -4096,6 +4108,19 @@ public class AudioService extends Service {
         if (line == null || line.length() == 0) return;
         pendingQueueHeadLine14 = line;
         pendingQueueHeadOwner14 = owner;
+        // v13.74 (audit-1366 F3): the record was in-memory only, so a stop
+        // or process death in the prepare window lost the head — the pop
+        // is already persisted, the arm was not. Persist the arm in one
+        // apply (both keys together, so a reader never sees a torn pair;
+        // owner "" = library queue) so onCreate can recover it; every
+        // clear site goes through clearPendingQueueHead14 below, which
+        // removes both keys.
+        try {
+            getSharedPreferences("dhamma", MODE_PRIVATE).edit()
+                    .putString("pendingHeadLine14", line)
+                    .putString("pendingHeadOwner14", owner == null ? "" : owner)
+                    .apply();
+        } catch (Exception ignored) {}
         if (trackError) restorePendingQueueHead14();
     }
 
@@ -4209,7 +4234,14 @@ public class AudioService extends Service {
                 q.add(0, line);
                 Prefs.saveQueue(this, owner, q);
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {} finally {
+            // v13.74 (audit-1366 F3): the persisted arm dies AFTER the queue
+            // write, not before it — on a stop-then-kill the two apply()s
+            // flush in order, so a kill between them leaves the arm alive
+            // and the next onCreate re-restores (deduped); the reverse
+            // order could clear the arm while the queue write never landed.
+            clearPendingQueueHead14();
+        }
     }
 
     // v13.14 (Q10): does the failed URL name the armed pending head? The head's
@@ -4232,6 +4264,34 @@ public class AudioService extends Service {
     private void clearPendingQueueHead14() {
         pendingQueueHeadLine14 = null;
         pendingQueueHeadOwner14 = null;
+        // v13.74 (audit-1366 F3): the arm is persisted at arm time, so the
+        // persisted pair dies with the in-memory record — every clear site
+        // (fresh play, onPrepared, onError mismatch, restore) funnels here.
+        try {
+            getSharedPreferences("dhamma", MODE_PRIVATE).edit()
+                    .remove("pendingHeadLine14").remove("pendingHeadOwner14").apply();
+        } catch (Exception ignored) {}
+    }
+
+    // v13.74 (audit-1366 F3): process-death recovery — if the service died
+    // in the prepare window, the persisted arm is still in prefs (the
+    // in-memory record died with the process). Re-arm it in memory and
+    // restore it at once: the head was never heard, so it returns to the
+    // front of its queue. Called once from onCreate, before any play.
+    // A stale record cannot restore twice: restorePendingQueueHead14
+    // clears the persisted pair in its finally, and its dedup skips a
+    // head the Room re-added while the service was dead.
+    private void recoverPersistedPendingHead14() {
+        try {
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            String line = sp.getString("pendingHeadLine14", "");
+            if (line == null || line.length() == 0) return;
+            String owner = sp.getString("pendingHeadOwner14", "");
+            pendingQueueHeadLine14 = line;
+            pendingQueueHeadOwner14 = (owner == null || owner.length() == 0) ? null : owner;
+            restorePendingQueueHead14();
+        } catch (Exception ignored) {}
     }
 
     // v13.54 (audit-1372 F2): arm the pending forward-stack restore after a
@@ -5601,6 +5661,16 @@ public class AudioService extends Service {
         // banked seconds died on every stop and onDestroy's flush found
         // a null identity. A second flush is a no-op (pending already 0).
         flushListenStats();
+        // v13.74 (audit-1366 F3): a stop in the prepare window used to lose
+        // the armed head for good — the pop is already persisted and the
+        // record was in-memory only, and the next play() clears it. The
+        // head was never heard, so it goes back to the front of its queue
+        // (same semantics as the onError restore). stopPlayback is the
+        // choke point: stopAndClear, the notification ACTION_STOP, the
+        // media-session onStop and the swipe-away all funnel through here;
+        // a sounding talk has no armed record (onPrepared cleared it), so
+        // this is a no-op outside the prepare window.
+        if (pendingQueueHeadLine14 != null) restorePendingQueueHead14();
         livePlaying = false; // v4.16 (covers stopAndClear + notification stop)
         // v4.04: a stop ends any sleep fade with it.
         cancelSleepFade();
