@@ -2568,6 +2568,13 @@ public class MainActivity extends Activity {
                 // of aborting the whole loop out of getJSONObject.
                 JSONObject o;
                 try { o = arr.getJSONObject(i); } catch (Exception ignored) { continue; }
+                // v14.22 (catalog 2nd re-check): an object row with no
+                // name would add a blank card to the grid — the other
+                // six readers all skip empty names (Prefs maps, photo
+                // map, History/Playlist caches; the Room/service
+                // lookups match by name, so an empty name never
+                // matches), so the grid agrees with them here.
+                if (o.optString("name", "").length() == 0) continue;
                 String url = o.isNull("page_url") ? "" : o.optString("page_url", "");
                 String photo = "";
                 if (!o.isNull("photo_url")) photo = o.optString("photo_url", "");
