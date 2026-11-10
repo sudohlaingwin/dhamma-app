@@ -253,6 +253,14 @@ public class AutoDownloadJob extends JobService {
         int start68 = startIndex68(names, Prefs.autoDlResumeAfter(this));
         String lastChecked68 = null;
         java.util.Set<String> liveSources = liveDlSources68();
+        // v14.21 (audit-1369 L1): expected total bytes per source URL, from
+        // one bulk DownloadManager query (see expectedSizes68) -- the
+        // scan-time write point for download integrity. Built once per run,
+        // next to liveDlSources68; the two predicates below read it, never
+        // query. A truncated partial from a dead job then reads as NOT
+        // downloaded, so the next run re-offers it instead of skipping it
+        // (and marking it known) forever.
+        java.util.Map<String, Long> expected68 = expectedSizes68();
         // v13.68 (audit-1369 F11): the snapshot read + the stale-prune
         // write-back are ONE critical section - a UI prune dropping B
         // between the read and the write-back used to be resurrected
@@ -307,7 +315,7 @@ public class AutoDownloadJob extends JobService {
             try {
                 totalNew += checkSayadaw68(name,
                         Prefs.AUTO_DL_MAX_TOTAL - totalNew,
-                        liveSources, queued);
+                        liveSources, queued, expected68);
             } catch (Exception ignored) {}
             // v14.13 (audit-1367 L8): persist the resume point per
             // sayadaw, not only at run end — a process death
@@ -342,7 +350,8 @@ public class AutoDownloadJob extends JobService {
     // catches per sayadaw anyway.
     private int checkSayadaw68(String name, int budget,
             java.util.Set<String> liveSources,
-            java.util.Set<String> queued) {
+            java.util.Set<String> queued,
+            java.util.Map<String, Long> expected68) {
         if (name == null || name.length() == 0 || budget <= 0) return 0;
         String page = Prefs.pageUrlForSayadaw(this, name);
         if (page.length() == 0) return 0;
@@ -381,7 +390,7 @@ public class AutoDownloadJob extends JobService {
         java.util.Set<String> known = Prefs.autoDlKnownFor(this, page);
         java.util.Set<String> skip = new java.util.HashSet<String>();
         for (String u : fresh) {
-            if (isDownloadedOrQueued68(u, liveSources, queued)) skip.add(u);
+            if (isDownloadedOrQueued68(u, liveSources, queued, expected68)) skip.add(u);
         }
         // v13.71 (audit-1367 F2 repair): un-know the talks a previous
         // run stranded — known, still on the page, never landed (not
@@ -426,7 +435,7 @@ public class AutoDownloadJob extends JobService {
         // filter, and a failed enqueue must be retried, never
         // forgotten.
         java.util.List<String> mark = new java.util.ArrayList<String>();
-        for (String u : fresh) if (isLandedFile68(u, liveSources, queued)) mark.add(u);
+        for (String u : fresh) if (isLandedFile68(u, liveSources, queued, expected68)) mark.add(u);
         int n = 0;
         for (String u : toDl) {
             if (enqueueTalk68(u, titles.get(u), name)) {
@@ -580,7 +589,8 @@ public class AutoDownloadJob extends JobService {
     // that name.
     private boolean isDownloadedOrQueued68(String url,
             java.util.Set<String> liveSources,
-            java.util.Set<String> queued) {
+            java.util.Set<String> queued,
+            java.util.Map<String, Long> expected68) {
         if (url == null) return false;
         try {
             if (liveSources != null && liveSources.contains(url)) return true;
@@ -595,14 +605,16 @@ public class AutoDownloadJob extends JobService {
             // later auto-download run, so a failed download that left a dead
             // file was NEVER re-downloaded. This is the one 0-byte site that
             // blocked recovery; with the gate the next run re-enqueues it.
-            if (mapped != null && new java.io.File(dir, mapped).exists()
-                    && new java.io.File(dir, mapped).length() > 0)
+            // v14.21 (audit-1369 L1): completeness on top of the length gate --
+            // a non-empty file shorter than its expected total is a truncated
+            // partial, not a download; isCompleteFile68 fails open when the
+            // total is unknown, so today’s behaviour is kept there.
+            if (mapped != null && isCompleteFile68(new java.io.File(dir, mapped), url, expected68))
                 return true;
             // v13.66: same length gate as the mapped branch above (audit-1369 F8).
             for (String name : fileNameCandidates68(url)) {
                 if (fileClaimedByOther68(name, url)) continue;
-                if (new java.io.File(dir, name).exists()
-                        && new java.io.File(dir, name).length() > 0) return true;
+                if (isCompleteFile68(new java.io.File(dir, name), url, expected68)) return true;
             }
         } catch (Exception ignored) {}
         return false;
@@ -616,10 +628,14 @@ public class AutoDownloadJob extends JobService {
     // exclusion is what separates a finished file from a partial one
     // still downloading (a partial is already non-zero). A URL that
     // only ever seeded is never landed here — it stays known from
-    // the seed, untouched.
+    // the seed, untouched. v14.21 (audit-1369 L1): the file legs also
+    // require completeness now -- a truncated partial is not landed,
+    // so it is neither marked known nor skipped, and the next run
+    // re-offers it.
     private boolean isLandedFile68(String url,
             java.util.Set<String> liveSources,
-            java.util.Set<String> queued) {
+            java.util.Set<String> queued,
+            java.util.Map<String, Long> expected68) {
         if (url == null) return false;
         try {
             if (liveSources != null && liveSources.contains(url)) return false;
@@ -629,13 +645,11 @@ public class AutoDownloadJob extends JobService {
                             android.os.Environment.DIRECTORY_DOWNLOADS),
                     "Dhamma");
             String mapped = mappedFileName68(url);
-            if (mapped != null && new java.io.File(dir, mapped).exists()
-                    && new java.io.File(dir, mapped).length() > 0)
+            if (mapped != null && isCompleteFile68(new java.io.File(dir, mapped), url, expected68))
                 return true;
             for (String name : fileNameCandidates68(url)) {
                 if (fileClaimedByOther68(name, url)) continue;
-                if (new java.io.File(dir, name).exists()
-                        && new java.io.File(dir, name).length() > 0) return true;
+                if (isCompleteFile68(new java.io.File(dir, name), url, expected68)) return true;
             }
         } catch (Exception ignored) {}
         return false;
@@ -800,6 +814,75 @@ public class AutoDownloadJob extends JobService {
             } finally { c.close(); }
         } catch (Exception ignored) {}
         return out;
+    }
+
+    // v14.21 (audit-1369 L1): expected total bytes per source URL, from ONE
+    // bulk DownloadManager query (no status filter) -- the scan-time write
+    // point for download integrity, chosen over failure-receiver persist
+    // (all five activity receivers are dynamic, so they never fire when the
+    // app is dead) and over the three progress polls (live rows only, and
+    // they never see the background job). Latest row per URL wins, by
+    // COLUMN_ID: a re-download attempt supersedes the older row, and a
+    // failed re-attempt can only have truncated the file the older row
+    // completed. A row with an unknown total (chunked, -1) carries no
+    // signal and is skipped, so the older known total stands; a URL with
+    // no row at all is absent from the map. Any query failure returns an
+    // empty map -- every consumer fails open to the length-only behaviour.
+    // Built once per job run in doWorkInner68; the predicates read it,
+    // never query. No prefs, no DlLock: a read-only DM query on the job
+    // thread, next to liveDlSources68 which already pays its own
+    // unfiltered query on the same thread.
+    private java.util.Map<String, Long> expectedSizes68() {
+        java.util.Map<String, Long> out = new java.util.HashMap<String, Long>();
+        java.util.Map<String, Long> ids = new java.util.HashMap<String, Long>();
+        try {
+            android.app.DownloadManager dm = (android.app.DownloadManager)
+                    getSystemService(Context.DOWNLOAD_SERVICE);
+            android.database.Cursor c;
+            try {
+                c = dm.query(new android.app.DownloadManager.Query());
+            } catch (Exception ignored) {
+                return out;
+            }
+            if (c == null) return out;
+            try {
+                int idCol = c.getColumnIndex(android.app.DownloadManager.COLUMN_ID);
+                int srcCol = c.getColumnIndex(android.app.DownloadManager.COLUMN_URI);
+                int totalCol = c.getColumnIndex(
+                        android.app.DownloadManager.COLUMN_TOTAL_SIZE_BYTES);
+                while (c.moveToNext()) {
+                    if (srcCol < 0 || totalCol < 0) continue;
+                    String src = c.getString(srcCol);
+                    if (src == null || src.length() == 0) continue;
+                    long total = c.getLong(totalCol);
+                    if (total <= 0) continue;
+                    long id = idCol >= 0 ? c.getLong(idCol) : -1;
+                    Long prevId = ids.get(src);
+                    if (prevId == null || id >= prevId) {
+                        ids.put(src, id);
+                        out.put(src, total);
+                    }
+                }
+            } finally { c.close(); }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    // v14.21 (audit-1369 L1): is this on-disk file complete, or a truncated
+    // partial from a dead job? A non-empty file shorter than the expected
+    // total of its latest DownloadManager row is a partial: not downloaded.
+    // Unknown total (no row, chunked, row gone) fails open -- the length-only
+    // behaviour. A file longer than expected also passes: only the short
+    // case is a truncation signal. Static: the same test the Room/Talks/
+    // library length gates will take when the L1 completeness pass reaches
+    // them; no state, no prefs.
+    private static boolean isCompleteFile68(java.io.File f, String url,
+            java.util.Map<String, Long> expected) {
+        if (f == null || !f.isFile() || f.length() <= 0) return false;
+        if (expected == null) return true;
+        Long total = expected.get(url);
+        if (total == null || total.longValue() <= 0) return true;
+        return f.length() >= total.longValue();
     }
 
     private java.util.Set<String> readDlQueued68() {
