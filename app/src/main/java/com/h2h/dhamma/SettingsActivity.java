@@ -660,17 +660,14 @@ public class SettingsActivity extends Activity {
         // v3.78: About — Team + Policy (user order 2026-10-30 ~22:35 +07). Team names
         // the developer exactly as he spelled it (Htay Hlaing Win); Policy states
         // the talk source (dhammadownload.com, direct play, never rehosted) and
-        // that rights belong to the original sayadaws/site. Info dialogs only:
-        // one Close button, nothing else changes on dismiss.
+        // that rights belong to the original sayadaws/site. v13.56: the Team row
+        // (now labelled Developer Profile) opens the photo pop-up instead of the
+        // plain text dialog; Policy stays a plain info dialog (one Close button).
         android.view.View rowTeam = findViewById(R.id.rowTeam);
         if (rowTeam != null) rowTeam.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 Fx.morph(v);
-                new android.app.AlertDialog.Builder(SettingsActivity.this)
-                        .setTitle(Lang.t(SettingsActivity.this, "team_title"))
-                        .setMessage(Lang.t(SettingsActivity.this, "team_msg"))
-                        .setPositiveButton(Lang.t(SettingsActivity.this, "dlg_close"), null)
-                        .show();
+                showDeveloperProfileDialog();
             }
         });
         android.view.View rowPolicy = findViewById(R.id.rowPolicy);
@@ -1039,6 +1036,51 @@ android.view.View settingsStripPrev = findViewById(R.id.nowStripPrev);
                 });
             }
         }
+    }
+
+    // v13.56: Developer Profile pop-up (his order 2026-11-10 ~20:18 +07).
+    // His photo is the card background (center-cropped), his name below it,
+    // and the Facebook link is the real "f" icon only — no text link. Tapping
+    // the icon opens his Facebook profile (share link) in the browser or the
+    // Facebook app; no browser toasts open_failed. Rounded corners via
+    // clipToOutline on the root; the window itself is transparent.
+    private void showDeveloperProfileDialog() {
+        final android.app.Dialog dlg = new android.app.Dialog(SettingsActivity.this);
+        dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+        dlg.setContentView(R.layout.dialog_dev_profile);
+        dlg.setCancelable(true);
+        android.view.Window w = dlg.getWindow();
+        if (w != null) {
+            w.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+            w.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+        android.view.View root = dlg.findViewById(R.id.devProfileRoot);
+        if (root != null) {
+            final int radiusPx = (int) (24 * getResources().getDisplayMetrics().density + 0.5f);
+            root.setOutlineProvider(new android.view.ViewOutlineProvider() {
+                @Override public void getOutline(android.view.View view, android.graphics.Outline outline) {
+                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), radiusPx);
+                }
+            });
+            root.setClipToOutline(true);
+        }
+        android.view.View fb = dlg.findViewById(R.id.devProfileFb);
+        if (fb != null) fb.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.morph(v);
+                try {
+                    startActivity(new Intent(Intent.ACTION_VIEW,
+                            android.net.Uri.parse("https://www.facebook.com/share/1ExQj88xmi/")));
+                } catch (Exception e) {
+                    android.widget.Toast.makeText(SettingsActivity.this, Lang.t(SettingsActivity.this, "open_failed"), android.widget.Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+        android.view.View close = dlg.findViewById(R.id.devProfileClose);
+        if (close != null) close.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { dlg.dismiss(); }
+        });
+        dlg.show();
     }
 
     // v1.30: clear favourite sayadaws + favourite talks in one tap
