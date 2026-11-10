@@ -6143,34 +6143,42 @@ public class DownloadedActivity extends Activity {
         // can never inherit it.
         boolean permGrantFade = dlPermGrantFade;
         dlPermGrantFade = false;
-        if (permGrantFade && !entries.isEmpty()
-                && emptyV.getVisibility() == View.VISIBLE) {
-            // leave visible for applyDlFilter's v2.80 fade-out
-        } else if (!dlEmptyFade && emptyV.getVisibility() == View.VISIBLE
-                && emptyV.getAlpha() < 0.999f) {
-            // v3.61: premium loadList empty-view re-appearance continuity — the
-            // v3.58 show-branch fix applied to the reload path it never reached.
-            // A reload (sort tap, return, onResume, a download finishing) landing
-            // inside the 200ms v2.80 fade-out used to hit the else branch below,
-            // which cancelled the fade and reset alpha straight to 1 before
-            // applyDlFilter ever saw the mid-fade state — so the v3.58 glide
-            // branches could never fire on a reload, and the word either snapped
-            // back to full (still empty) or vanished mid-fade (rows matched).
-            // A mid-fade word is now left alone here, exactly like the v2.83
-            // grant path above, and applyDlFilter decides from its real state:
-            // a still-empty word glides back to 1 via the v3.58 branch, a
-            // matched-again word fades out afresh from its current alpha via
-            // Fx.fadeOut (which cancels and restarts from that alpha, so no cut).
-            // Settled words (alpha ~1, first loads, rotations, unchanged reloads)
-            // keep the old instant reset with no pointless fade, and dlEmptyFade
-            // still forces GONE below so its fade-in branch still sees a
-            // GONE -> VISIBLE word. Visual only; visibility/text behaviour
-            // of every other path is untouched.
-        } else {
-            emptyV.animate().cancel();
-            emptyV.setAlpha(1f);
-            if (dlEmptyFade) emptyV.setVisibility(View.GONE);
-            else emptyV.setVisibility(entries.isEmpty() ? View.VISIBLE : View.GONE);
+        // v14.15 (L1, sixth pass slice 16): emptyV was the last bare
+        // deref in loadList — R.id.emptyText exists in the layout so
+        // this is unreachable today, the same class as the Settings
+        // L5 titleText guards (v14.14). Guard the whole chain; a null
+        // emptyV now skips the empty-view update and loadList still
+        // runs (the permGrantFade flag consume above stays outside).
+        if (emptyV != null) {
+            if (permGrantFade && !entries.isEmpty()
+                    && emptyV.getVisibility() == View.VISIBLE) {
+                // leave visible for applyDlFilter's v2.80 fade-out
+            } else if (!dlEmptyFade && emptyV.getVisibility() == View.VISIBLE
+                    && emptyV.getAlpha() < 0.999f) {
+                // v3.61: premium loadList empty-view re-appearance continuity — the
+                // v3.58 show-branch fix applied to the reload path it never reached.
+                // A reload (sort tap, return, onResume, a download finishing) landing
+                // inside the 200ms v2.80 fade-out used to hit the else branch below,
+                // which cancelled the fade and reset alpha straight to 1 before
+                // applyDlFilter ever saw the mid-fade state — so the v3.58 glide
+                // branches could never fire on a reload, and the word either snapped
+                // back to full (still empty) or vanished mid-fade (rows matched).
+                // A mid-fade word is now left alone here, exactly like the v2.83
+                // grant path above, and applyDlFilter decides from its real state:
+                // a still-empty word glides back to 1 via the v3.58 branch, a
+                // matched-again word fades out afresh from its current alpha via
+                // Fx.fadeOut (which cancels and restarts from that alpha, so no cut).
+                // Settled words (alpha ~1, first loads, rotations, unchanged reloads)
+                // keep the old instant reset with no pointless fade, and dlEmptyFade
+                // still forces GONE below so its fade-in branch still sees a
+                // GONE -> VISIBLE word. Visual only; visibility/text behaviour
+                // of every other path is untouched.
+            } else {
+                emptyV.animate().cancel();
+                emptyV.setAlpha(1f);
+                if (dlEmptyFade) emptyV.setVisibility(View.GONE);
+                else emptyV.setVisibility(entries.isEmpty() ? View.VISIBLE : View.GONE);
+            }
         }
         refreshLibMarkCache();
         // v7.45: adopt the tick snapshots on every load, so a
@@ -8805,7 +8813,7 @@ public class DownloadedActivity extends Activity {
                 .setTitle(t.title)
                 .setItems(opts, new android.content.DialogInterface.OnClickListener() {
                     @Override public void onClick(android.content.DialogInterface d, int which) {
-                        String choice = opts[which];
+                        // v14.15 (L2, sixth pass slice 16): dead local removed — dispatch is entirely on choiceKey below.
                         final String choiceKey = optKeys[which];
                         String cur = soundingLibPath(); // v11.24: unbound-window mirror, so the v11.12/v11.14 re-checks and every bulk skip see the sounding file even with no bind
                         // v12.00: drop entries the library advance already popped --
