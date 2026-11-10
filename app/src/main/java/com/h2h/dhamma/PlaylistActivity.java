@@ -58,6 +58,19 @@ public class PlaylistActivity extends Activity {
     private Runnable stripTick;
     private boolean plResumeStripMode = false;
     private String plStripPhotoName = null;
+    // v13.55: playing-row mark (Talks v4.89/v11.07, same rules) — the Playlist rows
+    // carried no live marks: a listener browsing an open list could not spot the talk the strip is
+    // naming without remembering its title. plPlayingUrl is the sounding Room-session URL (lastUrl);
+    // plPlayingLibUrl is the sounding library talk via the dlMap reverse lookup (exactly-one
+    // claimant, v8.44 — a dual-claimed file names no talk rather than the wrong one), so a list talk
+    // sounding from the downloaded library reads as the playing row exactly like a Room row (v11.07).
+    // plRowPlayingUrl / plRowPlayingLibUrl / plRowEnded are the last bound snapshots; the 1s tick
+    // rebinds once when any of them changes.
+    private String plPlayingUrl = "";
+    private String plPlayingLibUrl = "";
+    private String plRowPlayingUrl = null;
+    private String plRowPlayingLibUrl = null;
+    private boolean plRowEnded = false;
     // v14.06 (F4, sixth pass slice 5): rotation-restore track for
     // the open new-list / delete-confirm dialogs - the dialog refs
     // (+ the live EditText) let onSaveInstanceState read what is
@@ -200,8 +213,15 @@ public class PlaylistActivity extends Activity {
 
     private int titleColor() { return night ? 0xFFFFFFFF : 0xFF3B2314; }
     private int subColor() { return night ? 0xFFAAAAAA : 0xFF7A6A58; }
+    private int goldColor() { return 0xFFC9A227; } // v13.55: playing-row gold, same as Talks/History
 
     private LinearLayout textRows(String title, String sub) {
+        return textRows(title, sub, false);
+    }
+
+    // v13.55: gold variant for the playing row — the title TextView takes the gold colour; the sub
+    // line is unchanged. The list rows (listRow) keep the plain variant.
+    private LinearLayout textRows(String title, String sub, boolean gold) {
         float d = getResources().getDisplayMetrics().density;
         int pad = (int) (12 * d);
         LinearLayout col = new LinearLayout(this);
@@ -210,7 +230,7 @@ public class PlaylistActivity extends Activity {
         col.setPadding(pad, (int) (10 * d), pad, (int) (10 * d));
         TextView tv = new TextView(this);
         tv.setText(title);
-        tv.setTextColor(titleColor());
+        tv.setTextColor(gold ? goldColor() : titleColor());
         tv.setTextSize(16);
         tv.setTypeface(null, android.graphics.Typeface.BOLD);
         col.addView(tv, new LinearLayout.LayoutParams(
@@ -254,7 +274,14 @@ public class PlaylistActivity extends Activity {
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         String title = qe.title.length() > 0 ? qe.title : qe.url;
-        LinearLayout col = textRows(title, qe.sayadaw);
+        // v13.55: the sounding row says so — "▶ " ahead of its title in gold (Talks v4.89/v11.07),
+        // for a Room session (URL match) or a library session (dlMap exactly-one claimant); an ended
+        // talk is not playing (v11.15 gate), so its mark lifts at once. Rows are built fresh per
+        // getView, but both text and colour rebind here so neither can leak onto the next talk.
+        boolean plRowPlaying = !AudioService.liveEnded
+                && ((plPlayingUrl.length() > 0 && qe.url.equals(plPlayingUrl))
+                        || (plPlayingLibUrl.length() > 0 && qe.url.equals(plPlayingLibUrl)));
+        LinearLayout col = textRows(plRowPlaying ? "▶ " + title : title, qe.sayadaw, plRowPlaying);
         row.addView(col, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         Button del = new Button(this);
@@ -311,6 +338,7 @@ public class PlaylistActivity extends Activity {
         if (headerBtn != null) headerBtn.setText(Lang.t(this, "back"));
         if (playAllBtn != null)
             playAllBtn.setVisibility(items.isEmpty() ? View.GONE : View.VISIBLE);
+        refreshPlaylistPlayingMarks(); // v13.55: mark right on first paint, not one tick late
         if (adapter != null) adapter.notifyDataSetChanged();
         refreshEmpty();
     }
@@ -516,6 +544,39 @@ public class PlaylistActivity extends Activity {
     // file); anything else: hidden, so the lists stay
     // list-only. Scope note: the strip is the piece — the
     // rows themselves gain no playing mark this run.
+    // v13.55: sounding identities for the row mark — Talks' refreshQueueMarks playing half, minus the
+    // queue cache (Playlist has no queue marks). Room: liveSession + liveHasTrack (v10.43 bound-trackless
+    // stop: a stopped talk is never the playing talk) + lastKind room -> lastUrl. Library: same live
+    // guards + lastKind lib -> lastLibPath, resolved to its stream URL through the dlMap reverse lookup
+    // (exactly-one claimant, v8.44). Prefs only, never per bind.
+    private void refreshPlaylistPlayingMarks() {
+        plPlayingUrl = "";
+        plPlayingLibUrl = "";
+        try {
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            if (AudioService.liveSession && AudioService.liveHasTrack
+                    && "room".equals(sp.getString("lastKind", "")))
+                plPlayingUrl = sp.getString("lastUrl", "");
+            if (AudioService.liveSession && AudioService.liveHasTrack
+                    && "lib".equals(sp.getString("lastKind", ""))) {
+                String libPath = sp.getString("lastLibPath", "");
+                if (libPath.length() > 0) {
+                    String base = libPath.substring(libPath.lastIndexOf('/') + 1);
+                    org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+                    java.util.Iterator<String> keys = map.keys();
+                    String hit = null;
+                    int matches = 0;
+                    while (keys.hasNext()) {
+                        String k = keys.next();
+                        if (base.equals(map.optString(k, ""))) { hit = k; matches++; }
+                    }
+                    if (matches == 1) plPlayingLibUrl = hit;
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
     private void syncPlaylistStripPhoto(String name) {
         android.view.View pv = findViewById(R.id.nowStripPhoto);
         if (pv == null) return;
@@ -532,6 +593,20 @@ public class PlaylistActivity extends Activity {
     }
 
     private void syncPlaylistStrip() {
+        // v13.55: playing-row mark — rebind once when the sounding talk changes under the list
+        // (Talks v4.89/v11.15, same change-only rule): auto-advance, a Next from the strip, a
+        // natural end (same URL, liveEnded flipped) or a stop moves the mark at once; steady ticks
+        // never touch the adapter, so scrolling stays undisturbed. Runs before the strip's own early
+        // returns, so a dead session clears the mark even while the strip hides.
+        refreshPlaylistPlayingMarks();
+        if (adapter != null && (!plPlayingUrl.equals(plRowPlayingUrl == null ? "" : plRowPlayingUrl)
+                || !plPlayingLibUrl.equals(plRowPlayingLibUrl == null ? "" : plRowPlayingLibUrl)
+                || AudioService.liveEnded != plRowEnded)) {
+            plRowPlayingUrl = plPlayingUrl;
+            plRowPlayingLibUrl = plPlayingLibUrl;
+            plRowEnded = AudioService.liveEnded;
+            adapter.notifyDataSetChanged();
+        }
         android.view.View strip = findViewById(R.id.nowStrip);
         if (strip == null) return;
         int navText = night ? android.graphics.Color.WHITE

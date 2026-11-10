@@ -65,6 +65,22 @@ public class HistoryActivity extends Activity {
     private Runnable stripTick;
     private boolean hsResumeStripMode = false;
     private String hsStripPhotoName = null;
+    // v13.55: playing-row mark (Talks v4.89/v11.07, same rules) — the History rows
+    // carried no live marks: a listener browsing recents could not spot the talk the strip is
+    // naming without remembering its title. The sounding identities below mirror Talks'
+    // refreshQueueMarks playing half: histPlayingUrl for a Room session (lastUrl), histPlayingLibUrl
+    // for a library session via the dlMap reverse lookup (exactly-one claimant, v8.44), and
+    // histPlayingLibPath for a library session matched directly — a path-form row IS the file
+    // (playRecent v12.82 writes the same path), so no lookup is needed there. histRowPlayingUrl /
+    // histRowPlayingLibUrl / histRowPlayingLibPath / histRowEnded are the last bound snapshots;
+    // the 1s tick rebinds once when any of them changes.
+    private String histPlayingUrl = "";
+    private String histPlayingLibUrl = "";
+    private String histPlayingLibPath = "";
+    private String histRowPlayingUrl = null;
+    private String histRowPlayingLibUrl = null;
+    private String histRowPlayingLibPath = null;
+    private boolean histRowEnded = false;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -184,6 +200,7 @@ public class HistoryActivity extends Activity {
             topSub.setText(top == null ? "" : fmtDur(Long.parseLong(top[1])));
             topSub.setTextColor(subColor());
         }
+        refreshHistoryPlayingMarks(); // v13.55: mark right on first paint, not one tick late
         if (adapter != null) adapter.notifyDataSetChanged();
         if (emptyText == null) return;
         boolean empty = items.isEmpty();
@@ -203,8 +220,18 @@ public class HistoryActivity extends Activity {
         col.setGravity(Gravity.CENTER_VERTICAL);
         col.setPadding(pad, (int) (10 * d), pad, (int) (10 * d));
         TextView tv = new TextView(this);
-        tv.setText(e.title.length() > 0 ? e.title : e.url);
-        tv.setTextColor(titleColor());
+        // v13.55: the sounding row says so — "▶ " ahead of its title in gold (Talks v4.89/v11.07),
+        // for a Room session (URL match), a library session on a URL-form row (dlMap exactly-one
+        // claimant) or a path-form row (direct path match); an ended talk is not playing (v11.15 gate),
+        // so its mark lifts at once. Rows are built fresh per getView, but both text and colour rebind
+        // here so neither can leak onto the next talk.
+        boolean hsRowPlaying = !AudioService.liveEnded
+                && ((histPlayingUrl.length() > 0 && e.url.equals(histPlayingUrl))
+                        || (histPlayingLibUrl.length() > 0 && e.url.equals(histPlayingLibUrl))
+                        || (histPlayingLibPath.length() > 0 && e.url.equals(histPlayingLibPath)));
+        tv.setText(hsRowPlaying ? "▶ " + (e.title.length() > 0 ? e.title : e.url)
+                : (e.title.length() > 0 ? e.title : e.url));
+        tv.setTextColor(hsRowPlaying ? goldColor() : titleColor());
         tv.setTextSize(16);
         tv.setTypeface(null, android.graphics.Typeface.BOLD);
         col.addView(tv, new LinearLayout.LayoutParams(
@@ -384,6 +411,42 @@ public class HistoryActivity extends Activity {
     // file); anything else: hidden, so the history stays
     // list-only. Scope note: the strip is the piece — the
     // rows themselves gain no playing mark this run.
+    // v13.55: sounding identities for the row mark — Talks' refreshQueueMarks playing half, minus the
+    // queue cache (History has no queue marks). Room: liveSession + liveHasTrack (v10.43 bound-trackless
+    // stop: a stopped talk is never the playing talk) + lastKind room -> lastUrl. Library: same live
+    // guards + lastKind lib -> lastLibPath, plus the dlMap reverse lookup for URL-form rows
+    // (exactly-one claimant, v8.44 — a dual-claimed file names no talk rather than the wrong one).
+    // Prefs only, never per bind.
+    private void refreshHistoryPlayingMarks() {
+        histPlayingUrl = "";
+        histPlayingLibUrl = "";
+        histPlayingLibPath = "";
+        try {
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            if (AudioService.liveSession && AudioService.liveHasTrack
+                    && "room".equals(sp.getString("lastKind", "")))
+                histPlayingUrl = sp.getString("lastUrl", "");
+            if (AudioService.liveSession && AudioService.liveHasTrack
+                    && "lib".equals(sp.getString("lastKind", ""))) {
+                histPlayingLibPath = sp.getString("lastLibPath", "");
+                String libPath = histPlayingLibPath;
+                if (libPath.length() > 0) {
+                    String base = libPath.substring(libPath.lastIndexOf('/') + 1);
+                    org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+                    java.util.Iterator<String> keys = map.keys();
+                    String hit = null;
+                    int matches = 0;
+                    while (keys.hasNext()) {
+                        String k = keys.next();
+                        if (base.equals(map.optString(k, ""))) { hit = k; matches++; }
+                    }
+                    if (matches == 1) histPlayingLibUrl = hit;
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
     private void syncHistoryStripPhoto(String name) {
         android.view.View pv = findViewById(R.id.nowStripPhoto);
         if (pv == null) return;
@@ -400,6 +463,22 @@ public class HistoryActivity extends Activity {
     }
 
     private void syncHistoryStrip() {
+        // v13.55: playing-row mark — rebind once when the sounding talk changes under the list
+        // (Talks v4.89/v11.15, same change-only rule): auto-advance, a Next from the strip, a
+        // natural end (same URL, liveEnded flipped) or a stop moves the mark at once; steady ticks
+        // never touch the adapter, so scrolling stays undisturbed. Runs before the strip's own early
+        // returns, so a dead session clears the mark even while the strip hides.
+        refreshHistoryPlayingMarks();
+        if (adapter != null && (!histPlayingUrl.equals(histRowPlayingUrl == null ? "" : histRowPlayingUrl)
+                || !histPlayingLibUrl.equals(histRowPlayingLibUrl == null ? "" : histRowPlayingLibUrl)
+                || !histPlayingLibPath.equals(histRowPlayingLibPath == null ? "" : histRowPlayingLibPath)
+                || AudioService.liveEnded != histRowEnded)) {
+            histRowPlayingUrl = histPlayingUrl;
+            histRowPlayingLibUrl = histPlayingLibUrl;
+            histRowPlayingLibPath = histPlayingLibPath;
+            histRowEnded = AudioService.liveEnded;
+            adapter.notifyDataSetChanged();
+        }
         android.view.View strip = findViewById(R.id.nowStrip);
         if (strip == null) return;
         int navText = night ? android.graphics.Color.WHITE
