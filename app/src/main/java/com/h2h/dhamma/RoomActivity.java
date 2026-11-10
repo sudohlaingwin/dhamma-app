@@ -7262,7 +7262,7 @@ if (snd68 >= 0) currentIndex = snd68;
         // theme whose decode failed, so recording the request let a
         // rotation re-request it and change the altar with no talk
         // change (08:28 +07 altar audit, Finding 3).
-        themeIndex = roomView.setPhoto(themeIndex);
+        if (roomView != null) themeIndex = roomView.setPhoto(themeIndex);
         // v3.88: restore the living scene on recreation (rotation
         // or process death) before the first draw, so a playing
         // Room reopens lit at its old drift position instead of
@@ -7270,7 +7270,7 @@ if (snd68 >= 0) currentIndex = snd68;
         // and is untouched, and the poll's setPlaying then no-ops.
         // v3.89: smoke FIRST, so restoreScene's post rule sees the
         // pending wisps and posts the animator for a paused drain.
-        if (savedInstanceState != null) {
+        if (savedInstanceState != null && roomView != null) {
             roomView.restoreSmoke(savedInstanceState.getFloatArray("roomSmoke"));
             roomView.restoreScene(savedInstanceState.getBoolean("roomLit", false),
                     savedInstanceState.getFloat("roomLitBlend", 0f),
@@ -7858,7 +7858,7 @@ if (snd62 >= 0) currentIndex = snd62;
         // talk just seeks. No-track mirrors the click path above
         // (shown talk, or first talk, or the "no talks" toast). Consumed, so the
         // tap handler never fires after it.
-        btnPlayPause.setOnLongClickListener(new View.OnLongClickListener() {
+        if (btnPlayPause != null) btnPlayPause.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
                 if (service == null || !service.hasTrack()) {
                     // v11.81: restart the shown talk, not talk 0 (see playShownOrFirst81).
