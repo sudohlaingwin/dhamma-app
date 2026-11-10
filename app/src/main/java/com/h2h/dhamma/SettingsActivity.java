@@ -2773,7 +2773,15 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         if (content != null)
             content.setBackgroundResource(night ? R.drawable.bg_gradient_night : R.drawable.bg_gradient_day);
         // v12.94: no cards remain — rows sit on the screen background.
-        titleText.setTextColor(night ? Color.parseColor("#C9A227") : Color.parseColor("#7A2E1F"));
+        // v14.14 (L5, sixth pass slice 15): the titleText field
+        // was the only bare deref left in refresh() — every
+        // other view here is null-guarded, and R.id.titleText
+        // exists in the layout so this is unreachable today,
+        // the same class as the Talks L1 setSelection guard
+        // (v14.09). Guard all three sites; a null titleText
+        // now skips the title writes and the rest of refresh()
+        // still runs.
+        if (titleText != null) titleText.setTextColor(night ? Color.parseColor("#C9A227") : Color.parseColor("#7A2E1F"));
         // v1.96: this screen never followed the font-size setting it
         // exists to change — its title, labels, notes and buttons
         // stayed at fixed layout sizes, so a large-text listener set
@@ -2786,7 +2794,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         float lbl = fs == 0 ? 14 : (fs == 1 ? 16 : 20);
         float note = fs == 0 ? 12 : (fs == 1 ? 13 : 16);
         float btn = fs == 0 ? 14 : (fs == 1 ? 16 : 18);
-        titleText.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, fs == 0 ? 22 : (fs == 1 ? 26 : 32));
+        if (titleText != null) titleText.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, fs == 0 ? 22 : (fs == 1 ? 26 : 32));
         int[] labelIds = {R.id.labelLanguage, R.id.labelFont, R.id.lblRepeat, R.id.lblSleep, R.id.lblClearData, R.id.lblVersion, R.id.btnDownloaded, R.id.btnTeam, R.id.btnPolicy};
         for (int id : labelIds) { TextView lv = findViewById(id); if (lv != null) { lv.setTextColor(ink); lv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, lbl); } }
         // v12.94: section headers — small muted caps, not card titles.
@@ -2854,7 +2862,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         // inside every choice dip, so a language tap re-reads the whole
         // screen at the dip. Talk/sayadaw names are content, not chrome,
         // and are deliberately untouched by Lang.
-        titleText.setText(Lang.t(this, "settings"));
+        if (titleText != null) titleText.setText(Lang.t(this, "settings"));
         setLabelText(R.id.labelLanguage, "lang_label");
         setLabelText(R.id.labelFont, "font_label");
         setLabelText(R.id.lblRepeat, "repeat");
