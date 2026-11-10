@@ -12821,27 +12821,16 @@ if (snd67q >= 0) currentIndex = snd67q;
                 int httpCode = 0;
                 final boolean[] usedCache = new boolean[1];
                 final String[] failReason = new String[1];
-                // v1.58: disconnect in a finally — v1.57 only released
-                // the connection on the success path, so a failed load
-                // (e.g. getInputStream throwing) still leaked its socket.
-                HttpURLConnection conn = null;
-                InputStream in = null;
+                // v13.57: the connection lifecycle (disconnect in a
+                // finally, v1.58/v1.66) now lives in SiteHttp, which
+                // owns both the HTTPS attempt and the http retry.
                 try {
-                    conn = (HttpURLConnection) new URL(loadPageUrl).openConnection();
-                    conn.setConnectTimeout(20000);
-                    conn.setReadTimeout(30000);
-                    conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-                    // v13.57: read the status before the body — see the
-                    // Talks loader for why the classifier needs it.
-                    httpCode = conn.getResponseCode();
-                    if (httpCode != HttpURLConnection.HTTP_OK)
-                        throw new java.io.IOException("HTTP " + httpCode);
-                    in = conn.getInputStream();
-                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                    byte[] buf = new byte[8192];
-                    int n;
-                    while ((n = in.read(buf)) > 0) baos.write(buf, 0, n);
-                    byte[] bytes = baos.toByteArray();
+                    // v13.57 (TLS resilience): the fetch rides
+                    // through SiteHttp — HTTPS first, one retry over
+                    // plain http when the site's TLS is refused on
+                    // this phone/network (see Talks loader).
+                    byte[] bytes = SiteHttp.fetchBytes(loadPageUrl, 20000, 30000);
+                    httpCode = SiteHttp.lastHttpCode;
                     String html = new String(bytes, "UTF-8");
                     // v1.87: same quoted-charset miss as the Talks
                     // chooser — charset="utf-8" never matched the old
@@ -12929,14 +12918,11 @@ if (snd67q >= 0) currentIndex = snd67q;
                     err = e.getMessage();
                     if (err == null || err.length() == 0) err = Lang.t(RoomActivity.this, "internet_error");
                     // v13.57: classify the real reason while the
-                    // exception is in hand.
+                    // exception is in hand. The status rides in
+                    // SiteHttp.lastHttpCode (an HTTP error throws
+                    // after recording it; a network failure leaves 0).
+                    httpCode = SiteHttp.lastHttpCode;
                     failReason[0] = TalkListCache.reasonKey(e, httpCode);
-                } finally {
-                    // v1.66: same stream leak as the Talks loader —
-                    // close the stream in the finally, not only on
-                    // the success path (see TalksActivity v1.66).
-                    if (in != null) { try { in.close(); } catch (Exception ignored) {} }
-                    if (conn != null) { try { conn.disconnect(); } catch (Exception ignored) {} }
                 }
                 // v13.57 (offline resilience): same as the Talks
                 // chooser — save a good list, fall back to the saved

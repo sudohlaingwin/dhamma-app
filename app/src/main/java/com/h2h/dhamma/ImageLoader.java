@@ -12,9 +12,6 @@ import android.widget.ImageView;
 
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -190,34 +187,19 @@ public class ImageLoader {
                 new android.os.Handler(android.os.Looper.getMainLooper());
         DL_POOL.execute(new Runnable() {
             @Override public void run() {
-                // v1.60: disconnect in a finally — v1.57 only released
-                // the connection on the success path, so a failed
-                // portrait read (the common case on a bad network)
-                // still leaked its socket, unlike the talk loaders
-                // fixed the same way in v1.58.
-                HttpURLConnection conn = null;
-                InputStream in = null;
+                // v13.57: the connection lifecycle (disconnect in a
+                // finally, v1.60/v1.65) now lives in SiteHttp, which
+                // owns both the HTTPS attempt and the http retry.
                 try {
-                    conn = (HttpURLConnection) new URL(url).openConnection();
-                    conn.setConnectTimeout(15000);
-                    conn.setReadTimeout(20000);
-                    conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-                    // v11.91: refuse an over-cap response before
-                    // reading a byte of it (see MAX_DOWNLOAD_BYTES).
-                    int contentLen = conn.getContentLength();
-                    if (contentLen > MAX_DOWNLOAD_BYTES) return;
-                    in = conn.getInputStream();
-                    java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-                    byte[] buf = new byte[8192];
-                    int n;
-                    // v11.91: abort past the cap instead of reading
-                    // to EOF — the placeholder stays, the finally
-                    // below releases the in-flight slot.
-                    while ((n = in.read(buf)) > 0) {
-                        baos.write(buf, 0, n);
-                        if (baos.size() > MAX_DOWNLOAD_BYTES) return;
-                    }
-                    Bitmap raw = decodeBoundedBytes(baos.toByteArray());
+                    // v13.57 (TLS resilience): the portrait fetch rides
+                    // through SiteHttp — HTTPS first, one retry over
+                    // plain http when the site's TLS is refused on
+                    // this phone/network. The 8MB cap (v11.91) lives
+                    // in the capped fetch now: an over-cap response
+                    // throws and the placeholder stays, exactly as
+                    // the old early-return did.
+                    byte[] data = SiteHttp.fetchBytesCapped(url, 15000, 20000, MAX_DOWNLOAD_BYTES);
+                    Bitmap raw = decodeBoundedBytes(data);
                     // v1.87: an undecodable download used to return
                     // here leaving its waiters registered forever.
                     // v1.88: the finally below now clears waiters +
@@ -303,12 +285,8 @@ public class ImageLoader {
                     // v1.88: the finally below clears them with the
                     // in-flight slot in one critical section.
                 } finally {
-                    // v1.65: a read dying mid-stream used to leak the
-                    // stream itself — disconnect() alone does not
-                    // reliably close it. Close it here, like the
-                    // connection in v1.60.
-                    if (in != null) { try { in.close(); } catch (Exception ignored) {} }
-                    if (conn != null) { try { conn.disconnect(); } catch (Exception ignored) {} }
+                    // v13.57: the connection lifecycle now lives in
+                    // SiteHttp (see the capped fetch above).
                     // v1.85: release the in-flight slot (see above) —
                     // a failed download must not block its portrait
                     // forever, and a good one must not leave a stale

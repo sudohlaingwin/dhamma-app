@@ -13,8 +13,6 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -5028,10 +5026,9 @@ public class TalksActivity extends Activity {
                 int httpCode = 0;
                 final boolean[] usedCache = new boolean[1];
                 final String[] failReason = new String[1];
-                // v1.58: disconnect in a finally — v1.57 only released
-                // on the success path, so a failed load leaked its socket.
-                HttpURLConnection conn = null;
-                InputStream in = null;
+                // v13.57: the connection lifecycle (disconnect in a
+                // finally, v1.58/v1.66) now lives in SiteHttp, which
+                // owns both the HTTPS attempt and the http retry.
                 try {
                     // v13.25 (catalog F1): a sayadaw with no talk page
                     // on the source site (idx 44/45 — plain text, no
@@ -5045,24 +5042,14 @@ public class TalksActivity extends Activity {
                     // keeps a rotation from refetching a URL that
                     // does not exist (v12.56 restore branch).
                     if (pageUrl != null && pageUrl.length() > 0) {
-                        conn = (HttpURLConnection) new URL(pageUrl).openConnection();
-                        conn.setConnectTimeout(20000);
-                        conn.setReadTimeout(30000);
-                        conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-                        // v13.57: read the status before the body — a
-                        // non-200 page used to throw out of
-                        // getInputStream with only a bare message, so
-                        // the reason classifier could not tell a
-                        // server error from a network failure.
-                        httpCode = conn.getResponseCode();
-                        if (httpCode != HttpURLConnection.HTTP_OK)
-                            throw new java.io.IOException("HTTP " + httpCode);
-                        in = conn.getInputStream();
-                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                        byte[] buf = new byte[8192];
-                        int n;
-                        while ((n = in.read(buf)) > 0) baos.write(buf, 0, n);
-                        byte[] bytes = baos.toByteArray();
+                        // v13.57 (TLS resilience): the fetch rides
+                        // through SiteHttp — HTTPS first, one retry
+                        // over plain http when the site's TLS is
+                        // refused on this phone/network. The status
+                        // still rides to the landing for the reason
+                        // classifier (SiteHttp.lastHttpCode).
+                        byte[] bytes = SiteHttp.fetchBytes(pageUrl, 20000, 30000);
+                        httpCode = SiteHttp.lastHttpCode;
                         String html = new String(bytes, "UTF-8");
                         // v1.87: the standard meta form quotes the value
                         // (charset="utf-8"), and the old pattern required
@@ -5088,16 +5075,11 @@ public class TalksActivity extends Activity {
                     // v13.57: classify the real reason now, while the
                     // exception is in hand — the landing only gets the
                     // message string, which cannot tell DNS from a
-                    // certificate failure.
+                    // certificate failure. The status rides in
+                    // SiteHttp.lastHttpCode (an HTTP error throws
+                    // after recording it; a network failure leaves 0).
+                    httpCode = SiteHttp.lastHttpCode;
                     failReason[0] = TalkListCache.reasonKey(e, httpCode);
-                } finally {
-                    // v1.66: a read dying mid-stream used to leak the
-                    // stream itself — the connection was disconnected
-                    // (v1.58) but the stream was only closed on the
-                    // success path, the same class ImageLoader fixed
-                    // in v1.65. Close it here too.
-                    if (in != null) { try { in.close(); } catch (Exception ignored) {} }
-                    if (conn != null) { try { conn.disconnect(); } catch (Exception ignored) {} }
                 }
                 // v13.57 (offline resilience): a good list is saved
                 // for the next offline visit; a failed load falls back

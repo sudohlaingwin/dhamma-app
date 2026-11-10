@@ -1692,8 +1692,12 @@ public class Fx {
             String file = stripDownloadFileName(sp, url);
             android.app.DownloadManager dm = (android.app.DownloadManager)
                     ctx.getSystemService(Context.DOWNLOAD_SERVICE);
+            // v13.57 (TLS resilience): the download itself rides the
+            // session's transport — plain http once this launch has
+            // proven the site's TLS refused. The dlMap key below
+            // stays the https URL (identity, not transport).
             android.app.DownloadManager.Request req =
-                    new android.app.DownloadManager.Request(android.net.Uri.parse(url));
+                    new android.app.DownloadManager.Request(android.net.Uri.parse(SiteHttp.siteUrl(url)));
             req.setTitle(title);
             req.setNotificationVisibility(
                     android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);

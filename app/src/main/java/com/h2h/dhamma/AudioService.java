@@ -2059,7 +2059,11 @@ public class AudioService extends Service {
             // with the screen off a long talk could stop mid-stream
             // when the phone dozed. Released with the player (below).
             player.setWakeMode(this, android.os.PowerManager.PARTIAL_WAKE_LOCK);
-            player.setDataSource(url);
+            // v13.57 (TLS resilience): a stream URL rides through
+            // SiteHttp — plain http once this launch has proven the
+            // site's TLS refused (flag set by any failed site fetch);
+            // local file paths pass through untouched.
+            player.setDataSource(SiteHttp.siteUrl(url));
             player.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
                 @Override public void onPrepared(MediaPlayer mp) {
                     prepared = true;
@@ -2237,6 +2241,18 @@ public class AudioService extends Service {
             });
             player.setOnErrorListener(new MediaPlayer.OnErrorListener() {
                 @Override public boolean onError(MediaPlayer mp, int what, int extra) {
+                    // v13.57 (TLS resilience): a stream that fails to
+                    // prepare because the site's TLS is refused on
+                    // this phone/network retries once over plain http
+                    // (same play() retry idiom as :2468/:2836, resume
+                    // spot re-derived by savedSeekFor). The flag stops
+                    // a second retry: a failed http attempt runs the
+                    // normal error path below (restores + advance).
+                    if (!SiteHttp.tlsBroken && currentUrl != null && SiteHttp.isSiteUrl(currentUrl)) {
+                        SiteHttp.tlsBroken = true;
+                        play(SiteHttp.downgrade(currentUrl), currentTitle, savedSeekFor(currentUrl));
+                        return true;
+                    }
                     trackError = true;
                     liveTrackError = true; // v13.53: mirror for the unbound Room
                     livePlaying = false; // v4.16
@@ -2328,6 +2344,17 @@ public class AudioService extends Service {
             showNotification(false);
             notifyState();
         } catch (Exception e) {
+            // v13.57 (TLS resilience): a setDataSource failure for a
+            // site stream is the TLS refusal surfacing early — retry
+            // once over plain http (same play() retry idiom as the
+            // toggle/resume paths :2468/:2836). The flag stops a
+            // second retry: a failed http attempt falls through to
+            // the normal error path below.
+            if (!SiteHttp.tlsBroken && SiteHttp.isSiteUrl(url)) {
+                SiteHttp.tlsBroken = true;
+                play(SiteHttp.downgrade(url), title, seekMs);
+                return;
+            }
             trackError = true;
             liveTrackError = true; // v13.53: mirror for the unbound Room
             livePlaying = false; // v4.16
@@ -5392,19 +5419,10 @@ public class AudioService extends Service {
     // Returns "url<TAB>title" lines in page order, like savePlayList57 builds, or ""
     // when the fetch fails or the page names no talks.
     private static String fetchPlayListRaw13(String page13) {
-        java.net.HttpURLConnection conn13 = null;
-        java.io.InputStream in13 = null;
         try {
-            conn13 = (java.net.HttpURLConnection) new java.net.URL(page13).openConnection();
-            conn13.setConnectTimeout(20000);
-            conn13.setReadTimeout(30000);
-            conn13.setRequestProperty("User-Agent", "Mozilla/5.0");
-            in13 = conn13.getInputStream();
-            java.io.ByteArrayOutputStream baos13 = new java.io.ByteArrayOutputStream();
-            byte[] buf13 = new byte[8192];
-            int n13;
-            while ((n13 = in13.read(buf13)) > 0) baos13.write(buf13, 0, n13);
-            byte[] bytes13 = baos13.toByteArray();
+            // v13.57 (TLS resilience): same SiteHttp fetch as the
+            // Talks/Room loaders — HTTPS first, one http retry.
+            byte[] bytes13 = SiteHttp.fetchBytes(page13, 20000, 30000);
             String html13 = new String(bytes13, "UTF-8");
             java.util.regex.Matcher cm13 = java.util.regex.Pattern.compile(
                     "charset=[\"']?([A-Za-z0-9_-]+)",
@@ -5465,9 +5483,6 @@ public class AudioService extends Service {
             return sb13.toString();
         } catch (Exception ignored) {
             return "";
-        } finally {
-            if (in13 != null) { try { in13.close(); } catch (Exception ignored) {} }
-            if (conn13 != null) { try { conn13.disconnect(); } catch (Exception ignored) {} }
         }
     }
 

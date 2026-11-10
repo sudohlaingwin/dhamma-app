@@ -469,40 +469,55 @@ public class AutoDownloadJob extends JobService {
     // run) and no byte ever rides mobile data. Null network =
     // no fetch at all — fail-closed, same as the re-check.
     private String fetchPageHtml68(String pageUrl) {
-        java.net.HttpURLConnection conn = null;
-        java.io.InputStream in = null;
-        try {
-            android.net.Network wifi = Fx.stripWifiNetwork(this);
-            if (wifi == null) return null;
-            conn = (java.net.HttpURLConnection)
-                    wifi.openConnection(new java.net.URL(pageUrl));
-            sActiveFetch68 = conn; // v14.13 (audit-1367 L6): onStopJob disconnects this
-            conn.setConnectTimeout(20000);
-            conn.setReadTimeout(30000);
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-            in = conn.getInputStream();
-            java.io.ByteArrayOutputStream baos =
-                    new java.io.ByteArrayOutputStream();
-            byte[] buf = new byte[8192];
-            int n;
-            while ((n = in.read(buf)) > 0) baos.write(buf, 0, n);
-            byte[] bytes = baos.toByteArray();
-            String html = new String(bytes, "UTF-8");
-            java.util.regex.Matcher cm = java.util.regex.Pattern.compile(
-                    "charset=[\"']?([A-Za-z0-9_-]+)",
-                    java.util.regex.Pattern.CASE_INSENSITIVE).matcher(html);
-            if (cm.find()) {
-                try { html = new String(bytes, cm.group(1)); }
-                catch (Exception ignored) {}
+        android.net.Network wifi = Fx.stripWifiNetwork(this);
+        if (wifi == null) return null;
+        // v13.57 (TLS resilience): same HTTPS-first, one-http-retry
+        // shape as SiteHttp.fetchBytes, but the socket stays BOUND
+        // to the Wi-Fi network (v14.10) — the retry re-opens through
+        // the same Network object, so no byte ever rides mobile data.
+        String fetchUrl = SiteHttp.siteUrl(pageUrl);
+        for (int attempt = 0; attempt < 2; attempt++) {
+            java.net.HttpURLConnection conn = null;
+            java.io.InputStream in = null;
+            try {
+                conn = (java.net.HttpURLConnection)
+                        wifi.openConnection(new java.net.URL(fetchUrl));
+                sActiveFetch68 = conn; // v14.13 (audit-1367 L6): onStopJob disconnects this
+                conn.setConnectTimeout(20000);
+                conn.setReadTimeout(30000);
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+                in = conn.getInputStream();
+                java.io.ByteArrayOutputStream baos =
+                        new java.io.ByteArrayOutputStream();
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) > 0) baos.write(buf, 0, n);
+                byte[] bytes = baos.toByteArray();
+                String html = new String(bytes, "UTF-8");
+                java.util.regex.Matcher cm = java.util.regex.Pattern.compile(
+                        "charset=[\"']?([A-Za-z0-9_-]+)",
+                        java.util.regex.Pattern.CASE_INSENSITIVE).matcher(html);
+                if (cm.find()) {
+                    try { html = new String(bytes, cm.group(1)); }
+                    catch (Exception ignored) {}
+                }
+                return html;
+            } catch (javax.net.ssl.SSLException ssl) {
+                if (attempt == 0 && SiteHttp.isSiteUrl(pageUrl) && fetchUrl.startsWith("https://")) {
+                    SiteHttp.tlsBroken = true;
+                    fetchUrl = SiteHttp.downgrade(pageUrl);
+                    continue;
+                }
+                return null;
+            } catch (Exception ignored) {
+                return null;
+            } finally {
+                if (sActiveFetch68 == conn) sActiveFetch68 = null; // v14.13 (audit-1367 L6)
+                if (in != null) { try { in.close(); } catch (Exception ignored) {} }
+                if (conn != null) { try { conn.disconnect(); } catch (Exception ignored) {} }
             }
-            return html;
-        } catch (Exception ignored) {
-            return null;
-        } finally {
-            if (sActiveFetch68 == conn) sActiveFetch68 = null; // v14.13 (audit-1367 L6)
-            if (in != null) { try { in.close(); } catch (Exception ignored) {} }
-            if (conn != null) { try { conn.disconnect(); } catch (Exception ignored) {} }
         }
+        return null;
     }
 
     // Enqueue one talk on Wi-Fi only — the chooser's own enqueue
@@ -516,9 +531,13 @@ public class AutoDownloadJob extends JobService {
         try {
             android.app.DownloadManager dm = (android.app.DownloadManager)
                     getSystemService(Context.DOWNLOAD_SERVICE);
+            // v13.57 (TLS resilience): the download itself rides the
+            // session's transport — plain http once this launch has
+            // proven the site's TLS refused. The dlMap key below
+            // stays the https URL (identity, not transport).
             android.app.DownloadManager.Request req =
                     new android.app.DownloadManager.Request(
-                            android.net.Uri.parse(url));
+                            android.net.Uri.parse(SiteHttp.siteUrl(url)));
             req.setTitle(title != null && title.length() > 0 ? title : url);
             req.setNotificationVisibility(
                     android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
