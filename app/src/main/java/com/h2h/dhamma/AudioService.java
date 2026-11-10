@@ -1557,14 +1557,19 @@ public class AudioService extends Service {
                 // wrote the library anchors, the file plays from
                 // its saved spot, the card posts at once. A missing
                 // file ends a trackless service like a stale
-                // toggle; a live track is switched by play()
+                // toggle; a 0-byte file is a missing file here too
+                // (v14.19, slice 20 — same length() > 0 gate as the
+                // widget resume v13.66 and the History sender
+                // v13.66/F9; the play()-top guard v13.64 stays as
+                // the backstop). A live track is switched by play()
                 // (which flushes the outgoing talk's stats bank
                 // first, v12.82). A local file passes the gate in
                 // onPrepared untouched, like every library play.
                 String pUrl = intent.getStringExtra("url");
                 String pTitle = intent.getStringExtra("title");
                 if (pUrl == null || pUrl.length() == 0
-                        || !new java.io.File(pUrl).isFile()) {
+                        || !new java.io.File(pUrl).isFile()
+                        || new java.io.File(pUrl).length() <= 0) {
                     if (currentTitle == null) stopSelf();
                 } else {
                     play(pUrl, pTitle == null ? "" : pTitle,
