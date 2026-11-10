@@ -1723,6 +1723,14 @@ public class AudioService extends Service {
 
     public void setListener(Listener l) { listener = l; }
 
+    // v14.20 (audit-1369 L2): failure-line key for a prepare failure.
+    // Local path (never http) -> the accurate file-gone line; anything
+    // else (a stream URL, or null) -> the internet line. Used by the
+    // onError listener and the setDataSource catch in play().
+    private static String playFailedKey1420(String u) {
+        return (u != null && !u.startsWith("http")) ? "dl_file_gone" : "play_failed_internet";
+    }
+
     public void play(String url, String title) {
         play(url, title, 0);
     }
@@ -2250,10 +2258,10 @@ public class AudioService extends Service {
                     // v1.40: the Room never sets a listener, so a failed
                     // stream used to stall silently with no message at
                     // all — say so out loud from the service itself.
-                    if (listener != null) listener.onError(Lang.t(AudioService.this, "play_failed_internet"));
+                    if (listener != null) listener.onError(Lang.t(AudioService.this, playFailedKey1420(currentUrl)));
                     try {
                         android.widget.Toast.makeText(AudioService.this,
-                                Lang.t(AudioService.this, "play_failed_internet"), android.widget.Toast.LENGTH_LONG).show();
+                                Lang.t(AudioService.this, playFailedKey1420(currentUrl)), android.widget.Toast.LENGTH_LONG).show();
                     } catch (Exception ignored) {}
                     prepared = false;
                     showNotification(false);
@@ -2334,9 +2342,11 @@ public class AudioService extends Service {
             // message at all: strips showed paused, retry silently
             // failed again. Toast the same generic line onError uses
             // (no raw exception text for older listeners).
+            // v14.20 (audit-1369 L2): ... unless the failing URL is a
+            // local path -- then the file-gone line (see the helper).
             try {
                 android.widget.Toast.makeText(AudioService.this,
-                        Lang.t(AudioService.this, "play_failed_internet"), android.widget.Toast.LENGTH_LONG).show();
+                        Lang.t(AudioService.this, playFailedKey1420(url)), android.widget.Toast.LENGTH_LONG).show();
             } catch (Exception ignored) {}
             // v1.60: a setDataSource failure used to leave the previous
             // notification showing the old talk as playing, with no
