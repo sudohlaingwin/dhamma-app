@@ -1308,6 +1308,12 @@ public class TalksActivity extends Activity {
     private boolean landingDeferred = false;
     private String pendingLandingFerr = null;
     private boolean pendingLandingEmpty = false;
+    // v13.57 (offline resilience): the stashed failure reason key and
+    // cached-list flag ride with the deferred landing above, so the
+    // onResume flush shows the same reason + cached note the landing
+    // would have shown while resumed.
+    private String pendingLandingReason = null;
+    private boolean pendingLandingCached = false;
     // v13.24 (T2): per-activity resumed flag for the landing above —
     // Activity has no isResumed() (Fragment-only), and the global
     // AppForeground.isForeground() counts ALL screens, so a Room on
@@ -5015,6 +5021,13 @@ public class TalksActivity extends Activity {
             @Override public void run() {
                 final List<Talk> found = new ArrayList<Talk>();
                 String err = null;
+                // v13.57 (offline resilience): the HTTP status and the
+                // failure classification ride to the landing with the
+                // list — the landing names the real reason and shows
+                // the saved list when the fetch itself failed.
+                int httpCode = 0;
+                final boolean[] usedCache = new boolean[1];
+                final String[] failReason = new String[1];
                 // v1.58: disconnect in a finally — v1.57 only released
                 // on the success path, so a failed load leaked its socket.
                 HttpURLConnection conn = null;
@@ -5036,6 +5049,14 @@ public class TalksActivity extends Activity {
                         conn.setConnectTimeout(20000);
                         conn.setReadTimeout(30000);
                         conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+                        // v13.57: read the status before the body — a
+                        // non-200 page used to throw out of
+                        // getInputStream with only a bare message, so
+                        // the reason classifier could not tell a
+                        // server error from a network failure.
+                        httpCode = conn.getResponseCode();
+                        if (httpCode != HttpURLConnection.HTTP_OK)
+                            throw new java.io.IOException("HTTP " + httpCode);
                         in = conn.getInputStream();
                         ByteArrayOutputStream baos = new ByteArrayOutputStream();
                         byte[] buf = new byte[8192];
@@ -5064,6 +5085,11 @@ public class TalksActivity extends Activity {
                     // failure toast + retry are the ones shown.
                     err = e.getMessage();
                     if (err == null || err.length() == 0) err = Lang.t(TalksActivity.this, "internet_error");
+                    // v13.57: classify the real reason now, while the
+                    // exception is in hand — the landing only gets the
+                    // message string, which cannot tell DNS from a
+                    // certificate failure.
+                    failReason[0] = TalkListCache.reasonKey(e, httpCode);
                 } finally {
                     // v1.66: a read dying mid-stream used to leak the
                     // stream itself — the connection was disconnected
@@ -5073,7 +5099,31 @@ public class TalksActivity extends Activity {
                     if (in != null) { try { in.close(); } catch (Exception ignored) {} }
                     if (conn != null) { try { conn.disconnect(); } catch (Exception ignored) {} }
                 }
+                // v13.57 (offline resilience): a good list is saved
+                // for the next offline visit; a failed load falls back
+                // to the saved list for this sayadaw instead of an
+                // empty screen, so downloaded talks in it still play
+                // and the listener still sees the titles. The failure
+                // itself (err) is untouched — the landing still shows
+                // the retry button and the reason toast.
+                if (err == null && !found.isEmpty()) {
+                    try {
+                        java.util.List<String[]> pairs = new java.util.ArrayList<String[]>();
+                        for (Talk t : found) pairs.add(new String[]{t.title, t.url});
+                        TalkListCache.save(TalksActivity.this, pageUrl, pairs);
+                    } catch (Exception ignored) {}
+                } else if (err != null) {
+                    try {
+                        java.util.List<String[]> cached = TalkListCache.load(TalksActivity.this, pageUrl);
+                        if (cached != null && !cached.isEmpty()) {
+                            for (String[] p : cached) found.add(new Talk(p[0], p[1]));
+                            usedCache[0] = true;
+                        }
+                    } catch (Exception ignored) {}
+                }
                 final String ferr = err;
+                final String freason = failReason[0];
+                final boolean fcache = usedCache[0];
                 runOnUiThread(new Runnable() {
                     @Override public void run() {
                         // v1.63: a load finishing after back-press used
@@ -5195,11 +5245,21 @@ public class TalksActivity extends Activity {
                         // onResume flush instead of firing it over
                         // the launcher.
                         if (landingResumed) {
-                            if (ferr != null)
+                            if (ferr != null) {
+                                // v13.57: the toast names the real reason
+                                // (DNS / certificate / timeout / connect /
+                                // server) instead of the one generic line,
+                                // and adds the saved-list note when the
+                                // rows below are the cached list.
+                                String fmsg = (freason == null
+                                        ? Lang.t(TalksActivity.this, "talks_fetch_failed_long")
+                                        : Lang.t(TalksActivity.this, freason));
+                                if (fcache) fmsg = fmsg + "\n"
+                                        + Lang.t(TalksActivity.this, "cached_list_note");
                                 android.widget.Toast.makeText(TalksActivity.this,
-                                        Lang.t(TalksActivity.this, "talks_fetch_failed_long"),
+                                        fmsg,
                                         android.widget.Toast.LENGTH_LONG).show();
-                            else if (found.isEmpty())
+                            } else if (found.isEmpty())
                                 android.widget.Toast.makeText(TalksActivity.this,
                                         Lang.t(TalksActivity.this, "talks_none_for_sayadaw"),
                                         android.widget.Toast.LENGTH_LONG).show();
@@ -5207,6 +5267,8 @@ public class TalksActivity extends Activity {
                             landingDeferred = true;
                             pendingLandingFerr = ferr;
                             pendingLandingEmpty = found.isEmpty();
+                            pendingLandingReason = freason;
+                            pendingLandingCached = fcache;
                         }
                         // v2.60: premium retry-button fade — the
                         // button used to snap VISIBLE the instant a
@@ -5420,11 +5482,23 @@ public class TalksActivity extends Activity {
         pendingLandingFerr = null;
         boolean pendingEmpty = pendingLandingEmpty;
         pendingLandingEmpty = false;
-        if (pendingFerr != null)
+        // v13.57: the stashed reason + cached flag flush with the
+        // deferred toast, so a Home-press landing shows the same
+        // message it would have shown while resumed.
+        String pendingReason = pendingLandingReason;
+        pendingLandingReason = null;
+        boolean pendingCached = pendingLandingCached;
+        pendingLandingCached = false;
+        if (pendingFerr != null) {
+            String fmsg = (pendingReason == null
+                    ? Lang.t(TalksActivity.this, "talks_fetch_failed_long")
+                    : Lang.t(TalksActivity.this, pendingReason));
+            if (pendingCached) fmsg = fmsg + "\n"
+                    + Lang.t(TalksActivity.this, "cached_list_note");
             android.widget.Toast.makeText(TalksActivity.this,
-                    Lang.t(TalksActivity.this, "talks_fetch_failed_long"),
+                    fmsg,
                     android.widget.Toast.LENGTH_LONG).show();
-        else if (pendingEmpty)
+        } else if (pendingEmpty)
             android.widget.Toast.makeText(TalksActivity.this,
                     Lang.t(TalksActivity.this, "talks_none_for_sayadaw"),
                     android.widget.Toast.LENGTH_LONG).show();

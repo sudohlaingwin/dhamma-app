@@ -12815,6 +12815,12 @@ if (snd67q >= 0) currentIndex = snd67q;
             @Override public void run() {
                 final List<Talk> found = new ArrayList<Talk>();
                 String err = null;
+                // v13.57 (offline resilience): same as the Talks
+                // chooser — the HTTP status and the failure
+                // classification ride to the landing with the list.
+                int httpCode = 0;
+                final boolean[] usedCache = new boolean[1];
+                final String[] failReason = new String[1];
                 // v1.58: disconnect in a finally — v1.57 only released
                 // the connection on the success path, so a failed load
                 // (e.g. getInputStream throwing) still leaked its socket.
@@ -12825,6 +12831,11 @@ if (snd67q >= 0) currentIndex = snd67q;
                     conn.setConnectTimeout(20000);
                     conn.setReadTimeout(30000);
                     conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+                    // v13.57: read the status before the body — see the
+                    // Talks loader for why the classifier needs it.
+                    httpCode = conn.getResponseCode();
+                    if (httpCode != HttpURLConnection.HTTP_OK)
+                        throw new java.io.IOException("HTTP " + httpCode);
                     in = conn.getInputStream();
                     ByteArrayOutputStream baos = new ByteArrayOutputStream();
                     byte[] buf = new byte[8192];
@@ -12917,6 +12928,9 @@ if (snd67q >= 0) currentIndex = snd67q;
                     // failed. A failure always carries a message now.
                     err = e.getMessage();
                     if (err == null || err.length() == 0) err = Lang.t(RoomActivity.this, "internet_error");
+                    // v13.57: classify the real reason while the
+                    // exception is in hand.
+                    failReason[0] = TalkListCache.reasonKey(e, httpCode);
                 } finally {
                     // v1.66: same stream leak as the Talks loader —
                     // close the stream in the finally, not only on
@@ -12924,7 +12938,29 @@ if (snd67q >= 0) currentIndex = snd67q;
                     if (in != null) { try { in.close(); } catch (Exception ignored) {} }
                     if (conn != null) { try { conn.disconnect(); } catch (Exception ignored) {} }
                 }
+                // v13.57 (offline resilience): same as the Talks
+                // chooser — save a good list, fall back to the saved
+                // one on failure, so the Room still opens with the
+                // last list (downloaded talks in it play offline)
+                // instead of an empty drawer. err is untouched.
+                if (err == null && !found.isEmpty()) {
+                    try {
+                        java.util.List<String[]> pairs = new java.util.ArrayList<String[]>();
+                        for (Talk t : found) pairs.add(new String[]{t.title, t.url});
+                        TalkListCache.save(RoomActivity.this, loadPageUrl, pairs);
+                    } catch (Exception ignored) {}
+                } else if (err != null) {
+                    try {
+                        java.util.List<String[]> cached = TalkListCache.load(RoomActivity.this, loadPageUrl);
+                        if (cached != null && !cached.isEmpty()) {
+                            for (String[] p : cached) found.add(new Talk(p[0], p[1]));
+                            usedCache[0] = true;
+                        }
+                    } catch (Exception ignored) {}
+                }
                 final String ferr = err;
+                final String freason = failReason[0];
+                final boolean fcache = usedCache[0];
                 runOnUiThread(new Runnable() {
                     @Override public void run() {
                         // v1.63: same dead-screen guard as the Talks
@@ -12990,7 +13026,18 @@ if (snd67q >= 0) currentIndex = snd67q;
                         syncSavedQueueOnReturn();
                         if (ferr != null) {
                             if (nowPlaying != null) {
-                                nowPlaying.setText(Lang.t(RoomActivity.this, "fetch_failed_prefix") + ferr);
+                                // v13.57: the status line names the real
+                                // reason (DNS / certificate / timeout /
+                                // connect / server) in the listener's
+                                // language instead of the raw English
+                                // exception text — and when the rows
+                                // below are the saved list, it says so.
+                                if (fcache)
+                                    nowPlaying.setText(Lang.t(RoomActivity.this, "cached_list_note"));
+                                else if (freason != null)
+                                    nowPlaying.setText(Lang.t(RoomActivity.this, freason));
+                                else
+                                    nowPlaying.setText(Lang.t(RoomActivity.this, "fetch_failed_prefix") + ferr);
                                 // v2.67: premium load-failure status pour — the
                                 // mirror of the v2.66 count pour. A failed load
                                 // used to swap the loading line for this error
@@ -13016,7 +13063,14 @@ if (snd67q >= 0) currentIndex = snd67q;
                                 nowPlaying.animate().alpha(1f).translationY(0f).setDuration(320)
                                         .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
                             }
-                            Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "talk_list_fetch_failed"), Toast.LENGTH_LONG).show();
+                            // v13.57: the failure toast names the real
+                            // reason too (the status line above carries
+                            // the saved-list note when one is shown).
+                            Toast.makeText(RoomActivity.this,
+                                    freason == null
+                                            ? Lang.t(RoomActivity.this, "talk_list_fetch_failed")
+                                            : Lang.t(RoomActivity.this, freason),
+                                    Toast.LENGTH_LONG).show();
                             // v2.61: premium retry-button fade — the
                             // mirror of the v2.60 Talks fade. The Room
                             // retry used to snap VISIBLE the instant a
