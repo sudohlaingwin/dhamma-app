@@ -149,4 +149,105 @@
             android:textSize="15sp"
             android:visibility="gone" />
     </FrameLayout>
+    <!-- v13.54: real mini-player, the same strip as Talks' (v4.31) —
+         GONE while nothing plays, so the history stays list-only. A
+         recent talk that is playing (tap a recent talk) now shows
+         here: tap opens its Room, ▶/⏸ works from here, live
+         state always correct; a dead session with a saved spot
+         shows the ↺ resume strip instead. -->
+    <LinearLayout
+        android:id="@+id/nowStrip"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/nav_glass"
+        android:orientation="vertical"
+        android:padding="10dp"
+        android:visibility="gone">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <com.h2h.dhamma.CircleImageView
+                android:id="@+id/nowStripPhoto"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginEnd="10dp"
+                android:scaleType="centerCrop"
+                android:visibility="gone" />
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/nowStripText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/gold"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/nowStripSub"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/muted"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_horizontal"
+            android:orientation="horizontal">
+            <TextView
+                android:id="@+id/nowStripPrev"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:layout_margin="2dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="⏮"
+                android:textColor="#FFFFFF"
+                android:textSize="24sp" />
+            <TextView
+                android:id="@+id/nowStripToggle"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:layout_margin="2dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="▶"
+                android:textColor="#FFFFFF"
+                android:textSize="24sp" />
+            <TextView
+                android:id="@+id/nowStripNext"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:layout_margin="2dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="⏭"
+                android:textColor="#FFFFFF"
+                android:textSize="24sp" />
+        </LinearLayout>
+        <ProgressBar
+            android:id="@+id/nowStripProgress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            android:layout_marginTop="6dp"
+            android:max="1000"
+            android:progress="0"
+            android:progressBackgroundTint="#40C9A227"
+            android:progressTint="#C9A227" />
+    </LinearLayout>
 </LinearLayout>
