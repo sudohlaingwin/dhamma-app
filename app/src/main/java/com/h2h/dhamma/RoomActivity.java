@@ -4301,6 +4301,9 @@ if (snd65 >= 0) currentIndex = snd65;
         // recording the requested idx let the next roll exclude a
         // theme that was not showing and land on the one already
         // showing (08:28 +07 altar audit, Finding 3).
+        // v14.17: a missing roomView id rolls nothing — return false so
+        // rollThemeForTalk records no owning talk (same class as L1/L2).
+        if (roomView == null) return false;
         themeIndex = roomView.setPhoto(idx);
         return true;
     }
@@ -4562,8 +4565,10 @@ if (snd65 >= 0) currentIndex = snd65;
                 // and a cancelled fade relights them via the same
                 // ramp. Pause never sets the flag, so the normal
                 // pause dim is untouched.
-                roomView.setSleepFading(service.isSleepFading());
-                roomView.setPlaying(active);
+                if (roomView != null) { // v14.17: same class as L1/L2
+                    roomView.setSleepFading(service.isSleepFading());
+                    roomView.setPlaying(active);
+                }
                 // v2.52: the wave seek ripples on the same active
                 // rule (buffering towards play counts as playing,
                 // like the flames) — the poll re-arms it on return,
@@ -4680,13 +4685,15 @@ if (snd65 >= 0) currentIndex = snd65;
                 // whatever alpha the dip had reached. While a dip
                 // runs, its own end action owns the label; every
                 // other tick writes the same label anyway.
-                if (playGlyphFade == null) btnPlayPause.setImageResource(active ? R.drawable.ic_pause : R.drawable.ic_play); // v7.28: vector icon, play/pause rule unchanged (playing=pause icon)
+                if (playGlyphFade == null && btnPlayPause != null) btnPlayPause.setImageResource(active ? R.drawable.ic_pause : R.drawable.ic_play); // v7.28: vector icon, play/pause rule unchanged (playing=pause icon)
                 // v2.07: the button morphs on every play/pause flip
                 // (quick squash + overshoot back) and a gold ring
                 // glows around it while playing. The glow is
                 // state-driven, so a resumed Room re-arms it from
                 // the poll instead of depending on the flip.
-                if (active != lastPollActive) {
+                // v14.17: the morph block dereferences btnPlayPause throughout
+                // (animate/morph/dip end actions) — a missing id skips the flip.
+                if (active != lastPollActive && btnPlayPause != null) {
                     lastPollActive = active;
                     final int newIcon = active ? R.drawable.ic_pause : R.drawable.ic_play; // v7.28: vector icon
                     final int gen = ++playGlyphGen; // BEFORE the cancel (v3.19 lesson)
@@ -5205,8 +5212,8 @@ if (snd65 >= 0) currentIndex = snd65;
                         }
                         nowPlaying.animate().alpha(1f).translationY(0f).setDuration(320)
                                 .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
-                        btnPlayPause.setImageResource(R.drawable.ic_play); // v7.28: vector icon
-                        roomView.setPlaying(false);
+                        if (btnPlayPause != null) btnPlayPause.setImageResource(R.drawable.ic_play); // v7.28: vector icon
+                        if (roomView != null) roomView.setPlaying(false);
                         if (seekBar != null) seekBar.setPlaying(false); // v2.52: stopped talk = still wave
                         // v1.62: the stopped talk's row kept its gold ▶
                         // mark and Next wrapped from a dead index —
