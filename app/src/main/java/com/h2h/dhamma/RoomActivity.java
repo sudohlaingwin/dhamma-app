@@ -6614,7 +6614,7 @@ if (snd68 >= 0 && snd68 != currentIndex && currentIndex >= 0 && currentIndex < t
 }
 if (snd68 >= 0) currentIndex = snd68;
             }
-            if (currentIndex >= 0) {
+            if (roomList != null && currentIndex >= 0) {
                 int sp55 = drawerScrollPos(currentIndex);
                 if (sp55 >= 0) {
                     if (midClose) roomList.smoothScrollToPosition(sp55);
@@ -9795,11 +9795,11 @@ if (snd67q >= 0) currentIndex = snd67q;
                 // intent's still-present autoUrl.
                 autoUrl = null;
                 restored = true;
-                if (roomList.getVisibility() == View.VISIBLE && currentIndex >= 0) {
+                if (roomList != null && roomList.getVisibility() == View.VISIBLE && currentIndex >= 0) {
                     int sp55 = drawerScrollPos(currentIndex);
                     if (sp55 >= 0) roomList.setSelection(sp55);
                 }
-                else if (roomList.getVisibility() == View.VISIBLE) {
+                else if (roomList != null && roomList.getVisibility() == View.VISIBLE) {
                     int sp = savedInstanceState.getInt("listScrollPos", 0);
                     // v13.26 (D2): the saved position is a DISPLAY
                     // position in the pre-rotation view, not a talk
@@ -13279,7 +13279,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                         }
                         // v1.42: the list already sits on the playing talk
                         // the moment it loads, not only when it is opened.
-                        if (currentIndex >= 0) {
+                        if (roomList != null && currentIndex >= 0) {
                             int sp55 = drawerScrollPos(currentIndex);
                             if (sp55 >= 0) roomList.setSelection(sp55);
                         }
