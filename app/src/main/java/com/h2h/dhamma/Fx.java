@@ -837,7 +837,11 @@ public class Fx {
                         // behaviour — a same-URL repeat-one restart
                         // still seeks, as does every normal drag.
                         String liveUrl = AudioService.liveUrl;
-                        if (dragUrl != null && liveUrl != null && !dragUrl.equals(liveUrl)) {
+                        // v13.59 (887 F-NEW-1, M948-2): identity
+                        // compare — liveUrl may flip to the http
+                        // retry form mid-drag; that flip must not
+                        // discard a legitimate scrub.
+                        if (dragUrl != null && liveUrl != null && !SiteHttp.sameTalk(dragUrl, liveUrl)) {
                             syncStripProgress(pb);
                             return true;
                         }

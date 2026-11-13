@@ -219,10 +219,20 @@ public class MainActivity extends Activity {
                                     && st1020 != android.app.DownloadManager.STATUS_PENDING) continue;
                             String src1020 = srcCol1020 >= 0 ? c1020.getString(srcCol1020) : null;
                             String uri1020 = uriCol1020 >= 0 ? c1020.getString(uriCol1020) : null;
+                            // v13.59 (887 F-NEW-1, F945-3): the DM
+                            // source may be the http form of a queued
+                            // https URL — check the canonical form
+                            // too, or a waiting job is skipped and
+                            // its queue entry pruned while live.
                             if (src1020 != null && !queued1020.contains(src1020)
+                                    && !queued1020.contains(SiteHttp.identityUrl(src1020))
                                     && (uri1020 == null || !uri1020.contains("Dhamma/"))) continue;
                             if (src1020 == null && uri1020 != null && !uri1020.contains("Dhamma/")) continue;
-                            if (src1020 != null) activeSources1020.add(src1020);
+                            // v13.59 (887 F-NEW-1, F945-3): record
+                            // the canonical form, so the source leg
+                            // and DlLanded's live-source exclusion
+                            // recognise the job under its https key.
+                            if (src1020 != null) activeSources1020.add(SiteHttp.identityUrl(src1020));
                             if (uri1020 != null) {
                                 // v12.14: decode before the basename (Room v11.81 /
                                 // Talks v11.86 port) — a filename carrying a %XX
@@ -603,7 +613,10 @@ public class MainActivity extends Activity {
                                                     try {
                                                         org.json.JSONObject mapFail = new org.json.JSONObject(
                                                                 getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlMap", "{}"));
-                                                        oursFail = mapFail.has(failUrl);
+                                                        // v13.59 (887 F-NEW-1, F945-2): dlMap
+                                                        // keys are https — the DM source may
+                                                        // be the http form.
+                                                        oursFail = mapFail.has(failUrl) || mapFail.has(SiteHttp.identityUrl(failUrl));
                                                     } catch (Exception ignored) {}
                                                     if (oursFail) {
                                                         String failTitle = null;
@@ -666,11 +679,16 @@ public class MainActivity extends Activity {
                             if (srcUrl == null || srcUrl.length() == 0) return;
                             android.content.SharedPreferences rsp =
                                     getSharedPreferences("dhamma", MODE_PRIVATE);
-                            boolean cardTalk = srcUrl.equals(rsp.getString("lastUrl", ""));
+                            // v13.59 (887 F-NEW-1, F945-2): identity
+                            // compare — the DM source may be the http
+                            // form of the stored https talk.
+                            boolean cardTalk = SiteHttp.sameTalk(srcUrl, rsp.getString("lastUrl", ""));
                             if (!cardTalk) {
                                 String libPath = rsp.getString("lastLibPath", "");
                                 if (libPath.length() > 0) {
-                                    String fn = new org.json.JSONObject(rsp.getString("dlMap", "{}")).optString(srcUrl, "");
+                                    org.json.JSONObject dlMapCard = new org.json.JSONObject(rsp.getString("dlMap", "{}"));
+                                    String fn = dlMapCard.optString(srcUrl, "");
+                                    if (fn.length() == 0) fn = dlMapCard.optString(SiteHttp.identityUrl(srcUrl), "");
                                     cardTalk = fn.length() > 0 && fn.equals(new java.io.File(libPath).getName());
                                 }
                             }
@@ -1120,7 +1138,7 @@ public class MainActivity extends Activity {
             String rSavedUrl = sp.getString("lastPosUrl", "");
             boolean rMatch = false;
             if (rUrl.length() > 0 && rSavedUrl.length() > 0) {
-                if (rSavedUrl.equals(rUrl)) rMatch = true;
+                if (SiteHttp.sameTalk(rSavedUrl, rUrl)) rMatch = true;
                 else {
                     try {
                         org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
@@ -1164,7 +1182,7 @@ public class MainActivity extends Activity {
                             String fn = new java.io.File(lPath).getName();
                             while (keys.hasNext()) {
                                 String u = keys.next();
-                                if (u.equals(rSavedUrl) && fn.equals(map.optString(u, ""))) { lMatch = true; break; }
+                                if (SiteHttp.sameTalk(u, rSavedUrl) && fn.equals(map.optString(u, ""))) { lMatch = true; break; }
                             }
                         } catch (Exception ignored) {}
                     }
@@ -1385,7 +1403,8 @@ public class MainActivity extends Activity {
                         String local = uriCol >= 0 ? c.getString(uriCol) : null;
                         String src = srcCol >= 0 ? c.getString(srcCol) : null;
                         if ((local != null && local.contains("Dhamma/"))
-                                || (src != null && dlUrls != null && dlUrls.contains(src))) progN++;
+                                // v13.59 (887 F-NEW-1, F945-2/F942-1): dlUrls holds https keys — the DM source may be the http form.
+                                || (src != null && dlUrls != null && (dlUrls.contains(src) || dlUrls.contains(SiteHttp.identityUrl(src))))) progN++;
                     }
                 } finally { c.close(); }
             }

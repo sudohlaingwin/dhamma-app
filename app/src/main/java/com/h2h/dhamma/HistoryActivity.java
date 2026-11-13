@@ -535,7 +535,7 @@ public class HistoryActivity extends Activity {
             String rSavedUrl = rsp.getString("lastPosUrl", "");
             boolean rMatch = false;
             if (rUrl.length() > 0 && rSavedUrl.length() > 0) {
-                if (rSavedUrl.equals(rUrl)) rMatch = true;
+                if (SiteHttp.sameTalk(rSavedUrl, rUrl)) rMatch = true;
                 else {
                     try {
                         org.json.JSONObject map = new org.json.JSONObject(rsp.getString("dlMap", "{}"));
@@ -579,7 +579,7 @@ public class HistoryActivity extends Activity {
                             String fn = new java.io.File(lPath).getName();
                             while (keys.hasNext()) {
                                 String u = keys.next();
-                                if (u.equals(rSavedUrl) && fn.equals(map.optString(u, ""))) { lMatch = true; break; }
+                                if (SiteHttp.sameTalk(u, rSavedUrl) && fn.equals(map.optString(u, ""))) { lMatch = true; break; }
                             }
                         } catch (Exception ignored) {}
                     }
@@ -779,7 +779,7 @@ public class HistoryActivity extends Activity {
                         String local = uriCol >= 0 ? c.getString(uriCol) : null;
                         String src = srcCol >= 0 ? c.getString(srcCol) : null;
                         if ((local != null && local.contains("Dhamma/"))
-                                || (src != null && dlUrls != null && dlUrls.contains(src))) progN++;
+                                || (src != null && dlUrls != null && (dlUrls.contains(src) || dlUrls.contains(SiteHttp.identityUrl(src))))) progN++;
                     }
                 } finally { c.close(); }
             }

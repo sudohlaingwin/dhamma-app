@@ -3185,14 +3185,14 @@ if (snd65 >= 0) currentIndex = snd65;
                                                     try {
                                                         org.json.JSONObject mapFail = new org.json.JSONObject(
                                                                 getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlMap", "{}"));
-                                                        oursFail = mapFail.has(failUrl);
+                                                        oursFail = mapFail.has(failUrl) || mapFail.has(SiteHttp.identityUrl(failUrl));
                                                     } catch (Exception ignored) {}
                                                     String failTitle = null;
                                                     int titleColFail = curFail.getColumnIndex(android.app.DownloadManager.COLUMN_TITLE);
                                                     if (titleColFail >= 0) failTitle = curFail.getString(titleColFail);
                                                     if (talks != null) {
                                                         for (Talk t : talks) {
-                                                            if (t != null && failUrl.equals(t.url)) {
+                                                            if (t != null && SiteHttp.sameTalk(failUrl, t.url)) {
                                                                 oursFail = true;
                                                                 if ((failTitle == null || failTitle.length() == 0) && t.title != null && t.title.length() > 0) failTitle = t.title;
                                                                 break;
@@ -3853,10 +3853,13 @@ if (snd65 >= 0) currentIndex = snd65;
                                 && st != android.app.DownloadManager.STATUS_PENDING) continue;
                         String src = srcCol >= 0 ? c.getString(srcCol) : null;
                         String uri = uriCol >= 0 ? c.getString(uriCol) : null;
+                        // v13.59 (887 #5/F945-3): the DM source may
+                        // be the http form of a queued https URL.
                         if (src != null && !queuedDownloads.contains(src)
+                                && !queuedDownloads.contains(SiteHttp.identityUrl(src))
                                 && (uri == null || !uri.contains("Dhamma/"))) continue;
                         if (src == null && uri != null && !uri.contains("Dhamma/")) continue;
-                        if (src != null) activeSources.add(src);
+                        if (src != null) activeSources.add(SiteHttp.identityUrl(src));
                         if (uri != null) {
                             // v11.81: decode before the basename — COLUMN_LOCAL_URI is a
                             // file:// URI, so a filename carrying a %XX escape (space /
@@ -4133,7 +4136,9 @@ if (snd65 >= 0) currentIndex = snd65;
         if (service == null) return false;
         String cur = service.getCurrentUrl();
         if (cur == null) return false;
-        if (cur.equals(url)) return true;
+        // v13.59 (887 F-NEW-1, F947-1): identity compare — the
+        // sounding URL may be the http retry form of this talk.
+        if (SiteHttp.sameTalk(cur, url)) return true;
         String local = localPathFor(url);
         return local != null && local.equals(cur);
     }
@@ -6012,7 +6017,11 @@ if (snd65 >= 0) currentIndex = snd65;
                             java.util.Set<String> played = new java.util.HashSet<String>(
                                     getSharedPreferences("dhamma", MODE_PRIVATE)
                                             .getStringSet("playedTalks", new java.util.HashSet<String>()));
-                            if (played.add(curEnded)) {
+                            // v13.59 (887 F-NEW-1, F947-7): bank the
+                            // played mark under the canonical (https)
+                            // identity — curEnded may be the http
+                            // retry form, the drawer checks https.
+                            if (played.add(SiteHttp.identityUrl(curEnded))) {
                                 getSharedPreferences("dhamma", MODE_PRIVATE).edit()
                                         .putStringSet("playedTalks", played).apply();
                                 refreshMarkSets();
@@ -6050,7 +6059,7 @@ if (snd65 >= 0) currentIndex = snd65;
                                             Toast.LENGTH_SHORT).show();
                                 } else {
                                     Toast.makeText(RoomActivity.this,
-                                            Lang.t(RoomActivity.this, "next_prefix") + (favSet != null && newUrl80 != null && favSet.contains(newUrl80) ? "★ " : "") + showTitle80,
+                                            Lang.t(RoomActivity.this, "next_prefix") + (favSet != null && newUrl80 != null && favSet.contains(SiteHttp.identityUrl(newUrl80)) ? "★ " : "") + showTitle80,
                                             Toast.LENGTH_SHORT).show();
                                 }
                             } else if (!service.hasTrackError()) {
@@ -11781,7 +11790,13 @@ if (snd67q >= 0) currentIndex = snd67q;
         if (prevIdx < 0 && historyBackUrl == null
                 && service != null && service.hasTrack() && !service.hasTrackError()
                 && !isCurrentTalk(talks.get(idx).url)) {
-            String snd22 = service.getCurrentUrl();
+            // v13.59 (887 F-NEW-1, F947-9): the anchor is stored
+            // under the canonical (https) identity — the raw
+            // service URL may be the http retry form, and the
+            // prevHistory / handoverBack21 consumers all key on
+            // https, so an http anchor would stay shuffle-pickable
+            // and let Previous land on the same talk twice.
+            String snd22 = SiteHttp.identityUrl(service.getCurrentUrl());
             if (snd22 != null && snd22.length() > 0) {
                 int sIdx22 = -1;
                 for (int si22 = 0; si22 < talks.size(); si22++)

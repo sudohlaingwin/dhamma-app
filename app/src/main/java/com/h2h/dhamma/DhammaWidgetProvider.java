@@ -120,7 +120,9 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
                                       boolean liveIsFile, boolean baseMatch) {
         if (!hasTrack) return true;
         if (liveUrl == null) return true;
-        if (liveUrl.equals(lastUrl)) return true;
+        // v13.59 (887 F-NEW-1, F948-2): identity compare — the
+        // live URL may be the http retry form of the stored talk.
+        if (SiteHttp.sameTalk(liveUrl, lastUrl)) return true;
         if (lastUrl == null || lastUrl.length() == 0) return false;
         if (!liveIsFile) return false;
         return baseMatch;
@@ -331,7 +333,9 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
             String liveUrl = AudioService.liveUrl;
             if (liveUrl == null) return true;
             String lastUrl = sp.getString("lastUrl", "");
-            if (liveUrl.equals(lastUrl)) return true;
+            // v13.59 (887 F-NEW-1, F948-2): identity compare — the
+            // live URL may be the http retry form of the stored talk.
+            if (SiteHttp.sameTalk(liveUrl, lastUrl)) return true;
             if (lastUrl.length() == 0) return false;
             java.io.File f = new java.io.File(liveUrl);
             if (!f.isFile()) return false;

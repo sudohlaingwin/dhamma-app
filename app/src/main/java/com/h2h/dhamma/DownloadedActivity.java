@@ -400,10 +400,13 @@ public class DownloadedActivity extends Activity {
                                     && st1019 != android.app.DownloadManager.STATUS_PENDING) continue;
                             String src1019 = srcCol1019 >= 0 ? c1019.getString(srcCol1019) : null;
                             String uri1019 = uriCol1019 >= 0 ? c1019.getString(uriCol1019) : null;
+                            // v13.59 (887 #5/F945-3): the DM source
+                            // may be the http form of a queued https URL.
                             if (src1019 != null && !queued1019.contains(src1019)
+                                    && !queued1019.contains(SiteHttp.identityUrl(src1019))
                                     && (uri1019 == null || !uri1019.contains("Dhamma/"))) continue;
                             if (src1019 == null && uri1019 != null && !uri1019.contains("Dhamma/")) continue;
-                            if (src1019 != null) activeSources1019.add(src1019);
+                            if (src1019 != null) activeSources1019.add(SiteHttp.identityUrl(src1019));
                             if (uri1019 != null) {
                                 // v12.14: decode before the basename (Room v11.81 /
                                 // Talks v11.86 port) — COLUMN_LOCAL_URI is a file://
@@ -794,7 +797,10 @@ public class DownloadedActivity extends Activity {
         try {
             if (service != null) {
                 String svc = service.getCurrentUrl();
-                if (svc != null && (flippedPaths.contains(svc) || flippedUrls.contains(svc))) service.refreshNotification();
+                // v13.59 (887 F-NEW-1, M948-4): flippedUrls holds
+                // https keys — check the canonical form too, so an
+                // http sounding URL still triggers the card refresh.
+                if (svc != null && (flippedPaths.contains(svc) || flippedUrls.contains(svc) || flippedUrls.contains(SiteHttp.identityUrl(svc)))) service.refreshNotification();
                 return;
             }
             if (!AudioService.liveSession) return;
@@ -2429,7 +2435,7 @@ public class DownloadedActivity extends Activity {
             String rSavedUrl = rsp.getString("lastPosUrl", "");
             boolean rMatch = false;
             if (rUrl.length() > 0 && rSavedUrl.length() > 0) {
-                if (rSavedUrl.equals(rUrl)) rMatch = true;
+                if (SiteHttp.sameTalk(rSavedUrl, rUrl)) rMatch = true;
                 else {
                     try {
                         org.json.JSONObject map = new org.json.JSONObject(rsp.getString("dlMap", "{}"));
@@ -2473,7 +2479,7 @@ public class DownloadedActivity extends Activity {
                             String fn = new java.io.File(lPath).getName();
                             while (keys.hasNext()) {
                                 String u = keys.next();
-                                if (u.equals(rSavedUrl) && fn.equals(map.optString(u, ""))) { lMatch = true; break; }
+                                if (SiteHttp.sameTalk(u, rSavedUrl) && fn.equals(map.optString(u, ""))) { lMatch = true; break; }
                             }
                         } catch (Exception ignored) {}
                     }
@@ -2705,7 +2711,7 @@ public class DownloadedActivity extends Activity {
                         String local = uriCol >= 0 ? c.getString(uriCol) : null;
                         String src = srcCol >= 0 ? c.getString(srcCol) : null;
                         if ((local != null && local.contains("Dhamma/"))
-                                || (src != null && dlUrls != null && dlUrls.contains(src))) progN++;
+                                || (src != null && dlUrls != null && (dlUrls.contains(src) || dlUrls.contains(SiteHttp.identityUrl(src))))) progN++;
                     }
                 } finally { c.close(); }
             }
@@ -4161,7 +4167,7 @@ public class DownloadedActivity extends Activity {
                         String local = uriCol >= 0 ? c.getString(uriCol) : null;
                         String src = srcCol >= 0 ? c.getString(srcCol) : null;
                         boolean ours = (local != null && local.contains("Dhamma/"))
-                                || (src != null && dlUrls != null && dlUrls.contains(src));
+                                || (src != null && dlUrls != null && (dlUrls.contains(src) || dlUrls.contains(SiteHttp.identityUrl(src))));
                         if (!ours) continue;
                         count++;
                         if (firstTitle.length() == 0) {
@@ -5597,7 +5603,7 @@ public class DownloadedActivity extends Activity {
                                                     try {
                                                         org.json.JSONObject mapFail = new org.json.JSONObject(
                                                                 getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlMap", "{}"));
-                                                        oursFail = mapFail.has(failUrl);
+                                                        oursFail = mapFail.has(failUrl) || mapFail.has(SiteHttp.identityUrl(failUrl));
                                                     } catch (Exception ignored) {}
                                                     if (oursFail) {
                                                         String failTitle = null;
@@ -5646,6 +5652,8 @@ public class DownloadedActivity extends Activity {
                                                         org.json.JSONObject mapDone = new org.json.JSONObject(
                                                                 getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlMap", "{}"));
                                                         mappedDone = mapDone.optString(doneUrl, "");
+                                                        // v13.59 (887 F-NEW-1, F944-1): dlMap keys are https — look an http source up under its canonical form too.
+                                                        if (mappedDone == null || mappedDone.length() == 0) mappedDone = mapDone.optString(SiteHttp.identityUrl(doneUrl), "");
                                                     } catch (Exception ignored) {}
                                                     if (mappedDone != null && mappedDone.length() > 0) {
                                                         java.io.File landedDone = new java.io.File(
@@ -5760,11 +5768,16 @@ public class DownloadedActivity extends Activity {
                             if (srcUrl == null || srcUrl.length() == 0) return;
                             android.content.SharedPreferences rsp =
                                     getSharedPreferences("dhamma", MODE_PRIVATE);
-                            boolean cardTalk = srcUrl.equals(rsp.getString("lastUrl", ""));
+                            // v13.59 (887 F-NEW-1, F944-2): identity
+                            // compare — the DM source may be the http
+                            // form of the stored https talk.
+                            boolean cardTalk = SiteHttp.sameTalk(srcUrl, rsp.getString("lastUrl", ""));
                             if (!cardTalk) {
                                 String libPath = rsp.getString("lastLibPath", "");
                                 if (libPath.length() > 0) {
-                                    String fn = new org.json.JSONObject(rsp.getString("dlMap", "{}")).optString(srcUrl, "");
+                                    org.json.JSONObject dlMapCard = new org.json.JSONObject(rsp.getString("dlMap", "{}"));
+                                    String fn = dlMapCard.optString(srcUrl, "");
+                                    if (fn.length() == 0) fn = dlMapCard.optString(SiteHttp.identityUrl(srcUrl), "");
                                     cardTalk = fn.length() > 0 && fn.equals(new java.io.File(libPath).getName());
                                 }
                             }
@@ -7267,12 +7280,17 @@ public class DownloadedActivity extends Activity {
                                     && st != android.app.DownloadManager.STATUS_PENDING) continue;
                             String local = uriCol >= 0 ? c.getString(uriCol) : null;
                             String src = srcCol >= 0 ? c.getString(srcCol) : null;
+                            // v13.59 (887 F-NEW-1, F944-3): queued /
+                            // mapped hold https keys — the DM source
+                            // may be the http form; bank the canonical
+                            // form so the dlQueued prune below finds it.
                             boolean ours = (local != null && local.contains("Dhamma/"))
-                                    || (src != null && (queued.contains(src) || mapped.contains(src)));
+                                    || (src != null && (queued.contains(src) || mapped.contains(src)
+                                            || queued.contains(SiteHttp.identityUrl(src)) || mapped.contains(SiteHttp.identityUrl(src))));
                             if (!ours) continue;
                             if (idCol >= 0) {
                                 try { dm.remove(c.getLong(idCol)); } catch (Exception ignored) {}
-                                if (src != null) cancelledSrc.add(src);
+                                if (src != null) cancelledSrc.add(SiteHttp.identityUrl(src));
                             }
                         }
                     } finally { c.close(); }

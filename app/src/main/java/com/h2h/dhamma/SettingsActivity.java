@@ -1379,10 +1379,13 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                                     && st1021 != android.app.DownloadManager.STATUS_PENDING) continue;
                             String src1021 = srcCol1021 >= 0 ? c1021.getString(srcCol1021) : null;
                             String uri1021 = uriCol1021 >= 0 ? c1021.getString(uriCol1021) : null;
+                            // v13.59 (887 #5/F945-3): the DM source
+                            // may be the http form of a queued https URL.
                             if (src1021 != null && !queued1021.contains(src1021)
+                                    && !queued1021.contains(SiteHttp.identityUrl(src1021))
                                     && (uri1021 == null || !uri1021.contains("Dhamma/"))) continue;
                             if (src1021 == null && uri1021 != null && !uri1021.contains("Dhamma/")) continue;
-                            if (src1021 != null) activeSources1021.add(src1021);
+                            if (src1021 != null) activeSources1021.add(SiteHttp.identityUrl(src1021));
                             if (uri1021 != null) {
                                 // v12.14: decode before the basename (Room v11.81 /
                                 // Talks v11.86 port) — a filename carrying a %XX
@@ -1627,7 +1630,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                                                     try {
                                                         org.json.JSONObject mapFail = new org.json.JSONObject(
                                                                 getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlMap", "{}"));
-                                                        oursFail = mapFail.has(failUrl);
+                                                        oursFail = mapFail.has(failUrl) || mapFail.has(SiteHttp.identityUrl(failUrl));
                                                     } catch (Exception ignored) {}
                                                     if (oursFail) {
                                                         String failTitle = null;
@@ -1885,7 +1888,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                             String fn = new java.io.File(lPath).getName();
                             while (keys.hasNext()) {
                                 String u = keys.next();
-                                if (u.equals(rSavedUrl) && fn.equals(map.optString(u, ""))) { lMatch = true; break; }
+                                if (SiteHttp.sameTalk(u, rSavedUrl) && fn.equals(map.optString(u, ""))) { lMatch = true; break; }
                             }
                         } catch (Exception ignored) {}
                     }
@@ -1947,7 +1950,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
             String rUrl = sp.getString("lastUrl", "");
             boolean rMatch = false;
             if (rUrl.length() > 0 && rSavedUrl.length() > 0) {
-                if (rSavedUrl.equals(rUrl)) rMatch = true;
+                if (SiteHttp.sameTalk(rSavedUrl, rUrl)) rMatch = true;
                 else {
                     try {
                         org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
@@ -2106,7 +2109,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                         String local = uriCol >= 0 ? c.getString(uriCol) : null;
                         String src = srcCol >= 0 ? c.getString(srcCol) : null;
                         if ((local != null && local.contains("Dhamma/"))
-                                || (src != null && dlUrls != null && dlUrls.contains(src))) progN++;
+                                || (src != null && dlUrls != null && (dlUrls.contains(src) || dlUrls.contains(SiteHttp.identityUrl(src))))) progN++;
                     }
                 } finally { c.close(); }
             }

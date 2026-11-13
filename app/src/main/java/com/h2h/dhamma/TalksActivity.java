@@ -267,10 +267,13 @@ public class TalksActivity extends Activity {
                                     && st != android.app.DownloadManager.STATUS_PENDING) continue;
                             String src = srcCol >= 0 ? c.getString(srcCol) : null;
                             String uri = uriCol >= 0 ? c.getString(uriCol) : null;
+                            // v13.59 (887 #5/F945-3): the DM source
+                            // may be the http form of a queued https URL.
                             if (src != null && !queued.contains(src)
+                                    && !queued.contains(SiteHttp.identityUrl(src))
                                     && (uri == null || !uri.contains("Dhamma/"))) continue;
                             if (src == null && uri != null && !uri.contains("Dhamma/")) continue;
-                            if (src != null) activeSources.add(src);
+                            if (src != null) activeSources.add(SiteHttp.identityUrl(src));
                             if (uri != null) {
                                 // v11.86: decode before the basename, Room v11.81 port —
                                 // COLUMN_LOCAL_URI is a file:// URI, so a filename carrying
@@ -2799,14 +2802,14 @@ public class TalksActivity extends Activity {
                                                     try {
                                                         org.json.JSONObject mapFail = new org.json.JSONObject(
                                                                 getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlMap", "{}"));
-                                                        oursFail = mapFail.has(failUrl);
+                                                        oursFail = mapFail.has(failUrl) || mapFail.has(SiteHttp.identityUrl(failUrl));
                                                     } catch (Exception ignored) {}
                                                     String failTitle = null;
                                                     int titleColFail = curFail.getColumnIndex(android.app.DownloadManager.COLUMN_TITLE);
                                                     if (titleColFail >= 0) failTitle = curFail.getString(titleColFail);
                                                     if (talks != null) {
                                                         for (Talk t : talks) {
-                                                            if (t != null && failUrl.equals(t.url)) {
+                                                            if (t != null && SiteHttp.sameTalk(failUrl, t.url)) {
                                                                 oursFail = true;
                                                                 if ((failTitle == null || failTitle.length() == 0) && t.title != null && t.title.length() > 0) failTitle = t.title;
                                                                 break;
@@ -2858,12 +2861,14 @@ public class TalksActivity extends Activity {
                                                     try {
                                                         org.json.JSONObject mapDone = new org.json.JSONObject(
                                                                 getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlMap", "{}"));
-                                                        oursDone = mapDone.has(doneUrl);
+                                                        // v13.59 (887 F-NEW-1, F944-1 twin): dlMap keys are https — the DM source may be the http form.
+                                                        oursDone = mapDone.has(doneUrl) || mapDone.has(SiteHttp.identityUrl(doneUrl));
                                                         mappedDone = mapDone.optString(doneUrl, "");
+                                                        if (mappedDone == null || mappedDone.length() == 0) mappedDone = mapDone.optString(SiteHttp.identityUrl(doneUrl), "");
                                                     } catch (Exception ignored) {}
                                                     if (!oursDone && talks != null) {
                                                         for (Talk t : talks) {
-                                                            if (t != null && doneUrl.equals(t.url)) {
+                                                            if (t != null && SiteHttp.sameTalk(doneUrl, t.url)) {
                                                                 oursDone = true;
                                                                 if (mappedDone == null || mappedDone.length() == 0) mappedDone = talkMappedFileName(t.url);
                                                                 break;
@@ -2880,7 +2885,7 @@ public class TalksActivity extends Activity {
                                                             if (titleColDone >= 0) doneTitle = curDone.getString(titleColDone);
                                                             if ((doneTitle == null || doneTitle.length() == 0) && talks != null) {
                                                                 for (Talk t : talks) {
-                                                                    if (t != null && doneUrl.equals(t.url) && t.title != null && t.title.length() > 0) { doneTitle = t.title; break; }
+                                                                    if (t != null && SiteHttp.sameTalk(doneUrl, t.url) && t.title != null && t.title.length() > 0) { doneTitle = t.title; break; }
                                                                 }
                                                             }
                                                             if (doneTitle == null || doneTitle.length() == 0) doneTitle = doneUrl;
@@ -3743,7 +3748,7 @@ public class TalksActivity extends Activity {
             String rSavedUrl = rsp.getString("lastPosUrl", "");
             boolean rMatch = false;
             if (rUrl.length() > 0 && rSavedUrl.length() > 0) {
-                if (rSavedUrl.equals(rUrl)) rMatch = true;
+                if (SiteHttp.sameTalk(rSavedUrl, rUrl)) rMatch = true;
                 else {
                     try {
                         org.json.JSONObject map = new org.json.JSONObject(rsp.getString("dlMap", "{}"));
@@ -3787,7 +3792,7 @@ public class TalksActivity extends Activity {
                             String fn = new java.io.File(lPath).getName();
                             while (keys.hasNext()) {
                                 String u = keys.next();
-                                if (u.equals(rSavedUrl) && fn.equals(map.optString(u, ""))) { lMatch = true; break; }
+                                if (SiteHttp.sameTalk(u, rSavedUrl) && fn.equals(map.optString(u, ""))) { lMatch = true; break; }
                             }
                         } catch (Exception ignored) {}
                     }
@@ -3992,7 +3997,7 @@ public class TalksActivity extends Activity {
                         String local = uriCol >= 0 ? c.getString(uriCol) : null;
                         String src = srcCol >= 0 ? c.getString(srcCol) : null;
                         if ((local != null && local.contains("Dhamma/"))
-                                || (src != null && dlUrls != null && dlUrls.contains(src))) progN++;
+                                || (src != null && dlUrls != null && (dlUrls.contains(src) || dlUrls.contains(SiteHttp.identityUrl(src))))) progN++;
                     }
                 } finally { c.close(); }
             }

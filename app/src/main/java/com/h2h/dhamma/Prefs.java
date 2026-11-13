@@ -685,6 +685,13 @@ public class Prefs {
         talkPosPutSync(c, url, pos);
         String other = talkPosOtherForm(c, url);
         if (other != null) talkPosPutSync(c, other, pos);
+        // v13.59 (887 F-NEW-1, F946-1): also the alternate-scheme
+        // stream form — a checkpoint under http must store the
+        // https key too, or every https-keyed reader (Room
+        // savedPosFor, ↺ hints, savedSeekFor) misses this talk
+        // the moment another talk supersedes it.
+        String alt = SiteHttp.identityUrl(url);
+        if (alt != null && !alt.equals(url)) talkPosPutSync(c, alt, pos);
     }
 
     private static void talkPosPutInner(Context c, String url, int pos, boolean sync) {
@@ -753,7 +760,12 @@ public class Prefs {
                 }
                 return matches == 1 ? hit : null;
             }
+            // v13.59 (887 F-NEW-1): dlMap keys are https, but a
+            // talk heard over the v13.57 http fallback hands us an
+            // http URL — look the key up under its canonical
+            // (https) form too, so the other form still resolves.
             String fn = map.optString(url, "");
+            if (fn.length() == 0) fn = map.optString(SiteHttp.identityUrl(url), "");
             if (fn.length() == 0) return null;
             java.io.File f = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
                     android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + fn);
@@ -770,6 +782,10 @@ public class Prefs {
         talkPosPut(c, url, pos);
         String other = talkPosOtherForm(c, url);
         if (other != null) talkPosPut(c, other, pos);
+        // v13.59 (887 F-NEW-1, F946-1): also the alternate-scheme
+        // stream form — see talkPosPutBothSync.
+        String alt = SiteHttp.identityUrl(url);
+        if (alt != null && !alt.equals(url)) talkPosPut(c, alt, pos);
     }
 
     // v8.30: the dlMap path for a stream URL, WITHOUT the file-
@@ -793,7 +809,12 @@ public class Prefs {
         try {
             org.json.JSONObject map = new org.json.JSONObject(
                     sp(c).getString("dlMap", "{}"));
+            // v13.59 (887 F-NEW-1): same both-schemes key lookup as
+            // talkPosOtherForm — an http URL must still find its
+            // https dlMap entry, or a finish/dismiss leaves the
+            // mapped-path spot behind.
             String fn = map.optString(url, "");
+            if (fn.length() == 0) fn = map.optString(SiteHttp.identityUrl(url), "");
             if (fn.length() == 0) return null;
             return new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
                     android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + fn)
@@ -803,6 +824,13 @@ public class Prefs {
 
     public static void talkPosRemoveBoth(Context c, String url) {
         talkPosRemove(c, url);
+        // v13.59 (887 F-NEW-1, F945-4/F946-3): also the
+        // alternate-scheme stream form — a finish/dismiss issued
+        // under one scheme must clear the spot stored under the
+        // other, or the finished talk resurrects on its next
+        // replay under the other scheme.
+        String alt = SiteHttp.identityUrl(url);
+        if (alt != null && !alt.equals(url)) talkPosRemove(c, alt);
         String other = talkPosOtherForm(c, url);
         if (other != null) talkPosRemove(c, other);
         // v8.30: also the mapped path when the file is gone —
@@ -1184,7 +1212,18 @@ public class Prefs {
         if (url == null || url.length() == 0) return out;
         try {
             String raw = sp(c).getString(BOOKMARK_KEY, "");
-            out.addAll(bookmarkListBothPure(raw, url, talkPosOtherForm(c, url)));
+            String other = talkPosOtherForm(c, url);
+            out.addAll(bookmarkListBothPure(raw, url, other));
+            // v13.59 (887 F-NEW-1, F946-2): also the
+            // alternate-scheme stream form — a mark dropped while
+            // the talk sounded over http must still show on the
+            // wave when the talk is reopened via https.
+            String alt = SiteHttp.identityUrl(url);
+            if (alt != null && !alt.equals(url)) {
+                for (int m : bookmarkListBothPure(raw, alt, other))
+                    if (!out.contains(Integer.valueOf(m))) out.add(Integer.valueOf(m));
+            }
+            java.util.Collections.sort(out);
         } catch (Exception ignored) {}
         return out;
     }
@@ -1194,8 +1233,26 @@ public class Prefs {
         if (url == null || url.length() == 0 || pos <= 0) return false;
         try {
             String raw = sp(c).getString(BOOKMARK_KEY, "");
-            String next = bookmarkAddBothPure(raw, url, talkPosOtherForm(c, url), pos);
+            String other = talkPosOtherForm(c, url);
+            String alt = SiteHttp.identityUrl(url);
+            // v13.59 (887 F-NEW-1, F946-2): dedup across ALL
+            // forms first (the v12.72 rule, extended to the
+            // scheme twin) so a near mark under either scheme
+            // blocks the add — then the mirror add below cannot
+            // fail on a near mark, and no half-mirrored write is
+            // possible.
+            java.util.List<Integer> merged = bookmarkListBothPure(raw, url, other);
+            if (alt != null && !alt.equals(url)) {
+                for (int m : bookmarkListBothPure(raw, alt, other))
+                    if (!merged.contains(Integer.valueOf(m))) merged.add(Integer.valueOf(m));
+            }
+            for (int m : merged) if (Math.abs(m - pos) < BOOKMARK_DEDUP_MS) return false;
+            String next = bookmarkAddBothPure(raw, url, other, pos);
             if (next == null) return false;
+            if (alt != null && !alt.equals(url)) {
+                String next2 = bookmarkAddPure(next, alt, pos);
+                if (next2 != null) next = next2;
+            }
             sp(c).edit().putString(BOOKMARK_KEY, next).apply();
             return true;
         } catch (Exception ignored) { return false; }
@@ -1209,6 +1266,15 @@ public class Prefs {
         try {
             String raw = sp(c).getString(BOOKMARK_KEY, "");
             String next = bookmarkRemovePure(raw, url, pos);
+            // v13.59 (887 F-NEW-1, F946-2): also the
+            // alternate-scheme stream form, so a remove tap under
+            // https deletes the mark stored under http too.
+            String alt = SiteHttp.identityUrl(url);
+            if (alt != null && !alt.equals(url)) {
+                String base = next == null ? raw : next;
+                String next2 = bookmarkRemovePure(base, alt, pos);
+                if (next2 != null) next = next2;
+            }
             String other = talkPosOtherForm(c, url);
             if (other != null) {
                 String base = next == null ? raw : next;
@@ -1554,7 +1620,12 @@ public class Prefs {
     // path with no claimant (or two) stays a path, exactly like
     // the resume spot's both-forms rule.
     public static String streamUrlFor(Context c, String url) {
-        if (url == null || !url.startsWith("/")) return url;
+        if (url == null) return null;
+        // v13.59 (887 F-NEW-1, F946-4): a stream URL banks under
+        // its canonical (https) identity — a talk heard under
+        // http then https must not split its History REC row in
+        // two. Paths still resolve via talkPosOtherForm below.
+        if (!url.startsWith("/")) return SiteHttp.identityUrl(url);
         String other = talkPosOtherForm(c, url);
         return other != null ? other : url;
     }

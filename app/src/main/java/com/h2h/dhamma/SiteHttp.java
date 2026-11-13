@@ -56,6 +56,36 @@ public class SiteHttp {
         return url;
     }
 
+    // v13.59 (identity — the 887 F-NEW-1 fix): the canonical identity
+    // of a talk URL is its https form. v13.57's TLS retry sounds a
+    // talk over plain http while every stored key (lastUrl, dlMap,
+    // favTalks, queue lines, playedTalks, stats REC rows) stays
+    // https, so raw equals() splits one talk into two identities and
+    // the resume strips, widget, card, gate and advance all miss.
+    // Canonical form is https (the stored/catalog form) — every
+    // stored key is already https, so canonicalising to https needs
+    // no data migration; canonicalising to http would invalidate
+    // every stored key. Transport stays separate: downgrade() /
+    // siteUrl() own transport, identityUrl() owns identity — never
+    // use one for the other's job. Any other URL (local file paths,
+    // other hosts) comes back unchanged.
+    public static String identityUrl(String url) {
+        if (url == null) return null;
+        if (url.startsWith("http://www.dhammadownload.com/"))
+            return "https://" + url.substring("http://".length());
+        if (url.startsWith("http://dhammadownload.com/"))
+            return "https://" + url.substring("http://".length());
+        return url;
+    }
+
+    // v13.59: compare talk identity, never raw equals(). Null-safe:
+    // two nulls are the same talk, one null never is.
+    public static boolean sameTalk(String a, String b) {
+        if (a == null || b == null) return a == b;
+        if (a.equals(b)) return true;
+        return identityUrl(a).equals(identityUrl(b));
+    }
+
     // The URL to actually use for a site resource this launch: http
     // once TLS has proven broken, https otherwise. Non-site URLs and
     // local paths pass through untouched.

@@ -594,7 +594,9 @@ public class AudioService extends Service {
                         // v13.73 (audit-1366 F1, settled): the sounding talk is skipped
                         // here in both forms — including a failed one, which is never
                         // "next" (same direction as the Room's isFailedUrl, v13.52).
-                        if (q12.url.equals(currentUrl)) continue;
+                        // v13.59 (887 F-NEW-1, F947-4): identity compare — the
+                        // sounding foreign head may be the http retry form.
+                        if (SiteHttp.sameTalk(q12.url, currentUrl)) continue;
                         java.io.File qf12 = offlineFileFor(q12.url);
                         if (qf12 != null && qf12.getAbsolutePath().equals(currentUrl)) continue;
                         if (q12.url.equals(awaitUrl)) barePos12 = i;
@@ -747,7 +749,9 @@ public class AudioService extends Service {
             // v13.73 (audit-1366 F1, settled): the sounding talk is skipped here
             // in both forms — including a failed one, which is never "next"
             // (same direction as the Room's isFailedUrl, v13.52).
-            if (qu.equals(currentUrl)) continue;
+            // v13.59 (887 F-NEW-1, F947-4 M947-2): identity compare — the
+            // sounding head may be the http retry form.
+            if (SiteHttp.sameTalk(qu, currentUrl)) continue;
             java.io.File qf = offlineFileFor(qu);
             if (qf != null && qf.getAbsolutePath().equals(currentUrl)) continue;
             if (qe.isV2() && !qe.sayadaw.equals(lastName)) {
@@ -1631,7 +1635,9 @@ public class AudioService extends Service {
                     android.content.SharedPreferences sp2 =
                             getSharedPreferences("dhamma", MODE_PRIVATE);
                     String favLastUrl = sp2.getString("lastUrl", "");
-                    boolean favOk = currentUrl == null || currentUrl.equals(favLastUrl);
+                    // v13.59 (887 F-NEW-1, F947-6): identity compare —
+                    // the sounding URL may be the http retry form.
+                    boolean favOk = currentUrl == null || SiteHttp.sameTalk(currentUrl, favLastUrl);
                     if (!favOk && favLastUrl.length() > 0) {
                         java.io.File ff = offlineFileFor(favLastUrl);
                         favOk = ff != null && ff.getAbsolutePath().equals(currentUrl);
@@ -1886,7 +1892,10 @@ public class AudioService extends Service {
         // talk's mobile-data approval (a replay/retry of the same
         // URL keeps it); a fresh play also supersedes any held
         // resume — the new talk is playing, nothing is held.
-        if (gateApprovedUrl != null && !gateApprovedUrl.equals(url)) gateApprovedUrl = null;
+        // v13.59 (887 F-NEW-1, F948-4): identity compare — the
+        // TLS retry replays the SAME talk under http, and that
+        // must keep its approval.
+        if (gateApprovedUrl != null && !SiteHttp.sameTalk(gateApprovedUrl, url)) gateApprovedUrl = null;
         gateHeldResumeUrl = null;
         // v12.10: a fresh play supersedes the deferred advance — the listener moved on, so
         // the awaited talk must never auto-play later (the re-fire clears it first, so its
@@ -2704,7 +2713,10 @@ public class AudioService extends Service {
     private boolean needsResumeGate() {
         try {
             if (currentUrl == null || currentTitle == null) return false;
-            if (gateApprovedUrl != null && gateApprovedUrl.equals(currentUrl)) return false;
+            // v13.59 (887 F-NEW-1, F948-4): identity compare — the
+            // approval is stored under the canonical (https) form,
+            // the sounding URL may be the http retry form.
+            if (gateApprovedUrl != null && SiteHttp.sameTalk(gateApprovedUrl, currentUrl)) return false;
             if (!currentUrl.startsWith("http://") && !currentUrl.startsWith("https://")) return false;
             return Prefs.dataSaver(this) && !isWifi58() && offlineFileFor(currentUrl) == null;
         } catch (Exception ignored) { return true; }
@@ -2781,8 +2793,11 @@ public class AudioService extends Service {
     // re-asking. Called by the Room after a bypassed play starts;
     // a held resume (if any) for the same talk is superseded.
     public void noteGateApproved(String url) {
-        gateApprovedUrl = url;
-        if (url != null && url.equals(gateHeldResumeUrl)) gateHeldResumeUrl = null;
+        // v13.59 (887 F-NEW-1, F948-4): store the approval under
+        // the canonical (https) identity, so a later needsResumeGate
+        // check against the http retry form still finds it.
+        gateApprovedUrl = SiteHttp.identityUrl(url);
+        if (url != null && SiteHttp.sameTalk(url, gateHeldResumeUrl)) gateHeldResumeUrl = null;
     }
 
     // v11.77: shared refusal for a resume that would stream on mobile data — the gate
@@ -4434,6 +4449,10 @@ public class AudioService extends Service {
     private boolean autoAdvanceSkippedN1(String streamUrl) {
         if (streamUrl == null || streamUrl.length() == 0) return false;
         if (autoAdvanceSkipN1.contains(streamUrl)) return true;
+        // v13.59 (887 F-NEW-1, F947-5): the set banks the failed
+        // URL in canonical (https) form — check the identity too,
+        // so a failed http retry still counts as skipped.
+        if (autoAdvanceSkipN1.contains(SiteHttp.identityUrl(streamUrl))) return true;
         java.io.File f = offlineFileFor(streamUrl);
         return f != null && autoAdvanceSkipN1.contains(f.getAbsolutePath());
     }
@@ -4469,7 +4488,9 @@ public class AudioService extends Service {
                 int tab = line.indexOf('\t');
                 String u = tab >= 0 ? line.substring(0, tab) : line;
                 if (u.equals(advanceEndedUrlN1)) endedIdx = i;
-                if (u.equals(failedUrl)) failedIdx = i;
+                // v13.59 (887 F-NEW-1, F947-5): identity compare —
+                // the failed URL may be the http retry form.
+                if (SiteHttp.sameTalk(u, failedUrl)) failedIdx = i;
                 else {
                     java.io.File f = offlineFileFor(u);
                     if (f != null && f.getAbsolutePath().equals(failedUrl)) failedIdx = i;
@@ -4537,7 +4558,11 @@ public class AudioService extends Service {
     // playing leaves nothing stale behind.
     private boolean tryAutoAdvanceRetryN1(String failedUrl) {
         if (!autoAdvancedN1) return false;
-        if (failedUrl != null && failedUrl.length() > 0) autoAdvanceSkipN1.add(failedUrl);
+        // v13.59 (887 F-NEW-1, F947-5): bank the failed URL under
+        // its canonical (https) identity — the check compares
+        // identities, so an http retry form must not create a
+        // second, unfindable entry.
+        if (failedUrl != null && failedUrl.length() > 0) autoAdvanceSkipN1.add(SiteHttp.identityUrl(failedUrl));
         autoAdvanceFailsN1++;
         if (autoAdvanceFailsN1 > 3) {
             autoAdvancedN1 = false; autoAdvanceKindN1 = 0;
@@ -4587,7 +4612,10 @@ public class AudioService extends Service {
         pendingQueueHeadPlayForm14 = null;
         QueueEntry qe98 = QueueEntry.parse(line);
         if (qe98 != null && qe98.url.length() > 0 && currentUrl != null) {
-            if (qe98.url.equals(currentUrl)) pendingQueueHeadPlayForm14 = currentUrl;
+            // v13.59 (887 F-NEW-1, F947-2): identity compare — the
+            // sounding head may be the http retry form, and the
+            // captured play form must still be armed.
+            if (SiteHttp.sameTalk(qe98.url, currentUrl)) pendingQueueHeadPlayForm14 = currentUrl;
             else {
                 java.io.File f98 = offlineFileFor(qe98.url);
                 if (f98 != null && f98.getAbsolutePath().equals(currentUrl))
@@ -4702,6 +4730,10 @@ public class AudioService extends Service {
     private void clearHeadRestoreCountN2(String url) {
         if (url == null || url.length() == 0) return;
         headRestoreCountN2.remove(url);
+        // v13.59 (887 F-NEW-1, F947-8): also the canonical form —
+        // the count is keyed by the https queue-line URL, but the
+        // sounding URL may be the http retry form.
+        headRestoreCountN2.remove(SiteHttp.identityUrl(url));
         try {
             java.util.Iterator<String> it = headRestoreCountN2.keySet().iterator();
             while (it.hasNext()) {
@@ -4785,7 +4817,9 @@ public class AudioService extends Service {
         if (pendingQueueHeadLine14 == null || failedUrl == null) return false;
         QueueEntry qe = QueueEntry.parse(pendingQueueHeadLine14);
         if (qe == null || qe.url.length() == 0) return false;
-        if (qe.url.equals(failedUrl)) return true;
+        // v13.59 (887 F-NEW-1, F947-2): identity compare — the
+        // failed URL may be the http retry form of this head.
+        if (SiteHttp.sameTalk(qe.url, failedUrl)) return true;
         try {
             java.io.File f = offlineFileFor(qe.url);
             if (f != null && f.getAbsolutePath().equals(failedUrl)) return true;
@@ -4980,7 +5014,9 @@ public class AudioService extends Service {
                 // v13.73 (audit-1366 F1, settled): the sounding talk is skipped
                 // here in both forms — including a failed one, which is never
                 // "next" (same direction as the Room's isFailedUrl, v13.52).
-                if (qu.equals(currentUrl)) continue;
+                // v13.59 (887 F-NEW-1, F947-3): identity compare — the
+                // sounding talk may be the http retry form.
+                if (SiteHttp.sameTalk(qu, currentUrl)) continue;
                 java.io.File qf = offlineFileFor(qu);
                 if (qf != null && qf.getAbsolutePath().equals(currentUrl)) continue;
                 if (qe.isV2() && !qe.sayadaw.equals(lastName)) {
@@ -6151,9 +6187,12 @@ public class AudioService extends Service {
                         count++;
                     }
                 }
-                return count == 1 && found.equals(current);
+                return count == 1 && SiteHttp.sameTalk(found, current);
             }
             String fn = map.optString(saved, "");
+            // v13.59 (887 F-NEW-1, F946-3): dlMap keys are https —
+            // look an http saved URL up under its canonical form too.
+            if (fn.length() == 0) fn = map.optString(SiteHttp.identityUrl(saved), "");
             if (fn.length() == 0) return false;
             java.io.File f = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
                     android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + fn);
@@ -6167,7 +6206,9 @@ public class AudioService extends Service {
                     getSharedPreferences("dhamma", MODE_PRIVATE);
             String saved = sp.getString("lastPosUrl", "");
             if (saved.length() == 0) return;
-            boolean match = saved.equals(currentUrl);
+            // v13.59 (887 F-NEW-1, F946-3): identity compare — the
+            // saved spot may be the http retry form.
+            boolean match = SiteHttp.sameTalk(saved, currentUrl);
             if (!match && currentUrl != null && saved.length() > 0) {
                 java.io.File f = offlineFileFor(saved);
                 match = f != null && f.getAbsolutePath().equals(currentUrl);
@@ -6239,7 +6280,10 @@ public class AudioService extends Service {
     private void markPlayedForCurrent() {
         try {
             if (currentUrl == null || currentUrl.length() == 0) return;
-            String key = currentUrl;
+            // v13.59 (887 F-NEW-1, F947-7): bank the played mark
+            // under the canonical (https) identity — the drawer
+            // checks https URLs.
+            String key = SiteHttp.identityUrl(currentUrl);
             if (currentUrl.startsWith("/")) {
                 // Library file: playedTalks is keyed by stream URL,
                 // so reverse the dlMap exactly like the library end
@@ -6637,17 +6681,29 @@ public class AudioService extends Service {
             // to the Room poll's gate question on mobile data)
             // instead of playing a truncated file.
             java.util.Set<String> inProg = inProgressDlFilenames59();
-            if (map.has(url)) {
+            // v13.59 (887 F-NEW-1): dlMap keys are https — resolve
+            // an http URL under its canonical form too, so the
+            // downloaded file still resolves for a talk sounding
+            // over the v13.57 http fallback.
+            String mapKey = url;
+            if (!map.has(mapKey)) {
+                String ident = SiteHttp.identityUrl(mapKey);
+                if (ident != null && map.has(ident)) mapKey = ident;
+            }
+            if (map.has(mapKey)) {
                 java.io.File f = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
-                        android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + map.getString(url));
+                        android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + map.getString(mapKey));
                 // v13.48 (F3): a 0-byte file never plays — treat it as no download.
-                if (f.exists() && f.length() > 0 && !inProg.contains(map.getString(url))) return f;
+                if (f.exists() && f.length() > 0 && !inProg.contains(map.getString(mapKey))) return f;
             }
             java.util.Set<String> claimedByOther = new java.util.HashSet<String>();
             java.util.Iterator<String> keys = map.keys();
             while (keys.hasNext()) {
                 String k = keys.next();
-                if (!k.equals(url)) claimedByOther.add(map.optString(k, ""));
+                // v13.59 (887 F-NEW-1): the canonical twin is the
+                // same talk, not another claimant — its filename
+                // must stay available to this URL's own lookup.
+                if (!k.equals(url) && !SiteHttp.sameTalk(k, url)) claimedByOther.add(map.optString(k, ""));
             }
             String base = url.substring(url.lastIndexOf('/') + 1);
             String stripped = base;
@@ -6683,7 +6739,9 @@ public class AudioService extends Service {
             String lastUrl = sp.getString("lastUrl", "");
             String sd = sp.getString("lastName", "");
             if (sd.length() == 0) return "";
-            boolean ok = currentUrl == null || currentUrl.equals(lastUrl);
+            // v13.59 (887 F-NEW-1, F947-6): identity compare — the
+            // sounding URL may be the http retry form.
+            boolean ok = currentUrl == null || SiteHttp.sameTalk(currentUrl, lastUrl);
             if (!ok && lastUrl.length() > 0) {
                 // v1.82: same candidate names as the notification
                 // guard above — a query-string link used to fail
@@ -6710,7 +6768,9 @@ public class AudioService extends Service {
             android.content.SharedPreferences sp =
                     getSharedPreferences("dhamma", MODE_PRIVATE);
             String lastUrl = sp.getString("lastUrl", "");
-            if (currentUrl.equals(lastUrl)) return true;
+            // v13.59 (887 F-NEW-1, F947-6): identity compare — the
+            // sounding URL may be the http retry form.
+            if (SiteHttp.sameTalk(currentUrl, lastUrl)) return true;
             if (lastUrl.length() == 0) return false;
             java.io.File f = offlineFileFor(lastUrl);
             return f != null && f.getAbsolutePath().equals(currentUrl);
@@ -7090,7 +7150,9 @@ public class AudioService extends Service {
                     // Mirror the normal card's v1.82 resumeOk: stream
                     // match, or the file that stream URL maps to via
                     // offlineFileFor (map + basename candidates).
-                    boolean fResumeOk = currentUrl == null || currentUrl.equals(fUrl);
+                    // v13.59 (887 F-NEW-1, F948-3): identity compare —
+                    // the sounding URL may be the http retry form.
+                    boolean fResumeOk = currentUrl == null || SiteHttp.sameTalk(currentUrl, fUrl);
                     if (!fResumeOk && fUrl.length() > 0) {
                         java.io.File ff = offlineFileFor(fUrl);
                         fResumeOk = ff != null && ff.getAbsolutePath().equals(currentUrl);
@@ -7147,7 +7209,9 @@ public class AudioService extends Service {
         android.content.SharedPreferences sp = getSharedPreferences("dhamma", MODE_PRIVATE);
         String lastPage = sp.getString("lastPage", "");
         String lastUrl = sp.getString("lastUrl", "");
-        boolean resumeOk = currentUrl == null || currentUrl.equals(lastUrl);
+        // v13.59 (887 F-NEW-1, F947-6): identity compare — the
+        // sounding URL may be the http retry form.
+        boolean resumeOk = currentUrl == null || SiteHttp.sameTalk(currentUrl, lastUrl);
         if (!resumeOk && lastUrl.length() > 0) {
             // v1.82: same candidate names as the Room's localPathFor —
             // the raw basename alone missed a downloaded talk whose
