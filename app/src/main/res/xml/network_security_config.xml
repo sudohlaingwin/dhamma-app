@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v13.58 (TLS resilience, second half): the v13.57 plain-http
+     fallback for dhammadownload.com could never run — the app
+     targets API 34, so Android's default network security policy
+     blocks ALL cleartext traffic unless the manifest opts in, and
+     the manifest had no usesCleartextTraffic / networkSecurityConfig
+     at all. SiteHttp's http retry and MediaPlayer's http stream
+     both died with "Cleartext HTTP traffic not permitted" instead
+     of loading. This config permits cleartext ONLY for
+     dhammadownload.com (www included) — the one public site
+     SiteHttp ever downgrades — and keeps the default deny for
+     every other host (GitHub updater, everything else). -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">dhammadownload.com</domain>
+    </domain-config>
+</network-security-config>

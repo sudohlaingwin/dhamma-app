@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.h2h.dhamma"
-    android:versionCode="1357"
-    android:versionName="13.57">
+    android:versionCode="1358"
+    android:versionName="13.58">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
     <supports-screens
         android:smallScreens="true"
@@ -29,7 +29,8 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:label="တရားတော်"
-        android:theme="@style/AppTheme">
+        android:theme="@style/AppTheme"
+        android:networkSecurityConfig="@xml/network_security_config">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
