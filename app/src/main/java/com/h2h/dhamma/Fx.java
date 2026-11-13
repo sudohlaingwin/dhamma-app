@@ -1129,6 +1129,83 @@ public class Fx {
         String m = e.getMessage();
         return (m == null || m.length() == 0) ? "" : m;
     }
+    // v13.60 (slice 924 F-NEW-1): Zawgyi→Unicode conversion for
+    // search queries. Talk titles are Unicode, but a query typed on
+    // a Zawgyi keyboard stores the ေ vowel sign (U+1031) BEFORE
+    // its consonant (visual order) while Unicode stores it AFTER
+    // the consonant cluster, and stores the ဝ consonant as U+1040
+    // (Myanmar digit zero) instead of U+101D — so a raw Zawgyi
+    // query never matches a Unicode title. Two conservative rules:
+    //   (1) a U+1031 followed by a consonant moves after that
+    //       consonant's cluster (base + medials U+103B–U+103E +
+    //       any U+1039+consonant stacks);
+    //   (2) U+1040 becomes U+101D only when neither neighbour is
+    //       a Myanmar digit (U+1040–U+1049), so digit queries like
+    //       ၁၀ are untouched.
+    // Anything unrecognised passes through unchanged, and the
+    // U+1039-asat/U+103A difference is deliberately NOT mapped
+    // (unverifiable from here — those queries simply miss as
+    // before, never mistranslate). Converts the QUERY only;
+    // titleMatches tries both the original and the converted
+    // query, so a Unicode query can never lose a match it used
+    // to find — conversion only ADDS the Zawgyi reading.
+    // Verified by TestZg (see fix-960-v1360.md test log): 110
+    // cases (100 catalog names + 10 synthetic titles) round-trip
+    // Zawgyi→Unicode, Unicode queries still match their own
+    // titles, digit queries intact, 0 false positives.
+    public static String zawgyiToUnicode(String s) {
+        if (s == null) return null;
+        int n = s.length();
+        boolean any = false;
+        for (int i = 0; i < n; i++) {
+            char c = s.charAt(i);
+            if (c == '\u1031' && i + 1 < n && isZgBase(s.charAt(i + 1))) { any = true; break; }
+            if (c == '\u1040' && !isMyanmarDigitAt(s, i - 1) && !isMyanmarDigitAt(s, i + 1)) { any = true; break; }
+        }
+        if (!any) return s;
+        StringBuilder b = new StringBuilder(n);
+        for (int i = 0; i < n; i++) {
+            char c = s.charAt(i);
+            if (c == '\u1031' && i + 1 < n && isZgBase(s.charAt(i + 1))) {
+                // Move past the following cluster: base + medials +
+                // any virama stacks, then the vowel sign.
+                int j = i + 1;
+                j++; // base consonant
+                while (j < n && s.charAt(j) >= '\u103b' && s.charAt(j) <= '\u103e') j++;
+                while (j + 1 < n && s.charAt(j) == '\u1039' && isZgBase(s.charAt(j + 1))) {
+                    j += 2;
+                    while (j < n && s.charAt(j) >= '\u103b' && s.charAt(j) <= '\u103e') j++;
+                }
+                for (int k = i + 1; k < j; k++) {
+                    // A Zawgyi ဝ inside the cluster is U+1040, not
+                    // U+101D — convert it here too, same digit guard.
+                    char ck = s.charAt(k);
+                    if (ck == '\u1040' && !isMyanmarDigitAt(s, k - 1) && !isMyanmarDigitAt(s, k + 1)) b.append('\u101d');
+                    else b.append(ck);
+                }
+                b.append('\u1031');
+                i = j - 1;
+                continue;
+            }
+            if (c == '\u1040' && !isMyanmarDigitAt(s, i - 1) && !isMyanmarDigitAt(s, i + 1)) {
+                b.append('\u101d');
+                continue;
+            }
+            b.append(c);
+        }
+        return b.toString();
+    }
+    private static boolean isZgBase(char c) {
+        // U+1040 is Zawgyi's ဝ (see the U+1040 rule above) — a
+        // U+1031 before it belongs after it, as in ဝေ.
+        return (c >= '\u1000' && c <= '\u1021') || c == '\u1040'
+                || c == '\u1025' || c == '\u1026' || c == '\u1027';
+    }
+    private static boolean isMyanmarDigitAt(String s, int i) {
+        if (i < 0 || i >= s.length()) return false;
+        char c = s.charAt(i);
+        return c >= '\u1040' && c <= '\u1049';
+    }
     public static boolean titleMatches(String title, String query) {
         if (title == null || query == null || query.length() == 0) return false;
         try {
@@ -1137,7 +1214,15 @@ public class Fx {
             String q = foldDigits(java.text.Normalizer.normalize(query,
                     java.text.Normalizer.Form.NFC).toLowerCase(java.util.Locale.ROOT));
             if (t.contains(q)) return true;
-            return stripWhitespace(t).contains(stripWhitespace(q));
+            // v13.60: the Zawgyi reading of the query — tried in
+            // addition to the original, never instead of it.
+            String qz = foldDigits(java.text.Normalizer.normalize(zawgyiToUnicode(query),
+                    java.text.Normalizer.Form.NFC).toLowerCase(java.util.Locale.ROOT));
+            if (!qz.equals(q) && t.contains(qz)) return true;
+            String tf = stripWhitespace(t);
+            if (tf.contains(stripWhitespace(q))) return true;
+            String qzf = stripWhitespace(qz);
+            return !qzf.equals(stripWhitespace(q)) && tf.contains(qzf);
         } catch (Exception ignored) {
             return foldDigits(title.toLowerCase(java.util.Locale.ROOT))
                     .contains(foldDigits(query.toLowerCase(java.util.Locale.ROOT)));

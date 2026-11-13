@@ -369,7 +369,10 @@ public class AudioService extends Service {
                 // new job id, and this dead id can never match again, so keeping it is inert.
                 if (st != android.app.DownloadManager.STATUS_SUCCESSFUL) return;
                 String src = uriCol >= 0 ? cur.getString(uriCol) : null;
-                if (src == null || !src.equals(awaitUrl)) return;
+                // v13.60 (F956-A-01): the DM job's source is the
+                // transport form (http on a TLS-broken launch) while
+                // awaitUrl is the catalog https form — identity compare.
+                if (src == null || !SiteHttp.sameTalk(src, awaitUrl)) return;
                 String localUri = localCol >= 0 ? cur.getString(localCol) : null;
                 String title = titleCol >= 0 ? cur.getString(titleCol) : null;
                 if (title == null || title.length() == 0) title = sp.getString(AWAIT_TITLE10, "");
@@ -2781,7 +2784,10 @@ public class AudioService extends Service {
     public boolean restartHeldFromLocal(String url, int seekMs) {
         if (url == null || currentUrl == null || currentTitle == null) return false;
         if (!currentUrl.startsWith("http://") && !currentUrl.startsWith("https://")) return false;
-        if (!url.equals(currentUrl)) return false;
+        // v13.60 (F956-A-02): the held URL may be the catalog https
+        // form while currentUrl is the http retry form — identity
+        // compare, or the restart is refused on a TLS-broken launch.
+        if (!SiteHttp.sameTalk(url, currentUrl)) return false;
         java.io.File local = offlineFileFor(url);
         if (local == null) return false;
         play(local.getAbsolutePath(), currentTitle, seekMs);

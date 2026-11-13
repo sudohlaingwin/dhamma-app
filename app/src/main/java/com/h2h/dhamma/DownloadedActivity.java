@@ -6025,7 +6025,10 @@ public class DownloadedActivity extends Activity {
                 java.util.Iterator<String> keys = map.keys();
                 while (keys.hasNext()) {
                     String u = keys.next();
-                    dlMap.put(u, map.optString(u, ""));
+                    // v13.60: canonicalise the key — a pre-v13.59
+                    // enqueue could have stored the http retry form,
+                    // so a raw key would miss the lookup below.
+                    dlMap.put(SiteHttp.identityUrl(u), map.optString(u, ""));
                 }
             } catch (Exception ignored) {}
             android.app.DownloadManager dm = (android.app.DownloadManager)
@@ -6059,8 +6062,12 @@ public class DownloadedActivity extends Activity {
                                 }
                             }
                         }
-                        if (!added && src != null && dlMap.containsKey(src)) {
-                            String fn = dlMap.get(src);
+                        // v13.60: the DM job's source URL is the
+                        // transport form (http once this launch proved
+                        // TLS refused) while dlMap keys are https —
+                        // compare by identity, not raw string.
+                        if (!added && src != null && dlMap.containsKey(SiteHttp.identityUrl(src))) {
+                            String fn = dlMap.get(SiteHttp.identityUrl(src));
                             if (fn != null && fn.length() > 0) out.add(fn);
                         }
                     }
@@ -7633,8 +7640,16 @@ public class DownloadedActivity extends Activity {
         // the normal view), in display order, skipping the
         // playing file and already-queued paths like every
         // other queue verb here.
+        // v13.60 (F957 HIGH): the unbraced if above used to add the
+        // item only conditionally while itemKeys.add ran always, so
+        // on the default full-list view items/itemKeys desynced and
+        // taps from the 4th row dispatched the wrong handler
+        // (dispatch reads optKeys[which]). Both adds are conditional now.
         if (!libQueueOnly && ((dlQuery != null && !dlQuery.isEmpty()) || dlFilterMode != 0)
-                && libDisplayCount() > 0) items.add(Lang.t(DownloadedActivity.this, "dl_menu_queue_shown")); itemKeys.add("dl_menu_queue_shown");
+                && libDisplayCount() > 0) {
+            items.add(Lang.t(DownloadedActivity.this, "dl_menu_queue_shown"));
+            itemKeys.add("dl_menu_queue_shown");
+        }
         // v6.68: queue only the shown files NEXT — the head-insert
         // twin of the v6.38 append above, and the library mirror
         // of the Talks chooser's v6.66 verb and the Room

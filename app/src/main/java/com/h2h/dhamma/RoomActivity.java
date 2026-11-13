@@ -10975,7 +10975,11 @@ if (snd67q >= 0) currentIndex = snd67q;
                             && st != android.app.DownloadManager.STATUS_PAUSED
                             && st != android.app.DownloadManager.STATUS_PENDING) continue;
                     String src = srcCol >= 0 ? c.getString(srcCol) : null;
-                    if (url.equals(src)) return idCol >= 0 ? c.getLong(idCol) : -1;
+                    // v13.60 (F954-B1): the DM job's source is the
+                    // transport form (http on a TLS-broken launch) —
+                    // identity compare, or the deferred advance never
+                    // re-fires for strip/auto-enqueued jobs.
+                    if (SiteHttp.sameTalk(url, src)) return idCol >= 0 ? c.getLong(idCol) : -1;
                 }
             } finally { c.close(); }
         } catch (Exception ignored) {}

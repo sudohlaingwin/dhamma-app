@@ -238,40 +238,33 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
     private static PendingIntent playPendingIntent(Context context, SharedPreferences sp,
                                                    boolean hasTrack, String lastTitle) {
         String kind = widgetPlayKindPure(hasTrack, lastTitle);
-        if ("toggle".equals(kind)) {
-            Intent toggle = new Intent(context, AudioService.class);
-            toggle.setAction(AudioService.ACTION_TOGGLE);
-            // v13.46: same dead-service shape as the Play-resume path
-            // — the toggle intent built while the service is alive
-            // goes stale across a process death, and a tap inside
-            // that window was refused on API 26+ like Next. The
-            // trackless leg ends the service synchronously
-            // (stopSelf in onStartCommand), so no startForeground
-            // deadline is at risk.
-            if (Build.VERSION.SDK_INT >= 26) {
-                return PendingIntent.getForegroundService(context, RC_WIDGET_TOGGLE, toggle,
-                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            }
-            return PendingIntent.getService(context, RC_WIDGET_TOGGLE, toggle,
+        if ("open".equals(kind)) {
+            Intent main = new Intent(context, MainActivity.class);
+            main.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            return PendingIntent.getActivity(context, RC_WIDGET_OPEN, main,
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         }
-        if ("resume".equals(kind)) {
-            Intent play = new Intent(context, AudioService.class);
-            play.setAction(ACTION_WIDGET_PLAY);
-            // A dead service must come up as a foreground service
-            // to play; getForegroundService is the API-26+ form
-            // for exactly this, getService the pre-26 form.
-            if (Build.VERSION.SDK_INT >= 26) {
-                return PendingIntent.getForegroundService(context, RC_WIDGET_PLAY, play,
-                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            }
-            return PendingIntent.getService(context, RC_WIDGET_PLAY, play,
+        // v13.60 (F938-1): live-toggle AND dead-resume both go through
+        // ACTION_WIDGET_PLAY — the service handler toggles when a track
+        // is live and resumes the stored talk when dead. The old shape
+        // sent ACTION_TOGGLE while the service was alive, and that
+        // intent went stale across a process death: the first tap after
+        // the kill hit the trackless-toggle leg (stopSelf, silent
+        // no-op) and only the onCreate refresh swapped in the resume
+        // intent, so the second tap worked. One action, no stale leg.
+        // The notification card keeps its own ACTION_TOGGLE (rebuilt
+        // on every card post, never stale the same way).
+        Intent play = new Intent(context, AudioService.class);
+        play.setAction(ACTION_WIDGET_PLAY);
+        // A dead service must come up as a foreground service to play;
+        // getForegroundService is the API-26+ form for exactly this,
+        // getService the pre-26 form.
+        if (Build.VERSION.SDK_INT >= 26) {
+            return PendingIntent.getForegroundService(context, RC_WIDGET_PLAY, play,
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         }
-        Intent main = new Intent(context, MainActivity.class);
-        main.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP
-                | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        return PendingIntent.getActivity(context, RC_WIDGET_OPEN, main,
+        return PendingIntent.getService(context, RC_WIDGET_PLAY, play,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
