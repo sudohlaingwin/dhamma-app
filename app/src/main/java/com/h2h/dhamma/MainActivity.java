@@ -2657,6 +2657,16 @@ public class MainActivity extends Activity {
         // v1.47: space-insensitive match too — typing a name without its
         // spaces (or with extra ones) still finds the sayadaw.
         String qFlat = Fx.stripWhitespace(q);
+        // v13.61: the Zawgyi reading of the query — same NFC +
+        // digit-fold normalisation as q, tried in addition to the
+        // original, never instead of it (mirrors Fx.titleMatches):
+        // v13.60 wired Zawgyi search into Talks only, so a
+        // Zawgyi-typed sayadaw name still found nothing here on
+        // Main. A Unicode query can never lose a match it used to
+        // find — conversion only ADDS the Zawgyi reading.
+        String qz = Fx.foldDigits(java.text.Normalizer.normalize(Fx.zawgyiToUnicode(query.trim()),
+                java.text.Normalizer.Form.NFC).toLowerCase());
+        String qzFlat = Fx.stripWhitespace(qz);
         for (Sayadaw s : all) {
             if (favOnly && (favs == null || !favs.contains(s.name))) continue;
             if (q.length() > 0) {
@@ -2664,9 +2674,12 @@ public class MainActivity extends Activity {
                         java.text.Normalizer.Form.NFC).toLowerCase());
                 String g = s.group == null ? "" : Fx.foldDigits(java.text.Normalizer.normalize(s.group,
                         java.text.Normalizer.Form.NFC).toLowerCase());
-                if (n.indexOf(q) < 0 && g.indexOf(q) < 0
+                if (n.indexOf(q) < 0 && n.indexOf(qz) < 0
+                        && g.indexOf(q) < 0 && g.indexOf(qz) < 0
                         && Fx.stripWhitespace(n).indexOf(qFlat) < 0
-                        && Fx.stripWhitespace(g).indexOf(qFlat) < 0) continue;
+                        && Fx.stripWhitespace(n).indexOf(qzFlat) < 0
+                        && Fx.stripWhitespace(g).indexOf(qFlat) < 0
+                        && Fx.stripWhitespace(g).indexOf(qzFlat) < 0) continue;
             }
             shown.add(s);
         }
@@ -2742,9 +2755,12 @@ public class MainActivity extends Activity {
                             java.text.Normalizer.Form.NFC).toLowerCase());
                     String g = s.group == null ? "" : Fx.foldDigits(java.text.Normalizer.normalize(s.group,
                             java.text.Normalizer.Form.NFC).toLowerCase());
-                    if (n.indexOf(q) >= 0 || g.indexOf(q) >= 0
+                    if (n.indexOf(q) >= 0 || n.indexOf(qz) >= 0
+                            || g.indexOf(q) >= 0 || g.indexOf(qz) >= 0
                             || Fx.stripWhitespace(n).indexOf(qFlat) >= 0
-                            || Fx.stripWhitespace(g).indexOf(qFlat) >= 0) {
+                            || Fx.stripWhitespace(n).indexOf(qzFlat) >= 0
+                            || Fx.stripWhitespace(g).indexOf(qFlat) >= 0
+                            || Fx.stripWhitespace(g).indexOf(qzFlat) >= 0) {
                         toastKey = "sayadaw_not_found_fav";
                         break;
                     }
