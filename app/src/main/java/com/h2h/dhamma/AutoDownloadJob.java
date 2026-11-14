@@ -441,7 +441,10 @@ public class AutoDownloadJob extends JobService {
             if (enqueueTalk68(u, titles.get(u), name)) {
                 n++;
                 queued.add(u);
-                liveSources.add(u);
+                // v13.64 (F-1013-B-1): liveSources is null when the DM
+                // query failed (fail-closed) — the read predicates
+                // already null-check; this write must too.
+                if (liveSources != null) liveSources.add(u);
             }
         }
         // v12.77: pass the full fresh list as the catalogue, so
@@ -811,9 +814,12 @@ public class AutoDownloadJob extends JobService {
             try {
                 c = dm.query(new android.app.DownloadManager.Query());
             } catch (Exception ignored) {
-                return out;
+                // v13.64 (F-1013-B-1): a failed query must fail
+                // CLOSED — an empty set would prune every dlQueued
+                // mark below in one run.
+                return null;
             }
-            if (c == null) return out;
+            if (c == null) return null;
             try {
                 int statusCol = c.getColumnIndex(
                         android.app.DownloadManager.COLUMN_STATUS);
@@ -936,6 +942,9 @@ public class AutoDownloadJob extends JobService {
         synchronized (DlLock.LOCK) {
         try {
             if (queued == null || queued.isEmpty()) return;
+            // v13.64 (F-1013-B-1): no live set means the DM query
+            // failed — keep every mark rather than drop them all.
+            if (liveSources == null) return;
             boolean changed = false;
             java.util.Iterator<String> it = queued.iterator();
             while (it.hasNext()) {

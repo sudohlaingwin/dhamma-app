@@ -6329,7 +6329,6 @@ public class DownloadedActivity extends Activity {
         // sayadaw name or pasted query used to survive the flat strip.
         String q = Fx.foldDigits(java.text.Normalizer.normalize(dlQuery,
                 java.text.Normalizer.Form.NFC).toLowerCase());
-        String qFlat = Fx.stripWhitespace(q);
         for (Entry e : entries) {
             // v4.95: library filter views — mode 1 keeps only ★
             // files, mode 2 keeps only unlistened files, both from
@@ -6341,8 +6340,6 @@ public class DownloadedActivity extends Activity {
             // change.
             if (dlFilterMode == 1 && !libFavFiles.contains(e.file.getName())) continue;
             if (dlFilterMode == 2 && libListenedFiles.contains(e.file.getName())) continue;
-            String t = Fx.foldDigits(java.text.Normalizer.normalize(e.title,
-                    java.text.Normalizer.Form.NFC).toLowerCase());
             // v8.04: search also matches the sayadaw name — every
             // row visibly shows it in its subtitle (libSayadawMap,
             // built per load by refreshLibMarkCache before this
@@ -6358,15 +6355,13 @@ public class DownloadedActivity extends Activity {
             boolean sdMatch = false;
             if (q.length() > 0) {
                 String sd = libSayadawMap.get(e.file.getName());
-                if (sd != null && sd.length() > 0) {
-                    String sdn = Fx.foldDigits(java.text.Normalizer.normalize(sd,
-                            java.text.Normalizer.Form.NFC).toLowerCase());
-                    sdMatch = sdn.contains(q)
-                            || Fx.stripWhitespace(sdn).contains(qFlat);
-                }
+                if (sd != null && sd.length() > 0) sdMatch = Fx.titleMatches(sd, dlQuery);
             }
-            if (q.length() == 0 || t.contains(q)
-                    || Fx.stripWhitespace(t).contains(qFlat) || sdMatch) shownDl.add(e);
+            // v13.64 (F-1022-C-1 / F-972-B-1): title + sayadaw tests
+            // go through Fx.titleMatches — a Zawgyi-typed query now
+            // finds the Unicode title, as Main (v13.61) and Talks
+            // (v13.60) already do; the empty-query pass-through stays.
+            if (q.length() == 0 || Fx.titleMatches(e.title, dlQuery) || sdMatch) shownDl.add(e);
         }
         // v2.49: premium filter-change entrance — the first library
         // load pours in (v2.12 cascade), but every search after it

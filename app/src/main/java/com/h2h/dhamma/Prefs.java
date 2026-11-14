@@ -685,6 +685,14 @@ public class Prefs {
         talkPosPutSync(c, url, pos);
         String other = talkPosOtherForm(c, url);
         if (other != null) talkPosPutSync(c, other, pos);
+        // v13.64 (F-978-A-1): same other-form twin as talkPosPutBoth
+        // (below), synchronous — see there.
+        if (other != null) {
+            String altOther = SiteHttp.identityUrl(other);
+            if (altOther != null && !altOther.equals(other)) talkPosPutSync(c, altOther, pos);
+            String downOther = SiteHttp.downgrade(other);
+            if (downOther != null && !downOther.equals(other)) talkPosPutSync(c, downOther, pos);
+        }
         // v13.59 (887 F-NEW-1, F946-1): also the alternate-scheme
         // stream form — a checkpoint under http must store the
         // https key too, or every https-keyed reader (Room
@@ -782,6 +790,16 @@ public class Prefs {
         talkPosPut(c, url, pos);
         String other = talkPosOtherForm(c, url);
         if (other != null) talkPosPut(c, other, pos);
+        // v13.64 (F-978-A-1): the other form is the dlMap key — a path
+        // argument's http twin is never written by the identityUrl leg
+        // above (identityUrl(path) == path), so also write the
+        // downgraded form of the resolved stream URL.
+        if (other != null) {
+            String altOther = SiteHttp.identityUrl(other);
+            if (altOther != null && !altOther.equals(other)) talkPosPut(c, altOther, pos);
+            String downOther = SiteHttp.downgrade(other);
+            if (downOther != null && !downOther.equals(other)) talkPosPut(c, downOther, pos);
+        }
         // v13.59 (887 F-NEW-1, F946-1): also the alternate-scheme
         // stream form — see talkPosPutBothSync.
         String alt = SiteHttp.identityUrl(url);
@@ -839,6 +857,15 @@ public class Prefs {
         if (down != null && !down.equals(url)) talkPosRemove(c, down);
         String other = talkPosOtherForm(c, url);
         if (other != null) talkPosRemove(c, other);
+        // v13.64 (F-978-A-1): same other-form twin as talkPosPutBoth
+        // above, for removal — a path-argument finish/dismiss must
+        // clear the http stream line too, or it resurrects.
+        if (other != null) {
+            String altOther = SiteHttp.identityUrl(other);
+            if (altOther != null && !altOther.equals(other)) talkPosRemove(c, altOther);
+            String downOther = SiteHttp.downgrade(other);
+            if (downOther != null && !downOther.equals(other)) talkPosRemove(c, downOther);
+        }
         // v8.30: also the mapped path when the file is gone —
         // talkPosOtherForm returns null for a stream URL whose
         // file no longer exists, so without this the path-form
@@ -890,7 +917,10 @@ public class Prefs {
             java.util.Iterator<String> keys = map.keys();
             while (keys.hasNext()) {
                 String k = keys.next();
-                if (!k.equals(url)) claimedByOther.add(map.optString(k, ""));
+                // v13.64 (F-978-A-2): the talk's own https dlMap key
+                // must not count as another talk's claim when
+                // dismissing by its http form.
+                if (!SiteHttp.sameTalk(k, url)) claimedByOther.add(map.optString(k, ""));
             }
             String dhammaDir = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
                     android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma").getAbsolutePath() + "/";

@@ -1703,8 +1703,13 @@ public class Fx {
                                 }
                             }
                         }
-                        if (!added && src != null && dlMap.containsKey(src)) {
-                            String fn = dlMap.get(src);
+                        // v13.64 (F-1018-B-03 / F-983-B-1): the DM job's
+                        // source URL is the transport form (http once this
+                        // launch proved TLS refused) while dlMap keys are
+                        // https — compare by identity, not raw string
+                        // (v13.62 Room/AudioService/Talks shape).
+                        if (!added && src != null && dlMap.containsKey(SiteHttp.identityUrl(src))) {
+                            String fn = dlMap.get(SiteHttp.identityUrl(src));
                             if (fn != null && fn.length() > 0) out.add(fn);
                         }
                     }

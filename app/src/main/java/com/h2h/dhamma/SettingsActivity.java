@@ -1696,11 +1696,16 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                             if (srcUrl == null || srcUrl.length() == 0) return;
                             android.content.SharedPreferences rsp =
                                     getSharedPreferences("dhamma", MODE_PRIVATE);
-                            boolean cardTalk = srcUrl.equals(rsp.getString("lastUrl", ""));
+                            // v13.64 (F-1001-B-02): srcUrl is the DM
+                            // transport form while lastUrl may be either
+                            // scheme — compare by identity (B-01 sibling).
+                            boolean cardTalk = SiteHttp.sameTalk(srcUrl, rsp.getString("lastUrl", ""));
                             if (!cardTalk) {
                                 String libPath = rsp.getString("lastLibPath", "");
                                 if (libPath.length() > 0) {
-                                    String fn = new org.json.JSONObject(rsp.getString("dlMap", "{}")).optString(srcUrl, "");
+                                    org.json.JSONObject mapDone = new org.json.JSONObject(rsp.getString("dlMap", "{}"));
+                                    String fn = mapDone.optString(srcUrl, "");
+                                    if (fn.length() == 0) fn = mapDone.optString(SiteHttp.identityUrl(srcUrl), "");
                                     cardTalk = fn.length() > 0 && fn.equals(new java.io.File(libPath).getName());
                                 }
                             }

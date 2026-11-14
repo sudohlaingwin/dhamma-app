@@ -3922,7 +3922,7 @@ public class AudioService extends Service {
             if (line == null || line.length() == 0) continue;
             int tab = line.indexOf('\t');
             String u = tab >= 0 ? line.substring(0, tab) : line;
-            if (u.equals(currentUrl)) { idx = i; break; }
+            if (SiteHttp.sameTalk(u, currentUrl)) { idx = i; break; }
             java.io.File f = offlineFileFor(u);
             if (f != null && f.getAbsolutePath().equals(currentUrl)) { idx = i; break; }
         }
@@ -5150,7 +5150,9 @@ public class AudioService extends Service {
                     if (line == null || line.length() == 0) continue;
                     int tab = line.indexOf('\t');
                     String u = tab >= 0 ? line.substring(0, tab) : line;
-                    if (u.equals(qu)) { found = j; break; }
+                    // v13.64 (F-1007-A-2 sibling): a legacy http queue
+                    // line never matches the https list by raw equals.
+                    if (SiteHttp.sameTalk(u, qu)) { found = j; break; }
                     java.io.File f = offlineFileFor(u);
                     if (f != null && f.getAbsolutePath().equals(qu)) { found = j; break; }
                 }
@@ -7649,7 +7651,7 @@ public class AudioService extends Service {
                         // line could never match its file; parse first, skip by URL.
                         QueueEntry e40 = QueueEntry.parse(s.trim());
                         String u40 = e40 == null ? "" : e40.url;
-                        if (u40.length() == 0 || u40.equals(currentUrl)) continue;
+                        if (u40.length() == 0 || u40.equals(currentUrl) || SiteHttp.sameTalk(u40, currentUrl)) continue;
                         if (!seen69.add(u40)) continue;
                         try {
                             java.io.File f = offlineFileFor(u40);
@@ -7691,7 +7693,7 @@ public class AudioService extends Service {
                     }
                     org.json.JSONArray queued = new org.json.JSONArray(sp.getString("dlQueued", "[]"));
                     for (int i = 0; i < queued.length(); i++) {
-                        if (qUrl.equals(queued.optString(i))) { sub += " · ⏳"; break; }
+                        if (SiteHttp.sameTalk(qUrl, queued.optString(i))) { sub += " · ⏳"; break; }
                     }
                 }
             }
@@ -7957,6 +7959,7 @@ public class AudioService extends Service {
         liveSession = false; // v3.91: no session, no auto-scroll
         liveHasTrack = false; // v10.40: no session, no track
         liveTrackError = false; // v13.53 (audit-1375 F-N): stop paths that bypass stopAndClear (ACTION_STOP, task-removed) still reach onDestroy, so a static mirror must clear here or it sits stale-true until the next onCreate
+        livePlaying = false; // v13.64 (audit-964 F-964-A-01): same stale-mirror class — a destroyed-while-playing service otherwise repaints the pause icon on the widget
         liveEnded = false;
         liveSleepEndOfTalk = false; // v4.82: no session, no one-shot
         if (mediaSession != null) {

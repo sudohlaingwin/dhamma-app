@@ -171,7 +171,8 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
             // its title.
             String libPath = sp.getString("lastLibPath", "");
             if (libTitle.length() > 0 && libPath.length() > 0
-                    && new java.io.File(libPath).isFile()) effLastTitle = libTitle;
+                    && new java.io.File(libPath).isFile()
+                    && new java.io.File(libPath).length() > 0) effLastTitle = libTitle;
         }
         String title = widgetTitlePure(hasTrack, AudioService.liveTitle, effLastTitle);
         String sayadaw = widgetSayadawPure(sp.getString("lastName", ""));
@@ -186,7 +187,8 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
             boolean libOk = hasTrack;
             if (!hasTrack) {
                 libOk = sounding.length() > 0
-                        && new java.io.File(sounding).isFile();
+                        && new java.io.File(sounding).isFile()
+                        && new java.io.File(sounding).length() > 0;
             }
             if (libOk) {
                 String owner = Prefs.sayadawForTalk(context, "lib", sounding, "");
@@ -289,7 +291,7 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
             String lk = sp.getString("lastKind", "");
             String lp = sp.getString("lastLibPath", "");
             boolean lpExists = false;
-            try { lpExists = lp.length() > 0 && new java.io.File(lp).isFile(); }
+            try { lpExists = lp.length() > 0 && new java.io.File(lp).isFile() && new java.io.File(lp).length() > 0; }
             catch (Exception ignored) {}
             libResume = widgetLibResumePure(false, lk, lp, lpExists);
             if (libResume) libJumpPath = lp;

@@ -1336,6 +1336,12 @@ public class TalksActivity extends Activity {
     // after a clean empty load restores the empty state instead of
     // refetching the same page and re-toasting "no talks".
     private boolean talkCleanEmpty = false;
+    // v13.64 (F-971-A-2): last-load failure state, so a rotation
+    // after a failed load restores the retry button + reason toast
+    // instead of showing the cached list as a live one.
+    private boolean talkLoadFailed = false;
+    private String talkLoadReason = null;
+    private boolean talkLoadCached = false;
     // v3.91: first-successful-load gate for the playing-talk
     // auto-scroll below — a retry after a failed load still
     // counts as its first success, but a later reload never
@@ -2315,6 +2321,19 @@ public class TalksActivity extends Activity {
                 if (sayadawName != null) refreshFavHeader();
                 if (progress != null) progress.setVisibility(View.GONE);
                 if (retryBtn != null) retryBtn.setVisibility(View.GONE);
+                // v13.64 (F-971-A-2): a rotation after a failed load
+                // restores the cached list — keep the retry button
+                // and re-toast the reason, or the failure vanishes.
+                if (savedInstanceState.getBoolean("talkLoadFailed", false) && retryBtn != null) {
+                    retryBtn.setVisibility(View.VISIBLE);
+                    String rmsg = savedInstanceState.getString("talkLoadReason", null);
+                    if (rmsg != null) {
+                        String fmsg = Lang.t(TalksActivity.this, rmsg);
+                        if (savedInstanceState.getBoolean("talkLoadCached", false))
+                            fmsg = fmsg + "\n" + Lang.t(TalksActivity.this, "cached_list_note");
+                        android.widget.Toast.makeText(TalksActivity.this, fmsg, android.widget.Toast.LENGTH_LONG).show();
+                    }
+                }
                 // v1.54: rotation used to drop the listener back to the
                 // top of a long talk list — keep the scroll position too.
                 // v12.85: the saved position is a full-list position
@@ -2394,6 +2413,11 @@ public class TalksActivity extends Activity {
         // after a clean empty load sees only an empty saved list, the
         // restore gate fails, and onCreate refetches + re-toasts.
         outState.putBoolean("talkCleanEmpty", talkCleanEmpty);
+        // v13.64 (F-971-A-2): carry the failure state, or the
+        // restore branch below shows a cached list as live.
+        outState.putBoolean("talkLoadFailed", talkLoadFailed);
+        outState.putString("talkLoadReason", talkLoadReason);
+        outState.putBoolean("talkLoadCached", talkLoadCached);
         // v5.79: the armed pick-up/drop move survives rotation
         // with the queue — restored only when still queued.
         if (moveHeldUrl != null) outState.putString("moveHeldUrl", moveHeldUrl);
@@ -5301,6 +5325,9 @@ public class TalksActivity extends Activity {
                         // (v2.61). The two toasts above are untouched,
                         // and re-entry still reloads (a sayadaw who
                         // gains talks later shows them on reopen).
+                        talkLoadFailed = ferr != null;
+                        talkLoadReason = freason;
+                        talkLoadCached = fcache;
                         if (ferr != null) {
                             android.view.View retryShow = findViewById(R.id.btnRetry);
                             if (retryShow != null) {
