@@ -20,12 +20,27 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal">
-        <com.h2h.dhamma.CircleImageView
-            android:id="@+id/talksHeaderPhoto"
-            android:layout_width="56dp"
-            android:layout_height="56dp"
-            android:layout_marginEnd="12dp"
-            android:scaleType="centerCrop" />
+        <!-- v13.89 (slice 1081): chooser header photo gold ring —
+             the 56dp portrait now sits in a 60dp frame whose
+             background is the shelf ring drawable (reused, no new
+             drawable) while a talk in this list sounds, so the
+             sounding sayadaw reads in a still screenshot. Same
+             4dp geometry as the Room header's 52/48dp frame
+             (v13.88) and the shelf's 56/52dp chip (v13.87); the
+             12dp gap moved to the frame, so the row spacing is
+             unchanged and the photo never moves or shrinks. -->
+        <FrameLayout
+            android:id="@+id/talksHeaderPhotoRing"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:layout_marginEnd="12dp">
+            <com.h2h.dhamma.CircleImageView
+                android:id="@+id/talksHeaderPhoto"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_gravity="center"
+                android:scaleType="centerCrop" />
+        </FrameLayout>
         <TextView
             android:id="@+id/title"
             android:layout_width="0dp"

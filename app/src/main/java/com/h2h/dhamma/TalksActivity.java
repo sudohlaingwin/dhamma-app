@@ -485,6 +485,28 @@ public class TalksActivity extends Activity {
     private boolean talkRowEnded = false;
     // v13.85 (slice 1077): the Up Next talk's URL the rows were last bound against — the chooser's Up Next ▸ mark (Room v4.13, in the chooser rows). Written only by refreshFavHeader, alongside the header line it mirrors (queued head / forward top / shuffle-gated list-next; empty when a foreign head waits or nothing resolves), and read only by TalkAdapter.getView; the tick's change branch refreshes the header BEFORE the rebind below, so a row never binds against a stale next talk. Cleared at the top of every header refresh, so an early return can never leave a stale crown.
     private String upNextRowUrl = "";
+    // v13.89 (slice 1081): chooser header photo ring — the last photo
+    // surface naming a sounding sayadaw without the gold language
+    // (Room header got its ring in v13.88, slice 1080; the shelf chip
+    // in v13.87; the grid card in v13.86). talksHeaderPhotoRing is the
+    // 60dp frame around the 56dp portrait; its background is the shelf
+    // ring drawable while a talk in THIS list sounds, nothing otherwise.
+    // lastChooserHeaderRing is the change-only state, like the Room's
+    // lastHeaderRing — refreshFavHeader runs on every load, return,
+    // queue action and change-only tick, so a steady tick never re-sets
+    // the background. The ring follows the rows' own sounding rule
+    // (rowPlaying / rowPlayingLib, v4.89/v11.07): a Room session for
+    // this sayadaw (talkPlayingUrl, already lastName-gated in
+    // refreshQueueMarks) or a library session sounding an in-list file
+    // (talkPlayingLibUrl, dlMap exactly-one claimant) — paused still
+    // rings (v3.99), ended never rings, a foreign session never rings
+    // (its URL matches no talk in this list), a dual-claimed library
+    // file resolves to no URL and never rings. Background only — the
+    // entrance animates the whole header row (v2.16/v6.04), the title's
+    // tap-to-top/long-press and the photo's ImageLoader bind are
+    // untouched.
+    private android.view.View talksHeaderPhotoRing = null;
+    private boolean lastChooserHeaderRing = false;
     // v7.39: line-aware -- a saved line is parsed and matched by its
     // URL, so a v2-spelled line (handover-carried, owned by another
     // sayadaw) for a talk that IS in this list still earns its
@@ -1466,6 +1488,10 @@ public class TalksActivity extends Activity {
                     headerPhoto == null ? "" : headerPhoto, sayadawName,
                     (CircleImageView) hp);
         } catch (Exception ignored) {}
+        // v13.89 (slice 1081): bind the header photo ring frame (see the
+        // field comment) — background only, set by updateChooserHeaderRing
+        // on every header refresh; a missing frame simply never rings.
+        talksHeaderPhotoRing = findViewById(R.id.talksHeaderPhotoRing);
         // v2.16: premium title entrance — the sayadaw-name title used
         // to appear instantly while its rows poured in below (v2.07
         // cascade), so the screen opened top-dead. On a fresh open
@@ -3175,7 +3201,39 @@ public class TalksActivity extends Activity {
         if (landingDeferred) flushDeferredLanding();
     }
 
+    // v13.89 (slice 1081): the chooser header photo ring — one boolean
+    // (ringing) drives the frame's background, change-only on
+    // lastChooserHeaderRing, so a steady refresh never re-sets it.
+    // The predicate is the rows' sounding rule over this list (see the
+    // field comment): any in-list talk matching the Room session's
+    // talkPlayingUrl or the library session's talkPlayingLibUrl, while
+    // not ended. Runs at the top of refreshFavHeader, before its early
+    // returns, so an empty or not-yet-loaded list still clears a stale
+    // ring — and the tick's change branch (talkPlayingUrl / LibUrl /
+    // liveEnded) refreshes the header before the rebind, so the ring
+    // moves within a tick of a switch, an auto-advance or a natural end.
+    private void updateChooserHeaderRing() {
+        boolean ringing = false;
+        if (!AudioService.liveEnded && talks != null) {
+            for (Talk t : talks) {
+                if (t == null || t.url == null) continue;
+                if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0
+                        && SiteHttp.sameTalk(t.url, talkPlayingUrl))
+                        || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0
+                        && SiteHttp.sameTalk(t.url, talkPlayingLibUrl))) { ringing = true; break; }
+            }
+        }
+        if (ringing != lastChooserHeaderRing) {
+            lastChooserHeaderRing = ringing;
+            if (talksHeaderPhotoRing != null) {
+                if (ringing) talksHeaderPhotoRing.setBackgroundResource(R.drawable.shelf_ring_playing);
+                else talksHeaderPhotoRing.setBackground(null);
+            }
+        }
+    }
+
     private void refreshFavHeader() {
+        updateChooserHeaderRing(); // v13.89 (slice 1081): the ring rides the header refresh, never a steady tick
         // v13.85 (slice 1077): clear the Up Next row mark first — this method's two early returns below (empty list / no sayadaw / no header view) must not leave a stale upNextRowUrl crowning a row from a dead session.
         upNextRowUrl = "";
         talkRefreshInProgressDlNames(false); // v11.57: header ⬇ count reads isTalkDownloaded fresh
