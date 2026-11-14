@@ -1196,7 +1196,15 @@ public class TalksActivity extends Activity {
     private int filterMode = 0;
     private java.util.ArrayList<Integer> filterHits = null;
     private java.util.ArrayList<Integer> visibleHits = null;
-    private android.widget.TextView filterBtn = null;
+    // v13.95 (slice 1090): visible chooser filter chips — the four
+    // TextViews of talkFilterRow, painted by refreshTalkFilterChips.
+    // Null until onCreate wires them (applyTheme and the first
+    // loadList both run before that point, so every painter
+    // null-guards).
+    private android.widget.TextView chipTalkAll = null;
+    private android.widget.TextView chipTalkStar = null;
+    private android.widget.TextView chipTalkNew = null;
+    private android.widget.TextView chipTalkDl = null;
 
     // v13.76 (slice 1068): chooser Play All button — null until
     // onCreate wires it (applyTheme and the first load both run
@@ -1289,33 +1297,82 @@ public class TalksActivity extends Activity {
         }
         rebuildVisible();
     }
-    private void refreshFilterBtn() {
-        if (filterBtn == null) return;
-        if (filterMode == 1) {
-            filterBtn.setText(Lang.t(TalksActivity.this, "filter_btn_star"));
-            filterBtn.setTextColor(android.graphics.Color.parseColor("#C9A227"));
-        } else if (filterMode == 2) {
-            filterBtn.setText(Lang.t(TalksActivity.this, "filter_btn_new"));
-            filterBtn.setTextColor(android.graphics.Color.parseColor("#C9A227"));
-        } else if (filterMode == 3) {
-            filterBtn.setText(Lang.t(TalksActivity.this, "filter_btn_dl"));
-            filterBtn.setTextColor(android.graphics.Color.parseColor("#C9A227"));
-        } else {
-            filterBtn.setText(Lang.t(TalksActivity.this, "repeat_all"));
-            // v11.53: the inactive filter label kept day muted brown
-            // (#7A6A58) at night too, while every other muted text
-            // on the themed screens switches to #AAAAAA at night —
-            // same night value, day value exactly the layout colour.
-            filterBtn.setTextColor(Prefs.isNight(TalksActivity.this)
-                    ? android.graphics.Color.parseColor("#AAAAAA")
-                    : android.graphics.Color.parseColor("#7A6A58"));
-        }
+    // v13.95 (slice 1090): paint the visible chooser filter chips —
+    // the four filter views (v4.94 + v5.13) lived behind one cycling
+    // button in the search row: undiscoverable, and the active mode
+    // showed only as that button's label. Four direct chips now
+    // (All / ★ / New / Downloaded), same modes, same Lang keys the
+    // button already used (repeat_all / filter_btn_star /
+    // filter_btn_new / filter_btn_dl) — no new key, no Burmese
+    // literal in code (the layout initial texts are the same
+    // shipped values, asserted by the patch). Active chip reads
+    // gold + bold, the others muted — the library chips' own
+    // language (DownloadedActivity refreshDlFilterChips); size
+    // follows the font setting on the chooser's old filter step
+    // (12/14/16). Called from applyTheme (create + return), from
+    // the chip wiring below, from clearFilter and from the rotation
+    // restore, so every mode change — chip tap, clear, restore —
+    // repaints the chips with no per-site call. Null-safe: applyTheme
+    // runs before onCreate wires the chips, and the first loadList
+    // runs before them too. No mode guard: a language change must
+    // repaint even when the mode is unchanged, like the old button.
+    private void refreshTalkFilterChips() {
+        if (chipTalkAll == null || chipTalkStar == null || chipTalkNew == null || chipTalkDl == null) return;
+        int f = Prefs.fontSize(TalksActivity.this);
+        float sz = f == 0 ? 12 : (f == 1 ? 14 : 16);
+        int gold = android.graphics.Color.parseColor("#C9A227");
+        // v11.53: the inactive filter label kept day muted brown
+        // (#7A6A58) at night too, while every other muted text
+        // on the themed screens switches to #AAAAAA at night —
+        // same night value, day value exactly the layout colour.
+        int muted = Prefs.isNight(TalksActivity.this)
+                ? android.graphics.Color.parseColor("#AAAAAA")
+                : android.graphics.Color.parseColor("#7A6A58");
+        chipTalkAll.setText(Lang.t(TalksActivity.this, "repeat_all"));
+        chipTalkStar.setText(Lang.t(TalksActivity.this, "filter_btn_star"));
+        chipTalkNew.setText(Lang.t(TalksActivity.this, "filter_btn_new"));
+        chipTalkDl.setText(Lang.t(TalksActivity.this, "filter_btn_dl"));
+        chipTalkAll.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);
+        chipTalkStar.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);
+        chipTalkNew.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);
+        chipTalkDl.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);
+        chipTalkAll.setTextColor(filterMode == 0 ? gold : muted);
+        chipTalkStar.setTextColor(filterMode == 1 ? gold : muted);
+        chipTalkNew.setTextColor(filterMode == 2 ? gold : muted);
+        chipTalkDl.setTextColor(filterMode == 3 ? gold : muted);
+        chipTalkAll.setTypeface(null, filterMode == 0 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+        chipTalkStar.setTypeface(null, filterMode == 1 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+        chipTalkNew.setTypeface(null, filterMode == 2 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+        chipTalkDl.setTypeface(null, filterMode == 3 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+    }
+
+    // v13.95 (slice 1090): one direct-set path for the filter mode —
+    // the cycling button's click body, extracted verbatim (dedent
+    // 20sp -> 8sp) so a chip tap can never disagree with it: same
+    // toast keys, same lastAnimPos pin (rows rebind without the
+    // pour), same rebuild + rebind. A tap on the already-active
+    // chip just returns (the caller taps first); the old cycle's
+    // increment could never land on the same mode. The cycling
+    // button itself is gone — the chips are the only filter control.
+    private void setTalkFilterMode(int mode) {
+        if (mode == filterMode) return;
+        filterMode = mode;
+        lastAnimPos = Integer.MAX_VALUE;
+        refreshTalkFilterChips();
+        rebuildFilter();
+        if (adapter != null) adapter.notifyDataSetChanged();
+        android.widget.Toast.makeText(TalksActivity.this,
+                filterMode == 1 ? Lang.t(TalksActivity.this, "filter_starred_only")
+                        : (filterMode == 2 ? Lang.t(TalksActivity.this, "filter_unlistened_only")
+                                : (filterMode == 3 ? Lang.t(TalksActivity.this, "filter_downloaded_only")
+                                        : Lang.t(TalksActivity.this, "filter_talks_all"))),
+                android.widget.Toast.LENGTH_SHORT).show();
     }
     private void clearFilter() {
         if (filterMode == 0) return;
         filterMode = 0;
         filterHits = null;
-        refreshFilterBtn();
+        refreshTalkFilterChips();
         rebuildVisible();
         if (adapter != null) adapter.notifyDataSetChanged();
     }
@@ -2410,7 +2467,9 @@ public class TalksActivity extends Activity {
                         filterMode = savedFilter;
                         android.view.View sRowF = findViewById(R.id.talkSearchRow);
                         if (sRowF != null) sRowF.setVisibility(View.VISIBLE);
-                        refreshFilterBtn();
+                        android.view.View fRowF = findViewById(R.id.talkFilterRow);
+                        if (fRowF != null) fRowF.setVisibility(View.VISIBLE);
+                        refreshTalkFilterChips();
                         rebuildFilter();
                     }
                 }
@@ -2418,6 +2477,8 @@ public class TalksActivity extends Activity {
                 if (savedSearch != null && savedSearch.length() > 0) {
                     android.view.View sRow = findViewById(R.id.talkSearchRow);
                     if (sRow != null) sRow.setVisibility(View.VISIBLE);
+                    android.view.View fRow = findViewById(R.id.talkFilterRow);
+                    if (fRow != null) fRow.setVisibility(View.VISIBLE);
                     if (searchBox != null) searchBox.setText(savedSearch);
                     else { searchQuery = savedSearch; rebuildSearch(); }
                 }
@@ -2882,28 +2943,25 @@ public class TalksActivity extends Activity {
             // so a language picked in Settings while this chooser sat
             // in the back stack left the button in the OLD language
             // until the next tap (same class as the v9.91 search hint).
-            // Same EXISTING keys refreshFilterBtn already uses, so
+            // Same EXISTING keys refreshTalkFilterChips already uses, so
             // Burmese display is byte-identical; the null guard inside
             // makes the pre-wire first-create pass a safe no-op.
-            refreshFilterBtn();
-            // v9.97: the search box + filter button kept their layout
-            // sizes (16sp / 14sp) in every font setting -- Main's and
-            // Downloaded's search boxes both follow Prefs.fontSize and
-            // the Talks rows do, but applyTheme() never sized this
-            // row, so a large-text listener returning from Settings
-            // got a small search row on a grown screen (same
-            // back-stack-stale class as v9.91/v9.94/v9.96, font-size
-            // dimension). Box 14/16/20 = the exact Main/Downloaded
-            // search step; filter 12/14/16 = the Talks row-sub step.
-            // Normal font yields exactly the layout sizes, so
-            // default display is unchanged. Runs on create and on
-            // every return, inside the existing searchBox null guard
-            // (filterBtn has its own guard: it is wired with the box).
+            refreshTalkFilterChips();
+            // v9.97: the search box kept its layout size (16sp) in
+            // every font setting -- Main's and Downloaded's search
+            // boxes both follow Prefs.fontSize and the Talks rows
+            // do, but applyTheme() never sized this row, so a
+            // large-text listener returning from Settings got a small
+            // search row on a grown screen (same back-stack-stale
+            // class as v9.91/v9.94/v9.96, font-size dimension). Box
+            // 14/16/20 = the exact Main/Downloaded search step.
+            // Normal font yields exactly the layout size, so default
+            // display is unchanged. Runs on create and on every
+            // return, inside the existing searchBox null guard.
+            // v13.95: the chips are sized by their own painter
+            // (12/14/16, the old filter step), not here.
             searchBox.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,
                     f == 0 ? 14 : (f == 1 ? 16 : 20));
-            if (filterBtn != null) filterBtn.setTextSize(
-                    android.util.TypedValue.COMPLEX_UNIT_SP,
-                    f == 0 ? 12 : (f == 1 ? 14 : 16));
         }
         // v9.95: the search-empty view text is set only inside
         // rebuildVisible(), on search/filter changes -- never by
@@ -4847,31 +4905,46 @@ public class TalksActivity extends Activity {
         if (clear != null) clear.setOnClickListener(new android.view.View.OnClickListener() {
             @Override public void onClick(android.view.View v) { clearSearch(); }
         });
-        // v4.94: filter button — cycles all → ★ only → unlistened
-        // only; v5.13 adds downloaded only as the fourth step.
-        // A filtered view applies to the full list, and rows
-        // rebind without the pour (same lastAnimPos pin
-        // as the search watcher).
-        filterBtn = (android.widget.TextView) findViewById(R.id.talkFilter);
-        if (filterBtn != null) {
-            refreshFilterBtn();
-            filterBtn.setOnClickListener(new android.view.View.OnClickListener() {
-                @Override public void onClick(android.view.View v) {
-                    Fx.tap(TalksActivity.this);
-                    filterMode = (filterMode + 1) % 4;
-                    lastAnimPos = Integer.MAX_VALUE;
-                    refreshFilterBtn();
-                    rebuildFilter();
-                    if (adapter != null) adapter.notifyDataSetChanged();
-                    android.widget.Toast.makeText(TalksActivity.this,
-                            filterMode == 1 ? Lang.t(TalksActivity.this, "filter_starred_only")
-                                    : (filterMode == 2 ? Lang.t(TalksActivity.this, "filter_unlistened_only")
-                                            : (filterMode == 3 ? Lang.t(TalksActivity.this, "filter_downloaded_only")
-                                                    : Lang.t(TalksActivity.this, "filter_talks_all"))),
-                            android.widget.Toast.LENGTH_SHORT).show();
-                }
-            });
-        }
+        // v13.95 (slice 1090): wire the visible filter chips — one
+        // tap sets the mode directly (setTalkFilterMode, the cycle's
+        // own body); the cycling button is gone. The chips paint
+        // from refreshTalkFilterChips below, and setTalkFilterMode
+        // repaints them on every later change. A filtered view
+        // applies to the full list, and rows rebind without the
+        // pour (same lastAnimPos pin as the search watcher).
+        chipTalkAll = findViewById(R.id.chipTalkAll);
+        chipTalkStar = findViewById(R.id.chipTalkStar);
+        chipTalkNew = findViewById(R.id.chipTalkNew);
+        chipTalkDl = findViewById(R.id.chipTalkDl);
+        if (chipTalkAll != null) chipTalkAll.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                Fx.tap(TalksActivity.this);
+                setTalkFilterMode(0);
+            }
+        });
+        if (chipTalkStar != null) chipTalkStar.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                Fx.tap(TalksActivity.this);
+                setTalkFilterMode(1);
+            }
+        });
+        if (chipTalkNew != null) chipTalkNew.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                Fx.tap(TalksActivity.this);
+                setTalkFilterMode(2);
+            }
+        });
+        if (chipTalkDl != null) chipTalkDl.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                Fx.tap(TalksActivity.this);
+                setTalkFilterMode(3);
+            }
+        });
+        if (chipTalkAll != null) Fx.press(chipTalkAll);
+        if (chipTalkStar != null) Fx.press(chipTalkStar);
+        if (chipTalkNew != null) Fx.press(chipTalkNew);
+        if (chipTalkDl != null) Fx.press(chipTalkDl);
+        refreshTalkFilterChips();
         // applyTheme() already ran before this wire on first create,
         // so theme the box here too (night would otherwise wait for
         // a return to restyle it).
@@ -4884,13 +4957,11 @@ public class TalksActivity extends Activity {
         // v9.97: size here too -- applyTheme() already ran before this
         // wire (see its comment above), so without this a fresh open
         // at a non-normal font size would keep the layout sizes until
-        // the first return. Same steps as the applyTheme() block above.
+        // the first return. Same step as the applyTheme() block above.
+        // v13.95: the chips are sized by their own painter, not here.
         int wf = Prefs.fontSize(TalksActivity.this);
         searchBox.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,
                 wf == 0 ? 14 : (wf == 1 ? 16 : 20));
-        if (filterBtn != null) filterBtn.setTextSize(
-                android.util.TypedValue.COMPLEX_UNIT_SP,
-                wf == 0 ? 12 : (wf == 1 ? 14 : 16));
     }
 
     private class TalkAdapter extends BaseAdapter {
@@ -5656,6 +5727,8 @@ public class TalksActivity extends Activity {
                         // (empty loads keep it hidden, like the rows).
                         android.view.View sRow = findViewById(R.id.talkSearchRow);
                         if (sRow != null) sRow.setVisibility(found.isEmpty() ? View.GONE : View.VISIBLE);
+                        android.view.View fRow = findViewById(R.id.talkFilterRow);
+                        if (fRow != null) fRow.setVisibility(found.isEmpty() ? View.GONE : View.VISIBLE);
                         refreshTalkPlayAllRow(); // v13.76: Play All lands with the list
                         rebuildSearch();
                         // v4.94: a fresh list re-indexes the filter

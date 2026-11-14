@@ -96,17 +96,62 @@
             android:textColor="@color/gold"
             android:textSize="20sp"
             android:visibility="gone" />
-        <!-- v4.94: chooser filter button — cycles all / ★ only /
-             unlistened only; lives in the search row, so it
-             appears exactly when the search box does. -->
+        <!-- v13.95 (slice 1090): the cycling filter button lived
+             here; the four filter chips below replace it (same
+             four modes, same Lang keys) — one tap each, and
+             the active mode reads at a glance. -->
+    </LinearLayout>
+    <!-- v13.95 (slice 1090): chooser filter chips — the four
+         filter views (v4.94 all / ★ only / unlistened only,
+         v5.13 downloaded only) lived behind one cycling button in
+         the search row: undiscoverable, and the active mode showed
+         only as that button's label. Four direct chips now (All /
+         ★ / New / Downloaded), same modes, same Lang keys the
+         button already used (repeat_all / filter_btn_star /
+         filter_btn_new / filter_btn_dl); the layout texts are the
+         shipped Burmese values, asserted by the patch. GONE until
+         a list lands, like the search row above. -->
+    <LinearLayout
+        android:id="@+id/talkFilterRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal"
+        android:visibility="gone">
         <TextView
-            android:id="@+id/talkFilter"
-            android:layout_width="wrap_content"
+            android:id="@+id/chipTalkAll"
+            android:layout_width="0dp"
             android:layout_height="48dp"
+            android:layout_weight="1"
             android:gravity="center"
-            android:paddingLeft="8dp"
-            android:paddingRight="8dp"
             android:text="အားလုံး"
+            android:textColor="@color/muted"
+            android:textSize="14sp" />
+        <TextView
+            android:id="@+id/chipTalkStar"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="★ သာ"
+            android:textColor="@color/muted"
+            android:textSize="14sp" />
+        <TextView
+            android:id="@+id/chipTalkNew"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="အသစ်သာ"
+            android:textColor="@color/muted"
+            android:textSize="14sp" />
+        <TextView
+            android:id="@+id/chipTalkDl"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="⬇ သာ"
             android:textColor="@color/muted"
             android:textSize="14sp" />
     </LinearLayout>
