@@ -2573,6 +2573,42 @@ public class Prefs {
         catch (Exception ignored) {}
     }
 
+    // v13.77 (slice 1069): remove ONE recent row — the History
+    // long-press menu's delete verb. Clear-all above wipes the whole
+    // store; a stale or wrong recent row could only be removed that
+    // way. Pure core: drop REC lines whose URL is the same talk
+    // (SiteHttp.sameTalk, so http/https twins go together), keep
+    // every other line verbatim — TOTAL/DAY/SAY aggregates are
+    // lifetime numbers (the time WAS listened), so only the recent
+    // list loses the row. A malformed REC line (no URL field) is
+    // kept, never deleted blind.
+    static String statsRemoveOnePure(String raw, String url) {
+        if (raw == null || raw.length() == 0) return "";
+        if (url == null || url.length() == 0) return raw;
+        StringBuilder sb = new StringBuilder();
+        for (String line : raw.split("\n")) {
+            if (line.startsWith("REC\t")) {
+                String rest = line.substring(4);
+                int t = rest.indexOf('\t');
+                if (t > 0 && SiteHttp.sameTalk(rest.substring(0, t), url)) continue;
+            }
+            if (sb.length() > 0) sb.append('\n');
+            sb.append(line);
+        }
+        return sb.toString();
+    }
+
+    public static boolean statsRemoveOne(Context c, String url) {
+        if (c == null || url == null || url.length() == 0) return false;
+        try {
+            String raw = statsRaw(c);
+            String next = statsRemoveOnePure(raw, url);
+            if (next.equals(raw)) return false;
+            sp(c).edit().putString(STATS_KEY, next).apply();
+            return true;
+        } catch (Exception ignored) { return false; }
+    }
+
     // v12.68: Wi-Fi auto-download — premium backlog #5 (user order
     // 2026-11-06): new talks from ★-favourited sayadaws download
     // themselves on Wi-Fi, so the listener never has to chase a new

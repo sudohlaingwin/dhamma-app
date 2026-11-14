@@ -82,6 +82,12 @@ public class HistoryActivity extends Activity {
     private String histRowPlayingLibPath = null;
     private boolean histRowEnded = false;
 
+    // v13.77 (slice 1069): favourite snapshot for the row star mark —
+    // the identity-form URLs in favTalks, refreshed with the list
+    // (refresh) and re-checked on the 1s tick's change detector, so a
+    // star flipped from the notification card shows here too.
+    private java.util.Set<String> histFavSet = new java.util.HashSet<String>();
+
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_history);
@@ -131,6 +137,17 @@ public class HistoryActivity extends Activity {
             listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
                 @Override public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
                     playRecent(items.get(pos));
+                }
+            });
+            // v13.77 (slice 1069): the recent row's long-press menu —
+            // tap still plays; a long-press opens share / favourite /
+            // queue / download / remove-from-history (showHistRowMenu).
+            listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+                @Override public boolean onItemLongClick(AdapterView<?> p, View v, int pos, long id) {
+                    if (pos < 0 || pos >= items.size()) return false;
+                    Fx.tap(HistoryActivity.this);
+                    showHistRowMenu(items.get(pos));
+                    return true;
                 }
             });
         }
@@ -184,6 +201,7 @@ public class HistoryActivity extends Activity {
         int streak = Prefs.statsStreak(this);
         String[] top = Prefs.statsTopSayadaw(this);
         items = Prefs.statsRecent(this);
+        refreshHistFavSet(); // v13.77: rows bind their star mark from this snapshot
         if (totalValue != null) {
             totalValue.setText(fmtDur(total));
             totalValue.setTextColor(goldColor());
@@ -229,9 +247,14 @@ public class HistoryActivity extends Activity {
                 && ((histPlayingUrl.length() > 0 && SiteHttp.sameTalk(e.url, histPlayingUrl))
                         || (histPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(e.url, histPlayingLibUrl))
                         || (histPlayingLibPath.length() > 0 && e.url.equals(histPlayingLibPath)));
-        tv.setText(hsRowPlaying ? "▶ " + (e.title.length() > 0 ? e.title : e.url)
-                : (e.title.length() > 0 ? e.title : e.url));
-        tv.setTextColor(hsRowPlaying ? goldColor() : titleColor());
+        // v13.77: a favourited recent row says so — "★ " ahead of its
+        // title (the strip star and the Talks star marks read the same
+        // set), after the "▶ " playing mark when both apply; gold
+        // either way, so the mark reads at a glance.
+        String hsPrefix77 = (hsRowPlaying ? "▶ " : "")
+                + (histRowFav(e) ? "★ " : "");
+        tv.setText(hsPrefix77 + (e.title.length() > 0 ? e.title : e.url));
+        tv.setTextColor((hsRowPlaying || histRowFav(e)) ? goldColor() : titleColor());
         tv.setTextSize(16);
         tv.setTypeface(null, android.graphics.Typeface.BOLD);
         col.addView(tv, new LinearLayout.LayoutParams(
@@ -420,6 +443,449 @@ public class HistoryActivity extends Activity {
     // guards + lastKind lib -> lastLibPath, plus the dlMap reverse lookup for URL-form rows
     // (exactly-one claimant, v8.44 — a dual-claimed file names no talk rather than the wrong one).
     // Prefs only, never per bind.
+    // v13.77 (slice 1069): History row long-press menu helpers.
+    // histStreamUrlFor resolves the row to the stream URL every verb
+    // needs: a URL-form row canonicalises to its identity form; a
+    // path-form row (a downloaded file) resolves through the dlMap
+    // reverse lookup with the exactly-one-claimant rule (v8.44 — a
+    // dual-claimed file names no talk rather than the wrong one), so
+    // a deleted file with no claimant offers no stream verb.
+    private String histStreamUrlFor(Prefs.HistEntry e) {
+        if (e == null || e.url == null || e.url.length() == 0) return "";
+        if (!e.url.startsWith("/")) return SiteHttp.identityUrl(e.url);
+        try {
+            String base = e.url.substring(e.url.lastIndexOf('/') + 1);
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            java.util.Iterator<String> keys = map.keys();
+            String hit = null;
+            int matches = 0;
+            while (keys.hasNext()) {
+                String k = keys.next();
+                if (base.equals(map.optString(k, ""))) { hit = k; matches++; }
+            }
+            return matches == 1 ? hit : "";
+        } catch (Exception ignored) { return ""; }
+    }
+
+    // v13.77: the row's sayadaw, healed exactly like playRecent's —
+    // a row banked under "" (library listens before v12.71) resolves
+    // its true owner through the download-time dlSayadaw record.
+    private String histSayadawFor(Prefs.HistEntry e) {
+        if (e == null) return "";
+        String sd = e.sayadaw != null ? e.sayadaw : "";
+        if (sd.length() > 0) return sd;
+        String owner = Prefs.sayadawForTalk(this, "lib", e.url, "");
+        return owner != null ? owner : "";
+    }
+
+    // v13.77: the favourite set, fresh from prefs (identity-form
+    // keys, the toggleFavTalk canonical form). The legacy-http
+    // migration runs here so a stale http key can never hide a star.
+    private java.util.Set<String> histFavSetNow() {
+        try {
+            Prefs.migrateLegacyHttpRows66(this);
+            java.util.Set<String> ft = getSharedPreferences("dhamma", MODE_PRIVATE)
+                    .getStringSet("favTalks", null);
+            return ft == null ? new java.util.HashSet<String>()
+                    : new java.util.HashSet<String>(ft);
+        } catch (Exception ignored) {
+            return new java.util.HashSet<String>();
+        }
+    }
+
+    private void refreshHistFavSet() {
+        histFavSet = histFavSetNow();
+    }
+
+    private boolean histRowFav(Prefs.HistEntry e) {
+        if (e == null) return false;
+        String stream = histStreamUrlFor(e);
+        return stream.length() > 0 && histFavSet != null
+                && histFavSet.contains(stream);
+    }
+
+    // v13.77: Talks isTalkDownloaded, History-local — the dlMap
+    // mapped file with the v13.66 length gate (a 0-byte file is not
+    // downloaded), plus the plain basename leg for files the app
+    // enqueued under a stripped name.
+    private boolean histIsDownloaded(String url) {
+        if (url == null || url.length() == 0) return false;
+        try {
+            java.io.File dir = new java.io.File(android.os.Environment
+                    .getExternalStoragePublicDirectory(
+                            android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            String mapped = map.optString(SiteHttp.identityUrl(url), "");
+            if (mapped.length() > 0) {
+                java.io.File f = new java.io.File(dir, mapped);
+                if (f.isFile() && f.length() > 0) return true;
+            }
+            String base = url.substring(url.lastIndexOf('/') + 1);
+            int q = base.indexOf('?');
+            if (q >= 0) base = base.substring(0, q);
+            int h = base.indexOf('#');
+            if (h >= 0) base = base.substring(0, h);
+            if (base.length() > 0) {
+                java.io.File f = new java.io.File(dir, base);
+                if (f.isFile() && f.length() > 0) return true;
+            }
+            return false;
+        } catch (Exception ignored) { return false; }
+    }
+
+    // v13.77: Talks talkIsDlQueued, History-local — fresh prefs read
+    // at offer/tap time, so a job queued from the Room a second
+    // earlier still blocks a double enqueue.
+    private boolean histIsDlQueued(String url) {
+        if (url == null) return false;
+        try {
+            org.json.JSONArray qa = new org.json.JSONArray(
+                    getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlQueued", "[]"));
+            for (int i = 0; i < qa.length(); i++)
+                if (url.equals(qa.optString(i))) return true;
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    // v13.77: Talks talkDownloadFileNameFor, History-local — the
+    // dlMap name wins, else the basename stripped of ?/# with .mp3
+    // guaranteed, and a basename another URL's download claims takes
+    // the 8-hex MD5 suffix (v8.40 claim-alone rule).
+    private String histDownloadFileNameFor(String url) {
+        try {
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            String mapped = map.optString(SiteHttp.identityUrl(url), "");
+            if (mapped.length() > 0) return mapped;
+            String base = url.substring(url.lastIndexOf('/') + 1);
+            int q = base.indexOf('?');
+            if (q >= 0) base = base.substring(0, q);
+            int hh = base.indexOf('#');
+            if (hh >= 0) base = base.substring(0, hh);
+            if (!base.toLowerCase().endsWith(".mp3")) base = base + ".mp3";
+            java.util.Iterator<String> keys = map.keys();
+            boolean claimed = false;
+            while (keys.hasNext()) {
+                String k = keys.next();
+                if (!SiteHttp.sameTalk(k, url) && base.equals(map.optString(k, ""))) {
+                    claimed = true;
+                    break;
+                }
+            }
+            if (claimed) {
+                String hash = "";
+                try {
+                    java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+                    byte[] d = md.digest(url.getBytes("UTF-8"));
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 0; i < 4; i++) sb.append(String.format("%02x", d[i]));
+                    hash = sb.toString();
+                } catch (Exception ignored) { hash = String.format("%08x", url.hashCode()); }
+                if (base.toLowerCase().endsWith(".mp3"))
+                    return base.substring(0, base.length() - 4) + "_" + hash + base.substring(base.length() - 4);
+                return base + "_" + hash;
+            }
+            return base;
+        } catch (Exception ignored) {
+            String base = url.substring(url.lastIndexOf('/') + 1);
+            if (!base.toLowerCase().endsWith(".mp3")) base = base + ".mp3";
+            return base;
+        }
+    }
+
+    // v13.77: Talks recordTalkDownload, History-local — dlMap,
+    // dlSayadaw and dlQueued land in ONE apply under DlLock.LOCK
+    // (v13.68/v13.70), the URL banked in identity form (v13.71).
+    private void histRecordDownload(String url, String file, String sd) {
+        synchronized (DlLock.LOCK) {
+        try {
+            url = SiteHttp.identityUrl(url);
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            map.put(url, file);
+            String sayStr = null;
+            if (sd != null && sd.length() > 0) {
+                try {
+                    org.json.JSONObject sm = new org.json.JSONObject(sp.getString("dlSayadaw", "{}"));
+                    sm.put(url, sd);
+                    sayStr = sm.toString();
+                } catch (Exception ignored) {}
+            }
+            org.json.JSONArray queued = new org.json.JSONArray(sp.getString("dlQueued", "[]"));
+            boolean found = false;
+            for (int i = 0; i < queued.length(); i++) {
+                if (SiteHttp.sameTalk(url, queued.optString(i))) { found = true; break; }
+            }
+            if (!found) queued.put(url);
+            android.content.SharedPreferences.Editor ed = sp.edit()
+                    .putString("dlMap", map.toString())
+                    .putString("dlQueued", queued.toString());
+            if (sayStr != null) ed.putString("dlSayadaw", sayStr);
+            ed.apply();
+        } catch (Exception ignored) {}
+        }
+    }
+
+    // v13.77: the sayadaw's saved-queue membership, read straight
+    // from the store (no in-memory queue on this screen). A v2 line
+    // and a bare v1 line both parse through QueueEntry.
+    private boolean histQueueHas(String sd, String url) {
+        if (sd == null || sd.length() == 0 || url == null || url.length() == 0) return false;
+        try {
+            String saved = Prefs.savedQueue(this, sd);
+            if (saved == null || saved.length() == 0) return false;
+            for (String ln : saved.split("\n")) {
+                QueueEntry qe = QueueEntry.parse(ln);
+                if (qe != null && SiteHttp.sameTalk(qe.url, url)) return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    // v13.77: append the talk as a v2 line (identity URL, sayadaw,
+    // title) and save the queue back. Every other line is carried
+    // verbatim — foreign lines are never re-spelled or dropped here,
+    // so the Room's funnel (v10.98 carry) still sees them intact.
+    private boolean histQueueAdd(String sd, String url, String title) {
+        if (sd == null || sd.length() == 0 || url == null || url.length() == 0) return false;
+        try {
+            String saved = Prefs.savedQueue(this, sd);
+            java.util.ArrayList<String> lines = new java.util.ArrayList<String>();
+            if (saved != null && saved.length() > 0) {
+                for (String ln : saved.split("\n")) {
+                    if (ln.length() == 0) continue;
+                    QueueEntry qe = QueueEntry.parse(ln);
+                    if (qe != null && SiteHttp.sameTalk(qe.url, url)) return false;
+                    lines.add(ln);
+                }
+            }
+            String line = QueueEntry.format(
+                    new QueueEntry(SiteHttp.identityUrl(url), sd, title));
+            if (line.length() == 0) return false;
+            lines.add(line);
+            Prefs.saveQueue(this, sd, lines);
+            return true;
+        } catch (Exception ignored) { return false; }
+    }
+
+    private boolean histQueueRemove(String sd, String url) {
+        if (sd == null || sd.length() == 0 || url == null || url.length() == 0) return false;
+        try {
+            String saved = Prefs.savedQueue(this, sd);
+            if (saved == null || saved.length() == 0) return false;
+            java.util.ArrayList<String> lines = new java.util.ArrayList<String>();
+            boolean dropped = false;
+            for (String ln : saved.split("\n")) {
+                if (ln.length() == 0) continue;
+                QueueEntry qe = QueueEntry.parse(ln);
+                if (qe != null && SiteHttp.sameTalk(qe.url, url)) { dropped = true; continue; }
+                lines.add(ln);
+            }
+            if (!dropped) return false;
+            Prefs.saveQueue(this, sd, lines);
+            return true;
+        } catch (Exception ignored) { return false; }
+    }
+
+    // v13.77 (slice 1069): the recent row's long-press menu — the
+    // History screen's rows were tap-only: a listener who had just
+    // heard a talk could only replay it (replacing that sayadaw's
+    // hand queue), never favourite, share, queue or download it
+    // from the screen that lists what was heard. The dialog mirrors
+    // Talks' (same keys, same key-dispatched handler, same tap-time
+    // re-checks), minus the verbs History cannot offer soundly: no
+    // play-next (the waiting-foreign-head correction needs the
+    // sayadaw's loaded list, which this screen never loads) and no
+    // move (History has no queue view to pick up from). The sounding
+    // row keeps share / favourite / download / remove (none of them
+    // touches the queue); only the queue verbs gate on non-sounding,
+    // like Talks' v5.82 rule. Remove-from-history drops the row's
+    // REC line(s) only — the lifetime totals stay (the time WAS
+    // listened) — so a stale row no longer needs the clear-all
+    // button. A row with no resolvable stream URL offers remove
+    // only, never an empty dialog.
+    private void showHistRowMenu(final Prefs.HistEntry e) {
+        if (e == null) return;
+        final String streamUrl = histStreamUrlFor(e);
+        final String sd = histSayadawFor(e);
+        refreshHistoryPlayingMarks();
+        final boolean sounding = streamUrl.length() > 0
+                && ((histPlayingUrl.length() > 0 && SiteHttp.sameTalk(streamUrl, histPlayingUrl))
+                        || (histPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(streamUrl, histPlayingLibUrl)));
+        java.util.ArrayList<String> opts = new java.util.ArrayList<String>();
+        java.util.ArrayList<String> keys = new java.util.ArrayList<String>();
+        if (streamUrl.length() > 0) {
+            opts.add(Lang.t(this, "menu_share"));
+            keys.add("menu_share");
+            boolean fav = false;
+            try {
+                java.util.Set<String> ft = getSharedPreferences("dhamma", MODE_PRIVATE)
+                        .getStringSet("favTalks", null);
+                fav = ft != null && ft.contains(streamUrl);
+            } catch (Exception ignored) {}
+            opts.add(Lang.t(this, fav ? "menu_fav_remove" : "menu_fav_add"));
+            keys.add(fav ? "menu_fav_remove" : "menu_fav_add");
+        }
+        if (streamUrl.length() > 0 && sd.length() > 0 && !sounding) {
+            boolean queued = histQueueHas(sd, streamUrl);
+            opts.add(Lang.t(this, queued ? "menu_queue_remove" : "menu_queue_add"));
+            keys.add(queued ? "menu_queue_remove" : "menu_queue_add");
+        }
+        if (streamUrl.length() > 0 && !histIsDownloaded(streamUrl) && !histIsDlQueued(streamUrl)) {
+            opts.add(Lang.t(this, "dl_btn_download"));
+            keys.add("dl_btn_download");
+        }
+        opts.add(Lang.t(this, "hs_remove_one"));
+        keys.add("hs_remove_one");
+        final String[] optArr = opts.toArray(new String[0]);
+        final String[] keyArr = keys.toArray(new String[0]);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(e.title != null && e.title.length() > 0 ? e.title : e.url)
+                .setItems(optArr, new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int which) {
+                        if ("menu_share".equals(keyArr[which])) {
+                            String name = sd.length() > 0 ? sd : e.sayadaw;
+                            Intent send = new Intent(Intent.ACTION_SEND);
+                            send.setType("text/plain");
+                            send.putExtra(Intent.EXTRA_TEXT, (name != null && name.length() > 0 ? name + " — " : "")
+                                    + (e.title != null ? e.title : "")
+                                    + "\n" + streamUrl + Lang.t(HistoryActivity.this, "share_source"));
+                            startActivity(Intent.createChooser(send, Lang.t(HistoryActivity.this, "share_talk")));
+                        } else if ("menu_fav_add".equals(keyArr[which]) || "menu_fav_remove".equals(keyArr[which])) {
+                            boolean added = Fx.toggleFavTalk(HistoryActivity.this, streamUrl);
+                            // Talks v10.03: a flip for the sounding talk refreshes the card star.
+                            try {
+                                android.content.SharedPreferences rsp =
+                                        getSharedPreferences("dhamma", MODE_PRIVATE);
+                                boolean cardTalk = SiteHttp.sameTalk(streamUrl, rsp.getString("lastUrl", ""));
+                                if (!cardTalk) {
+                                    String libPath = rsp.getString("lastLibPath", "");
+                                    if (libPath.length() > 0) {
+                                        String fn = new org.json.JSONObject(rsp.getString("dlMap", "{}"))
+                                                .optString(streamUrl, "");
+                                        cardTalk = fn.length() > 0
+                                                && fn.equals(new java.io.File(libPath).getName());
+                                    }
+                                }
+                                if (cardTalk) {
+                                    Intent rsv = new Intent(HistoryActivity.this, AudioService.class);
+                                    rsv.setAction(AudioService.ACTION_REFRESH_NOTIFICATION);
+                                    startService(rsv);
+                                }
+                            } catch (Exception ignored) {}
+                            refreshHistFavSet();
+                            if (adapter != null) adapter.notifyDataSetChanged();
+                            Toast.makeText(HistoryActivity.this,
+                                    Lang.t(HistoryActivity.this, added ? "fav_added" : "fav_removed"),
+                                    Toast.LENGTH_SHORT).show();
+                        } else if ("menu_queue_add".equals(keyArr[which])) {
+                            // Tap-time sounding re-check (Talks v11.14): the dialog can sit open
+                            // across an auto-advance, and queueing the sounding talk would replay it.
+                            refreshHistoryPlayingMarks();
+                            if ((histPlayingUrl.length() > 0 && SiteHttp.sameTalk(streamUrl, histPlayingUrl))
+                                    || (histPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(streamUrl, histPlayingLibUrl))) {
+                                Toast.makeText(HistoryActivity.this,
+                                        Lang.t(HistoryActivity.this, "queue_changed"),
+                                        Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            if (!histQueueAdd(sd, streamUrl, e.title)) {
+                                Toast.makeText(HistoryActivity.this,
+                                        Lang.t(HistoryActivity.this, "already_in_queue"),
+                                        Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            if (adapter != null) adapter.notifyDataSetChanged();
+                            Toast.makeText(HistoryActivity.this,
+                                    Lang.t(HistoryActivity.this, "added_to_queue"),
+                                    Toast.LENGTH_SHORT).show();
+                        } else if ("menu_queue_remove".equals(keyArr[which])) {
+                            refreshHistoryPlayingMarks();
+                            if ((histPlayingUrl.length() > 0 && SiteHttp.sameTalk(streamUrl, histPlayingUrl))
+                                    || (histPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(streamUrl, histPlayingLibUrl))) {
+                                Toast.makeText(HistoryActivity.this,
+                                        Lang.t(HistoryActivity.this, "queue_changed"),
+                                        Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            if (!histQueueRemove(sd, streamUrl)) {
+                                Toast.makeText(HistoryActivity.this,
+                                        Lang.t(HistoryActivity.this, "queue_changed"),
+                                        Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            if (adapter != null) adapter.notifyDataSetChanged();
+                            Toast.makeText(HistoryActivity.this,
+                                    Lang.t(HistoryActivity.this, "removed_from_queue"),
+                                    Toast.LENGTH_SHORT).show();
+                        } else if ("dl_btn_download".equals(keyArr[which])) {
+                            // Tap-time re-checks (Talks v11.70): a Wi-Fi job can land, or another
+                            // path can queue this talk, while the dialog sits open.
+                            if (histIsDownloaded(streamUrl)) {
+                                if (adapter != null) adapter.notifyDataSetChanged();
+                                Toast.makeText(HistoryActivity.this,
+                                        Lang.t(HistoryActivity.this, "downloaded_talk"),
+                                        Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            if (histIsDlQueued(streamUrl)) {
+                                Toast.makeText(HistoryActivity.this,
+                                        Lang.t(HistoryActivity.this, "dl_already_queued"),
+                                        Toast.LENGTH_LONG).show();
+                                return;
+                            }
+                            String file = histDownloadFileNameFor(streamUrl);
+                            try {
+                                android.app.DownloadManager dm = (android.app.DownloadManager)
+                                        getSystemService(android.content.Context.DOWNLOAD_SERVICE);
+                                android.app.DownloadManager.Request req =
+                                        new android.app.DownloadManager.Request(
+                                                android.net.Uri.parse(SiteHttp.siteUrl(streamUrl)));
+                                req.setTitle(e.title != null && e.title.length() > 0 ? e.title : streamUrl);
+                                req.setNotificationVisibility(android.app.DownloadManager.Request
+                                        .VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                                // Wi-Fi-only, exactly like Talks' chooser enqueue — on Wi-Fi it
+                                // starts at once, on mobile data it waits for Wi-Fi, so a tap
+                                // here can never silently spend mobile data.
+                                req.setAllowedNetworkTypes(android.app.DownloadManager.Request.NETWORK_WIFI);
+                                req.setDestinationInExternalPublicDir(
+                                        android.os.Environment.DIRECTORY_DOWNLOADS, "Dhamma/" + file);
+                                dm.enqueue(req);
+                                histRecordDownload(streamUrl, file, sd);
+                            } catch (Exception ex) {
+                                Toast.makeText(HistoryActivity.this,
+                                        Lang.t(HistoryActivity.this, "download_failed") + Fx.errDetail(ex),
+                                        Toast.LENGTH_LONG).show();
+                                return;
+                            }
+                            if (adapter != null) adapter.notifyDataSetChanged();
+                            if (Fx.stripIsWifi(HistoryActivity.this))
+                                Toast.makeText(HistoryActivity.this,
+                                        "\u2B07 " + (e.title != null && e.title.length() > 0 ? e.title : streamUrl)
+                                                + Lang.t(HistoryActivity.this, "dl_downloading_suffix"),
+                                        Toast.LENGTH_SHORT).show();
+                            else
+                                Toast.makeText(HistoryActivity.this,
+                                        Lang.t(HistoryActivity.this, "dl_room_wifi_queued"),
+                                        Toast.LENGTH_LONG).show();
+                        } else if ("hs_remove_one".equals(keyArr[which])) {
+                            boolean removed = Prefs.statsRemoveOne(HistoryActivity.this, e.url);
+                            refresh();
+                            Toast.makeText(HistoryActivity.this,
+                                    Lang.t(HistoryActivity.this, removed ? "dl_deleted_done" : "nothing_to_delete"),
+                                    Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                })
+                .show();
+    }
+
     private void refreshHistoryPlayingMarks() {
         histPlayingUrl = "";
         histPlayingLibUrl = "";
@@ -472,14 +938,19 @@ public class HistoryActivity extends Activity {
         // never touch the adapter, so scrolling stays undisturbed. Runs before the strip's own early
         // returns, so a dead session clears the mark even while the strip hides.
         refreshHistoryPlayingMarks();
+        // v13.77: the star snapshot joins the change detector — a star
+        // flipped from the notification card rebinds the rows here.
+        java.util.Set<String> hsFavNow77 = histFavSetNow();
         if (adapter != null && (!histPlayingUrl.equals(histRowPlayingUrl == null ? "" : histRowPlayingUrl)
                 || !histPlayingLibUrl.equals(histRowPlayingLibUrl == null ? "" : histRowPlayingLibUrl)
                 || !histPlayingLibPath.equals(histRowPlayingLibPath == null ? "" : histRowPlayingLibPath)
-                || AudioService.liveEnded != histRowEnded)) {
+                || AudioService.liveEnded != histRowEnded
+                || !hsFavNow77.equals(histFavSet))) {
             histRowPlayingUrl = histPlayingUrl;
             histRowPlayingLibUrl = histPlayingLibUrl;
             histRowPlayingLibPath = histPlayingLibPath;
             histRowEnded = AudioService.liveEnded;
+            histFavSet = hsFavNow77;
             adapter.notifyDataSetChanged();
         }
         android.view.View strip = findViewById(R.id.nowStrip);
