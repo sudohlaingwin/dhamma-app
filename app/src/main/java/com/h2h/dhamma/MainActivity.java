@@ -2007,6 +2007,11 @@ public class MainActivity extends Activity {
                     i.putExtra("photo", sp.getString("lastPhoto", ""));
                     i.putExtra("autoUrl", sp.getString("lastUrl", ""));
                     i.putExtra("autoTitle", sp.getString("lastTitle", ""));
+                    // v13.72: reuse the Room already in the stack, like Talks'
+                    // v11.86 fix — the Main strip tap used to push a SECOND Room
+                    // for the same talk on top, and Back then showed the first
+                    // Room again instead of Main.
+                    i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
                     Fx.tap(MainActivity.this);
                     Fx.morph(v);
                     Fx.go(MainActivity.this, i);

@@ -269,6 +269,44 @@
             android:layout_marginTop="6dp"
             android:layout_marginBottom="6dp"
             android:background="#66C9A227" />
+        <!-- v13.72 (slice 1058): queue bar — the queue-only view (reorder /
+             play-next / remove) had no live entry point: its only writer
+             was the never-wired mini-player ◈ button, and the 2026-11-01
+             removals ban re-adding strip buttons, so the queue was
+             reachable only via header long-press → clear dialog →
+             "view queue only" (v7.78). This bar lives INSIDE the drawer
+             (no strip button, no row menu, no drawer search): the ◈
+             toggle shows the waiting count and enters the queue-only
+             view; in queue-only view it exits to the full list and the
+             ✕ button clears the queue (same dialog as the header
+             long-press, minus the now-meaningless "view queue only"). -->
+        <LinearLayout
+            android:id="@+id/roomQueueBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:layout_marginBottom="2dp"
+            android:orientation="horizontal">
+            <Button
+                android:id="@+id/roomQueueToggle"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_marginRight="6dp"
+                android:background="@drawable/glass_btn_dark"
+                android:textColor="#C9A227"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+            <Button
+                android:id="@+id/roomQueueClear"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:background="@drawable/glass_btn_dark"
+                android:textColor="#C9A227"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
         
         <ListView
             android:id="@+id/roomList"

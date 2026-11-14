@@ -3406,6 +3406,13 @@ if (snd65 >= 0) currentIndex = snd65;
         android.widget.TextView plTitle = findViewById(R.id.roomPlayListTitle);
         if (plTitle != null) plTitle.setTextSize(
                 android.util.TypedValue.COMPLEX_UNIT_SP, f == 0 ? 16 : (f == 1 ? 18 : 20));
+        // v13.72: queue bar buttons follow the Room title step, one notch
+        // smaller (same 14/16/18 step as the retry button) — the drawer is
+        // 300dp wide, so the bar must stay on one line at large text.
+        android.widget.Button qTg72 = (android.widget.Button) findViewById(R.id.roomQueueToggle);
+        if (qTg72 != null) qTg72.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, f == 0 ? 14 : (f == 1 ? 16 : 18));
+        android.widget.Button qCl72 = (android.widget.Button) findViewById(R.id.roomQueueClear);
+        if (qCl72 != null) qCl72.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, f == 0 ? 14 : (f == 1 ? 16 : 18));
         // v10.35: the drawer search box + empty line scale with the
         // drawer title above them (same create + return-dip path, so
         // a Settings font change lands on return, not just on a
@@ -6453,6 +6460,7 @@ int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
                         }
                     } catch (Exception ignored) {}
                     if (!want.equals(plT.getText().toString())) plT.setText(want);
+                    refreshQueueBar72();
                 }
             } catch (Exception ignored) {}
             // v11.46: resume-mode data gate, asked here — a resume
@@ -9514,6 +9522,43 @@ if (snd65s >= 0) currentIndex = snd65s;
             Fx.press(plCloseBottom);
         }
 
+        // v13.72 (slice 1058): queue bar wiring — see the layout note.
+        // Toggle enters/exits the queue-only view (openQueueDrawer owns
+        // the waiting-only gate + queue_empty toast); Clear shows the
+        // same confirm dialog as the header long-press. Both blip +
+        // morph like the drawer's other buttons; labels refresh on the
+        // poll tick (refreshQueueBar72, hooked beside the drawer-title
+        // write) and once here so the first open is exact.
+        android.view.View qToggle72 = findViewById(R.id.roomQueueToggle);
+        if (qToggle72 != null) {
+            qToggle72.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    Fx.tap(RoomActivity.this);
+                    Fx.morph(v);
+                    if (drawerQueueOnly) {
+                        drawerQueueOnly = false;
+                        if (adapter != null) adapter.notifyDataSetChanged();
+                    } else {
+                        openQueueDrawer();
+                    }
+                    refreshQueueBar72();
+                }
+            });
+            Fx.press(qToggle72);
+        }
+        android.view.View qClear72 = findViewById(R.id.roomQueueClear);
+        if (qClear72 != null) {
+            qClear72.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    Fx.tap(RoomActivity.this);
+                    Fx.morph(v);
+                    showClearQueueDialog72();
+                }
+            });
+            Fx.press(qClear72);
+        }
+        refreshQueueBar72();
+
         // v5.15: Previous talk — the Room had Next in the control row
         // and previous only as the hidden altar swipe-right (plus
         // headset/notification intents), so a listener who never
@@ -10641,6 +10686,84 @@ if (snd67q >= 0) currentIndex = snd67q;
         drawerQueueOnly = false;
     }
 
+    // v13.72 (slice 1058): queue bar — waiting count + labels + clear.
+    // waitingQueueCount72 mirrors the header (v5.81/v11.04) and the clear
+    // dialog (v11.38): deduped display lines, skipping the sounding talk,
+    // so the bar, the header count and the dialog always agree.
+    // refreshQueueBar72 is change-only like the header write beside it
+    // (the poll tick calls it every second); the toggle reads "◈ view
+    // queue only · N" in the full list and "show the full list again" in
+    // queue-only view; Clear shows only in queue-only view while
+    // anything waits, labelled with the existing clear verb. All labels
+    // reuse existing Lang keys — no new key. showClearQueueDialog72 is
+    // the header long-press dialog (v4.32/v5.83/v10.92/v11.38) minus its
+    // neutral "view queue only" action, meaningless from inside the
+    // queue-only view itself; the header long-press keeps its own
+    // inline dialog untouched.
+    private int waitingQueueCount72() {
+        int n = 0;
+        java.util.ArrayList<String> seen = new java.util.ArrayList<String>();
+        String playing = soundingUrlForQueue();
+        for (String line : drawerQueueDisplayLines()) {
+            String u = queueLineUrl(line);
+            if (u.length() == 0 || seen.contains(u)) continue;
+            seen.add(u);
+            if (playing == null || !u.equals(playing)) n++;
+        }
+        return n;
+    }
+    private void refreshQueueBar72() {
+        try {
+            android.widget.Button tg = (android.widget.Button) findViewById(R.id.roomQueueToggle);
+            android.widget.Button cl = (android.widget.Button) findViewById(R.id.roomQueueClear);
+            if (tg == null || cl == null) return;
+            int n = waitingQueueCount72();
+            String wantTg = drawerQueueOnly
+                    ? Lang.t(RoomActivity.this, "dl_menu_show_all_again")
+                    : "\u25C8 " + Lang.t(RoomActivity.this, "queue_clear_only") + (n > 0 ? " \u00B7 " + n : "");
+            if (!wantTg.equals(tg.getText().toString())) tg.setText(wantTg);
+            int wantVis = (drawerQueueOnly && n > 0) ? android.view.View.VISIBLE : android.view.View.GONE;
+            if (cl.getVisibility() != wantVis) cl.setVisibility(wantVis);
+            if (cl.getVisibility() == android.view.View.VISIBLE
+                    && !Lang.t(RoomActivity.this, "queue_clear_yes").equals(cl.getText().toString()))
+                cl.setText(Lang.t(RoomActivity.this, "queue_clear_yes"));
+        } catch (Exception ignored) {}
+    }
+    private void showClearQueueDialog72() {
+        String playUrl = soundingUrlForQueue();
+        int waitQ = 0;
+        java.util.ArrayList<String> seen = new java.util.ArrayList<String>();
+        for (String line : drawerQueueDisplayLines()) {
+            String u = queueLineUrl(line);
+            if (u.length() == 0 || seen.contains(u)) continue;
+            seen.add(u);
+            if (playUrl == null || !u.equals(playUrl)) waitQ++;
+        }
+        String msg;
+        if (waitQ > 0) {
+            msg = Lang.t(RoomActivity.this, "queue_clear_prefix") + waitQ + Lang.t(RoomActivity.this, "queue_clear_suffix");
+        } else if (playUrl != null && playUrl.length() > 0) {
+            msg = Lang.t(RoomActivity.this, "queue_clear_only_playing");
+        } else {
+            msg = Lang.t(RoomActivity.this, "queue_clear_prefix") + 0 + Lang.t(RoomActivity.this, "queue_clear_suffix");
+        }
+        new android.app.AlertDialog.Builder(RoomActivity.this)
+                .setTitle(Lang.t(RoomActivity.this, "queue_clear_title"))
+                .setMessage(msg)
+                .setPositiveButton(Lang.t(RoomActivity.this, "queue_clear_yes"), new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int w) {
+                        queueUrls.clear();
+                        moveHeldUrl = null;
+                        drawerQueueOnly = false;
+                        saveQueue(null, true);
+                        if (adapter != null) adapter.notifyDataSetChanged();
+                        refreshQueueBar72();
+                        Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_cleared"), Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton(Lang.t(RoomActivity.this, "btn_no_clear"), null)
+                .show();
+    }
     private void openQueueDrawer() {
         pendingQueue = false;
         if (queueUrls.isEmpty()) {
