@@ -2136,6 +2136,21 @@ public class AudioService extends Service {
                 @Override public void onPrepared(MediaPlayer mp) {
                     prepared = true;
                     liveBuffering = false; // v13.94 (F-920 F-NEW-5): the talk sounds — loading is over
+                    // v13.96 (slice 1091): persist this talk's total
+                    // length the moment it sounds — the
+                    // listened-progress hairline (slice 1092) needs
+                    // pos/duration, and no duration is stored
+                    // anywhere today. onPrepared is the single point
+                    // where a talk sounds (every play path funnels
+                    // here) and getDuration() is valid from here on;
+                    // a bad prepare (dur <= 0) writes nothing, and
+                    // the both-forms write mirrors the resume-spot
+                    // twins so a stream duration is findable by its
+                    // downloaded path and vice versa.
+                    try {
+                        int durMs = mp.getDuration();
+                        if (durMs > 0) Prefs.talkDurPutBoth(AudioService.this, currentUrl, durMs);
+                    } catch (Exception ignored) {}
                     // v13.14 (Q10): the pending queue head sounds now — its failure
                     // window is closed, so the record is cleared, never restored.
                     // v13.54 (audit-1372 F2): same for the forward stack — the new

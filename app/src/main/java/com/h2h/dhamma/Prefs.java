@@ -1159,6 +1159,127 @@ public class Prefs {
         if (alt != null && !alt.equals(url)) talkPosPut(c, alt, pos);
     }
 
+    // v13.96 (slice 1091): per-talk durations — the prerequisite
+    // for the listened-progress hairline (slice 1092). talkPosMap
+    // holds resume spots only; a fraction needs the total, and no
+    // duration is stored anywhere today (the Room reads live
+    // getDuration(), the rows have nothing). One key holds every
+    // talk's length: lines "url\tdurMs", most-recent first,
+    // capped at 100 lines like talkPosMap. Written once, in
+    // AudioService.onPrepared, under both forms (talkDurPutBoth
+    // mirrors talkPosPutBoth's twin legs, so a stream duration
+    // is findable by its downloaded path and vice versa); a bad
+    // prepare (dur <= 0) writes nothing, and a re-listen
+    // overwrites with the fresh value (same talk, same length —
+    // the store can never go stale, only refresh). Readers:
+    // talkDurGet (single lookup) and talkDurMap (one parse for
+    // a whole list, the talkPosKeysOver shape). A missing
+    // duration reads 0 — the hairline hides, never guesses.
+    // New store, so no legacy http-row migration: the put-both
+    // legs write the identityUrl twins at write time.
+    private static final String TALK_DUR_KEY = "talkDurMap";
+    private static final int TALK_DUR_CAP = 100;
+
+    public static int talkDurGet(Context c, String url) {
+        if (url == null || url.length() == 0) return 0;
+        try {
+            String raw = sp(c).getString(TALK_DUR_KEY, "");
+            if (raw.length() == 0) return 0;
+            for (String line : raw.split("\n")) {
+                int t = line.indexOf('\t');
+                if (t <= 0) continue;
+                if (!line.substring(0, t).equals(url)) continue;
+                // Same scan-past-malformed rule as talkPosGet
+                // (v11.91): a later valid duplicate for the same
+                // URL is the real duration — and a non-positive
+                // value is skipped, never returned (a duration
+                // of 0 or less can never paint a fraction).
+                try {
+                    int d = Integer.parseInt(line.substring(t + 1));
+                    if (d > 0) return d;
+                } catch (Exception ignored) { continue; }
+            }
+        } catch (Exception ignored) {}
+        return 0;
+    }
+
+    // One parse for a whole list — the talkPosKeysOver shape:
+    // callers that paint a fraction over many rows must not call
+    // talkDurGet per row (that re-splits the whole map on every
+    // lookup). First occurrence wins (most-recent first, and the
+    // putter keeps one line per URL); malformed lines and
+    // non-positive durations are skipped, never fatal.
+    public static java.util.Map<String, Integer> talkDurMap(Context c) {
+        java.util.Map<String, Integer> out =
+                new java.util.LinkedHashMap<String, Integer>();
+        try {
+            String raw = sp(c).getString(TALK_DUR_KEY, "");
+            if (raw.length() == 0) return out;
+            for (String line : raw.split("\n")) {
+                int t = line.indexOf('\t');
+                if (t <= 0) continue;
+                try {
+                    int d = Integer.parseInt(line.substring(t + 1));
+                    if (d <= 0) continue;
+                    String u = line.substring(0, t);
+                    if (!out.containsKey(u)) out.put(u, d);
+                } catch (Exception ignored) {}
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    public static void talkDurPut(Context c, String url, int durMs) {
+        talkDurPutInner(c, url, durMs);
+    }
+
+    private static void talkDurPutInner(Context c, String url, int durMs) {
+        if (url == null || url.length() == 0 || durMs <= 0) return;
+        if (url.indexOf('\t') >= 0 || url.indexOf('\n') >= 0 || url.indexOf('\r') >= 0) return;
+        try {
+            StringBuilder sb = new StringBuilder();
+            sb.append(url).append('\t').append(durMs);
+            int count = 1;
+            String raw = sp(c).getString(TALK_DUR_KEY, "");
+            if (raw.length() > 0) {
+                for (String line : raw.split("\n")) {
+                    if (count >= TALK_DUR_CAP) break;
+                    int t = line.indexOf('\t');
+                    if (t <= 0) continue;
+                    if (line.substring(0, t).equals(url)) continue;
+                    sb.append('\n').append(line);
+                    count++;
+                }
+            }
+            sp(c).edit().putString(TALK_DUR_KEY, sb.toString()).apply();
+        } catch (Exception ignored) {}
+    }
+
+    // Both-forms write — the talkPosPutBoth legs verbatim, so a
+    // duration is findable under exactly the forms a resume spot
+    // is: stream URL, downloaded path, and the alternate-scheme
+    // twins. One asymmetry to carry into slice 1092: a file
+    // downloaded AFTER the talk was heard over stream has no
+    // path-form duration (the file did not exist at prepare
+    // time), so the hairline reader must fall back to the stream
+    // form, the savedPosForFile two-leg shape.
+    public static void talkDurPutBoth(Context c, String url, int durMs) {
+        talkDurPut(c, url, durMs);
+        String other = talkPosOtherForm(c, url);
+        if (other != null) talkDurPut(c, other, durMs);
+        // v13.64 (F-978-A-1): same other-form twin as talkPosPutBoth.
+        if (other != null) {
+            String altOther = SiteHttp.identityUrl(other);
+            if (altOther != null && !altOther.equals(other)) talkDurPut(c, altOther, durMs);
+            String downOther = SiteHttp.downgrade(other);
+            if (downOther != null && !downOther.equals(other)) talkDurPut(c, downOther, durMs);
+        }
+        // v13.59 (887 F-NEW-1, F946-1): also the alternate-scheme
+        // stream form — see talkPosPutBothSync.
+        String alt = SiteHttp.identityUrl(url);
+        if (alt != null && !alt.equals(url)) talkDurPut(c, alt, durMs);
+    }
+
     // v8.30: the dlMap path for a stream URL, WITHOUT the file-
     // existence check talkPosOtherForm applies. That check is
     // right for WRITES (talkPosPutBoth must never invent a path
