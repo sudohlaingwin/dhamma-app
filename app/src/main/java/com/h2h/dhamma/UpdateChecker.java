@@ -158,6 +158,81 @@ public class UpdateChecker {
         }).start();
     }
 
+    // v13.79 (slice 1071): manual check for the Settings → About
+    // "Check for updates" row. Unlike check() it is user-initiated,
+    // so it bypasses the once-per-process gate and the 1-minute
+    // onResume throttle, ignores a skip from this process (the user
+    // explicitly asked to check), and ALWAYS answers: a newer
+    // release opens the usual blocking dialog, up-to-date toasts
+    // upd_latest, a failed fetch toasts upd_check_fail (fail-open
+    // with feedback — the silent fail-open of check() would leave
+    // a deliberate tap unanswered). A check already running just
+    // toasts upd_checking instead of starting a second fetch.
+    // Sets checkedThisProcess + lastCheckAtMs like check(), so the
+    // auto path does not immediately re-run after a manual check.
+    public static void checkManual(final Activity activity) {
+        if (pendingUrl != null) { showBlock(activity); return; }
+        if (checkRunning) {
+            android.widget.Toast.makeText(activity, Lang.t(activity, "upd_checking"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        checkedThisProcess = true;
+        checkRunning = true;
+        lastCheckAtMs = System.currentTimeMillis();
+        android.widget.Toast.makeText(activity, Lang.t(activity, "upd_checking"),
+                android.widget.Toast.LENGTH_SHORT).show();
+        final Context appCtx = activity.getApplicationContext();
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    Latest found = null;
+                    try {
+                        found = fetchLatest();
+                    } catch (Exception ignored) {
+                        found = null;
+                    }
+                    final Latest f = found;
+                    if (f != null) {
+                        int current = currentCode(appCtx);
+                        int latest = parseCode(f.tag);
+                        if (current > 0 && latest > current) {
+                            pendingUrl = f.url;
+                            pendingName = f.tag;
+                            pendingSize = f.size;
+                            final Activity a = activity;
+                            a.runOnUiThread(new Runnable() {
+                                @Override public void run() {
+                                    if (!a.isFinishing() && !a.isDestroyed()) showBlock(a);
+                                }
+                            });
+                            return;
+                        }
+                        final Activity a2 = activity;
+                        a2.runOnUiThread(new Runnable() {
+                            @Override public void run() {
+                                if (!a2.isFinishing() && !a2.isDestroyed())
+                                    android.widget.Toast.makeText(a2, Lang.t(a2, "upd_latest"),
+                                            android.widget.Toast.LENGTH_SHORT).show();
+                            }
+                        });
+                    } else {
+                        final Activity a3 = activity;
+                        a3.runOnUiThread(new Runnable() {
+                            @Override public void run() {
+                                if (!a3.isFinishing() && !a3.isDestroyed())
+                                    android.widget.Toast.makeText(a3, Lang.t(a3, "upd_check_fail"),
+                                            android.widget.Toast.LENGTH_LONG).show();
+                            }
+                        });
+                    }
+                } finally {
+                    checkRunning = false;
+                }
+            }
+        }).start();
+    }
+
     public static void onResume(Activity activity) {
         if (pendingUrl != null) {
             if (!isBlockVisible()) { showBlock(activity); return; }

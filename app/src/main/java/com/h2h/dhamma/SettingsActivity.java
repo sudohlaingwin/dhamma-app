@@ -681,6 +681,19 @@ public class SettingsActivity extends Activity {
                         .show();
             }
         });
+        // v13.79 (slice 1071): About → "Check for updates" row — a
+        // manual update check for the listener who does not want to
+        // wait for the next cold start / resume. UpdateChecker
+        // .checkManual always answers (block / up-to-date toast /
+        // fail toast); the row itself never shows a state, so no
+        // refresh() leg is needed for it beyond its label.
+        android.view.View rowCheckUpdate = findViewById(R.id.rowCheckUpdate);
+        if (rowCheckUpdate != null) rowCheckUpdate.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.morph(v);
+                UpdateChecker.checkManual(SettingsActivity.this);
+            }
+        });
         // v4.19: long-press the dhammadownload.com credit line opens
         // the catalogue source itself in the browser — the credit
         // was display-only, and the retry-page long-presses (Talks
@@ -2945,7 +2958,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         // recoloured them — they kept day muted-brown at night and
         // nearly vanished on the dark card. Same night-grey as the
         // values beside them.
-        for (int id : new int[]{R.id.fontChevron, R.id.langChevron, R.id.repeatChevron, R.id.sleepChevron, R.id.downloadedChevron, R.id.clearChevron, R.id.teamChevron, R.id.policyChevron}) { TextView cv = findViewById(id); if (cv != null) cv.setTextColor(muted); }
+        for (int id : new int[]{R.id.fontChevron, R.id.langChevron, R.id.repeatChevron, R.id.sleepChevron, R.id.downloadedChevron, R.id.clearChevron, R.id.teamChevron, R.id.policyChevron, R.id.checkUpdateChevron}) { TextView cv = findViewById(id); if (cv != null) cv.setTextColor(muted); }
         // v12.94: the long Android-rules paragraph is gone — the note
         // under the notification row appears ONLY while a block is live
         // (v10.86/v12.27), naming the fix; healthy phones see no note
@@ -2961,6 +2974,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         setLabelText(R.id.aboutSrc, "footer_src");
         setBtnText(R.id.btnTeam, "team_btn");
         setBtnText(R.id.btnPolicy, "policy_btn");
+        setBtnText(R.id.btnCheckUpdate, "upd_check");
         TextView vv2 = findViewById(R.id.versionValue);
         if (vv2 != null) {
             String vn = "";
