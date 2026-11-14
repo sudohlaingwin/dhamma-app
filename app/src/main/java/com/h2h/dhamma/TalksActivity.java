@@ -483,6 +483,8 @@ public class TalksActivity extends Activity {
     // natural end (same URL, liveEnded flipped) would otherwise
     // leave the ▶ on the ended row until the next rebind.
     private boolean talkRowEnded = false;
+    // v13.85 (slice 1077): the Up Next talk's URL the rows were last bound against — the chooser's Up Next ▸ mark (Room v4.13, in the chooser rows). Written only by refreshFavHeader, alongside the header line it mirrors (queued head / forward top / shuffle-gated list-next; empty when a foreign head waits or nothing resolves), and read only by TalkAdapter.getView; the tick's change branch refreshes the header BEFORE the rebind below, so a row never binds against a stale next talk. Cleared at the top of every header refresh, so an early return can never leave a stale crown.
+    private String upNextRowUrl = "";
     // v7.39: line-aware -- a saved line is parsed and matched by its
     // URL, so a v2-spelled line (handover-carried, owned by another
     // sayadaw) for a talk that IS in this list still earns its
@@ -3174,6 +3176,8 @@ public class TalksActivity extends Activity {
     }
 
     private void refreshFavHeader() {
+        // v13.85 (slice 1077): clear the Up Next row mark first — this method's two early returns below (empty list / no sayadaw / no header view) must not leave a stale upNextRowUrl crowning a row from a dead session.
+        upNextRowUrl = "";
         talkRefreshInProgressDlNames(false); // v11.57: header ⬇ count reads isTalkDownloaded fresh
         if (talks == null || talks.isEmpty() || sayadawName == null) return;
         android.widget.TextView ht = findViewById(R.id.title);
@@ -3355,6 +3359,8 @@ public class TalksActivity extends Activity {
         // returns the first waiting foreign line, or null; the
         // branch below reuses this value unchanged.
         QueueEntry fxHead = foreignQueueHead();
+        // v13.85 (slice 1077): the row mark's source — the header's Up Next line, in row form. The line names the foreign head first when one waits (v7.22/v8.62 branch below), and a foreign head has no in-list row to crown (the drawer's v11.60 rule), so the field is empty then; else it is the resolved in-list next talk (queued head, forward top, or shuffle-gated list-next, the resolution above), or empty when none resolves (no live Room session, single-talk list, shuffle with no head). The rows read only this field, never the drawer's peek — the chooser never owned that machinery — and refreshFavHeader is the one place it is written, on every load, return, queue action and change-only tick.
+        upNextRowUrl = fxHead != null ? "" : (nxTalk != null ? nxTalk.url : "");
         int fxPct = -1;
         int progCount = 0;
         int nxPct = -1;
@@ -3847,7 +3853,6 @@ public class TalksActivity extends Activity {
             if (marksChanged44 && filterMode != 0) {
                 try { rebuildFilter(); } catch (Exception ignored) {}
             }
-            adapter.notifyDataSetChanged();
             // v7.51: the header counts follow the same change --
             // v7.44 rebinds the rows when a mark changes under
             // the chooser, but the header (refreshFavHeader:
@@ -3865,7 +3870,9 @@ public class TalksActivity extends Activity {
             // (refreshTalksQueuePreview above, reads only), and
             // refreshFavHeader only sets the title text, rebuilt
             // from the name every time, so counts never stack.
+            // v13.85 (slice 1077): the refresh runs BEFORE the notify below — refreshFavHeader also refreshes upNextRowUrl, and the rebind reads it, so a notify-first order would bind every row against the previous next talk until the next change tick.
             try { refreshFavHeader(); } catch (Exception ignored) {}
+            adapter.notifyDataSetChanged();
         }
         android.view.View strip = findViewById(R.id.nowStrip);
         if (strip == null) return;
@@ -4932,6 +4939,13 @@ public class TalksActivity extends Activity {
             // a dim can never leak onto the next talk; the playing row
             // is never dimmed — its gold tile owns its emphasis.
             if (titleView != null) titleView.setAlpha(rowListened ? 0.6f : 1.0f);
+            // v13.85 (slice 1077): Up Next row mark — the Room drawer's v4.13 ▸, now on the chooser rows too: the row the header's Up Next line names carries a ▸ prefix at full alpha, even when already listened, so the imminent talk stands out in the long list instead of hiding behind its ✓ dim. The mark follows upNextRowUrl, the URL refreshFavHeader resolved alongside that line (queued head first, else forward-history top, else shuffle-gated list-next — the Room's peekNextIndex order, restated in the chooser), so the row and the line can never disagree. No ▸ when a foreign queue head waits (upNextRowUrl is empty then, the drawer's v11.60 rule — the foreign head has no row here), while shuffle is on with no head (order unknowable, v5.84), or with no live Room session for this sayadaw (the resolution gates on talkPlayingUrl). The playing row itself never carries it: the guard below, plus the resolution can never name the sounding talk. Set on every bind — the dim above runs first, so a recycled listened row rebinds its alpha here and the mark can never leak onto the next talk.
+            if (titleView != null && !rowPlaying && !rowPlayingLib
+                    && upNextRowUrl.length() > 0
+                    && SiteHttp.sameTalk(rowUrl, upNextRowUrl)) {
+                titleView.setText("▸ " + titleView.getText().toString());
+                titleView.setAlpha(1.0f);
+            }
             android.view.View card = v.findViewById(R.id.cardInner);
             // v13.83 (slice 1075): the playing row is a raised gold
             // card — the Room drawer's v12.92 gold tile, now on the
