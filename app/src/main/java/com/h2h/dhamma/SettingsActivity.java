@@ -2672,25 +2672,53 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                     } finally { c.close(); }
                 }
             } catch (Exception ignored) {}
+            // v13.81 (slice 1073): hoisted out of the dir-scan try so
+            // the size note below can read them — the count the label
+            // shows and the total bytes the note shows come from the
+            // same single scan and can never disagree.
+            int n81 = 0;
+            long totalBytes81 = 0;
             try {
                 java.io.File dlDir = new java.io.File(
                         android.os.Environment.getExternalStoragePublicDirectory(
                                 android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
                 if (dlDir.isDirectory()) {
                     java.io.File[] dlFiles = dlDir.listFiles();
-                    int n = 0;
                     if (dlFiles != null) {
                         for (java.io.File df : dlFiles)
                             // v13.49 (L3 rider): a 0-byte file never plays — v13.48 F3 class; it is not a downloaded talk
                             if (df.isFile() && df.length() > 0 && df.getName().toLowerCase().endsWith(".mp3")
-                                    && !inProgNames88.contains(df.getName())) n++;
+                                    && !inProgNames88.contains(df.getName())) { n81++; totalBytes81 += df.length(); }
                     }
-                    if (n > 0) label += " (" + n + ")";
+                    if (n81 > 0) label += " (" + n81 + ")";
                 }
             } catch (Exception ignored) {}
             if (progN88 > 0) label += " \u00b7 \u23f3 " + progN88;
             CharSequence cur = dlBtn.getText();
             if (cur == null || !label.equals(cur.toString())) dlBtn.setText(label);
+            // v13.81 (slice 1073): the Downloaded row's live storage
+            // note — "total X MB" under the row, from the same single
+            // dir scan as the count above (same qualifying rule:
+            // finished .mp3 over 0 bytes, in-progress files
+            // excluded), so count and size can never disagree. The
+            // "%.1f MB" shape and the dl_total_prefix word are both
+            // shipped (DownloadedActivity shelf + Lang), so no new
+            // Lang key. Change-only write + visibility, the
+            // refreshDataSaverButton54 pattern; hidden while nothing
+            // is downloaded. Locale.US keeps the decimal point a dot
+            // on every device locale, like the app's timers.
+            android.widget.TextView sizeNote = findViewById(R.id.downloadedSizeNote);
+            if (sizeNote != null) {
+                if (n81 > 0) {
+                    String sizeLine = Lang.t(this, "dl_total_prefix")
+                            + String.format(java.util.Locale.US, "%.1f MB", totalBytes81 / 1048576.0);
+                    CharSequence curSize = sizeNote.getText();
+                    if (curSize == null || !sizeLine.equals(curSize.toString())) sizeNote.setText(sizeLine);
+                    if (sizeNote.getVisibility() != android.view.View.VISIBLE) sizeNote.setVisibility(android.view.View.VISIBLE);
+                } else if (sizeNote.getVisibility() != android.view.View.GONE) {
+                    sizeNote.setVisibility(android.view.View.GONE);
+                }
+            }
         } catch (Exception ignored) {}
     }
 
@@ -2917,7 +2945,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         for (int id : labelIds) { TextView lv = findViewById(id); if (lv != null) { lv.setTextColor(ink); lv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, lbl); } }
         // v12.94: section headers — small muted caps, not card titles.
         for (int id : new int[]{R.id.secAppearance, R.id.secPlayback, R.id.secNoti, R.id.secData, R.id.secAbout}) { TextView hv = findViewById(id); if (hv != null) { hv.setTextColor(muted); hv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, note); } }
-        for (int id : new int[]{R.id.notiNote, R.id.autoDlNote, R.id.dataSaverNote, R.id.aboutSrc}) { TextView nv = findViewById(id); if (nv != null) { nv.setTextColor(muted); nv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, note); } }
+        for (int id : new int[]{R.id.notiNote, R.id.autoDlNote, R.id.dataSaverNote, R.id.downloadedSizeNote, R.id.aboutSrc}) { TextView nv = findViewById(id); if (nv != null) { nv.setTextColor(muted); nv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, note); } }
         // v13.35: no second Prefs.fontSize read here — fs above is reused below (was int f).
         // v10.86: one live blocked-channel read for the whole
         // refresh — the note override below reuses it, so the

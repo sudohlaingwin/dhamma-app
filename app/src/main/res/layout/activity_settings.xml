@@ -492,6 +492,15 @@
         android:layout_height="1dp"
         android:background="#26C9A227" />
 
+    <!-- v13.81 (slice 1073): Downloaded storage size — the row only
+         showed a count; a muted note under it now shows the live
+         total size of the finished downloads, refreshed on the same
+         1s tick as the count (refreshDownloadedButton53). Hidden
+         while nothing is downloaded. -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
     <LinearLayout
         android:id="@+id/rowDownloaded"
         android:layout_width="match_parent"
@@ -519,6 +528,17 @@
             android:text="›"
             android:textColor="@color/muted"
             android:textSize="20sp" />
+    </LinearLayout>
+        <TextView
+            android:id="@+id/downloadedSizeNote"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingBottom="8dp"
+            android:paddingStart="2dp"
+            android:text=""
+            android:textColor="@color/muted"
+            android:textSize="13sp"
+            android:visibility="gone" />
     </LinearLayout>
 
     <View
