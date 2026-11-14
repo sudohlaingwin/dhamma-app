@@ -45,11 +45,25 @@
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
+            <!-- v13.88 (slice 1080): the header photo's ring frame —
+                 52dp around the 48dp portrait, so the reused
+                 shelf ring (2dp gold oval, 1dp inset) hugs the
+                 photo exactly like the shelf chip (56/52dp). The
+                 frame's background is the ring while this Room's
+                 talk sounds, nothing otherwise; the photo itself
+                 never moves or shrinks, and the margin lives on
+                 the frame now. -->
+            <FrameLayout
+                android:id="@+id/roomSayadawPhotoRing"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:layout_marginEnd="10dp">
                 <ImageView
                     android:id="@+id/roomSayadawPhoto"
                     android:layout_width="48dp"
                     android:layout_height="48dp"
-                    android:layout_marginEnd="10dp" />
+                    android:layout_gravity="center" />
+            </FrameLayout>
                 <TextView
                     android:id="@+id/roomSayadaw"
                     android:layout_width="0dp"

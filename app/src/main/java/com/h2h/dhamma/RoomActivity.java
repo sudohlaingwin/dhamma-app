@@ -219,6 +219,22 @@ public class RoomActivity extends Activity {
     // this the bind gate below would only move the mark on
     // the next scroll, return or menu action.
     private boolean lastPollEnded = false;
+    // v13.88 (slice 1080): the Room header photo's gold ring — the
+    // last sounding surface without the gold language (drawer rows
+    // v12.92, chooser rows v13.83, library rows v13.84, grid card
+    // v13.86, shelf chip v13.87; the strips already carry the gold
+    // rim). The header name was already gold, but the 48dp
+    // portrait carried no cue at all, so in a still the header
+    // read identically whether this sayadaw's talk was sounding,
+    // paused, or the Room was idle. headerPhotoRing is the 52dp
+    // frame around the photo; lastHeaderRing is the change-only
+    // memory, beside lastPollEnded above. The ring follows the
+    // sounding-identity rule of the whole arc (paused still rings,
+    // v3.99; ended never rings) — play vs pause already reads
+    // below the header through the flames, the playGlow and the
+    // ▶/⏸ glyph, so the ring never has to carry transport state.
+    private View headerPhotoRing;
+    private boolean lastHeaderRing = false;
     // v3.20: play/pause glyph crossfade — the label used to swap at
     // full alpha in the same frame the v2.07 morph snapped scale to
     // 0.86, so the ▶/⏸ glyph visibly popped mid-squash. The label
@@ -4593,6 +4609,35 @@ if (snd65 >= 0) currentIndex = snd65;
                     lastPollEnded = AudioService.liveEnded;
                     if (adapter != null) adapter.notifyDataSetChanged();
                 }
+                // v13.88 (slice 1080): the header photo ring — the
+                // frame's background is the shelf ring drawable
+                // (the oval-ring form of the gold tile, reused, no
+                // new drawable) while this Room's current talk is
+                // the service's sounding talk, and nothing
+                // otherwise. isCurrentTalk covers both forms (the
+                // http/https identity and the downloaded file
+                // path), so an offline play rings exactly like a
+                // stream; a foreign session sounds another
+                // sayadaw's talk, so this Room's photo stays
+                // unringed; an idle Room (no indexed talk) never
+                // rings. Change-only on lastHeaderRing, beside
+                // the liveEnded branch above, so a steady 500ms
+                // tick never re-sets the background. No channel
+                // fight: the ring is the frame's background only
+                // (the entrance animates the name view, the tap
+                // beat is sound-only, the photo itself never
+                // moves or shrinks).
+                String curUrl1088 = currentTalkUrl();
+                boolean headerRinging = curUrl1088 != null
+                        && !AudioService.liveEnded
+                        && isCurrentTalk(curUrl1088);
+                if (headerRinging != lastHeaderRing) {
+                    lastHeaderRing = headerRinging;
+                    if (headerPhotoRing != null) {
+                        if (headerRinging) headerPhotoRing.setBackgroundResource(R.drawable.shelf_ring_playing);
+                        else headerPhotoRing.setBackground(null);
+                    }
+                }
                 // v1.81: the shrine flames follow the same active
                 // rule as the button — a talk buffering towards play
                 // lights them like a playing one, instead of sitting
@@ -7497,6 +7542,9 @@ if (snd68 >= 0) currentIndex = snd68;
         if (sdPhoto != null && sdHeader != null) sdPhoto.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { sdHeader.performClick(); }
         });
+        // v13.88 (slice 1080): the ring frame around that photo — its
+        // background is set by the poll's change-only branch below.
+        headerPhotoRing = findViewById(R.id.roomSayadawPhotoRing);
         // v4.16: long-press the sayadaw header shares the sayadaw
         // (name + original dhammadownload.com page + credit) —
         // the chooser's talk-share (v1.40) lifted to the sayadaw,
