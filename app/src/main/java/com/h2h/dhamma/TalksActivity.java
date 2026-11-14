@@ -1202,6 +1202,12 @@ public class TalksActivity extends Activity {
     // onCreate wires it (applyTheme and the first load both run
     // before that point, so every painter null-guards).
     private android.widget.Button btnTalkPlayAll = null;
+    // v13.93 (slice 1088): Shuffle button beside it + the row
+    // that owns the shared visibility gate + its own 700ms
+    // debounce clock (Play All's lastPlayAllMs stays untouched).
+    private android.widget.Button btnTalkShuffle = null;
+    private android.view.View talkPlayRow = null;
+    private long lastShuffleMs = 0;
     private void rebuildVisible() {
         if (searchHits != null && filterHits != null) {
             java.util.ArrayList<Integer> both = new java.util.ArrayList<Integer>();
@@ -2340,6 +2346,18 @@ public class TalksActivity extends Activity {
             }
         });
         if (btnTalkPlayAll != null) Fx.press(btnTalkPlayAll);
+        // v13.93 (slice 1088): wire the Shuffle button the same
+        // way — one tap shuffles the shown list into the queue
+        // and starts the first shuffled talk (shufflePlayShown).
+        talkPlayRow = findViewById(R.id.talkPlayRow);
+        btnTalkShuffle = findViewById(R.id.btnTalkShuffle);
+        if (btnTalkShuffle != null) btnTalkShuffle.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.tap(TalksActivity.this);
+                shufflePlayShown(v);
+            }
+        });
+        if (btnTalkShuffle != null) Fx.press(btnTalkShuffle);
         // v1.53: rotating the phone used to wipe the loaded list and
         // refetch it over the network (plus re-fire the resume
         // auto-open after back + rotate, since the intent still carries
@@ -2585,6 +2603,16 @@ public class TalksActivity extends Activity {
     // tail (create + every return). Null-safe before onCreate wires
     // the button.
     private void refreshTalkPlayAllRow() {
+        // v13.93 (slice 1088): the row owns the gate, so Play
+        // All and Shuffle appear together; a missing row id
+        // (old layout) falls back to the button alone.
+        android.view.View row93 = talkPlayRow;
+        if (row93 != null) {
+            row93.setVisibility(
+                    (talks != null && !talks.isEmpty())
+                            ? android.view.View.VISIBLE : android.view.View.GONE);
+            return;
+        }
         if (btnTalkPlayAll == null) return;
         btnTalkPlayAll.setVisibility(
                 (talks != null && !talks.isEmpty())
@@ -2661,6 +2689,75 @@ public class TalksActivity extends Activity {
         if (!firstSounds76) openRoom(firstTi76);
     }
 
+    // v13.93 (slice 1088): shuffle-play the shown list — the
+    // Play All shape with the queue order shuffled. Same guards
+    // (empty list / no shown talk refuse with the same words),
+    // same 700ms debounce on its own clock (an invalid tap never
+    // consumes the window, v12.28 rule), same skips (sounding +
+    // already-queued), same keep-set through the funnel, same
+    // count toast, same openRoom(first shuffled) unless it
+    // already sounds. The shuffled queue IS the shuffle — the
+    // global Prefs.shuffleOn is left alone, so a user who
+    // deliberately left it off is not surprised, and after the
+    // queue drains normal advance resumes.
+    private void shufflePlayShown(android.view.View v) {
+        if (talks == null || talks.isEmpty()) {
+            android.widget.Toast.makeText(TalksActivity.this,
+                    Lang.t(TalksActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        int dispCount93 = visibleHits != null ? visibleHits.size() : talks.size();
+        if (dispCount93 <= 0) {
+            android.widget.Toast.makeText(TalksActivity.this,
+                    Lang.t(TalksActivity.this, "no_search_match"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        java.util.ArrayList<Integer> order93 = new java.util.ArrayList<Integer>();
+        for (int dp93 = 0; dp93 < dispCount93; dp93++) {
+            int ti93 = talkIndexAtDisplay(dp93);
+            if (ti93 < 0 || ti93 >= talks.size()) continue;
+            order93.add(ti93);
+        }
+        if (order93.isEmpty()) {
+            android.widget.Toast.makeText(TalksActivity.this,
+                    Lang.t(TalksActivity.this, "no_search_match"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        java.util.Collections.shuffle(order93, new java.util.Random());
+        int firstTi93 = order93.get(0);
+        Talk first93 = talks.get(firstTi93);
+        boolean firstSounds93 = first93 != null && first93.url != null
+                && ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(first93.url, talkPlayingUrl))
+                        || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(first93.url, talkPlayingLibUrl)));
+        long now93 = android.os.SystemClock.uptimeMillis();
+        if (now93 - lastShuffleMs < 700) return;
+        lastShuffleMs = now93;
+        int added93 = 0;
+        java.util.Set<String> keep93 = new java.util.HashSet<String>();
+        for (int ti93 : order93) {
+            Talk t93 = talks.get(ti93);
+            if (t93 == null || t93.url == null || t93.url.length() == 0) continue;
+            if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(t93.url, talkPlayingUrl))
+                    || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(t93.url, talkPlayingLibUrl))) continue;
+            if (talkQueueHas(t93.url)) continue;
+            talkQueue.add(t93.url);
+            keep93.add(t93.url);
+            added93++;
+        }
+        saveTalkQueueKeepingForeign(talkQueue, keep93);
+        refreshQueueMarks();
+        if (!talks.isEmpty() && sayadawName != null) refreshFavHeader();
+        if (adapter != null) adapter.notifyDataSetChanged();
+        android.widget.Toast.makeText(TalksActivity.this, added93 > 0
+                ? Lang.t(TalksActivity.this, "queue_plain_prefix") + added93 + Lang.t(TalksActivity.this, "queue_added_suffix")
+                : Lang.t(TalksActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
+        Fx.morph(v);
+        if (!firstSounds93) openRoom(firstTi93);
+    }
+
     private void openRoom(int idx) {
         if (idx < 0 || idx >= talks.size()) return;
         Talk t = talks.get(idx);
@@ -2734,6 +2831,21 @@ public class TalksActivity extends Activity {
                     f == 0 ? 14 : (f == 1 ? 16 : 18));
             pa76.setBackgroundResource(night ? R.drawable.glass_btn_night : R.drawable.glass_btn);
             pa76.setTextColor(night
+                    ? android.graphics.Color.WHITE
+                    : android.graphics.Color.parseColor("#3B2314"));
+        }
+        // v13.93 (slice 1088): Shuffle follows the theme like
+        // Play All beside it — same step, same glass face, same
+        // ink/white text; the label follows the UI language via
+        // the existing "shuffle" key, so Burmese display is
+        // byte-identical to the layout text.
+        android.widget.Button sh93 = btnTalkShuffle;
+        if (sh93 != null) {
+            sh93.setText(Lang.t(this, "shuffle"));
+            sh93.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,
+                    f == 0 ? 14 : (f == 1 ? 16 : 18));
+            sh93.setBackgroundResource(night ? R.drawable.glass_btn_night : R.drawable.glass_btn);
+            sh93.setTextColor(night
                     ? android.graphics.Color.WHITE
                     : android.graphics.Color.parseColor("#3B2314"));
         }

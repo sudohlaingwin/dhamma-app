@@ -113,17 +113,38 @@
     <!-- v13.76 (slice 1068): chooser Play All — the shown talks had
          no one-tap play: a row tap plays one talk only, and "queue
          all from here" (v13.04) queues without starting, hidden in
-         a long-press dialog. Full-width button under the search row
-         (Downloaded's btnDlPlayAll shape), GONE until a list lands
+         a long-press dialog. Button under the search row
+         (Downloaded's btnDlPlayAll shape; v13.93: half-width in a row
+         with Shuffle), GONE until a list lands
          like the search row; the label is the shipped Burmese value
          of pl_play_all, asserted by the patch. -->
-    <Button
-        android:id="@+id/btnTalkPlayAll"
+    <!-- v13.93 (slice 1088: Shuffle joins Play All in one row —
+         the chooser had no shuffle play at all (the library's is a
+         hidden long-press on its Play All, v4.16, and the Room shuffle
+         toggle only steers auto-advance). Two equal-weight buttons
+         (Downloaded's dlBtnRow shape); the row owns the GONE-until-
+         a-list-lands gate, so both buttons share it. -->
+    <LinearLayout
+        android:id="@+id/talkPlayRow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:text="▶ အားလုံးဖွင့်မယ်"
-        android:visibility="gone" />
+        android:orientation="horizontal"
+        android:visibility="gone">
+        <Button
+            android:id="@+id/btnTalkPlayAll"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="▶ အားလုံးဖွင့်မယ်" />
+        <Button
+            android:id="@+id/btnTalkShuffle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="8dp"
+            android:layout_weight="1"
+            android:text="🔀 ကျပန်း ဖွင့်ခြင်း" />
+    </LinearLayout>
     <TextView
         android:id="@+id/talkSearchEmpty"
         android:layout_width="match_parent"
