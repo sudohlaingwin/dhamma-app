@@ -75,6 +75,10 @@ public class MainActivity extends Activity {
     private TextView titleText;
     private Button themeToggle;
     private EditText searchField;
+    // v13.82 (slice 1074): ★ favourites-filter button beside the
+    // search field — a direct tap for the favourites-only filter
+    // (was a hidden long-press on an empty search, v4.19).
+    private android.widget.TextView favFilterBtn;
     private GridView gridView;
     // v2.03: row-bind cache — getView used to read SharedPreferences
     // (isNight + three size lookups, each a fontSize() call) for
@@ -2344,6 +2348,17 @@ public class MainActivity extends Activity {
                 .getStringSet("favs", new HashSet<String>()));
 
         searchField = findViewById(R.id.search);
+        // v13.82 (slice 1074): the ★ button runs the same toggle as
+        // the long-press (toggleFavOnly below) — one method, two
+        // gestures, never disagreeing. Its own Fx.tap beat mirrors
+        // the long-press handler's beat at the top of that handler.
+        favFilterBtn = findViewById(R.id.favFilterBtn);
+        if (favFilterBtn != null) favFilterBtn.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                Fx.tap(MainActivity.this);
+                toggleFavOnly(v);
+            }
+        });
         // v1.48: restore the pre-rotation query (see onSaveInstanceState).
         if (savedInstanceState != null) query = savedInstanceState.getString("q", "");
         // v13.16: restore the no-match toast guard with the query (see
@@ -2375,41 +2390,7 @@ public class MainActivity extends Activity {
             @Override public boolean onLongClick(View v) {
                 Fx.tap(MainActivity.this);
                 if (searchField.getText().length() > 0) searchField.setText("");
-                else {
-                    // v4.19: long-press an EMPTY search toggles the
-                    // favourites-only filter — a non-empty query
-                    // still clears (v4.17), so the two gestures
-                    // never collide: clearing needs text, filtering
-                    // needs none. The filter itself runs through
-                    // applyFilter, so a typed query still narrows
-                    // within favourites, and the empty toast path
-                    // stays untouched (it only fires for a typed
-                    // query). No favourites yet just says so.
-                    favOnly = !favOnly;
-                    if (favOnly && (favs == null || favs.isEmpty())) {
-                        // v7.29: the toggle used to ENTER the filter
-                        // with zero favourites — a blank grid with
-                        // only a toast, until the same hidden gesture
-                        // was repeated to leave it. The rotation
-                        // restore already refuses exactly that state
-                        // ("never a blank filtered one"); refuse it
-                        // here too, so the grid stays full and the
-                        // toast is the whole story.
-                        favOnly = false;
-                        Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "no_fav_sayadaw"), Toast.LENGTH_SHORT).show();
-                    } else {
-                        Toast.makeText(MainActivity.this, favOnly ? Lang.t(MainActivity.this, "fav_only_on") : Lang.t(MainActivity.this, "fav_only_off"), Toast.LENGTH_SHORT).show();
-                    }
-                    // v4.28: the grid just changed underneath the
-                    // keyboard, so it hides with the toggle — the
-                    // mirror of the library toggle's own hide (this
-                    // run) and the v4.22 rule. The clear branch above
-                    // keeps the keyboard: a cleared query means a
-                    // retype is imminent, but a toggle never is.
-                    hideKeyboard(v);
-                    applyFilter();
-                    refreshFavHint();
-                }
+                else toggleFavOnly(v); // v13.82: body lives in toggleFavOnly below (verbatim v4.19/v7.29/v4.28) — the ★ button calls the same method.
                 return true;
             }
         });
@@ -2654,9 +2635,64 @@ public class MainActivity extends Activity {
         Fx.go(MainActivity.this, i);
     }
 
+    // v13.82 (slice 1074): favourites-only toggle — the body of the
+    // search long-press empty-query branch (v4.19), extracted verbatim
+    // so the new ★ button beside the search field and the long-press
+    // gesture run the identical toggle and can never disagree. The
+    // button tap adds its own Fx.tap beat at the click site (the
+    // long-press keeps its beat at the top of its handler, as before).
+    private void toggleFavOnly(android.view.View v) {
+        // v4.19: long-press an EMPTY search toggles the
+        // favourites-only filter — a non-empty query
+        // still clears (v4.17), so the two gestures
+        // never collide: clearing needs text, filtering
+        // needs none. The filter itself runs through
+        // applyFilter, so a typed query still narrows
+        // within favourites, and the empty toast path
+        // stays untouched (it only fires for a typed
+        // query). No favourites yet just says so.
+        favOnly = !favOnly;
+        if (favOnly && (favs == null || favs.isEmpty())) {
+            // v7.29: the toggle used to ENTER the filter
+            // with zero favourites — a blank grid with
+            // only a toast, until the same hidden gesture
+            // was repeated to leave it. The rotation
+            // restore already refuses exactly that state
+            // ("never a blank filtered one"); refuse it
+            // here too, so the grid stays full and the
+            // toast is the whole story.
+            favOnly = false;
+            Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "no_fav_sayadaw"), Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(MainActivity.this, favOnly ? Lang.t(MainActivity.this, "fav_only_on") : Lang.t(MainActivity.this, "fav_only_off"), Toast.LENGTH_SHORT).show();
+        }
+        // v4.28: the grid just changed underneath the
+        // keyboard, so it hides with the toggle — the
+        // mirror of the library toggle's own hide (this
+        // run) and the v4.22 rule. The clear branch above
+        // keeps the keyboard: a cleared query means a
+        // retype is imminent, but a toggle never is.
+        hideKeyboard(v);
+        applyFilter();
+        refreshFavHint();
+    }
+
     private void refreshFavHint() {
         if (searchField != null)
             searchField.setHint(favOnly ? "★ " + Lang.t(this, "search_hint") : Lang.t(this, "search_hint"));
+        // v13.82 (slice 1074): the ★ filter button wears the same
+        // state as the hint prefix — gold while favourites-only is
+        // on, the card-group muted pair while off (night-aware, the
+        // getView group colours). Null-guarded: applyThemeAndFont
+        // calls this before onCreate binds the button, and the
+        // unfavourite-last-fav paths call it too. The description
+        // reuses the shipped fav_only_on/off strings (12 languages),
+        // so no new Lang key and no hand-typed Burmese.
+        if (favFilterBtn != null) {
+            favFilterBtn.setTextColor(favOnly ? android.graphics.Color.parseColor("#C9A227")
+                    : (cachedNight ? android.graphics.Color.parseColor("#AAAAAA") : android.graphics.Color.parseColor("#7A6A58")));
+            favFilterBtn.setContentDescription(Lang.t(this, favOnly ? "fav_only_on" : "fav_only_off"));
+        }
     }
 
     // v13.74 (slice 1065): ★ favourites shelf — pours the starred

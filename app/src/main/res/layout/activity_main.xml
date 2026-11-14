@@ -40,17 +40,42 @@
             android:textColor="@color/maroon"
             android:textSize="20sp" />
     </RelativeLayout>
-    <EditText
-        android:id="@+id/search"
+    <!-- v13.82 (slice 1074): ★ favourites-filter button — the
+         favourites-only filter lived behind a hidden gesture (long-press
+         an empty search, v4.19): the only visible trace was the ★ prefix
+         on the search hint. A 48dp gold ★ beside the search field makes
+         it a direct tap, the Main mirror of the library's v13.75 filter
+         chips. The field keeps its look (same background, hint, padding,
+         text size); the row carries the 12dp top margin now. -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:background="@drawable/search_bg"
-        android:hint="Search..."
-        android:padding="10dp"
-        android:textColor="@color/ink"
-        android:textColorHint="@color/muted"
-        android:textSize="16sp" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+        <EditText
+            android:id="@+id/search"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@drawable/search_bg"
+            android:hint="Search..."
+            android:padding="10dp"
+            android:textColor="@color/ink"
+            android:textColorHint="@color/muted"
+            android:textSize="16sp" />
+        <TextView
+            android:id="@+id/favFilterBtn"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="★"
+            android:textColor="@color/muted"
+            android:textSize="22sp" />
+    </LinearLayout>
     <!-- v13.74 (slice 1065): ★ favourites shelf — the ★ set (long-press a
          card to star; drives Wi-Fi auto-download) had no visible home on
          Main: the only way back to a starred sayadaw was scrolling the
