@@ -62,6 +62,19 @@
             android:ellipsize="end"
             android:visibility="gone" />
 
+        <!-- v13.78 (slice 1070): Previous — the widget's transport
+             row was Play/Pause + Next only; the Room, the notification
+             card and headset/car all step back, the home screen could
+             not. Same 48dp button as its neighbours; the sayadaw line
+             (weight 1) absorbs the width. -->
+        <ImageButton
+            android:id="@+id/wg_prev"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_prev"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:scaleType="centerInside"
+            android:contentDescription="Previous" />
         <ImageButton
             android:id="@+id/wg_play"
             android:layout_width="48dp"

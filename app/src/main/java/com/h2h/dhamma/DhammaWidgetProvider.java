@@ -30,10 +30,12 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
 
     public static final String ACTION_WIDGET_PLAY = "com.h2h.dhamma.WIDGET_PLAY";
     public static final String ACTION_WIDGET_NEXT = "com.h2h.dhamma.WIDGET_NEXT";
+    public static final String ACTION_WIDGET_PREV = "com.h2h.dhamma.WIDGET_PREV";
     public static final int RC_WIDGET_TOGGLE = 200;
     public static final int RC_WIDGET_PLAY = 201;
     public static final int RC_WIDGET_NEXT = 202;
     public static final int RC_WIDGET_OPEN = 203;
+    public static final int RC_WIDGET_PREV = 204;
 
     // ---- pure model (ported 1:1 in sim1270.py) ----
 
@@ -211,9 +213,29 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
         views.setContentDescription(R.id.wg_play,
                 Lang.t(context, "pause".equals(icon) ? "wg_pause" : "wg_play"));
         views.setContentDescription(R.id.wg_next, Lang.t(context, "wg_next"));
+        // v13.78 (slice 1070): the Previous icon + TalkBack label.
+        views.setImageViewResource(R.id.wg_prev, R.drawable.ic_prev);
+        views.setContentDescription(R.id.wg_prev, Lang.t(context, "wg_prev"));
 
         views.setOnClickPendingIntent(R.id.wg_play,
                 playPendingIntent(context, sp, hasTrack, effLastTitle));
+        // v13.78 (slice 1070): widget Prev — the transport row's
+        // missing control. Same no-UI shape as Next below (service
+        // intent, foreground-service form on API 26+ — the v13.46
+        // note — so a tap after a swipe/kill still lands).
+        Intent prev = new Intent(context, AudioService.class);
+        prev.setAction(ACTION_WIDGET_PREV);
+        PendingIntent prevPi;
+        if (Build.VERSION.SDK_INT >= 26) {
+            prevPi = PendingIntent.getForegroundService(context,
+                    RC_WIDGET_PREV, prev,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        } else {
+            prevPi = PendingIntent.getService(context,
+                    RC_WIDGET_PREV, prev,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        }
+        views.setOnClickPendingIntent(R.id.wg_prev, prevPi);
         Intent next = new Intent(context, AudioService.class);
         next.setAction(ACTION_WIDGET_NEXT);
         // v13.46: a dead service must come up as a foreground service

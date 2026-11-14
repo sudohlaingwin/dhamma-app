@@ -1546,6 +1546,31 @@ public class AudioService extends Service {
                     else if (isRoomTrack()) advanceInBackground58(true);
                 }
                 DhammaWidgetProvider.refresh(this);
+            } else if (DhammaWidgetProvider.ACTION_WIDGET_PREV.equals(intent.getAction())) {
+                // v13.78 (slice 1070): widget Prev — the mirror of
+                // ACTION_WIDGET_NEXT above: the in-service manual
+                // step back, no UI opens: the library step back for
+                // a library session, the Room step back for a Room
+                // session (the heard-history stack lives in the
+                // Room, so this is the list fallback — more than 3s
+                // into the talk restarts it, otherwise the previous
+                // list talk with wrap, exactly like a headset/car
+                // Previous). A non-Room, non-library track steps
+                // back nowhere. The v13.09 (widget F2) trackless
+                // shape, mirrored: resume the stored talk first,
+                // then step back one from it — exactly like a
+                // manual Prev from inside the app. Nothing ever
+                // played still ends the service; a step back that
+                // finds nothing leaves the resumed talk sounding.
+                // The step back itself re-renders the widget
+                // through play() / notifyState; the refresh below
+                // covers the no-op cases (icon stays honest).
+                if (currentTitle == null && !resumeStoredTalkForWidget()) stopSelf();
+                if (currentTitle != null) {
+                    if (isLibSession()) manualSkipPrevLib();
+                    else if (isRoomTrack()) manualSkipPrevRoom();
+                }
+                DhammaWidgetProvider.refresh(this);
             } else if (DhammaWidgetProvider.ACTION_WIDGET_PLAY.equals(intent.getAction())) {
                 // v12.67: widget Play with a dead service resumes
                 // the stored last talk through the service (no UI
