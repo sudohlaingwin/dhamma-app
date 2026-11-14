@@ -130,6 +130,11 @@ public class TalksActivity extends Activity {
     // v12.28: row-tap stack guard — uptime of the last tap-driven
     // openRoom; a second row tap inside 700ms is dropped.
     private long lastRowTapOpenMs = 0;
+    // v13.76 (slice 1068): Play All double-tap guard — uptime of the
+    // last Play All tap; a second tap inside 700ms is dropped, the
+    // v12.28 row-tap shape, so a double-tap cannot stack a second
+    // Room while the first is still starting.
+    private long lastPlayAllMs = 0;
     private void talkRefreshInProgressDlNames(boolean force) {
         try {
             long now = android.os.SystemClock.uptimeMillis();
@@ -1168,6 +1173,11 @@ public class TalksActivity extends Activity {
     private java.util.ArrayList<Integer> filterHits = null;
     private java.util.ArrayList<Integer> visibleHits = null;
     private android.widget.TextView filterBtn = null;
+
+    // v13.76 (slice 1068): chooser Play All button — null until
+    // onCreate wires it (applyTheme and the first load both run
+    // before that point, so every painter null-guards).
+    private android.widget.Button btnTalkPlayAll = null;
     private void rebuildVisible() {
         if (searchHits != null && filterHits != null) {
             java.util.ArrayList<Integer> both = new java.util.ArrayList<Integer>();
@@ -2289,6 +2299,18 @@ public class TalksActivity extends Activity {
         // Settings buttons, but this button (and the Room's) never
         // got one, so a retry tap after a failed load felt dead.
         if (retryBtn != null) Fx.press(retryBtn);
+        // v13.76 (slice 1068): wire the chooser Play All button — one
+        // tap queues the shown list and starts it from the top
+        // (playAllShown); the button stays GONE until a list lands
+        // (refreshTalkPlayAllRow), so a missing id simply never wires.
+        btnTalkPlayAll = findViewById(R.id.btnTalkPlayAll);
+        if (btnTalkPlayAll != null) btnTalkPlayAll.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.tap(TalksActivity.this);
+                playAllShown(v);
+            }
+        });
+        if (btnTalkPlayAll != null) Fx.press(btnTalkPlayAll);
         // v1.53: rotating the phone used to wipe the loaded list and
         // refetch it over the network (plus re-fire the resume
         // auto-open after back + rotate, since the intent still carries
@@ -2357,6 +2379,7 @@ public class TalksActivity extends Activity {
                 // (same rule as the fresh-load site above) instead
                 // of dropping back to the plain name.
                 if (sayadawName != null) refreshFavHeader();
+                refreshTalkPlayAllRow(); // v13.76: row follows the restored list
                 if (progress != null) progress.setVisibility(View.GONE);
                 if (retryBtn != null) retryBtn.setVisibility(View.GONE);
                 // v13.64 (F-971-A-2): a rotation after a failed load
@@ -2523,6 +2546,92 @@ public class TalksActivity extends Activity {
     }
 
     // Open this talk in the Buddha-altar Room player.
+    // v13.76 (slice 1068): Play All row visibility — VISIBLE exactly
+    // when a list has landed (talks non-empty), GONE while loading,
+    // on a failed load and on an empty load: the search row's own
+    // rule, but driven from the list itself rather than from the
+    // filter/search restore branches, so a plain rotation restore
+    // (no saved filter/search) shows it too. Called from the
+    // fresh-load site, the rotation-restore site and the applyTheme
+    // tail (create + every return). Null-safe before onCreate wires
+    // the button.
+    private void refreshTalkPlayAllRow() {
+        if (btnTalkPlayAll == null) return;
+        btnTalkPlayAll.setVisibility(
+                (talks != null && !talks.isEmpty())
+                        ? android.view.View.VISIBLE : android.view.View.GONE);
+    }
+
+    // v13.76 (slice 1068): play the shown list from the top. Queues
+    // the shown talks (visibleHits when a search/filter is active,
+    // else the full list — the same mapping talkIndexAtDisplay
+    // uses, so a narrowed list plays exactly what is on screen)
+    // with the v13.04 "queue all from here" rules — display order,
+    // sounding + already-queued skipped, keep-set through the
+    // funnel — then opens the Room on the first shown talk, so
+    // auto-advance walks the queue from there. The final queue
+    // state is exactly the state the shipped manual flow builds
+    // (long-press "queue all from here" + tap the first row), so
+    // no new advance semantics are needed. When the first shown
+    // talk is already sounding, the queue is built but the Room is
+    // NOT reopened (Downloaded's replayCurrentLibFile shape) — it
+    // is already playing, and reopening would restart it. Empty
+    // shown list refuses with the same words as Downloaded's Play
+    // All (no_search_match / talks_none_for_sayadaw); an invalid
+    // tap never consumes the 700ms window (the v12.28 rule).
+    private void playAllShown(android.view.View v) {
+        if (talks == null || talks.isEmpty()) {
+            android.widget.Toast.makeText(TalksActivity.this,
+                    Lang.t(TalksActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        int dispCount76 = visibleHits != null ? visibleHits.size() : talks.size();
+        if (dispCount76 <= 0) {
+            android.widget.Toast.makeText(TalksActivity.this,
+                    Lang.t(TalksActivity.this, "no_search_match"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        int firstTi76 = talkIndexAtDisplay(0);
+        if (firstTi76 < 0 || firstTi76 >= talks.size()) {
+            android.widget.Toast.makeText(TalksActivity.this,
+                    Lang.t(TalksActivity.this, "no_search_match"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Talk first76 = talks.get(firstTi76);
+        boolean firstSounds76 = first76 != null && first76.url != null
+                && ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(first76.url, talkPlayingUrl))
+                        || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(first76.url, talkPlayingLibUrl)));
+        long now76 = android.os.SystemClock.uptimeMillis();
+        if (now76 - lastPlayAllMs < 700) return;
+        lastPlayAllMs = now76;
+        int added76 = 0;
+        java.util.Set<String> keep76 = new java.util.HashSet<String>();
+        for (int dp76 = 0; dp76 < dispCount76; dp76++) {
+            int ti76 = talkIndexAtDisplay(dp76);
+            if (ti76 < 0 || ti76 >= talks.size()) continue;
+            Talk t76 = talks.get(ti76);
+            if (t76 == null || t76.url == null || t76.url.length() == 0) continue;
+            if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(t76.url, talkPlayingUrl))
+                    || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(t76.url, talkPlayingLibUrl))) continue;
+            if (talkQueueHas(t76.url)) continue;
+            talkQueue.add(t76.url);
+            keep76.add(t76.url);
+            added76++;
+        }
+        saveTalkQueueKeepingForeign(talkQueue, keep76);
+        refreshQueueMarks();
+        if (!talks.isEmpty() && sayadawName != null) refreshFavHeader();
+        if (adapter != null) adapter.notifyDataSetChanged();
+        android.widget.Toast.makeText(TalksActivity.this, added76 > 0
+                ? Lang.t(TalksActivity.this, "queue_plain_prefix") + added76 + Lang.t(TalksActivity.this, "queue_added_suffix")
+                : Lang.t(TalksActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
+        Fx.morph(v);
+        if (!firstSounds76) openRoom(firstTi76);
+    }
+
     private void openRoom(int idx) {
         if (idx < 0 || idx >= talks.size()) return;
         Talk t = talks.get(idx);
@@ -2581,6 +2690,21 @@ public class TalksActivity extends Activity {
                     f == 0 ? 14 : (f == 1 ? 16 : 18));
             retry.setBackgroundResource(night ? R.drawable.glass_btn_night : R.drawable.glass_btn);
             retry.setTextColor(night
+                    ? android.graphics.Color.WHITE
+                    : android.graphics.Color.parseColor("#3B2314"));
+        }
+        // v13.76 (slice 1068): Play All button follows the theme like
+        // the retry button beside it — same button step (14/16/18),
+        // same glass face, same ink/white text; the label follows
+        // the UI language via the existing pl_play_all key, so
+        // Burmese display is byte-identical to the layout text.
+        android.widget.Button pa76 = btnTalkPlayAll;
+        if (pa76 != null) {
+            pa76.setText(Lang.t(this, "pl_play_all"));
+            pa76.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,
+                    f == 0 ? 14 : (f == 1 ? 16 : 18));
+            pa76.setBackgroundResource(night ? R.drawable.glass_btn_night : R.drawable.glass_btn);
+            pa76.setTextColor(night
                     ? android.graphics.Color.WHITE
                     : android.graphics.Color.parseColor("#3B2314"));
         }
@@ -2653,6 +2777,7 @@ public class TalksActivity extends Activity {
         // unloaded it is a safe no-op (show needs a non-empty list).
         rebuildVisible();
         refreshQueueMarks();
+        refreshTalkPlayAllRow(); // v13.76: row follows the loaded list
         if (adapter != null) adapter.notifyDataSetChanged();
         refreshTalksQueuePreview(); // v4.87: load/return paints the preview before the first tick
     }
@@ -5285,6 +5410,7 @@ public class TalksActivity extends Activity {
                         // (empty loads keep it hidden, like the rows).
                         android.view.View sRow = findViewById(R.id.talkSearchRow);
                         if (sRow != null) sRow.setVisibility(found.isEmpty() ? View.GONE : View.VISIBLE);
+                        refreshTalkPlayAllRow(); // v13.76: Play All lands with the list
                         rebuildSearch();
                         // v4.94: a fresh list re-indexes the filter
                         // too — old indices would mis-map onto the

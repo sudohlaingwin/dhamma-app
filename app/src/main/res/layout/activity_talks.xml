@@ -95,6 +95,20 @@
             android:textColor="@color/muted"
             android:textSize="14sp" />
     </LinearLayout>
+    <!-- v13.76 (slice 1068): chooser Play All — the shown talks had
+         no one-tap play: a row tap plays one talk only, and "queue
+         all from here" (v13.04) queues without starting, hidden in
+         a long-press dialog. Full-width button under the search row
+         (Downloaded's btnDlPlayAll shape), GONE until a list lands
+         like the search row; the label is the shipped Burmese value
+         of pl_play_all, asserted by the patch. -->
+    <Button
+        android:id="@+id/btnTalkPlayAll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="▶ အားလုံးဖွင့်မယ်"
+        android:visibility="gone" />
     <TextView
         android:id="@+id/talkSearchEmpty"
         android:layout_width="match_parent"
