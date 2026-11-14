@@ -76,6 +76,48 @@
             android:layout_marginLeft="8dp"
             android:text="✕" />
     </LinearLayout>
+    <!-- v13.75 (slice 1066): library filter chips — the ★ /
+         unlistened filter views (v4.95) lived behind a long-press
+         on the search field only: undiscoverable, and the active
+         mode showed only as a hint prefix. Three direct chips now
+         (All / ★ / New), same modes, same Lang keys the chooser's
+         filter button uses (repeat_all / filter_btn_star /
+         filter_btn_new); the layout texts are the shipped Burmese
+         values, asserted by the patch. -->
+    <LinearLayout
+        android:id="@+id/dlFilterRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal">
+        <TextView
+            android:id="@+id/chipDlAll"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="အားလုံး"
+            android:textColor="@color/muted"
+            android:textSize="14sp" />
+        <TextView
+            android:id="@+id/chipDlStar"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="★ သာ"
+            android:textColor="@color/muted"
+            android:textSize="14sp" />
+        <TextView
+            android:id="@+id/chipDlNew"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="အသစ်သာ"
+            android:textColor="@color/muted"
+            android:textSize="14sp" />
+    </LinearLayout>
     <TextView
         android:id="@+id/totalText"
         android:layout_width="match_parent"

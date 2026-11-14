@@ -92,8 +92,9 @@ public class DownloadedActivity extends Activity {
     // v4.28: favourites-only shelf filter — the mirror of Main's
     // v4.19 grid filter. The library gained ★ row marks in v4.24
     // but no way to view only ★ talks, so a listener with many
-    // downloads scrolled the whole shelf to find them. No new
-    // view: the search field's long-press toggles it (below).
+    // downloads scrolled the whole shelf to find them. v13.75:
+    // the chips below (dlFilterRow) now show the same three modes
+    // directly; the search long-press cycle stays as the gesture.
     // v4.95: library filter views — the chooser gained filter
     // views in v4.94 (★ only / unlistened only) but the library
     // still had only its ★ toggle (v4.28), so a listener working
@@ -106,6 +107,15 @@ public class DownloadedActivity extends Activity {
     // consumer (search, sort, Play All, Random, Next/Prev) reads
     // shownDl, so they follow the filter with no further change.
     private int dlFilterMode = 0;
+
+    // v13.75 (slice 1066): visible library filter chips — the three
+    // TextViews of dlFilterRow, painted by refreshDlFilterChips.
+    // Null until onCreate wires them (applyTheme and the first
+    // loadList both run before that point, so every painter
+    // null-guards).
+    private android.widget.TextView chipDlAll = null;
+    private android.widget.TextView chipDlStar = null;
+    private android.widget.TextView chipDlNew = null;
 
     // v4.95: true when every shelf file is fully listened — the
     // loadList guard and the cycle toast share it, so a mode-2
@@ -5054,32 +5064,44 @@ public class DownloadedActivity extends Activity {
                     // and no retype is imminent. An empty set just
                     // says so; the filter still engages, and the
                     // empty view carries its own word (below).
-                    dlFilterMode = (dlFilterMode + 1) % 3;
-                    // v4.58: the filter view redefines the
-                    // shown list, so it exits queue-only first.
-                    if (libQueueOnly) libQueueOnly = false;
-                    if (dlFilterMode == 1 && libFavFiles.isEmpty()) {
-                        Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "no_fav_talk"), Toast.LENGTH_SHORT).show();
-                    } else if (dlFilterMode == 2 && allDlListened()) {
-                        Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "all_listened"), Toast.LENGTH_SHORT).show();
-                    } else {
-                        Toast.makeText(DownloadedActivity.this, dlFilterMode == 1 ? Lang.t(DownloadedActivity.this, "filter_fav_only") : dlFilterMode == 2 ? Lang.t(DownloadedActivity.this, "filter_new_only") : Lang.t(DownloadedActivity.this, "filter_all"), Toast.LENGTH_SHORT).show();
-                    }
-                    hideKeyboard(v);
-                    applyDlFilter();
-                    refreshDlFavHint();
-                    // v12.37: the footer follows the filter too —
-                    // updateTotal's Up Next line reads shownDl, so a
-                    // filter change that never re-ran it left the
-                    // footer naming a filtered-out file (or, cycling
-                    // back to all, the filtered next) while Next
-                    // played the shown list. No flag is armed here,
-                    // so the footer just sets its text, no fade.
-                    updateTotal();
+                    // v13.75 (slice 1066): the cycle now delegates to
+                    // setDlFilterMode — the same body, so a chip tap
+                    // and the long-press can never disagree.
+                    setDlFilterMode((dlFilterMode + 1) % 3, v);
                 }
                 return true;
             }
         });
+        // v13.75 (slice 1066): wire the visible filter chips — one
+        // tap sets the mode directly (setDlFilterMode, the cycle's
+        // own body); the long-press cycle stays as the gesture. The
+        // chips paint from refreshDlFilterChips below, and the
+        // applyDlFilter tail repaints them on every later change.
+        chipDlAll = findViewById(R.id.chipDlAll);
+        chipDlStar = findViewById(R.id.chipDlStar);
+        chipDlNew = findViewById(R.id.chipDlNew);
+        if (chipDlAll != null) chipDlAll.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.tap(DownloadedActivity.this);
+                setDlFilterMode(0, v);
+            }
+        });
+        if (chipDlStar != null) chipDlStar.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.tap(DownloadedActivity.this);
+                setDlFilterMode(1, v);
+            }
+        });
+        if (chipDlNew != null) chipDlNew.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.tap(DownloadedActivity.this);
+                setDlFilterMode(2, v);
+            }
+        });
+        if (chipDlAll != null) Fx.press(chipDlAll);
+        if (chipDlStar != null) Fx.press(chipDlStar);
+        if (chipDlNew != null) Fx.press(chipDlNew);
+        refreshDlFilterChips();
         // v2.11: press feedback on the library header buttons —
         // the last header surface v2.08 missed (rows got it then).
         // Visual only; clicks still work (Fx.press returns false).
@@ -6312,6 +6334,76 @@ public class DownloadedActivity extends Activity {
         dlDirPendingTicks = 0;
     }
 
+    // v13.75 (slice 1066): paint the visible library filter chips —
+    // the star / unlistened filter views (v4.95) lived behind a
+    // long-press on the search field only: undiscoverable, and the
+    // active mode showed only as a hint prefix. Three direct chips
+    // now (All / star / new), same modes, same Lang keys the
+    // chooser's filter button already uses (repeat_all /
+    // filter_btn_star / filter_btn_new) — no new key, no Burmese
+    // literal in code (the layout initial texts are the same
+    // shipped values, asserted by the patch). Active chip reads
+    // gold + bold, the others muted — the chooser's own
+    // active/inactive language (TalksActivity refreshFilterBtn);
+    // size follows the font setting on the chooser's filter step
+    // (12/14/16). Called from applyTheme (create + return) and
+    // from the tail of applyDlFilter, so every mode change — chip
+    // tap, search long-press cycle, clear-button long-press reset,
+    // loadList guard, rotation restore — repaints the chips with
+    // no per-site call. Null-safe: applyTheme runs before onCreate
+    // wires the chips, and the first loadList runs before them
+    // too. No mode guard: a language change must repaint even
+    // when the mode is unchanged, like the chooser's button.
+    private void refreshDlFilterChips() {
+        if (chipDlAll == null || chipDlStar == null || chipDlNew == null) return;
+        int f = cachedDlFont;
+        float sz = f == 0 ? 12 : (f == 1 ? 14 : 16);
+        int gold = android.graphics.Color.parseColor("#C9A227");
+        int muted = cachedDlNight ? android.graphics.Color.parseColor("#AAAAAA")
+                : android.graphics.Color.parseColor("#7A6A58");
+        chipDlAll.setText(Lang.t(DownloadedActivity.this, "repeat_all"));
+        chipDlStar.setText(Lang.t(DownloadedActivity.this, "filter_btn_star"));
+        chipDlNew.setText(Lang.t(DownloadedActivity.this, "filter_btn_new"));
+        chipDlAll.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);
+        chipDlStar.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);
+        chipDlNew.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);
+        chipDlAll.setTextColor(dlFilterMode == 0 ? gold : muted);
+        chipDlStar.setTextColor(dlFilterMode == 1 ? gold : muted);
+        chipDlNew.setTextColor(dlFilterMode == 2 ? gold : muted);
+        chipDlAll.setTypeface(null, dlFilterMode == 0 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+        chipDlStar.setTypeface(null, dlFilterMode == 1 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+        chipDlNew.setTypeface(null, dlFilterMode == 2 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+    }
+
+    // v13.75 (slice 1066): one direct-set path for the filter mode —
+    // the search long-press cycle's body, extracted verbatim
+    // (dedent 20sp -> 8sp) so a chip tap and the cycle can never
+    // disagree: same toasts (empty star set / all listened / the
+    // mode word), same queue-only exit (v4.58), same keyboard hide
+    // (v4.22 rule), same filter + hint + footer refresh (v12.37:
+    // the footer follows the filter, so its Up Next line never
+    // names a filtered-out file). A tap on the already-active chip
+    // just returns (the caller taps first); the cycle's increment
+    // can never land on the same mode.
+    private void setDlFilterMode(int mode, android.view.View v) {
+        if (mode == dlFilterMode) return;
+        dlFilterMode = mode;
+        // v4.58: the filter view redefines the shown list, so it
+        // exits queue-only first.
+        if (libQueueOnly) libQueueOnly = false;
+        if (dlFilterMode == 1 && libFavFiles.isEmpty()) {
+            Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "no_fav_talk"), Toast.LENGTH_SHORT).show();
+        } else if (dlFilterMode == 2 && allDlListened()) {
+            Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "all_listened"), Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(DownloadedActivity.this, dlFilterMode == 1 ? Lang.t(DownloadedActivity.this, "filter_fav_only") : dlFilterMode == 2 ? Lang.t(DownloadedActivity.this, "filter_new_only") : Lang.t(DownloadedActivity.this, "filter_all"), Toast.LENGTH_SHORT).show();
+        }
+        hideKeyboard(v);
+        applyDlFilter();
+        refreshDlFavHint();
+        updateTotal();
+    }
+
     private void applyDlFilter() {
         shownDl.clear();
         // v1.51: space-insensitive match, same as the main list (v1.47)
@@ -6676,6 +6768,7 @@ public class DownloadedActivity extends Activity {
                 }
             }
         }
+        refreshDlFilterChips();
     }
 
     // v1.19: footer total — count + combined size of the offline library
@@ -7226,6 +7319,7 @@ public class DownloadedActivity extends Activity {
         if (sort != null) sort.setText(dlSortLabel());
         applyShuffleMark();
         origEmptyText = Lang.t(this, "dl_empty");
+        refreshDlFilterChips(); // v13.75: chip labels follow the language
     }
 
     // v1.98: prune the Room's URL->filename map ("dlMap", v1.90) for
