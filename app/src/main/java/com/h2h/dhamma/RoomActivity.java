@@ -2596,7 +2596,7 @@ public class RoomActivity extends Activity {
             if (!AudioService.liveSession) return;
             android.content.SharedPreferences rsp =
                     getSharedPreferences("dhamma", MODE_PRIVATE);
-            boolean cardTalk = flippedUrl.equals(rsp.getString("lastUrl", ""));
+            boolean cardTalk = SiteHttp.sameTalk(flippedUrl, rsp.getString("lastUrl", ""));
             if (!cardTalk) {
                 String libPath = rsp.getString("lastLibPath", "");
                 if (libPath.length() > 0) {
@@ -4201,7 +4201,7 @@ if (snd65 >= 0) currentIndex = snd65;
         if (service != null) return isCurrentTalk(u);
         // Unbound: compare u against the prefs lastUrl in both forms,
         // mirroring isSoundingTalk's legs below.
-        if (failed.equals(u)) return true;
+        if (SiteHttp.sameTalk(failed, u)) return true;
         String local = localPathFor(u);
         return local != null && local.equals(failed);
     }
@@ -4234,7 +4234,7 @@ if (snd65 >= 0) currentIndex = snd65;
             if (sayadawName == null || !sayadawName.equals(sp.getString("lastName", ""))) return false;
             String last = sp.getString("lastUrl", "");
             if (last == null || last.length() == 0) return false;
-            if (last.equals(url)) return true;
+            if (SiteHttp.sameTalk(last, url)) return true;
             String local = localPathFor(url);
             return local != null && local.equals(last);
         } catch (Exception ignored) { return false; }
@@ -4271,7 +4271,7 @@ if (snd65 >= 0) currentIndex = snd65;
             if (!ownerSayadaw.equals(sp.getString("lastName", ""))) return false;
             String last = sp.getString("lastUrl", "");
             if (last == null || last.length() == 0) return false;
-            if (last.equals(url)) return true;
+            if (SiteHttp.sameTalk(last, url)) return true;
             String local = localPathFor(url);
             return local != null && local.equals(last);
         } catch (Exception ignored) { return false; }
@@ -11557,7 +11557,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                 .putString("lastPage", pageUrl == null ? "" : pageUrl)
                 .putString("lastPhoto", photoUrl == null ? "" : photoUrl)
                 .putString("lastTitle", t.title)
-                .putString("lastUrl", t.url)
+                .putString("lastUrl", SiteHttp.identityUrl(t.url))
                 .apply();
     }
 

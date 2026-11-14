@@ -439,7 +439,7 @@ public class AudioService extends Service {
                 // drain matches entries against its list URLs, so a path-form
                 // entry would sit unclaimed in the trail forever.
                 String endedPl10 = sp.getString("lastUrl", "");
-                sp.edit().putString("lastUrl", awaitUrl)
+                sp.edit().putString("lastUrl", SiteHttp.identityUrl(awaitUrl))
                         .putString("lastTitle", title == null ? "" : title).apply();
                 // v12.18 (slice A F6): resume from the saved spot like every other
                 // advance (foreign re-fires + plain/queue/shuffle tails all use
@@ -663,7 +663,7 @@ public class AudioService extends Service {
                 if (i != barePos12) rest12.add(newQLines12[i]);
             Prefs.saveQueue(this, awaitSayadaw, rest12);
             String titleB12 = title != null && title.length() > 0 ? title : awaitUrl;
-            sp.edit().putString("lastUrl", awaitUrl).putString("lastTitle", titleB12)
+            sp.edit().putString("lastUrl", SiteHttp.identityUrl(awaitUrl)).putString("lastTitle", titleB12)
                     .putString("lastName", awaitSayadaw)
                     .putString("lastGroup", cat12[0])
                     .putString("lastPage", cat12[1])
@@ -4135,7 +4135,7 @@ public class AudioService extends Service {
                                 fSb.append(fwdParts[k]); fFirst = false;
                             }
                             sp.edit().putString("forwardHistoryRaw", fSb.toString()).apply();
-                            sp.edit().putString("lastUrl", fUrl).putString("lastTitle", fTitle).apply();
+                            sp.edit().putString("lastUrl", SiteHttp.identityUrl(fUrl)).putString("lastTitle", fTitle).apply();
                             Prefs.savePlayList(this, raw, fIdx);
                             if (!manual) armAutoAdvanceN1(1);
                             play(fLocal != null ? fLocal.getAbsolutePath() : fUrl, fTitle, savedSeekFor(fUrl));
@@ -4207,7 +4207,7 @@ public class AudioService extends Service {
                         if (manual) toastGateDeferred58();
                         return;
                     }
-                    sp.edit().putString("lastUrl", pUrl).putString("lastTitle", pTitle).apply();
+                    sp.edit().putString("lastUrl", SiteHttp.identityUrl(pUrl)).putString("lastTitle", pTitle).apply();
                     Prefs.savePlayList(this, raw, pick);
                     // v11.84: a single-talk pick (pick == idx, pool empty) is a replay — restart from
                     // 0 like the foreground does; savedSeekFor used to resume it from the last
@@ -4287,7 +4287,7 @@ public class AudioService extends Service {
                 if (manual) toastGateDeferred58();
                 return;
             }
-            sp.edit().putString("lastUrl", nUrl).putString("lastTitle", nTitle).apply();
+            sp.edit().putString("lastUrl", SiteHttp.identityUrl(nUrl)).putString("lastTitle", nTitle).apply();
             Prefs.savePlayList(this, raw, nx);
             // v10.51: repeat-one replays from 0, never from a stale
             // per-talk spot — the foreground Room replays with an
@@ -4381,7 +4381,7 @@ public class AudioService extends Service {
                 toastGateDeferred58();
                 return;
             }
-            sp.edit().putString("lastUrl", nUrl).putString("lastTitle", nTitle).apply();
+            sp.edit().putString("lastUrl", SiteHttp.identityUrl(nUrl)).putString("lastTitle", nTitle).apply();
             Prefs.savePlayList(this, raw, nx);
             // A single-talk list (or every other line empty) lands back on the same talk:
             // Previous restarts it, like handlePrev's >3s rule.
@@ -4562,7 +4562,7 @@ public class AudioService extends Service {
             }
             if (endedIdx < 0 || failedIdx < 0) return;
             if (failedIdx > endedIdx) return;
-            sp.edit().putString("lastUrl", advanceEndedUrlN1)
+            sp.edit().putString("lastUrl", SiteHttp.identityUrl(advanceEndedUrlN1))
                     .putString("lastTitle", advanceEndedTitleN1 != null ? advanceEndedTitleN1 : "").apply();
         } catch (Exception ignored) {}
     }
@@ -5204,7 +5204,7 @@ public class AudioService extends Service {
                 int eTab96 = eLine96.indexOf('\t');
                 ended63 = eTab96 >= 0 ? eLine96.substring(0, eTab96) : eLine96;
             }
-            sp.edit().putString("lastUrl", headUrl).putString("lastTitle", hTitle).apply();
+            sp.edit().putString("lastUrl", SiteHttp.identityUrl(headUrl)).putString("lastTitle", hTitle).apply();
             Prefs.savePlayList(this, raw, headIdx);
             if (!manual) armAutoAdvanceN1(1);
             play(hLocal != null ? hLocal.getAbsolutePath() : headUrl, hTitle, savedSeekFor(headUrl));
@@ -5361,7 +5361,7 @@ public class AudioService extends Service {
                 int eTab11 = eLine11.indexOf('\t');
                 ended11 = eTab11 >= 0 ? eLine11.substring(0, eTab11) : eLine11;
             }
-            sp.edit().putString("lastUrl", headUrl).putString("lastTitle", hTitle11)
+            sp.edit().putString("lastUrl", SiteHttp.identityUrl(headUrl)).putString("lastTitle", hTitle11)
                     .putString("lastName", headSayadaw11)
                     .putString("lastGroup", headCat11[0])
                     .putString("lastPage", headCat11[1])
@@ -5506,7 +5506,7 @@ public class AudioService extends Service {
                     android.content.SharedPreferences sp =
                             getSharedPreferences("dhamma", MODE_PRIVATE);
                     if (!sayadaw13.equals(sp.getString("lastName", ""))) return;
-                    if (!headUrl13.equals(sp.getString("lastUrl", ""))) return;
+                    if (!SiteHttp.sameTalk(headUrl13, sp.getString("lastUrl", ""))) return;
                     if (raw13.equals(Prefs.playListRaw(AudioService.this))) return;
                     if (Prefs.playListWriteMs(AudioService.this) > fetchStart13) return;
                     Prefs.savePlayList(AudioService.this, raw13, -1);

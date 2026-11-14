@@ -901,7 +901,7 @@ public class TalksActivity extends Activity {
                 if (line.length() == 0) continue;
                 QueueEntry e = QueueEntry.parse(line);
                 if (e == null) continue;
-                if (e.url.equals(talkPlayingUrl)) continue;
+                if (SiteHttp.sameTalk(e.url, talkPlayingUrl)) continue;
                 if (e.isV2() && sayadawName != null && !e.sayadaw.equals(sayadawName)) return e;
                 return null;
             }
@@ -1531,7 +1531,7 @@ public class TalksActivity extends Activity {
                     // the arm (strip Next, auto-advance, a Room
                     // started elsewhere) must not drop anywhere —
                     // the arm dies with a queue_changed toast.
-                    if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && moveHeldUrl.equals(talkPlayingUrl))
+                    if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(moveHeldUrl, talkPlayingUrl))
                             || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && moveHeldUrl.equals(talkPlayingLibUrl))) {
                         moveHeldUrl = null;
                         android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
@@ -1637,7 +1637,7 @@ public class TalksActivity extends Activity {
                     // the arm must not move to the end either — the
                     // arm dies with a queue_changed toast, like the
                     // stale-arm branch below it.
-                    if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && moveHeldUrl.equals(talkPlayingUrl))
+                    if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(moveHeldUrl, talkPlayingUrl))
                             || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && moveHeldUrl.equals(talkPlayingLibUrl))) {
                         moveHeldUrl = null;
                         android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
@@ -1728,7 +1728,7 @@ public class TalksActivity extends Activity {
                 // falls through to the direct-share path, like a
                 // Room session's sounding talk already did.
                 if (moveHeldUrl == null && t.url != null
-                        && (talkPlayingUrl == null || !t.url.equals(talkPlayingUrl))
+                        && (talkPlayingUrl == null || !SiteHttp.sameTalk(t.url, talkPlayingUrl))
                         && (talkPlayingLibUrl == null || !t.url.equals(talkPlayingLibUrl))) {
                     final Talk dt = t;
                     java.util.ArrayList<String> dOpts = new java.util.ArrayList<String>();
@@ -1797,7 +1797,7 @@ public class TalksActivity extends Activity {
                     String dFw = null;
                     if (talkPlayingUrl != null && talkPlayingUrl.length() > 0) {
                         for (String q : talkQueue)
-                            if (!q.equals(talkPlayingUrl)) { dFw = q; break; }
+                            if (!SiteHttp.sameTalk(q, talkPlayingUrl)) { dFw = q; break; }
                     }
                     // v11.64: foreign-aware play-next offer — the header
                     // already names a waiting foreign head as Up Next
@@ -1922,7 +1922,7 @@ public class TalksActivity extends Activity {
                                         // sounding talk in the queue to replay after the next talk.
                                         // A hit toasts "queue changed" and returns before any
                                         // mutation, exactly like the play-next leg.
-                                        if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && dt.url.equals(talkPlayingUrl))
+                                        if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(dt.url, talkPlayingUrl))
                                                 || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && dt.url.equals(talkPlayingLibUrl))) {
                                             android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
                                             return;
@@ -1977,7 +1977,7 @@ public class TalksActivity extends Activity {
                                             // Anchor no longer visible (filtered out
                                             // while the dialog sat open): queue just the anchor itself, never a stale range.
                                             if (dt != null && dt.url != null && dt.url.length() > 0
-                                                    && !((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && dt.url.equals(talkPlayingUrl))
+                                                    && !((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(dt.url, talkPlayingUrl))
                                                             || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && dt.url.equals(talkPlayingLibUrl)))
                                                     && !talkQueue.contains(dt.url)) {
                                                 talkQueue.add(dt.url);
@@ -1990,7 +1990,7 @@ public class TalksActivity extends Activity {
                                             if (ti04 < 0 || ti04 >= talks.size()) continue;
                                             Talk t04 = talks.get(ti04);
                                             if (t04 == null || t04.url == null || t04.url.length() == 0) continue;
-                                            if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && t04.url.equals(talkPlayingUrl))
+                                            if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(t04.url, talkPlayingUrl))
                                                     || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && t04.url.equals(talkPlayingLibUrl))) continue;
                                             if (talkQueue.contains(t04.url)) continue;
                                             talkQueue.add(t04.url);
@@ -2070,7 +2070,7 @@ public class TalksActivity extends Activity {
                                         // both sounding forms (Room URL and
                                         // library reverse-lookup URL), before any
                                         // arm, exactly like its neighbouring verbs.
-                                        if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && dt.url.equals(talkPlayingUrl))
+                                        if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(dt.url, talkPlayingUrl))
                                                 || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && dt.url.equals(talkPlayingLibUrl))) {
                                             android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
                                             return;
@@ -2094,7 +2094,7 @@ public class TalksActivity extends Activity {
                                         // queue untouched on a hit — the Room drawer's
                                         // v11.12 tap-time legs, in chooser form (Talks never
                                         // binds, so the bound-service check is unavailable).
-                                        if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && dt.url.equals(talkPlayingUrl))
+                                        if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(dt.url, talkPlayingUrl))
                                                 || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && dt.url.equals(talkPlayingLibUrl))) {
                                             android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
                                             return;
@@ -2129,7 +2129,7 @@ public class TalksActivity extends Activity {
                                         String fwBefore = null;
                                         if (talkPlayingUrl != null && talkPlayingUrl.length() > 0) {
                                             for (String q : talkQueue)
-                                                if (!q.equals(talkPlayingUrl)) { fwBefore = q; break; }
+                                                if (!SiteHttp.sameTalk(q, talkPlayingUrl)) { fwBefore = q; break; }
                                         }
                                         if (fwBefore != null && fwBefore.equals(dt.url)
                                                 && (dFxHead == null || dFxHead.url.equals(dt.url))) {
@@ -2141,7 +2141,7 @@ public class TalksActivity extends Activity {
                                         String fw = null;
                                         if (talkPlayingUrl != null && talkPlayingUrl.length() > 0) {
                                             for (String q : talkQueue)
-                                                if (!q.equals(talkPlayingUrl)) { fw = q; break; }
+                                                if (!SiteHttp.sameTalk(q, talkPlayingUrl)) { fw = q; break; }
                                         }
                                         int target = talkQueue.size();
                                         if (fw != null) {
@@ -3078,7 +3078,7 @@ public class TalksActivity extends Activity {
                     // session its URL lives in talkPlayingLibUrl, not talkPlayingUrl,
                     // so the sounding talk used to count here while its row shows ▶
                     // and never ↺, putting the header one above the row marks.
-                    if (t.url.equals(talkPlayingUrl)
+                    if (SiteHttp.sameTalk(t.url, talkPlayingUrl)
                             || (talkPlayingLibUrl.length() > 0 && t.url.equals(talkPlayingLibUrl))) continue;
                     if (resumeKeys.contains(t.url)) { resumeCount++; continue; }
                     if (talkDlCache.contains(t.url)) {
@@ -3105,7 +3105,7 @@ public class TalksActivity extends Activity {
         if (talkPlayingUrl != null && talkPlayingUrl.length() > 0 && talks.size() > 1) {
             int playIdx = -1;
             for (int i = 0; i < talks.size(); i++)
-                if (talks.get(i).url.equals(talkPlayingUrl)) { playIdx = i; break; }
+                if (SiteHttp.sameTalk(talks.get(i).url, talkPlayingUrl)) { playIdx = i; break; }
             if (playIdx >= 0) {
                 if (talkQueue != null) {
                     for (String qu : talkQueue) {
@@ -3123,7 +3123,7 @@ public class TalksActivity extends Activity {
                         // head, or to the shuffle-gated list-next
                         // fallback below — the same next talk the
                         // Room's fixed peekNextIndex now returns.
-                        if (talkPlayingUrl != null && qu.equals(talkPlayingUrl)) continue;
+                        if (talkPlayingUrl != null && SiteHttp.sameTalk(qu, talkPlayingUrl)) continue;
                         for (int i = 0; i < talks.size(); i++)
                             if (talks.get(i).url.equals(qu)) { nxTalk = talks.get(i); break; }
                         if (nxTalk != null) break;
@@ -3155,7 +3155,7 @@ public class TalksActivity extends Activity {
                             for (int fi21 = fwdParts21.length - 1; fi21 >= 0; fi21--) {
                                 String fu21 = fwdParts21[fi21];
                                 if (fu21 == null || fu21.length() == 0) continue;
-                                if (fu21.equals(talkPlayingUrl)) continue;
+                                if (SiteHttp.sameTalk(fu21, talkPlayingUrl)) continue;
                                 for (int i = 0; i < talks.size(); i++)
                                     if (talks.get(i).url.equals(fu21)) { nxTalk = talks.get(i); break; }
                                 if (nxTalk != null) break;
@@ -3332,7 +3332,7 @@ public class TalksActivity extends Activity {
                     if (u42.length() == 0 || !seenQ42.add(u42)) continue;
                     if (talkQueue != null && talkQueue.contains(u42)) continue;
                     if (talkPlayingUrl != null && talkPlayingUrl.length() > 0
-                            && u42.equals(talkPlayingUrl)) continue;
+                            && SiteHttp.sameTalk(u42, talkPlayingUrl)) continue;
                     // v11.76: foreign line that is the library-sounding talk skips too.
                     if (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0
                             && u42.equals(talkPlayingLibUrl)) continue;
@@ -3382,7 +3382,7 @@ public class TalksActivity extends Activity {
                         QueueEntry e64 = QueueEntry.parse(line64);
                         if (e64 == null) continue;
                         if (talkPlayingUrl != null && talkPlayingUrl.length() > 0
-                                && e64.url.equals(talkPlayingUrl)) continue;
+                                && SiteHttp.sameTalk(e64.url, talkPlayingUrl)) continue;
                         fxOrd64++;
                         if (e64.url.equals(fxHead.url)) { fxFound64 = true; break; }
                     }
@@ -3469,7 +3469,7 @@ public class TalksActivity extends Activity {
                     int nxShown = 0;
                     boolean nxFound = false;
                     for (String qu : talkQueue) {
-                        if (talkPlayingUrl != null && qu.equals(talkPlayingUrl)) continue;
+                        if (talkPlayingUrl != null && SiteHttp.sameTalk(qu, talkPlayingUrl)) continue;
                         nxShown++;
                         if (qu.equals(nx.url)) { nxFound = true; break; }
                     }
@@ -4590,7 +4590,7 @@ public class TalksActivity extends Activity {
             // as the Room playing row; the v11.06 ↺ suppression
             // below already proved the lib identity).
             if (qpos >= 0 && !(talkPlayingUrl.length() > 0
-                    && talks.get(talkIdx).url.equals(talkPlayingUrl))
+                    && SiteHttp.sameTalk(talks.get(talkIdx).url, talkPlayingUrl))
                     && !(talkPlayingLibUrl.length() > 0
                     && talks.get(talkIdx).url.equals(talkPlayingLibUrl))) {
                 // v5.82: the position skips the talk now playing —
@@ -4656,7 +4656,7 @@ public class TalksActivity extends Activity {
             // right: its saved spot was cleared at completion.
             boolean rowPlaying = !AudioService.liveEnded
                     && talkPlayingUrl.length() > 0
-                    && talks.get(talkIdx).url.equals(talkPlayingUrl);
+                    && SiteHttp.sameTalk(talks.get(talkIdx).url, talkPlayingUrl);
             // v5.34: per-talk resume mark — the Room drawer rows
             // carry it, so the chooser rows do too: a half-heard
             // talk reads "↺ mm:ss" after its title, and tapping it
