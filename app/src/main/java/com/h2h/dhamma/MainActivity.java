@@ -1542,6 +1542,11 @@ public class MainActivity extends Activity {
                         mainGridEnded = AudioService.liveEnded;
                         mainGridSounding = sndNow38;
                         if (adapter != null) adapter.notifyDataSetChanged();
+                        // v13.87: the same change moves the shelf ring
+                        // (refreshFavShelf's key carries the sounding
+                        // name, so steady ticks return early there and
+                        // only a real change re-pours the chips).
+                        refreshFavShelf();
                     }
                 } finally {
                     // v11.78: a throw above used to abort the re-post
@@ -2707,6 +2712,23 @@ public class MainActivity extends Activity {
     // applyThemeAndFont (theme/font/language return recolour), and
     // from the card long-press (the non-favOnly branch refreshes the
     // grid without a filter run).
+    // v13.87 (slice 1079): the sounding favourite's chip wears the
+    // gold ring — the shelf was the last Main surface naming a
+    // sounding sayadaw without the gold language (the grid card got
+    // its tile in v13.86, the strip already carries the gold rim +
+    // gold progress): one boolean (shelfPlaying, the grid's
+    // gridPlaying predicate verbatim) drives the ring, the ▶ mark
+    // and the gold name, so the three can never disagree. A paused
+    // session still rings (v3.99), a library session rings its
+    // recorded sayadaw (v11.94), an ended talk never rings (the
+    // helper itself returns null when ended, v12.86). The ring is
+    // the frame's background alone — the press squash is scale-only
+    // (Fx.press, on the chip) and the shelf chips carry no entrance
+    // animation at all (the staggered pour lives in the grid's
+    // getView, not here), so nothing fights the ring. NOT the
+    // banned favStar badge: no ★, no new view id, no new control —
+    // the frame is only the ring's carrier, and the shelf's ★ header
+    // is pre-existing chrome.
     private void refreshFavShelf() {
         if (favShelfWrap == null || favShelf == null) return;
         java.util.List<Sayadaw> favList = new java.util.ArrayList<Sayadaw>();
@@ -2720,9 +2742,15 @@ public class MainActivity extends Activity {
             lastFavShelfKey = null;
             return;
         }
+        // v13.87: the sounding name joins the pour key, so a
+        // sounding change re-pours the shelf exactly like the
+        // v12.38 tick rebinds the grid — steady ticks still return
+        // early below and never rebuild the chips.
+        String soundingShelf = soundingSayadawNameVisual();
         StringBuilder kb = new StringBuilder();
         kb.append(cachedNight ? "N" : "D");
         for (Sayadaw s : favList) kb.append('|').append(s.name);
+        kb.append('|').append(soundingShelf == null ? "∅" : soundingShelf);
         String key = kb.toString();
         if (key.equals(lastFavShelfKey)
                 && favShelfWrap.getVisibility() == android.view.View.VISIBLE) return;
@@ -2730,6 +2758,9 @@ public class MainActivity extends Activity {
         favShelf.removeAllViews();
         float d = getResources().getDisplayMetrics().density;
         for (final Sayadaw s : favList) {
+            boolean shelfPlaying = !AudioService.liveEnded
+                    && soundingShelf != null
+                    && soundingShelf.equals(s.name);
             android.widget.LinearLayout chip = new android.widget.LinearLayout(this);
             chip.setOrientation(android.widget.LinearLayout.VERTICAL);
             chip.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
@@ -2740,11 +2771,23 @@ public class MainActivity extends Activity {
             clp.setMargins(0, 0, (int) (10 * d), 0);
             chip.setLayoutParams(clp);
             Fx.press(chip); // v2.08 press feedback, like the grid cards
+            // v13.87: 56dp ring frame around the 52dp portrait — the
+            // frame's background is the gold ring while sounding and
+            // nothing otherwise, so the photo itself never shrinks
+            // or moves; the ring reads as a 2dp rim around it.
+            android.widget.FrameLayout ring = new android.widget.FrameLayout(this);
+            int rp = (int) (56 * d);
+            ring.setLayoutParams(new android.widget.LinearLayout.LayoutParams(rp, rp));
+            if (shelfPlaying) ring.setBackgroundResource(R.drawable.shelf_ring_playing);
             CircleImageView photo = new CircleImageView(this);
             int px = (int) (52 * d);
-            photo.setLayoutParams(new android.widget.LinearLayout.LayoutParams(px, px));
+            android.widget.FrameLayout.LayoutParams flp =
+                    new android.widget.FrameLayout.LayoutParams(px, px);
+            flp.gravity = android.view.Gravity.CENTER;
+            photo.setLayoutParams(flp);
             photo.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
             ImageLoader.load(this, s.photo, s.name, photo);
+            ring.addView(photo);
             TextView name = new TextView(this);
             android.widget.LinearLayout.LayoutParams nlp =
                     new android.widget.LinearLayout.LayoutParams(
@@ -2752,14 +2795,15 @@ public class MainActivity extends Activity {
                             android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
             nlp.setMargins(0, (int) (4 * d), 0, 0);
             name.setLayoutParams(nlp);
-            name.setText(s.name);
-            name.setTextColor(cachedNight ? android.graphics.Color.WHITE
-                    : android.graphics.Color.parseColor("#3B2314"));
+            name.setText(shelfPlaying ? "▶ " + s.name : s.name);
+            name.setTextColor(shelfPlaying ? android.graphics.Color.parseColor("#C9A227")
+                    : (cachedNight ? android.graphics.Color.WHITE
+                    : android.graphics.Color.parseColor("#3B2314")));
             name.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 11);
             name.setGravity(android.view.Gravity.CENTER);
             name.setMaxLines(1);
             name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            chip.addView(photo);
+            chip.addView(ring);
             chip.addView(name);
             chip.setOnClickListener(new android.view.View.OnClickListener() {
                 @Override public void onClick(android.view.View v) {

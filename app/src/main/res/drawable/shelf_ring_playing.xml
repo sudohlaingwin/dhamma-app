@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v13.87 (slice 1079): sounding-favourite gold ring for the Main ★
+     shelf — the oval-ring form of the gold tile (drawer v12.92 /
+     chooser v13.83 / library v13.84 / grid v13.86): a 2dp #C9A227
+     stroke around the sounding chip's circular portrait, so the
+     sounding favourite reads in a still screenshot. The item is
+     inset 1dp so the full 2dp stroke shows inside the bounds — a
+     stroke centred on the oval edge is half-clipped by the view
+     bounds (the v13.08 BlurDrawable rim lesson), so the oval edge
+     sits 1dp in and the stroke spans 0..2dp from the view edge.
+     Theme-independent like the row tiles: the gold reads on
+     parchment and on dark alike. Transparent fill — the portrait
+     itself shows through, the ring is only the rim. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:bottom="1dp"
+        android:left="1dp"
+        android:right="1dp"
+        android:top="1dp">
+        <shape android:shape="oval">
+            <stroke
+                android:width="2dp"
+                android:color="#C9A227" />
+            <solid android:color="#00000000" />
+        </shape>
+    </item>
+</layer-list>
