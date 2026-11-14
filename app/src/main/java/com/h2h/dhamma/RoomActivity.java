@@ -10327,7 +10327,7 @@ if (snd67q >= 0) currentIndex = snd67q;
             String qu = qe.url;
             int found = -1;
             for (int i = 0; i < talks.size(); i++)
-                if (talks.get(i).url.equals(qu)) { found = i; break; }
+                if (SiteHttp.sameTalk(talks.get(i).url, qu)) { found = i; break; }
             // v5.86: skip, never stale — the v5.85 code above folded
             // the sounding talk into the stale branch (found = -1),
             // so a read path — the header poll tick calls peek on

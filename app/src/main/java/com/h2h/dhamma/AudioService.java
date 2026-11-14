@@ -5499,7 +5499,7 @@ public class AudioService extends Service {
                     if (l13 == null || l13.length() == 0) continue;
                     int t13 = l13.indexOf('\t');
                     String u13 = t13 >= 0 ? l13.substring(0, t13) : l13;
-                    if (u13.equals(headUrl13)) { namesHead13 = true; break; }
+                    if (SiteHttp.sameTalk(u13, headUrl13)) { namesHead13 = true; break; }
                 }
                 if (!namesHead13) return;
                 try {

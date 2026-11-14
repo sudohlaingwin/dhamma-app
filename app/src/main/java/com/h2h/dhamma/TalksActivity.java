@@ -3125,7 +3125,7 @@ public class TalksActivity extends Activity {
                         // Room's fixed peekNextIndex now returns.
                         if (talkPlayingUrl != null && SiteHttp.sameTalk(qu, talkPlayingUrl)) continue;
                         for (int i = 0; i < talks.size(); i++)
-                            if (talks.get(i).url.equals(qu)) { nxTalk = talks.get(i); break; }
+                            if (SiteHttp.sameTalk(talks.get(i).url, qu)) { nxTalk = talks.get(i); break; }
                         if (nxTalk != null) break;
                     }
                 }
@@ -3157,7 +3157,7 @@ public class TalksActivity extends Activity {
                                 if (fu21 == null || fu21.length() == 0) continue;
                                 if (SiteHttp.sameTalk(fu21, talkPlayingUrl)) continue;
                                 for (int i = 0; i < talks.size(); i++)
-                                    if (talks.get(i).url.equals(fu21)) { nxTalk = talks.get(i); break; }
+                                    if (SiteHttp.sameTalk(talks.get(i).url, fu21)) { nxTalk = talks.get(i); break; }
                                 if (nxTalk != null) break;
                             }
                         }
@@ -3384,7 +3384,7 @@ public class TalksActivity extends Activity {
                         if (talkPlayingUrl != null && talkPlayingUrl.length() > 0
                                 && SiteHttp.sameTalk(e64.url, talkPlayingUrl)) continue;
                         fxOrd64++;
-                        if (e64.url.equals(fxHead.url)) { fxFound64 = true; break; }
+                        if (SiteHttp.sameTalk(e64.url, fxHead.url)) { fxFound64 = true; break; }
                     }
                     if (fxFound64) fxMark = " ◈" + fxOrd64;
                 }
