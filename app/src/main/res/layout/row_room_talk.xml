@@ -35,5 +35,23 @@
             android:maxLines="2"
             android:textColor="@color/ink"
             android:textSize="15sp" />
+        <!-- v13.73 (slice 1061): visible queue-move grip — gold ↕ at the
+             right edge of waiting queue rows in the queue-only drawer view.
+             Tap picks the talk up for a pick-up/drop move; hidden everywhere
+             else (default gone; the adapter bind shows it only where it
+             applies). 44dp wide so the target is thumb-sized. -->
+        <TextView
+            android:id="@+id/moveGrip"
+            android:layout_width="44dp"
+            android:layout_height="match_parent"
+            android:layout_gravity="center_vertical"
+            android:clickable="true"
+            android:focusable="false"
+            android:focusableInTouchMode="false"
+            android:gravity="center"
+            android:text="↕"
+            android:textColor="@color/gold"
+            android:textSize="20sp"
+            android:visibility="gone" />
     </LinearLayout>
 </LinearLayout>

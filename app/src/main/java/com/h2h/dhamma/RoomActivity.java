@@ -12473,6 +12473,15 @@ if (snd67q >= 0) currentIndex = snd67q;
                 Fx.press(v); // v2.08: press feedback on Room list rows
             }
             v.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+            // v13.73: move-grip reset — a recycled queue-only row must never
+            // keep a visible grip (or its listener) when rebound as a
+            // full-list / stale row; the bind helper below shows it only
+            // where it applies, on every bind path that returns content.
+            android.view.View mgReset73 = v.findViewById(R.id.moveGrip);
+            if (mgReset73 != null) {
+                mgReset73.setVisibility(View.GONE);
+                mgReset73.setOnClickListener(null);
+            }
             // v3.45: premium drawer recycled-row pour hygiene, mirroring
             // the delivered v3.40 hygiene in the Main, Talks and
             // Downloaded adapters, which this drawer adapter never got.
@@ -12611,6 +12620,8 @@ if (snd67q >= 0) currentIndex = snd67q;
                     if (fRowCard != null) fRowCard.setBackgroundResource(fSounding ? R.drawable.drawer_row_playing : R.drawable.drawer_row);
                     if (fHeld) v.setBackgroundColor(0x33C9A227);
                     if (fPlayed && !fSounding && fTitle != null) fTitle.setAlpha(0.6f);
+                    // v13.73: visible move grip on the foreign queue row.
+                    bindMoveGrip73(v, fe.url, fe.title.length() > 0 ? fe.title : fe.url, true, fe.sayadaw);
                     return v;
                 }
             }
@@ -12836,8 +12847,77 @@ if (snd67q >= 0) currentIndex = snd67q;
                 titleView.setText("▸ " + titleView.getText().toString());
                 titleView.setAlpha(1f);
             }
+            // v13.73: visible move grip on the in-list queue row.
+            bindMoveGrip73(v, t.url, t.title, false, null);
             return v;
         }
+    }
+
+    // v13.73 (slice 1061): visible queue-move grip — the pick-up/drop
+    // reorder (v7.85/v7.86) worked but lived only in a long-press dialog,
+    // so nobody found it. Every waiting row in the queue-only drawer view
+    // now carries a gold ↕ grip at its right edge: tap it to pick the talk
+    // up (same arm + toast as the dialog's menu_move), tap any queued row
+    // to drop it in front of that row (existing drop handlers), tap the
+    // grip on the held row to cancel (same as tapping the held row).
+    // Offer gate mirrors the dialogs exactly: queue-only view, 2+ rows
+    // showing, row still queued, never the sounding row — with the
+    // v11.22/v11.34 tap-time sounding re-checks inside the tap, since a
+    // track can change between bind and tap. Full-list rows never show
+    // it: the queue-only view is the reorder surface (the v13.72 bar
+    // funnels there) and the main list stays uncluttered. No new Lang
+    // key — arm/cancel toasts reuse talks_move_prefix / room_move_suffix
+    // / move_cancelled / queue_changed. No banned control: a row
+    // affordance in the drawer, not a resurrected strip, ⋮ menu or
+    // search box. The grip is clickable but never focusable, so a tap on
+    // it arms the move instead of playing the row, and the rest of the
+    // row still plays on tap as before.
+    private void bindMoveGrip73(View row, final String url, final String title,
+            final boolean foreign, final String sayadaw) {
+        final TextView grip = (TextView) row.findViewById(R.id.moveGrip);
+        if (grip == null) return;
+        boolean show = drawerQueueOnly && !drawerSearching()
+                && drawerDisplayCount() >= 2
+                && url != null && queueLineIndexForUrl(url) >= 0
+                && (foreign ? !isSoundingForeignTalk(url, sayadaw)
+                        : !isSoundingTalk(url));
+        if (!show) {
+            grip.setVisibility(View.GONE);
+            grip.setOnClickListener(null);
+            return;
+        }
+        grip.setVisibility(View.VISIBLE);
+        grip.setText("↕");
+        int tf = Prefs.fontSize(RoomActivity.this);
+        grip.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,
+                tf == 0 ? 18 : (tf == 1 ? 20 : 22));
+        grip.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.tap(RoomActivity.this);
+                // Held-row grip cancels the arm, like tapping the held row itself.
+                if (url.equals(moveHeldUrl)) {
+                    moveHeldUrl = null;
+                    Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "move_cancelled"), Toast.LENGTH_SHORT).show();
+                    if (adapter != null) adapter.notifyDataSetChanged();
+                    return;
+                }
+                // Tap-time sounding re-check — the dialog arm branches' v11.22/v11.34 guard.
+                if (foreign ? isSoundingForeignTalk(url, sayadaw) : isSoundingTalk(url)) {
+                    Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_changed"), Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                // Stale-line guard — the row left the queue since its bind.
+                if (queueLineIndexForUrl(url) < 0) {
+                    Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_changed"), Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                moveHeldUrl = url;
+                Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "talks_move_prefix")
+                        + (title != null && title.length() > 0 ? title : url)
+                        + Lang.t(RoomActivity.this, "room_move_suffix"), Toast.LENGTH_SHORT).show();
+                if (adapter != null) adapter.notifyDataSetChanged();
+            }
+        });
     }
 
     // v1.58: talk titles used to show raw entities (&quot;, &#123;)
