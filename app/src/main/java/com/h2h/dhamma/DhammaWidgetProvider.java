@@ -66,6 +66,21 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
         return clean67(lastName);
     }
 
+    // v13.91 (slice 1083): the widget's sounding gold cue — the
+    // gold arc's last surface has no photo to ring, so the title
+    // itself turns gold while a live session sounds. The strip
+    // predicate, verbatim: liveSession + liveHasTrack +
+    // !liveEnded. Paused still gold (gold says "this talk is the
+    // live one"; the play/pause icon says playing vs paused);
+    // an ended talk, a dead-service resume, and a trackless live
+    // flag never gold. The empty state can never be gold: a live
+    // session always carries its title (play() sets liveTitle
+    // with the track, beside liveHasTrack).
+    static boolean widgetTitleGoldPure(boolean liveSession,
+                                       boolean liveHasTrack, boolean liveEnded) {
+        return liveSession && liveHasTrack && !liveEnded;
+    }
+
     // Buffering counts as playing (livePlaying is true through
     // the buffering window), so it shows the pause icon.
     static String widgetPlayIconPure(boolean playing) {
@@ -203,6 +218,15 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
         views.setTextViewText(R.id.wg_app, Lang.t(context, "wg_app"));
         views.setTextViewText(R.id.wg_title,
                 title.length() > 0 ? title : Lang.t(context, "choose_talk"));
+        // v13.91 (slice 1083): gold title while a live session
+        // sounds — the same gold as the wg_app label (#E8C878),
+        // white otherwise. No new colour, no layout change; the
+        // refresh is push-driven on every state edge (notifyState
+        // + play/next/prev/stop/destroy), so the colour follows
+        // the session with no new timer.
+        boolean sounding = widgetTitleGoldPure(AudioService.liveSession,
+                AudioService.liveHasTrack, AudioService.liveEnded);
+        views.setTextColor(R.id.wg_title, sounding ? 0xFFE8C878 : 0xFFFFFFFF);
         views.setTextViewText(R.id.wg_sayadaw, sayadaw);
         views.setViewVisibility(R.id.wg_sayadaw,
                 sayadaw.length() > 0 ? android.view.View.VISIBLE : android.view.View.GONE);
