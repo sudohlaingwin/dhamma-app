@@ -51,6 +51,40 @@
         android:textColor="@color/ink"
         android:textColorHint="@color/muted"
         android:textSize="16sp" />
+    <!-- v13.74 (slice 1065): ★ favourites shelf — the ★ set (long-press a
+         card to star; drives Wi-Fi auto-download) had no visible home on
+         Main: the only way back to a starred sayadaw was scrolling the
+         full grid or the hidden search-long-press filter. A horizontal
+         shelf of starred portraits above the grid, shown only while
+         favourites exist and no search/filter is active; empty state
+         leaves Main exactly as before. Label is Burmese chrome like
+         the app title above (titleText is hardcoded Burmese too). -->
+    <LinearLayout
+        android:id="@+id/favShelfWrap"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="★ အကြိုက်ဆုံး ဆရာတော်များ"
+            android:textColor="@color/gold"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:scrollbars="none">
+            <LinearLayout
+                android:id="@+id/favShelf"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
+    </LinearLayout>
     <GridView
         android:id="@+id/grid"
         android:layout_width="match_parent"

@@ -64,6 +64,13 @@ public class MainActivity extends Activity {
     // a keystroke that changes nothing never replays the cascade.
     private String lastShownKey = "";
     private Set<String> favs = new HashSet<String>();
+    // v13.74 (slice 1065): ★ favourites shelf views + the key of the
+    // last poured shelf (favourite names + night flag) — a rebuild
+    // only happens when the set or the theme actually changes, so
+    // keystroke filters and ticks never re-pour the chips.
+    private android.widget.LinearLayout favShelfWrap;
+    private android.widget.LinearLayout favShelf;
+    private String lastFavShelfKey = null;
     private View rootView;
     private TextView titleText;
     private Button themeToggle;
@@ -430,6 +437,7 @@ public class MainActivity extends Activity {
         // below never fires on a return with a live session.
         mainGridEnded = AudioService.liveEnded;
         mainGridSounding = AudioService.liveEnded ? null : soundingSayadawNameVisual();
+        refreshFavShelf(); // v13.74: shelf recolour on theme return
     }
 
     @Override
@@ -2260,88 +2268,14 @@ public class MainActivity extends Activity {
             });
         }
         gridView = findViewById(R.id.grid);
+        favShelfWrap = findViewById(R.id.favShelfWrap);
+        favShelf = findViewById(R.id.favShelf);
         adapter = new SayadawAdapter();
         if (gridView != null) gridView.setAdapter(adapter);
         if (gridView != null) gridView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
-                Sayadaw s = shown.get(pos);
-                if (s.url == null || s.url.length() == 0 || "null".equals(s.url)) {
-                    Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "no_sayadaw_page"), Toast.LENGTH_LONG).show();
-                    return;
-                }
-                // v4.15: tapping the sounding sayadaw's own card
-                // goes straight to the Room (streaming "tap
-                // now-playing goes to the player") instead of the
-                // Talks chooser — every other card still opens its
-                // chooser. The Room's own re-entry rule (v1.56)
-                // keeps the playing talk put instead of restarting
-                // it, so this is a return, never a replay.
-                String sounding = soundingSayadawName();
-                if (sounding != null && sounding.equals(s.name)) {
-                    android.content.SharedPreferences sp =
-                            getSharedPreferences("dhamma", MODE_PRIVATE);
-                    Intent i = new Intent(MainActivity.this, RoomActivity.class);
-                    i.putExtra("name", s.name);
-                    i.putExtra("group", s.group);
-                    i.putExtra("url", s.url);
-                    i.putExtra("photo", s.photo == null ? "" : s.photo);
-                    i.putExtra("autoUrl", sp.getString("lastUrl", ""));
-                    i.putExtra("autoTitle", sp.getString("lastTitle", ""));
-                    Fx.morph(v);
-                    Fx.tap(MainActivity.this);
-                    Fx.go(MainActivity.this, i);
-                    return;
-                }
-                // v13.12 (M5, sim1324): a library session sounds too —
-                // the card breathes and shows ▶ for it, so tapping it
-                // must return to the library, not the Talks chooser.
-                // The visual twin is the same name the grid's ▶ mark
-                // and pulse use, so the tap can never disagree with
-                // what the card shows; the Room branch above already
-                // returned for a room session. Same jumpPath glide as
-                // the strip tap — a live session glides only, never
-                // auto-plays. A file gone from disk falls through to
-                // the chooser below, which is still useful.
-                android.content.SharedPreferences spLib =
-                        getSharedPreferences("dhamma", MODE_PRIVATE);
-                if ("lib".equals(spLib.getString("lastKind", ""))
-                        && AudioService.liveSession && AudioService.liveHasTrack
-                        && !AudioService.liveEnded) {
-                    String soundingVisual = soundingSayadawNameVisual();
-                    if (soundingVisual != null && soundingVisual.equals(s.name)) {
-                        String lp = spLib.getString("lastLibPath", "");
-                        if (lp.length() > 0 && new java.io.File(lp).isFile()) {
-                            Fx.morph(v);
-                            Fx.tap(MainActivity.this);
-                            Intent li = new Intent(MainActivity.this, DownloadedActivity.class);
-                            li.putExtra("jumpPath", lp);
-                            Fx.go(MainActivity.this, li);
-                            return;
-                        }
-                    }
-                }
-                Intent i = new Intent(MainActivity.this, TalksActivity.class);
-                i.putExtra("name", s.name);
-                i.putExtra("group", s.group);
-                i.putExtra("url", s.url);
-                i.putExtra("photo", s.photo == null ? "" : s.photo);
-                // v2.39: grid-card click beat — the card squashed under
-                // the finger (v2.08 press) but a tap landing on it had
-                // no beat of its own, unlike nav (v2.36), Settings
-                // choices (v2.37) and Talks rows (v2.38), so the app's
-                // entry action — opening a sayadaw's talks — felt
-                // flatter than every other tap. It now pops with the
-                // shared Fx.morph beat (v2.09) before Fx.go's
-                // navigation: the press squash's UP spring-back is
-                // replaced by the morph exactly as on nav, and the
-                // beat reads through the transition because Main stays
-                // in the back stack while it fades out (nav_out 250ms)
-                // under the Talks fade-in (300ms). The no-link refusal
-                // path returns before it, so a dead tap never reads
-                // as a successful one.
-                Fx.morph(v);
-                Fx.tap(MainActivity.this);
-                Fx.go(MainActivity.this, i);
+                if (pos < 0 || pos >= shown.size()) return;
+                openSayadawCard(shown.get(pos), v);
             }
         });
 
@@ -2387,6 +2321,7 @@ public class MainActivity extends Activity {
                         if (favs.isEmpty())
                             Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "no_fav_sayadaw"), Toast.LENGTH_SHORT).show();
                     } else adapter.notifyDataSetChanged();
+                refreshFavShelf(); // v13.74: star/unstar re-pours the shelf
                 return true;
             }
         });
@@ -2632,9 +2567,172 @@ public class MainActivity extends Activity {
     // read as a missing catalogue. The search hint carries a star prefix
     // while favOnly is on (in-place text on the existing field, no new
     // view); every path that flips favOnly refreshes it below.
+    // v13.74 (slice 1065): grid-tap routing extracted verbatim into
+    // this helper so the favourites-shelf chips share it: no-link
+    // refusal, sounding card -> Room, library session ->
+    // Downloaded, else the Talks chooser. Both taps on the same
+    // sayadaw can now never disagree. One addition: the long-press
+    // handler's bounds guard (a tap with a stale position returns
+    // instead of crashing the grid bind).
+    private void openSayadawCard(Sayadaw s, android.view.View v) {
+        if (s.url == null || s.url.length() == 0 || "null".equals(s.url)) {
+            Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "no_sayadaw_page"), Toast.LENGTH_LONG).show();
+            return;
+        }
+        // v4.15: tapping the sounding sayadaw's own card
+        // goes straight to the Room (streaming "tap
+        // now-playing goes to the player") instead of the
+        // Talks chooser — every other card still opens its
+        // chooser. The Room's own re-entry rule (v1.56)
+        // keeps the playing talk put instead of restarting
+        // it, so this is a return, never a replay.
+        String sounding = soundingSayadawName();
+        if (sounding != null && sounding.equals(s.name)) {
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            Intent i = new Intent(MainActivity.this, RoomActivity.class);
+            i.putExtra("name", s.name);
+            i.putExtra("group", s.group);
+            i.putExtra("url", s.url);
+            i.putExtra("photo", s.photo == null ? "" : s.photo);
+            i.putExtra("autoUrl", sp.getString("lastUrl", ""));
+            i.putExtra("autoTitle", sp.getString("lastTitle", ""));
+            Fx.morph(v);
+            Fx.tap(MainActivity.this);
+            Fx.go(MainActivity.this, i);
+            return;
+        }
+        // v13.12 (M5, sim1324): a library session sounds too —
+        // the card breathes and shows ▶ for it, so tapping it
+        // must return to the library, not the Talks chooser.
+        // The visual twin is the same name the grid's ▶ mark
+        // and pulse use, so the tap can never disagree with
+        // what the card shows; the Room branch above already
+        // returned for a room session. Same jumpPath glide as
+        // the strip tap — a live session glides only, never
+        // auto-plays. A file gone from disk falls through to
+        // the chooser below, which is still useful.
+        android.content.SharedPreferences spLib =
+                getSharedPreferences("dhamma", MODE_PRIVATE);
+        if ("lib".equals(spLib.getString("lastKind", ""))
+                && AudioService.liveSession && AudioService.liveHasTrack
+                && !AudioService.liveEnded) {
+            String soundingVisual = soundingSayadawNameVisual();
+            if (soundingVisual != null && soundingVisual.equals(s.name)) {
+                String lp = spLib.getString("lastLibPath", "");
+                if (lp.length() > 0 && new java.io.File(lp).isFile()) {
+                    Fx.morph(v);
+                    Fx.tap(MainActivity.this);
+                    Intent li = new Intent(MainActivity.this, DownloadedActivity.class);
+                    li.putExtra("jumpPath", lp);
+                    Fx.go(MainActivity.this, li);
+                    return;
+                }
+            }
+        }
+        Intent i = new Intent(MainActivity.this, TalksActivity.class);
+        i.putExtra("name", s.name);
+        i.putExtra("group", s.group);
+        i.putExtra("url", s.url);
+        i.putExtra("photo", s.photo == null ? "" : s.photo);
+        // v2.39: grid-card click beat — the card squashed under
+        // the finger (v2.08 press) but a tap landing on it had
+        // no beat of its own, unlike nav (v2.36), Settings
+        // choices (v2.37) and Talks rows (v2.38), so the app's
+        // entry action — opening a sayadaw's talks — felt
+        // flatter than every other tap. It now pops with the
+        // shared Fx.morph beat (v2.09) before Fx.go's
+        // navigation: the press squash's UP spring-back is
+        // replaced by the morph exactly as on nav, and the
+        // beat reads through the transition because Main stays
+        // in the back stack while it fades out (nav_out 250ms)
+        // under the Talks fade-in (300ms). The no-link refusal
+        // path returns before it, so a dead tap never reads
+        // as a successful one.
+        Fx.morph(v);
+        Fx.tap(MainActivity.this);
+        Fx.go(MainActivity.this, i);
+    }
+
     private void refreshFavHint() {
         if (searchField != null)
             searchField.setHint(favOnly ? "★ " + Lang.t(this, "search_hint") : Lang.t(this, "search_hint"));
+    }
+
+    // v13.74 (slice 1065): ★ favourites shelf — pours the starred
+    // sayadaws (catalogue order) as photo + name chips above the grid.
+    // Hidden while a query is typed or the favourites-only filter is
+    // on: the grid already shows the narrowed set there, so the shelf
+    // would duplicate it. Empty favourites (or only stale names left
+    // after a rename) hide the whole block, so Main looks exactly as
+    // before until the user stars someone. Tap a chip -> the same
+    // openSayadawCard routing as a grid-card tap. Called from
+    // applyFilter (every keystroke / toggle / load), from
+    // applyThemeAndFont (theme/font/language return recolour), and
+    // from the card long-press (the non-favOnly branch refreshes the
+    // grid without a filter run).
+    private void refreshFavShelf() {
+        if (favShelfWrap == null || favShelf == null) return;
+        java.util.List<Sayadaw> favList = new java.util.ArrayList<Sayadaw>();
+        if (query != null && query.length() == 0 && !favOnly
+                && favs != null && !favs.isEmpty() && all != null) {
+            for (Sayadaw s : all) if (favs.contains(s.name)) favList.add(s);
+        }
+        if (favList.isEmpty()) {
+            if (favShelfWrap.getVisibility() != android.view.View.GONE)
+                favShelfWrap.setVisibility(android.view.View.GONE);
+            lastFavShelfKey = null;
+            return;
+        }
+        StringBuilder kb = new StringBuilder();
+        kb.append(cachedNight ? "N" : "D");
+        for (Sayadaw s : favList) kb.append('|').append(s.name);
+        String key = kb.toString();
+        if (key.equals(lastFavShelfKey)
+                && favShelfWrap.getVisibility() == android.view.View.VISIBLE) return;
+        lastFavShelfKey = key;
+        favShelf.removeAllViews();
+        float d = getResources().getDisplayMetrics().density;
+        for (final Sayadaw s : favList) {
+            android.widget.LinearLayout chip = new android.widget.LinearLayout(this);
+            chip.setOrientation(android.widget.LinearLayout.VERTICAL);
+            chip.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+            android.widget.LinearLayout.LayoutParams clp =
+                    new android.widget.LinearLayout.LayoutParams(
+                            (int) (72 * d),
+                            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+            clp.setMargins(0, 0, (int) (10 * d), 0);
+            chip.setLayoutParams(clp);
+            Fx.press(chip); // v2.08 press feedback, like the grid cards
+            CircleImageView photo = new CircleImageView(this);
+            int px = (int) (52 * d);
+            photo.setLayoutParams(new android.widget.LinearLayout.LayoutParams(px, px));
+            photo.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+            ImageLoader.load(this, s.photo, s.name, photo);
+            TextView name = new TextView(this);
+            android.widget.LinearLayout.LayoutParams nlp =
+                    new android.widget.LinearLayout.LayoutParams(
+                            android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+            nlp.setMargins(0, (int) (4 * d), 0, 0);
+            name.setLayoutParams(nlp);
+            name.setText(s.name);
+            name.setTextColor(cachedNight ? android.graphics.Color.WHITE
+                    : android.graphics.Color.parseColor("#3B2314"));
+            name.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 11);
+            name.setGravity(android.view.Gravity.CENTER);
+            name.setMaxLines(1);
+            name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            chip.addView(photo);
+            chip.addView(name);
+            chip.setOnClickListener(new android.view.View.OnClickListener() {
+                @Override public void onClick(android.view.View v) {
+                    openSayadawCard(s, v);
+                }
+            });
+            favShelf.addView(chip);
+        }
+        favShelfWrap.setVisibility(android.view.View.VISIBLE);
     }
 
     // v4.22: hide the search keyboard — the only keyboard-hide
@@ -2740,6 +2838,7 @@ public class MainActivity extends Activity {
             }
         }
         adapter.notifyDataSetChanged();
+        refreshFavShelf(); // v13.74: shelf follows every filter run
         if (allowToast && setChanged && gridView != null && gridView.getFirstVisiblePosition() > 0)
             gridView.setSelection(0);
         // v2.02: a search matching no sayadaw used to leave a
