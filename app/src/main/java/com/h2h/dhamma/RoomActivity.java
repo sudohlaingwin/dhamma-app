@@ -2642,8 +2642,12 @@ if (snd65 >= 0) currentIndex = snd65;
             java.util.Set<String> cur = sp.getStringSet("favTalks", new java.util.HashSet<String>());
             java.util.Set<String> next = new java.util.HashSet<String>(cur);
             boolean nowFav;
-            if (next.contains(t.url)) { next.remove(t.url); nowFav = false; }
-            else { next.add(t.url); nowFav = true; }
+            // v13.66 (slice 1052): bank the canonical (https) form —
+            // a foreign http queue-line talk in the list planted http
+            // here, splitting the favourite so the star never cleared.
+            String favUrl66 = SiteHttp.identityUrl(t.url);
+            if (next.contains(favUrl66)) { next.remove(favUrl66); nowFav = false; }
+            else { next.add(favUrl66); nowFav = true; }
             sp.edit().putStringSet("favTalks", next).apply();
             // v10.22: paused-card star sync, altar-long-press leg of v10.02 —
             // the drawer-menu flips all rebuild the card when the flipped

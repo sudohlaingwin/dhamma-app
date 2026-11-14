@@ -604,6 +604,348 @@ public class Prefs {
         return changed ? sb.toString() : null;
     }
 
+    // v13.66 (slice 1052): legacy http-row migration — the last
+    // piece of the v13.57 TLS-fallback identity split (P0/P1
+    // bundles v13.62–v13.65 canonicalised every reader and
+    // planter, but the delivered build's stored rows stay http
+    // until a v13.62+ build lands). The delivered build stored
+    // talk URLs verbatim, so on the TLS-broken phone five stores
+    // hold http rows for talks whose https twin the readers
+    // expect: talkPosGet misses an http-only spot (the talk
+    // restarts from 0), bookmarkListBoth never reads the http mark
+    // for an https caller (one-directional identityUrl leg),
+    // statsAddPure splits one talk into two REC rows, playlist
+    // ITEM twins never collapse (stream-vs-stream is never the
+    // same talk), every favTalks/playedTalks reader does a raw
+    // contains — and lastUrl is still planted raw today, so the
+    // Fx dlQueued loops, prune/card-refresh compares,
+    // soundingLibPath, forward stack and waitingQueueCountPure
+    // misfire on it. Narrow migration, five stores + two scalar
+    // pointers only (talkPosMap, bookmarks64, listenStats66,
+    // playlists65, favTalks/playedTalks, lastUrl/lastPosUrl):
+    // http → https key-rewrite IN PLACE, twins collapsed to one
+    // canonical row (never add-a-twin — twins re-split every
+    // exact-string dedup/count). Never rewritten or dropped:
+    // resume positions (first = most-recent twin wins), bookmark
+    // minutes, history order/totals (REC twins merge by summing
+    // seconds, keeping the newer lastMs and its title/sayadaw),
+    // favourites membership, playlist order, queue order.
+    // Queues, dlMap, dlSayadaw, dlQueued and autoDlKnown67 are
+    // NOT migrated: queues are session-transient and self-clean,
+    // and the dl stores' keys are the filename mapping
+    // (verify-only — no legacy http row proven there). Malformed
+    // lines are kept verbatim, never dropped (a pure rewrite must
+    // not drop user content it was never asked to drop). Pure
+    // cores below carry no Android types, so the sim + Mig66Test
+    // exercise them directly. The reader-hardening bundle for the
+    // residual raw compares (Fx loops, stripFileClaimedByOther,
+    // prune/card-refresh, soundingLibPath, restart sentinel,
+    // waitingQueueCountPure, forward stack) is slice 1053 — this
+    // migration heals the stored rows; the compares stay raw
+    // until then and only misfire on a queue-line http plant.
+    private static boolean sMigDone66;
+
+    // One "url\tpos" line store, rewritten in place: every
+    // stream URL becomes its identityUrl (https) form, twins
+    // collapse to the first (most-recent) row. dedupByUrlOnly:
+    // true for talkPosMap (one spot per talk — the twin's pos is
+    // the freshest only when it is first), false for bookmarks64
+    // (many marks per talk — two marks at different minutes are
+    // different marks, so the dedup key is (canonical URL, pos)).
+    // Path lines (downloaded files) pass through unchanged and
+    // dedup by exact string. Returns the new raw store, or null
+    // when nothing changes.
+    static String migrateUrlPosLinesPure66(String raw, boolean dedupByUrlOnly) {
+        if (raw == null || raw.length() == 0) return null;
+        StringBuilder sb = new StringBuilder();
+        java.util.Set<String> seen = new java.util.HashSet<String>();
+        boolean changed = false;
+        for (String line : raw.split("\\n")) {
+            int t = line.indexOf('\t');
+            if (t <= 0) {
+                // Malformed line — kept verbatim, never dropped.
+                if (sb.length() > 0) sb.append('\n');
+                sb.append(line);
+                continue;
+            }
+            String url = line.substring(0, t);
+            String posStr = line.substring(t + 1);
+            int pos;
+            try { pos = Integer.parseInt(posStr); }
+            catch (Exception ignored) {
+                // Unparseable position — kept verbatim, never dropped.
+                if (sb.length() > 0) sb.append('\n');
+                sb.append(line);
+                continue;
+            }
+            String canon = SiteHttp.identityUrl(url);
+            if (!canon.equals(url)) changed = true;
+            String key = dedupByUrlOnly ? canon
+                    : canon + "\t" + Integer.toString(pos);
+            if (seen.contains(key)) { changed = true; continue; }
+            seen.add(key);
+            if (sb.length() > 0) sb.append('\n');
+            sb.append(canon).append('\t').append(posStr);
+        }
+        if (!changed) return null;
+        return sb.toString();
+    }
+
+    // One listenStats66 store, rewritten in place at the line
+    // level: REC rows are canonicalised to their identityUrl form
+    // and twins merge (seconds summed, the newer lastMs and its
+    // title/sayadaw kept — the v12.82 re-listen rule);
+    // TOTAL/DAY/SAY lines and malformed REC lines pass through
+    // verbatim, so no total, day, sayadaw or unreadable row is
+    // ever touched. The merged row is emitted at its first
+    // twin's position. Returns the new raw store, or null when
+    // nothing changes.
+    static String migrateStatsLinesPure66(String raw) {
+        if (raw == null || raw.length() == 0) return null;
+        String[] lines = raw.split("\\n");
+        java.util.Map<String, HistEntry> merged =
+                new java.util.LinkedHashMap<String, HistEntry>();
+        boolean changed = false;
+        for (String line : lines) {
+            if (!line.startsWith("REC\t")) continue;
+            java.util.List<HistEntry> one = statsRecentPure(line);
+            if (one.size() != 1) continue;
+            HistEntry h = one.get(0);
+            String canon = SiteHttp.identityUrl(h.url);
+            if (!canon.equals(h.url)) changed = true;
+            HistEntry cur = merged.get(canon);
+            if (cur == null) {
+                merged.put(canon, new HistEntry(canon, h.sayadaw,
+                        h.title, h.seconds, h.lastMs));
+            } else {
+                // Twin: sum the seconds, keep the newer row's
+                // lastMs/title/sayadaw (the first row in the store
+                // is the most recent, so on a lastMs tie the first
+                // row's fields stand).
+                cur.seconds += h.seconds;
+                if (h.lastMs > cur.lastMs) {
+                    cur.lastMs = h.lastMs;
+                    if (h.sayadaw.length() > 0) cur.sayadaw = h.sayadaw;
+                    if (h.title.length() > 0) cur.title = h.title;
+                }
+                changed = true;
+            }
+        }
+        java.util.Set<String> emitted = new java.util.HashSet<String>();
+        StringBuilder sb = new StringBuilder();
+        for (String line : lines) {
+            if (line.startsWith("REC\t")) {
+                java.util.List<HistEntry> one = statsRecentPure(line);
+                if (one.size() == 1) {
+                    String canon = SiteHttp.identityUrl(one.get(0).url);
+                    if (emitted.contains(canon)) continue;
+                    emitted.add(canon);
+                    HistEntry m = merged.get(canon);
+                    if (sb.length() > 0) sb.append('\n');
+                    sb.append("REC\t").append(m.url).append('\t')
+                            .append(m.sayadaw).append('\t').append(m.title)
+                            .append('\t').append(m.seconds)
+                            .append('\t').append(m.lastMs);
+                    continue;
+                }
+            }
+            if (sb.length() > 0) sb.append('\n');
+            sb.append(line);
+        }
+        if (!changed) return null;
+        return sb.toString();
+    }
+
+    // One playlists65 store, rewritten in place at the line
+    // level: ITEM rows are canonicalised to their identityUrl
+    // form and stream twins collapse to the first row in the
+    // same list (order preserved — the same talk may still
+    // appear in two different lists, so dedup is per list).
+    // LIST headers, path ITEMs and malformed lines pass through
+    // verbatim. Returns the new raw store, or null when nothing
+    // changes.
+    static String migratePlaylistLinesPure66(String raw) {
+        if (raw == null || raw.length() == 0) return null;
+        StringBuilder sb = new StringBuilder();
+        String cur = null;
+        java.util.Map<String, java.util.Set<String>> seenByList =
+                new java.util.HashMap<String, java.util.Set<String>>();
+        boolean changed = false;
+        for (String line : raw.split("\\n")) {
+            if (line.startsWith("LIST\t")) {
+                cur = playlistClean(line.substring(5));
+                if (sb.length() > 0) sb.append('\n');
+                sb.append(line);
+                continue;
+            }
+            if (!line.startsWith("ITEM\t")) {
+                if (sb.length() > 0) sb.append('\n');
+                sb.append(line);
+                continue;
+            }
+            String rest = line.substring(5);
+            int t1 = rest.indexOf('\t');
+            if (t1 <= 0) {
+                // Malformed ITEM — kept verbatim, never dropped.
+                if (sb.length() > 0) sb.append('\n');
+                sb.append(line);
+                continue;
+            }
+            String url = rest.substring(0, t1);
+            if (url.length() == 0) {
+                if (sb.length() > 0) sb.append('\n');
+                sb.append(line);
+                continue;
+            }
+            String canon = SiteHttp.identityUrl(url);
+            if (!canon.equals(url)) changed = true;
+            if (cur == null) {
+                // Orphan ITEM (no LIST above it) — readers ignore
+                // it; canonicalise but never dedup it.
+                if (sb.length() > 0) sb.append('\n');
+                sb.append("ITEM\t").append(canon).append(rest.substring(t1));
+                continue;
+            }
+            java.util.Set<String> seen = seenByList.get(cur);
+            if (seen == null) {
+                seen = new java.util.HashSet<String>();
+                seenByList.put(cur, seen);
+            }
+            if (seen.contains(canon)) { changed = true; continue; }
+            seen.add(canon);
+            if (sb.length() > 0) sb.append('\n');
+            sb.append("ITEM\t").append(canon).append(rest.substring(t1));
+        }
+        if (!changed) return null;
+        return sb.toString();
+    }
+
+    // A StringSet of bare URLs, rewritten in place to canonical
+    // (https) form; the Set itself dedups the twin.
+    static void migrateHttpSetPure66(java.util.Set<String> set) {
+        if (set == null || set.isEmpty()) return;
+        java.util.Set<String> next = new java.util.HashSet<String>();
+        boolean changed = false;
+        for (String u : set) {
+            String c = SiteHttp.identityUrl(u);
+            if (c == null) c = u;
+            if (!c.equals(u)) changed = true;
+            next.add(c);
+        }
+        if (changed) { set.clear(); set.addAll(next); }
+    }
+
+    // Pure core of the migration — no Android types, so a
+    // standalone javac run can exercise it (see Mig66Test).
+    //   all: every String-valued prefs entry.
+    //   favTalks / playedTalks: the two StringSets, or null;
+    //       rewritten IN PLACE when they hold a legacy row.
+    // Returns edits to apply: key -> new value (this migration
+    // never removes a key, so no null values occur — the runner
+    // still handles them, same shape as v11.99).
+    static java.util.Map<String, String> migrateLegacyHttpRowsPure66(
+            java.util.Map<String, String> all,
+            java.util.Set<String> favTalks,
+            java.util.Set<String> playedTalks) {
+        java.util.Map<String, String> edits =
+                new java.util.HashMap<String, String>();
+        if (all == null) return edits;
+        String raw;
+        String next;
+        raw = all.get(TALK_POS_KEY);
+        if (raw != null) {
+            next = migrateUrlPosLinesPure66(raw, true);
+            if (next != null && !next.equals(raw)) edits.put(TALK_POS_KEY, next);
+        }
+        raw = all.get(BOOKMARK_KEY);
+        if (raw != null) {
+            next = migrateUrlPosLinesPure66(raw, false);
+            if (next != null && !next.equals(raw)) edits.put(BOOKMARK_KEY, next);
+        }
+        raw = all.get(STATS_KEY);
+        if (raw != null) {
+            next = migrateStatsLinesPure66(raw);
+            if (next != null && !next.equals(raw)) edits.put(STATS_KEY, next);
+        }
+        raw = all.get(PLAYLIST_KEY);
+        if (raw != null) {
+            next = migratePlaylistLinesPure66(raw);
+            if (next != null && !next.equals(raw)) edits.put(PLAYLIST_KEY, next);
+        }
+        // Scalar pointers: canonicalise in place. lastPos (int)
+        // is scheme-independent and untouched.
+        String lastUrl = all.get("lastUrl");
+        if (lastUrl != null) {
+            String c = SiteHttp.identityUrl(lastUrl);
+            if (c != null && !c.equals(lastUrl)) edits.put("lastUrl", c);
+        }
+        String lastPosUrl = all.get("lastPosUrl");
+        if (lastPosUrl != null) {
+            String c = SiteHttp.identityUrl(lastPosUrl);
+            if (c != null && !c.equals(lastPosUrl)) edits.put("lastPosUrl", c);
+        }
+        migrateHttpSetPure66(favTalks);
+        migrateHttpSetPure66(playedTalks);
+        return edits;
+    }
+
+    // One-time migration (see the v13.66 header above). The done
+    // flag is set first so a re-entrant call cannot loop; the flag
+    // is per-process, so a failed run retries on the next launch.
+    // Best-effort by design: any exception leaves prefs exactly as
+    // they were — worst case the legacy row persists, as today —
+    // and migration must never break launch. Runs lazily from
+    // Main.loadCatalog (every launch) and from the five stores'
+    // Prefs funnels, so a widget-first Room launch still migrates
+    // on first touch. A checkpoint landing mid-migration can only
+    // lose one spot until the next 15 s checkpoint re-saves it,
+    // and a failed run retries on the next launch (same
+    // best-effort contract as migrateQueueKeys99).
+    public static void migrateLegacyHttpRows66(Context c) {
+        if (c == null) return;
+        // v13.68 (audit-1369 F11) shape: serialize on DlLock.LOCK
+        // (see DlLock) — same runner shape as migrateQueueKeys99.
+        synchronized (DlLock.LOCK) {
+        if (sMigDone66) return;
+        sMigDone66 = true;
+        try {
+            SharedPreferences s = sp(c);
+            java.util.Map<String, ?> rawMap = s.getAll();
+            java.util.Map<String, String> all =
+                    new java.util.HashMap<String, String>();
+            for (java.util.Map.Entry<String, ?> e : rawMap.entrySet()) {
+                if (e.getValue() instanceof String)
+                    all.put(e.getKey(), (String) e.getValue());
+            }
+            // getStringSet must not be mutated in place — copy it.
+            java.util.Set<String> fav = s.getStringSet("favTalks", null);
+            java.util.Set<String> favCopy = fav == null ? null
+                    : new java.util.HashSet<String>(fav);
+            java.util.Set<String> played = s.getStringSet("playedTalks", null);
+            java.util.Set<String> playedCopy = played == null ? null
+                    : new java.util.HashSet<String>(played);
+            java.util.Map<String, String> edits =
+                    migrateLegacyHttpRowsPure66(all, favCopy, playedCopy);
+            SharedPreferences.Editor ed = s.edit();
+            boolean changed = false;
+            for (java.util.Map.Entry<String, String> e : edits.entrySet()) {
+                if (e.getValue() == null) ed.remove(e.getKey());
+                else ed.putString(e.getKey(), e.getValue());
+                changed = true;
+            }
+            if (favCopy != null && !favCopy.equals(fav)) {
+                ed.putStringSet("favTalks", favCopy);
+                changed = true;
+            }
+            if (playedCopy != null && !playedCopy.equals(played)) {
+                ed.putStringSet("playedTalks", playedCopy);
+                changed = true;
+            }
+            if (changed) ed.apply();
+        } catch (Exception ignored) {}
+        }
+    }
+
     // v5.34: per-talk resume positions — the app only ever saved ONE
     // resume spot (lastPos/lastPosUrl, the most recent talk), so
     // returning to any other half-heard talk restarted it from 0
@@ -620,6 +962,8 @@ public class Prefs {
     private static final int TALK_POS_CAP = 100;
 
     public static int talkPosGet(Context c, String url) {
+        // v13.66: lazy-once legacy http-row migration (slice 1052).
+        migrateLegacyHttpRows66(c);
         if (url == null || url.length() == 0) return 0;
         try {
             String raw = sp(c).getString(TALK_POS_KEY, "");
@@ -651,6 +995,8 @@ public class Prefs {
     // failed on it, and every caller got an empty set, so the
     // v5.69/v5.70 ↺ header counts always read zero. Now "\n".
     public static java.util.Set<String> talkPosKeysOver(Context c, int minPos) {
+        // v13.66: lazy-once legacy http-row migration (slice 1052).
+        migrateLegacyHttpRows66(c);
         java.util.Set<String> out = new java.util.HashSet<String>();
         try {
             String raw = sp(c).getString(TALK_POS_KEY, "");
@@ -673,6 +1019,8 @@ public class Prefs {
     }
 
     public static void talkPosPut(Context c, String url, int pos) {
+        // v13.66: lazy-once legacy http-row migration (slice 1052).
+        migrateLegacyHttpRows66(c);
         talkPosPutInner(c, url, pos, false);
     }
 
@@ -1251,6 +1599,8 @@ public class Prefs {
     public static java.util.List<Integer> bookmarkListBoth(Context c, String url) {
         java.util.List<Integer> out = new java.util.ArrayList<Integer>();
         if (url == null || url.length() == 0) return out;
+        // v13.66: lazy-once legacy http-row migration (slice 1052).
+        migrateLegacyHttpRows66(c);
         try {
             String raw = sp(c).getString(BOOKMARK_KEY, "");
             String other = talkPosOtherForm(c, url);
@@ -1272,6 +1622,8 @@ public class Prefs {
     // Writes under both forms; true when a new mark was stored.
     public static boolean bookmarkAddBoth(Context c, String url, int pos) {
         if (url == null || url.length() == 0 || pos <= 0) return false;
+        // v13.66: lazy-once legacy http-row migration (slice 1052).
+        migrateLegacyHttpRows66(c);
         try {
             String raw = sp(c).getString(BOOKMARK_KEY, "");
             String other = talkPosOtherForm(c, url);
@@ -1614,6 +1966,8 @@ public class Prefs {
     // -2 list full (200 talks).
     public static int playlistAdd(Context c, String name, String url, String sayadaw, String title) {
         if (name == null || url == null || url.length() == 0) return -1;
+        // v13.66: lazy-once legacy http-row migration (slice 1052).
+        migrateLegacyHttpRows66(c);
         try {
             String stream = streamUrlFor(c, url);
             String next = playlistAddPure(playlistRaw(c), name,
@@ -2180,6 +2534,8 @@ public class Prefs {
     public static boolean statsAdd(Context c, String sayadaw, String url,
             String title, int seconds) {
         if (c == null || seconds <= 0) return false;
+        // v13.66: lazy-once legacy http-row migration (slice 1052).
+        migrateLegacyHttpRows66(c);
         try {
             String stream = streamUrlFor(c, url);
             String next = statsAddPure(statsRaw(c), statsDayString(),

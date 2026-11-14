@@ -2614,6 +2614,11 @@ public class MainActivity extends Activity {
         // (Prefs guards it); running it here migrates favs on
         // launch even when no queue is touched this session.
         Prefs.migrateQueueKeys99(this);
+        // v13.66: legacy http-row migration (slice 1052) — once
+        // per process (Prefs guards it); running it here migrates
+        // the five stores + scalars on launch even when none is
+        // touched this session.
+        Prefs.migrateLegacyHttpRows66(this);
     }
 
     private void applyFilter() { applyFilter(false); }
