@@ -4874,7 +4874,12 @@ public class TalksActivity extends Activity {
             // a library advance moves the ▶ at once, and the
             // exactly-one-claimant rule keeps a dual-claimed file
             // unmarked rather than marking the wrong talk.
-            String playedMark = (!rowPlaying && !rowPlayingLib && talkPlayedCache.contains(rowUrl)) ? "✓ " : "";
+            // v13.83 (slice 1075): one listened boolean for the ✓ mark
+            // and the dim below, so the two can never disagree about
+            // which rows count as listened — same gate as before
+            // (played, never the playing row, Room or library form).
+            boolean rowListened = !rowPlaying && !rowPlayingLib && talkPlayedCache.contains(rowUrl);
+            String playedMark = rowListened ? "✓ " : "";
             if (titleView != null) titleView.setText((held ? "✋ " : "") + ((rowPlaying || rowPlayingLib) ? "▶ " : "") + qMark + favMark + offMark + playedMark + talks.get(talkIdx).title + resumeMark);
             // v1.52: rows fade + rise in once when first shown
             if (pos > lastAnimPos) {
@@ -4919,9 +4924,27 @@ public class TalksActivity extends Activity {
                     : (cachedNight
                     ? android.graphics.Color.WHITE
                     : android.graphics.Color.parseColor("#3B2314")));
+            // v13.83 (slice 1075): listened rows sit dimmer — the Room
+            // drawer's v4.12 Spotify pattern, now on the chooser too:
+            // a ✓ talk's title reads at 0.6 alpha so the next unheard
+            // talk stands out at a glance. Set on every bind (1.0f
+            // otherwise) so a recycled row rebinds its alpha here and
+            // a dim can never leak onto the next talk; the playing row
+            // is never dimmed — its gold tile owns its emphasis.
+            if (titleView != null) titleView.setAlpha(rowListened ? 0.6f : 1.0f);
             android.view.View card = v.findViewById(R.id.cardInner);
-            if (card != null) card.setBackgroundResource(cachedNight
-                    ? R.drawable.card_bg_night : R.drawable.card_bg);
+            // v13.83 (slice 1075): the playing row is a raised gold
+            // card — the Room drawer's v12.92 gold tile, now on the
+            // chooser too. The sounding talk used to read only as gold
+            // text + ▶, which vanished in a long list; now its whole
+            // card turns gold (talks_row_playing.xml: drawer gold,
+            // chooser 24dp geometry, theme-independent like the
+            // drawer's tile). Set on every bind so a recycled row can
+            // never keep a stale gold card; the held-row wash on the
+            // row root below is untouched and stacks harmlessly.
+            if (card != null) card.setBackgroundResource((rowPlaying || rowPlayingLib)
+                    ? R.drawable.talks_row_playing
+                    : (cachedNight ? R.drawable.card_bg_night : R.drawable.card_bg));
             // v5.77: held-row wash (see the ✋ mark above) — on the
             // row root, so the glass card itself is untouched, and
             // reset to TRANSPARENT on every bind, so the wash can

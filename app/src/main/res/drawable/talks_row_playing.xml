@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v13.83 (slice 1075): playing Talks row tile — the Room drawer's
+     v12.92 gold tile, fitted to the chooser's glass geometry: same gold
+     gradient + 2dp gold rim as drawer_row_playing.xml, 24dp radius like
+     card_bg.xml so the row keeps the chooser's card shape, plus the
+     chooser's top sheen. Theme-independent like the drawer's tile: the
+     gold reads on parchment and on dark alike, and the playing title
+     stays full gold (#C9A227) on it, exactly as the drawer does. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient android:angle="270" android:startColor="#66C9A227" android:centerColor="#33C9A227" android:centerY="0.5" android:endColor="#1AC9A227" android:type="linear" />
+            <stroke android:width="2dp" android:color="#E6C9A227" />
+            <corners android:radius="24dp" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <gradient android:angle="270" android:startColor="#80FFFFFF" android:centerColor="#1AFFFFFF" android:centerY="0.45" android:endColor="#00FFFFFF" android:type="linear" />
+            <corners android:radius="24dp" />
+        </shape>
+    </item>
+</layer-list>
