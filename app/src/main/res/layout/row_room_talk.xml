@@ -25,16 +25,49 @@
             android:layout_gravity="center_vertical"
             android:textColor="@color/gold"
             android:textSize="14sp" />
-        <TextView
-            android:id="@+id/talkTitle"
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_gravity="center_vertical"
             android:layout_weight="1"
-            android:ellipsize="end"
-            android:maxLines="2"
-            android:textColor="@color/ink"
-            android:textSize="15sp" />
+            android:orientation="vertical">
+            <TextView
+                android:id="@+id/talkTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="@color/ink"
+                android:textSize="15sp" />
+            <!-- v13.98 (slice 1093): listened-progress hairline —
+                 thin gold line under the title, fraction = resume
+                 spot / total duration. Same track as the chooser
+                 and library rows (v13.97): the fill is solid gold
+                 over a translucent wash so the scale reads in a
+                 still. GONE unless a half-heard talk binds it
+                 (TalkAdapter.getView paints the weights). -->
+            <LinearLayout
+                android:id="@+id/hairTrack"
+                android:layout_width="match_parent"
+                android:layout_height="3dp"
+                android:layout_marginTop="4dp"
+                android:background="#33C9A227"
+                android:orientation="horizontal"
+                android:visibility="gone"
+                android:weightSum="1">
+                <View
+                    android:id="@+id/hairFill"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="0"
+                    android:background="@color/gold" />
+                <View
+                    android:id="@+id/hairSpace"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1" />
+            </LinearLayout>
+        </LinearLayout>
         <!-- v13.73 (slice 1061): visible queue-move grip — gold ↕ at the
              right edge of waiting queue rows in the queue-only drawer view.
              Tap picks the talk up for a pick-up/drop move; hidden everywhere

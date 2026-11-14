@@ -2418,6 +2418,11 @@ public class RoomActivity extends Activity {
     // getStringSet() twice for every row on every scroll bind.
     private java.util.Set<String> playedSet = new java.util.HashSet<String>();
     private java.util.Set<String> favSet = new java.util.HashSet<String>();
+    // v13.98 (slice 1093): per-talk total durations (url -> ms),
+    // one parse per refreshMarkSets below, so the drawer binds
+    // paint the hairline from a map lookup, never talkDurGet
+    // per row (the v1.57 poll-bind jank class).
+    private java.util.Map<String, Integer> drawerDurCache = new java.util.HashMap<String, Integer>();
     // v1.74: the share chooser is a transient sheet, not leaving
     // the Room — but opening it fires onPause, and with background
     // playback off that paused the talk the listener was sharing.
@@ -2493,6 +2498,13 @@ public class RoomActivity extends Activity {
                     getSharedPreferences("dhamma", MODE_PRIVATE)
                             .getStringSet("favTalks", new java.util.HashSet<String>()));
         } catch (Exception ignored) {}
+        // v13.98 (slice 1093): durations for the drawer hairline
+        // — one parse with the other row-mark caches (drawer-open
+        // + onResume + fav/played changes all funnel through
+        // refreshMarkSets), so a return from a just-finished
+        // listen repaints the fraction at once; getView reads
+        // this map only, never talkDurGet per row.
+        drawerDurCache = Prefs.talkDurMap(RoomActivity.this);
         refreshQueuedSet(); // v4.01: queued-download marks refresh with the other marks
     }
 
@@ -12530,6 +12542,12 @@ if (snd67q >= 0) currentIndex = snd67q;
                 mgReset73.setVisibility(View.GONE);
                 mgReset73.setOnClickListener(null);
             }
+            // v13.98 (slice 1093): hairline reset — same recycled-row
+            // rule as the grip above: a recycled half-heard row must
+            // never keep its gold line when rebound to a stale slot
+            // or a row the paint below never reaches.
+            android.view.View hairReset98 = v.findViewById(R.id.hairTrack);
+            if (hairReset98 != null) hairReset98.setVisibility(View.GONE);
             // v3.45: premium drawer recycled-row pour hygiene, mirroring
             // the delivered v3.40 hygiene in the Main, Talks and
             // Downloaded adapters, which this drawer adapter never got.
@@ -12642,6 +12660,30 @@ if (snd67q >= 0) currentIndex = snd67q;
                                     downloadsFile(dlName).getAbsolutePath());
                     }
                     if (frp > 5000 && !fSounding) fResume = " ↺ " + formatTime(frp);
+                    // v13.98 (slice 1093): listened-progress hairline
+                    // fraction for this row — 0 = hidden. Same gates
+                    // as the ↺ mark above (frp > 5000, never the
+                    // sounding row, whose live position is on the
+                    // strip). Duration from the per-refresh cache,
+                    // stream form first, then the downloaded path
+                    // form (the v5.59 two legs, mirrored from the
+                    // frp lookup: a duration written while streaming
+                    // has no path form when the file was downloaded
+                    // after the listen). Same 3% sliver and 1.0
+                    // clamp as the chooser/library hairline.
+                    float hairFrac = 0f;
+                    if (frp > 5000 && !fSounding) {
+                        Integer durI = drawerDurCache.get(fe.url);
+                        if (durI == null && fDownloaded) {
+                            String dlFn = downloadedFileName(fe.url);
+                            if (dlFn != null)
+                                durI = drawerDurCache.get(downloadsFile(dlFn).getAbsolutePath());
+                        }
+                        if (durI != null && durI.intValue() > 0) {
+                            hairFrac = Math.min(1f, (float) frp / (float) durI.intValue());
+                            if (hairFrac < 0.03f) hairFrac = 0.03f;
+                        }
+                    }
                     String fHand = "";
                     int fqpos = queueLineIndexForUrl(fe.url);
                     if (fqpos >= 0 && !fSounding) fHand = "◈" + (fqpos + 1) + " ";
@@ -12668,6 +12710,20 @@ if (snd67q >= 0) currentIndex = snd67q;
                     if (fRowCard != null) fRowCard.setBackgroundResource(fSounding ? R.drawable.drawer_row_playing : R.drawable.drawer_row);
                     if (fHeld) v.setBackgroundColor(0x33C9A227);
                     if (fPlayed && !fSounding && fTitle != null) fTitle.setAlpha(0.6f);
+                    // v13.98 (slice 1093): paint the hairline — reset
+                    // on every bind, like the alpha/card/wash above,
+                    // so a recycled row can never keep the previous
+                    // talk's fraction; the track is GONE unless this
+                    // bind set a fraction above. Weight-split fill /
+                    // spacer, no measuring, no post-layout pass.
+                    android.view.View hairTrack = v.findViewById(R.id.hairTrack);
+                    android.view.View hairFill = v.findViewById(R.id.hairFill);
+                    android.view.View hairSpace = v.findViewById(R.id.hairSpace);
+                    if (hairTrack != null) hairTrack.setVisibility(hairFrac > 0f ? android.view.View.VISIBLE : android.view.View.GONE);
+                    if (hairFrac > 0f && hairFill != null && hairSpace != null) {
+                        hairFill.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, hairFrac));
+                        hairSpace.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1f - hairFrac));
+                    }
                     // v13.73: visible move grip on the foreign queue row.
                     bindMoveGrip73(v, fe.url, fe.title.length() > 0 ? fe.title : fe.url, true, fe.sayadaw);
                     return v;
@@ -12833,6 +12889,12 @@ if (snd67q >= 0) currentIndex = snd67q;
             // row is already known-downloaded (the cache boolean
             // above), the matched filename gives the path form
             // from the cache alone, no bind-time filesystem work.
+            // v13.98 (slice 1093): listened-progress hairline
+            // fraction for this row — 0 = hidden. Set inside the
+            // resume block below (same gate as the ↺ mark: never
+            // the playing row, whose live position is on the
+            // strip), painted before the grip bind below.
+            float hairFrac = 0f;
             String resumeMark = "";
             if (talkIdx != playIdx71) {
                 int rp = Prefs.talkPosGet(RoomActivity.this, t.url);
@@ -12843,6 +12905,31 @@ if (snd67q >= 0) currentIndex = snd67q;
                                 downloadsFile(dlName).getAbsolutePath());
                 }
                 if (rp > 5000) resumeMark = " ↺ " + formatTime(rp);
+                // v13.98: hairline numerator is rp above; the
+                // denominator comes from the per-refresh duration
+                // cache — stream form first, then the downloaded
+                // path form (same two legs as rp: a duration
+                // written while streaming has no path form when
+                // the file was downloaded after the listen, and
+                // a duration written from the library has no
+                // stream form when dlMap never claimed the file).
+                // Hidden when the talk was never meaningfully
+                // heard (rp <= 5000) or no duration was ever
+                // stored; the fraction clamps to 1 and never
+                // below a 3% sliver, so a barely-started talk
+                // still reads as a visible gold dash.
+                if (rp > 5000) {
+                    Integer durI = drawerDurCache.get(t.url);
+                    if (durI == null && downloaded) {
+                        String dlName = downloadedFileName(t.url);
+                        if (dlName != null)
+                            durI = drawerDurCache.get(downloadsFile(dlName).getAbsolutePath());
+                    }
+                    if (durI != null && durI.intValue() > 0) {
+                        hairFrac = Math.min(1f, (float) rp / (float) durI.intValue());
+                        if (hairFrac < 0.03f) hairFrac = 0.03f;
+                    }
+                }
             }
             // v11.16: an ended talk is not playing — the v11.15
             // class on the fourth surface: this bind marked the
@@ -12894,6 +12981,20 @@ if (snd67q >= 0) currentIndex = snd67q;
                     && talkIdx == peekNextIndex()) { // v4.32: ▸ follows the queued head, not the list-next
                 titleView.setText("▸ " + titleView.getText().toString());
                 titleView.setAlpha(1f);
+            }
+            // v13.98 (slice 1093): paint the hairline — reset on
+            // every bind, like the alpha/card/wash above, so a
+            // recycled row can never keep the previous talk's
+            // fraction; the track is GONE unless this bind set a
+            // fraction above. Weight-split fill / spacer, no
+            // measuring, no post-layout pass.
+            android.view.View hairTrack = v.findViewById(R.id.hairTrack);
+            android.view.View hairFill = v.findViewById(R.id.hairFill);
+            android.view.View hairSpace = v.findViewById(R.id.hairSpace);
+            if (hairTrack != null) hairTrack.setVisibility(hairFrac > 0f ? android.view.View.VISIBLE : android.view.View.GONE);
+            if (hairFrac > 0f && hairFill != null && hairSpace != null) {
+                hairFill.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, hairFrac));
+                hairSpace.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1f - hairFrac));
             }
             // v13.73: visible move grip on the in-list queue row.
             bindMoveGrip73(v, t.url, t.title, false, null);
