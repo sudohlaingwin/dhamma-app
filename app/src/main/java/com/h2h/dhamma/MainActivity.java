@@ -338,7 +338,7 @@ public class MainActivity extends Activity {
                     rsp1020.getString("dlMap", "{}"));
             boolean cardTalk1020 = false;
             for (String d1020 : dropped1020) {
-                if (d1020.equals(lastUrl1020)) { cardTalk1020 = true; break; }
+                if (SiteHttp.sameTalk(d1020, lastUrl1020)) { cardTalk1020 = true; break; }
                 if (libPath1020.length() > 0) {
                     String fn1020 = map1020.optString(d1020, "");
                     if (fn1020.length() > 0 && fn1020.equals(new java.io.File(libPath1020).getName())) {

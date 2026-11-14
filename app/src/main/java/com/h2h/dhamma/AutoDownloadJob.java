@@ -579,7 +579,7 @@ public class AutoDownloadJob extends JobService {
                     sp.getString("dlQueued", "[]"));
             boolean found = false;
             for (int i = 0; i < queued.length(); i++) {
-                if (url.equals(queued.optString(i))) { found = true; break; }
+                if (SiteHttp.sameTalk(url, queued.optString(i))) { found = true; break; }
             }
             if (!found) queued.put(url);
             // v13.65 (audit-1370 C4): dlMap + dlQueued land in ONE apply() —

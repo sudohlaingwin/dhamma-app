@@ -242,7 +242,7 @@ public class AudioService extends Service {
         try {
             android.content.SharedPreferences sp =
                     c.getSharedPreferences("dhamma", android.content.Context.MODE_PRIVATE);
-            if (url == null || !url.equals(sp.getString(AWAIT_URL10, ""))) return;
+            if (url == null || !SiteHttp.sameTalk(url, sp.getString(AWAIT_URL10, ""))) return;
             sp.edit().putLong(AWAIT_JOB10, jobId).apply();
         } catch (Exception ignored) {}
     }
@@ -259,7 +259,7 @@ public class AudioService extends Service {
         try {
             android.content.SharedPreferences sp =
                     c.getSharedPreferences("dhamma", android.content.Context.MODE_PRIVATE);
-            if (url != null && url.equals(sp.getString(AWAIT_URL10, ""))) awaitAdvanceClear(c);
+            if (url != null && SiteHttp.sameTalk(url, sp.getString(AWAIT_URL10, ""))) awaitAdvanceClear(c);
         } catch (Exception ignored) {}
     }
 
@@ -475,7 +475,7 @@ public class AudioService extends Service {
                         for (String fpPl10 : fwdPartsPl10)
                             if (fpPl10 != null && fpPl10.length() > 0) fwdStackPl10.add(fpPl10);
                         if (!fwdStackPl10.isEmpty() && clearGen95(sp) == genPl10) {
-                            if (fwdStackPl10.get(fwdStackPl10.size() - 1).equals(awaitUrl)) {
+                            if (SiteHttp.sameTalk(fwdStackPl10.get(fwdStackPl10.size() - 1), awaitUrl)) {
                                 fwdStackPl10.remove(fwdStackPl10.size() - 1);
                                 StringBuilder fwdSbPl10 = new StringBuilder();
                                 for (int fiPl10 = 0; fiPl10 < fwdStackPl10.size(); fiPl10++) {
@@ -686,7 +686,7 @@ public class AudioService extends Service {
                     for (String fpB12 : fwdPartsB12)
                         if (fpB12 != null && fpB12.length() > 0) fwdStackB12.add(fpB12);
                     if (!fwdStackB12.isEmpty() && clearGen95(sp) == genB12) {
-                        if (fwdStackB12.get(fwdStackB12.size() - 1).equals(awaitUrl)) {
+                        if (SiteHttp.sameTalk(fwdStackB12.get(fwdStackB12.size() - 1), awaitUrl)) {
                             fwdStackB12.remove(fwdStackB12.size() - 1);
                             StringBuilder fwdSbB12 = new StringBuilder();
                             for (int fiB12 = 0; fiB12 < fwdStackB12.size(); fiB12++) {
@@ -3912,7 +3912,7 @@ public class AudioService extends Service {
                     if (line == null || line.length() == 0) continue;
                     int tab = line.indexOf('\t');
                     String u = tab >= 0 ? line.substring(0, tab) : line;
-                    if (u.equals(lastUrl)) return i;
+                    if (SiteHttp.sameTalk(u, lastUrl)) return i;
                 }
             }
         } catch (Exception ignored) {}

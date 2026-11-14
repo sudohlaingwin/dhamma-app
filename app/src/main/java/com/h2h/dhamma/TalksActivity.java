@@ -416,7 +416,7 @@ public class TalksActivity extends Activity {
                 boolean cardTalk1017 = false;
                 for (String dropped1017 : queuedBefore1017) {
                     if (queuedAfter1017.contains(dropped1017)) continue;
-                    if (dropped1017.equals(lastUrl1017)) { cardTalk1017 = true; break; }
+                    if (SiteHttp.sameTalk(dropped1017, lastUrl1017)) { cardTalk1017 = true; break; }
                     if (libPath1017.length() > 0) {
                         String fn1017 = map1017.optString(dropped1017, "");
                         if (fn1017.length() > 0 && fn1017.equals(new java.io.File(libPath1017).getName())) { cardTalk1017 = true; break; }
@@ -1023,7 +1023,7 @@ public class TalksActivity extends Activity {
             org.json.JSONArray queued = new org.json.JSONArray(sp.getString("dlQueued", "[]"));
             boolean found = false;
             for (int i = 0; i < queued.length(); i++) {
-                if (url.equals(queued.optString(i))) { found = true; break; }
+                if (SiteHttp.sameTalk(url, queued.optString(i))) { found = true; break; }
             }
             if (!found) queued.put(url);
             // v13.65 (audit-1370 C4): dlMap + dlQueued land in ONE apply() —
@@ -1867,7 +1867,7 @@ public class TalksActivity extends Activity {
                                         try {
                                             android.content.SharedPreferences rsp =
                                                     getSharedPreferences("dhamma", MODE_PRIVATE);
-                                            boolean cardTalk = dt.url != null && dt.url.equals(rsp.getString("lastUrl", ""));
+                                            boolean cardTalk = dt.url != null && SiteHttp.sameTalk(dt.url, rsp.getString("lastUrl", ""));
                                             if (!cardTalk && dt.url != null) {
                                                 String libPath = rsp.getString("lastLibPath", "");
                                                 if (libPath.length() > 0) {

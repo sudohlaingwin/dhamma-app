@@ -812,7 +812,7 @@ public class DownloadedActivity extends Activity {
                     new org.json.JSONObject(rsp.getString("dlMap", "{}"));
             boolean cardTalk = false;
             for (String u : flippedUrls) {
-                if (u.equals(lastUrl)) { cardTalk = true; break; }
+                if (SiteHttp.sameTalk(u, lastUrl)) { cardTalk = true; break; }
                 if (libPath.length() > 0) {
                     String fn = map.optString(u, "");
                     if (fn.length() > 0 && fn.equals(new java.io.File(libPath).getName())) { cardTalk = true; break; }
@@ -4781,7 +4781,7 @@ public class DownloadedActivity extends Activity {
                                         boolean cardTalk1018 = false;
                                         for (String dropped1018 : queuedBefore1018) {
                                             if (queuedAfter1018.contains(dropped1018)) continue;
-                                            if (dropped1018.equals(lastUrl1018)) { cardTalk1018 = true; break; }
+                                            if (SiteHttp.sameTalk(dropped1018, lastUrl1018)) { cardTalk1018 = true; break; }
                                             if (libPath1018.length() > 0) {
                                                 String fn1018 = map1018.optString(dropped1018, "");
                                                 if (fn1018.length() > 0 && fn1018.equals(new java.io.File(libPath1018).getName())) { cardTalk1018 = true; break; }
@@ -5706,7 +5706,7 @@ public class DownloadedActivity extends Activity {
                                     org.json.JSONObject map1019 = new org.json.JSONObject(rsp1019.getString("dlMap", "{}"));
                                     boolean cardTalk1019 = false;
                                     for (String droppedUrl1019 : dropped1019) {
-                                        if (droppedUrl1019.equals(lastUrl1019)) { cardTalk1019 = true; break; }
+                                        if (SiteHttp.sameTalk(droppedUrl1019, lastUrl1019)) { cardTalk1019 = true; break; }
                                         if (libPath1019.length() > 0) {
                                             String fn1019 = map1019.optString(droppedUrl1019, "");
                                             if (fn1019.length() > 0 && fn1019.equals(new java.io.File(libPath1019).getName())) { cardTalk1019 = true; break; }
@@ -7516,7 +7516,7 @@ public class DownloadedActivity extends Activity {
                 if (lastUrl != null && lastUrl.length() > 0) {
                     org.json.JSONObject map = new org.json.JSONObject(
                             sp.getString("dlMap", "{}"));
-                    String fn = map.optString(lastUrl, "");
+                    String fn = map.optString(SiteHttp.identityUrl(lastUrl), "");
                     if (fn.length() > 0) {
                         for (Entry e : entries) {
                             if (e.file.getName().equals(fn))

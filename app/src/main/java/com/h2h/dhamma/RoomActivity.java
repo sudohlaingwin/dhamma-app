@@ -1437,7 +1437,7 @@ public class RoomActivity extends Activity {
             if (stream != null && stream.length() > 0) {
                 for (String line : queueUrls) {
                     QueueEntry e = QueueEntry.parse(line);
-                    if (e != null && e.isV2() && stream.equals(e.url))
+                    if (e != null && e.isV2() && SiteHttp.sameTalk(stream, e.url))
                         return e.sayadaw;
                 }
                 for (Talk t : talks) {
@@ -1467,7 +1467,7 @@ public class RoomActivity extends Activity {
                         getSharedPreferences("dhamma", MODE_PRIVATE);
                 String lastUrl78 = sp78.getString("lastUrl", "");
                 String lastName78 = sp78.getString("lastName", "");
-                if (stream.equals(lastUrl78) && lastName78.length() > 0) return lastName78;
+                if (SiteHttp.sameTalk(stream, lastUrl78) && lastName78.length() > 0) return lastName78;
                 if (url.startsWith("/")) {
                     String owner = Prefs.sayadawForTalk(this, "lib", url, "");
                     if (owner != null && owner.length() > 0) return owner;
@@ -3717,7 +3717,7 @@ if (snd65 >= 0) currentIndex = snd65;
             org.json.JSONArray queued65 = new org.json.JSONArray(sp.getString("dlQueued", "[]"));
             boolean found65 = false;
             for (int i = 0; i < queued65.length(); i++) {
-                if (url.equals(queued65.optString(i))) { found65 = true; break; }
+                if (SiteHttp.sameTalk(url, queued65.optString(i))) { found65 = true; break; }
             }
             if (!found65) queued65.put(url);
             // v5.45: record this download's sayadaw beside dlMap
@@ -3890,7 +3890,7 @@ if (snd65 >= 0) currentIndex = snd65;
                         if (done >= 0 && total > 0) {
                             int pct = (int) (done * 100 / total);
                             if (srcCol >= 0 && c.getString(srcCol) != null)
-                                progressBySource.put(c.getString(srcCol), pct);
+                                progressBySource.put(SiteHttp.identityUrl(c.getString(srcCol)), pct);
                             if (uri != null) {
                                 // v11.81: same %XX decode as activeNames above — the progress
                                 // is looked up by the decoded mapped name, so an encoded key
@@ -3913,7 +3913,7 @@ if (snd65 >= 0) currentIndex = snd65;
         // activeNames null) keeps the bare ⏳ rather than a lie.
         java.util.Map<String, Integer> newProgress = new java.util.HashMap<String, Integer>();
         for (String u : queuedDownloads) {
-            Integer pct = progressBySource.get(u);
+            Integer pct = progressBySource.get(SiteHttp.identityUrl(u));
             if (pct == null) {
                 String mapped = mappedFileName(u);
                 if (mapped != null) pct = progressByFile.get(mapped);
@@ -11716,7 +11716,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                 android.content.SharedPreferences pp = getSharedPreferences("dhamma", MODE_PRIVATE);
                 String savedUrl = pp.getString("lastPosUrl", "");
                 String savedLocal = localPathFor(talks.get(idx).url);
-                if (talks.get(idx).url.equals(savedUrl) || (savedLocal != null && savedLocal.equals(savedUrl)))
+                if (SiteHttp.sameTalk(talks.get(idx).url, savedUrl) || (savedLocal != null && savedLocal.equals(savedUrl)))
                     pp.edit().remove("lastPosUrl").remove("lastPos").apply();
             } catch (Exception ignored) {}
         } else if (seekMs == 0) seekMs = savedPosFor(talks.get(idx).url);

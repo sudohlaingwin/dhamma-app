@@ -1506,7 +1506,7 @@ public class Fx {
             java.util.Iterator<String> keys = map.keys();
             while (keys.hasNext()) {
                 String k = keys.next();
-                if (!k.equals(url) && filename.equals(map.optString(k, ""))) return true;
+                if (!SiteHttp.sameTalk(k, url) && filename.equals(map.optString(k, ""))) return true;
             }
         } catch (Exception ignored) {}
         return false;
@@ -1602,7 +1602,7 @@ public class Fx {
             // and stats files every tick, so one DM query is the same
             // cost class as the sibling's 1s strip tick.
             java.util.Set<String> inProg = stripInProgressDlFilenames(ctx, sp);
-            if (map.has(url) && inProg.contains(map.getString(url)))
+            if (map.has(SiteHttp.identityUrl(url)) && inProg.contains(map.getString(SiteHttp.identityUrl(url))))
                 return STRIP_DL_QUEUED;
             for (String name : stripFileNameCandidates(url)) {
                 if (!stripFileClaimedByOther(sp, name, url)
@@ -1615,8 +1615,8 @@ public class Fx {
             // mark and the service refused to play it offline. The length()
             // stat is the same cost class as exists() on the 1s strip tick
             // (v1.57). stripResumeDownloadMark below carries the same gate.
-            if (map.has(url) && stripDownloadsFile(map.getString(url)).exists()
-                    && stripDownloadsFile(map.getString(url)).length() > 0)
+            if (map.has(SiteHttp.identityUrl(url)) && stripDownloadsFile(map.getString(SiteHttp.identityUrl(url))).exists()
+                    && stripDownloadsFile(map.getString(SiteHttp.identityUrl(url))).length() > 0)
                 return STRIP_DL_HIDDEN;
             // v13.66: same length gate as the mapped branch above (audit-1369 F6).
             for (String name : stripFileNameCandidates(url)) {
@@ -1627,7 +1627,7 @@ public class Fx {
             }
             org.json.JSONArray queued = new org.json.JSONArray(sp.getString("dlQueued", "[]"));
             for (int i = 0; i < queued.length(); i++) {
-                if (url.equals(queued.optString(i))) return STRIP_DL_QUEUED;
+                if (SiteHttp.sameTalk(url, queued.optString(i))) return STRIP_DL_QUEUED;
             }
             return STRIP_DL_READY;
         } catch (Exception ignored) {
@@ -1749,7 +1749,7 @@ public class Fx {
             // " ⏳ N" count), so this adds no new tick cost
             // class on the resume branch.
             java.util.Set<String> inProg = stripInProgressDlFilenames(ctx, sp);
-            if (map.has(url) && inProg.contains(map.getString(url)))
+            if (map.has(SiteHttp.identityUrl(url)) && inProg.contains(map.getString(SiteHttp.identityUrl(url))))
                 return " \u23F3";
             for (String name : stripFileNameCandidates(url)) {
                 if (!stripFileClaimedByOther(sp, name, url)
@@ -1757,8 +1757,8 @@ public class Fx {
                     return " \u23F3";
             }
             // v13.66: same length gate as stripDownloadState above (audit-1369 F6).
-            if (map.has(url) && stripDownloadsFile(map.getString(url)).exists()
-                    && stripDownloadsFile(map.getString(url)).length() > 0)
+            if (map.has(SiteHttp.identityUrl(url)) && stripDownloadsFile(map.getString(SiteHttp.identityUrl(url))).exists()
+                    && stripDownloadsFile(map.getString(SiteHttp.identityUrl(url))).length() > 0)
                 return " \u2B07";
             // v13.66: same length gate as stripDownloadState above (audit-1369 F6).
             for (String name : stripFileNameCandidates(url)) {
@@ -1769,7 +1769,7 @@ public class Fx {
             }
             org.json.JSONArray queued = new org.json.JSONArray(sp.getString("dlQueued", "[]"));
             for (int i = 0; i < queued.length(); i++) {
-                if (url.equals(queued.optString(i))) return " \u23F3";
+                if (SiteHttp.sameTalk(url, queued.optString(i))) return " \u23F3";
             }
             return "";
         } catch (Exception ignored) {
@@ -1790,6 +1790,11 @@ public class Fx {
             String url = stripFavUrl(ctx, sp);
             String title = sp.getString("lastTitle", "");
             if (url == null || title.length() == 0) return false;
+            // v13.67 (slice 1053): bank the canonical (https) form —
+            // stripFavUrl returns raw lastUrl, so an http sounding
+            // talk planted an http dlQueued/dlMap/dlSayadaw row and
+            // every reader missed it. Paths pass through.
+            url = SiteHttp.identityUrl(url);
             String file = stripDownloadFileName(sp, url);
             android.app.DownloadManager dm = (android.app.DownloadManager)
                     ctx.getSystemService(Context.DOWNLOAD_SERVICE);
@@ -1830,7 +1835,7 @@ public class Fx {
             org.json.JSONArray queued = new org.json.JSONArray(sp.getString("dlQueued", "[]"));
             boolean found = false;
             for (int i = 0; i < queued.length(); i++) {
-                if (url.equals(queued.optString(i))) { found = true; break; }
+                if (SiteHttp.sameTalk(url, queued.optString(i))) { found = true; break; }
             }
             if (!found) queued.put(url);
             sp.edit().putString("dlMap", map.toString())

@@ -2893,9 +2893,14 @@ public class Prefs {
             QueueEntry e = QueueEntry.parse(line.trim());
             String u = e == null ? "" : e.url;
             if (u.length() == 0) continue;
-            if (!seen.add(u)) continue;
+            // v13.67 (slice 1053): the queue line and the sounding
+            // URL are the same talk under either scheme — a legacy
+            // http queue line vs an https sounding URL counted the
+            // sounding talk as still waiting (and twin lines counted
+            // twice). identityUrl is identity for paths.
+            if (!seen.add(SiteHttp.identityUrl(u))) continue;
             if (soundingUrl != null && soundingUrl.length() > 0
-                    && u.equals(soundingUrl)) continue;
+                    && SiteHttp.sameTalk(u, soundingUrl)) continue;
             n++;
         }
         return n;
