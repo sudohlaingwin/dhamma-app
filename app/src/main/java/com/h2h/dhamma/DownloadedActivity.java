@@ -11472,19 +11472,15 @@ public class DownloadedActivity extends Activity {
                 // old fade + rise, on an empty row until the next tick prune dropped
                 // the slot. Reset both here, exactly like the normal bind below (the
                 // v5.78 wash reset, the v3.40 pour hygiene).
+                // v13.84 (slice 1076): the card + title alpha are row STATE too — a recycled playing (gold tile) or listened (dimmed) view rebound to a stale slot kept its tile/dim on an empty row until the next tick prune dropped the slot. Reset both here, like the wash + pour above (cachedDlNight: night is declared below, in the normal bind).
+                android.view.View card73 = v.findViewById(R.id.cardInner);
+                if (card73 != null) card73.setBackgroundResource(cachedDlNight ? R.drawable.card_bg_night : R.drawable.card_bg);
+                if (t73 != null) t73.setAlpha(1.0f);
                 v.setBackgroundColor(android.graphics.Color.TRANSPARENT);
                 v.clearAnimation();
                 return v;
             }
             boolean night = cachedDlNight;
-            // v1.99: the row background never followed night mode — the
-            // layout pins it to white @color/card, while the title
-            // above is set white at night, so night titles were
-            // invisible on their own white cards (same class as the
-            // v1.98 header fix, which never reached the rows). Same
-            // card drawables as the main grid's rows.
-            android.view.View card = v.findViewById(R.id.cardInner);
-            if (card != null) card.setBackgroundResource(night ? R.drawable.card_bg_night : R.drawable.card_bg);
             // v5.78: held-row mark + wash for an armed pick-up/
             // drop move — the picked-up file reads ✋ ahead of
             // its ◈ number plus a gold wash below, mirroring
@@ -11540,6 +11536,8 @@ public class DownloadedActivity extends Activity {
             boolean rowPlaying = !AudioService.liveEnded
                     && libRowPlayingPath != null
                     && e.file.getAbsolutePath().equals(libRowPlayingPath);
+            // v13.84 (slice 1076): one listened boolean for the ✓ mark and the dim below, so the two can never disagree about which rows count as listened — the chooser's v13.83 discipline, same gate (played, never the playing row).
+            boolean rowListened = !rowPlaying && libListenedFiles.contains(e.file.getName());
             // v5.82: the hand-queue position mark skips the file
             // now playing — the footer (v5.81), strips (v5.80)
             // and card (v5.43) already count waiting files only,
@@ -11579,7 +11577,7 @@ public class DownloadedActivity extends Activity {
             // track change, so the mark moves with the ▶.
             if (title != null) title.setText((rowPlaying ? "▶ " : "")
                     + (libFavFiles.contains(e.file.getName()) ? "★ " : "")
-                    + (!rowPlaying && libListenedFiles.contains(e.file.getName()) ? "✓ " : "")
+                    + (rowListened ? "✓ " : "")
                     // v4.57: hand-queue position mark, the Talks
                     // chooser's ◈N (v4.48) mirrored here — the
                     // playing file never shows one (v5.82: the
@@ -11593,6 +11591,14 @@ public class DownloadedActivity extends Activity {
                     ? android.graphics.Color.parseColor("#C9A227")
                     : (night ? android.graphics.Color.WHITE
                     : android.graphics.Color.parseColor("#3B2314")));
+            // v13.84 (slice 1076): listened rows sit dimmer — the Room drawer's v4.12 Spotify pattern, now on the library too (the chooser got it in v13.83): a ✓ file's title reads at 0.6 alpha so the next unheard file stands out at a glance. Set on every bind (1.0f otherwise) so a recycled row rebinds its alpha here and a dim can never leak onto the next file; the playing row is never dimmed — its gold tile owns its emphasis.
+            if (title != null) title.setAlpha(rowListened ? 0.6f : 1.0f);
+            // v1.99: the row background never followed night mode — the layout pins it to white @color/card, while the title above is set white at night, so night titles were invisible on their own white cards (same class as the v1.98 header fix, which never reached the rows). Same card drawables as the main grid's rows.
+            android.view.View card = v.findViewById(R.id.cardInner);
+            // v13.84 (slice 1076): the playing row is a raised gold card — the Talks chooser's v13.83 tile, now on the library too. The sounding file used to read only as gold text + ▶, which vanished in a long shelf; now its whole card turns gold (dl_row_playing.xml: drawer gold, library 24dp geometry, theme-independent like the chooser's tile). Set on every bind so a recycled row can never keep a stale gold card; the held-row wash on the row root above is untouched and stacks harmlessly.
+            if (card != null) card.setBackgroundResource(rowPlaying
+                    ? R.drawable.dl_row_playing
+                    : (night ? R.drawable.card_bg_night : R.drawable.card_bg));
             int f = cachedDlFont;
             if (title != null) title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, f == 0 ? 14 : (f == 1 ? 16 : 20));
             double mb = e.len / 1048576.0;
