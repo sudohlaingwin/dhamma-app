@@ -213,10 +213,21 @@ public class UpdateChecker {
     // 'v' — the old strip-all-digits turned "v1308-rc1" into 13081,
     // a false update prompt. A tag outside the v<code> convention
     // (e.g. "v13.07" -> 13) fails SAFE: never a false prompt.
+    // v13.62 (F-940-1): also understand dotted tags — "v13.62"
+    // is code 1362, not 13. A dotted release tag used to make the
+    // update silently invisible forever (13 > 1357 is false, no
+    // prompt, no log). Bare-code tags ("v1362") still parse the
+    // same way; anything else falls back to the leading digits.
     private static int parseCode(String tag) {
         try {
             String t = tag == null ? "" : tag.trim();
             if (t.startsWith("v") || t.startsWith("V")) t = t.substring(1);
+            String[] dot = t.split("\\.");
+            if (dot.length == 2) {
+                int major = Integer.parseInt(dot[0]);
+                int minor = Integer.parseInt(dot[1]);
+                if (minor >= 0 && minor < 100) return major * 100 + minor;
+            }
             int i = 0;
             while (i < t.length() && Character.isDigit(t.charAt(i))) i++;
             if (i == 0) return 0;

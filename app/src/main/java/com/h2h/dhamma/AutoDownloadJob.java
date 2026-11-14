@@ -827,7 +827,11 @@ public class AutoDownloadJob extends JobService {
                         continue;
                     if (srcCol >= 0) {
                         String src = c.getString(srcCol);
-                        if (src != null && src.length() > 0) out.add(src);
+                        // v13.62 (F-963-A-01): COLUMN_URI is the transport
+                        // form (http once TLS proved broken) while every
+                        // other set holds the https identity — canonicalise
+                        // here so prune/skip compare like with like.
+                        if (src != null && src.length() > 0) out.add(SiteHttp.identityUrl(src));
                     }
                 }
             } finally { c.close(); }
@@ -873,6 +877,10 @@ public class AutoDownloadJob extends JobService {
                     if (srcCol < 0 || totalCol < 0) continue;
                     String src = c.getString(srcCol);
                     if (src == null || src.length() == 0) continue;
+                    // v13.62 (F-963-A-02): same transport-form key as
+                    // liveDlSources68 above — the completeness gate
+                    // looks lookups up by the https identity.
+                    src = SiteHttp.identityUrl(src);
                     long total = c.getLong(totalCol);
                     if (total <= 0) continue;
                     long id = idCol >= 0 ? c.getLong(idCol) : -1;

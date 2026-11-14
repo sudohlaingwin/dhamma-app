@@ -255,7 +255,7 @@ public class DownloadedActivity extends Activity {
                     if (e.file.getAbsolutePath().equals(savedUrl)
                             || (fileClaimCount.get(e.file.getName()) == null
                                 || fileClaimCount.get(e.file.getName()) <= 1)
-                               && savedUrl.equals(fileToUrl.get(e.file.getName()))) {
+                               && SiteHttp.sameTalk(savedUrl, fileToUrl.get(e.file.getName()))) {
                         libResumePath = e.file.getAbsolutePath();
                         libResumeMs = savedPos;
                         break;
@@ -2219,7 +2219,9 @@ public class DownloadedActivity extends Activity {
                 java.util.Iterator<String> keys = map.keys();
                 while (keys.hasNext()) {
                     String u = keys.next();
-                    if (u.equals(savedUrl)
+                    // v13.62 (F-1033-B-3): dlMap keys can be legacy
+                    // http — compare by identity, not raw string.
+                    if (SiteHttp.sameTalk(u, savedUrl)
                             && path.endsWith("/" + map.optString(u, "")))
                         return savedPos;
                 }
@@ -2440,6 +2442,9 @@ public class DownloadedActivity extends Activity {
                     try {
                         org.json.JSONObject map = new org.json.JSONObject(rsp.getString("dlMap", "{}"));
                         String fn = map.optString(rUrl, "");
+                        // v13.62 (F-1033-B-3): legacy http dlMap key
+                        // misses the raw lookup — try the identity form.
+                        if (fn.length() == 0) fn = map.optString(SiteHttp.identityUrl(rUrl), "");
                         if (fn.length() > 0 && rSavedUrl.endsWith("/" + fn)) rMatch = true;
                     } catch (Exception ignored) {}
                 }
@@ -7390,14 +7395,17 @@ public class DownloadedActivity extends Activity {
                     // 1-5000ms spot stored here was dead weight in
                     // the 100-line cap. The path entry is still
                     // dropped either way.
+                    // v13.62 (F-1033-B-2): PutBoth, not Put — with a
+                    // legacy http streamUrl the migrated spot was
+                    // http-only and the per-talk fallback missed it.
                     if (streamUrl != null && pathPos > 5000 && Prefs.talkPosGet(DownloadedActivity.this, streamUrl) == 0)
-                        Prefs.talkPosPut(DownloadedActivity.this, streamUrl, pathPos);
+                        Prefs.talkPosPutBoth(DownloadedActivity.this, streamUrl, pathPos);
                     Prefs.talkPosRemove(DownloadedActivity.this, path);
                 }
                 String savedUrl = sp.getString("lastPosUrl", "");
                 if (path.equals(savedUrl)) {
                     if (streamUrl != null)
-                        sp.edit().putString("lastPosUrl", streamUrl).apply();
+                        sp.edit().putString("lastPosUrl", SiteHttp.identityUrl(streamUrl)).apply();
                     else
                         sp.edit().putInt("lastPos", 0).putString("lastPosUrl", "").apply();
                 }

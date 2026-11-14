@@ -180,8 +180,11 @@ public class TalksActivity extends Activity {
                                     }
                                 }
                             }
-                            if (!added && src != null && dlMap.containsKey(src)) {
-                                String fn = dlMap.get(src);
+                            // v13.62 (F-1024-A-1): the DM job's source URL is
+                            // the transport form while dlMap keys are https —
+                            // compare by identity (v13.60 DownloadedActivity shape).
+                            if (!added && src != null && dlMap.containsKey(SiteHttp.identityUrl(src))) {
+                                String fn = dlMap.get(SiteHttp.identityUrl(src));
                                 if (fn != null && fn.length() > 0) out.add(fn);
                             }
                         }
@@ -2020,7 +2023,7 @@ public class TalksActivity extends Activity {
                                             android.app.DownloadManager dm70 = (android.app.DownloadManager)
                                                     getSystemService(android.content.Context.DOWNLOAD_SERVICE);
                                             android.app.DownloadManager.Request req70 =
-                                                    new android.app.DownloadManager.Request(android.net.Uri.parse(dt.url));
+                                                    new android.app.DownloadManager.Request(android.net.Uri.parse(SiteHttp.siteUrl(dt.url)));
                                             req70.setTitle(dt.title);
                                             req70.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
                                             // Wi-Fi-only, exactly like the Room gate
@@ -2942,11 +2945,14 @@ public class TalksActivity extends Activity {
                             if (srcUrl == null || srcUrl.length() == 0) return;
                             android.content.SharedPreferences rsp =
                                     getSharedPreferences("dhamma", MODE_PRIVATE);
-                            boolean cardTalk = srcUrl.equals(rsp.getString("lastUrl", ""));
+                            boolean cardTalk = SiteHttp.sameTalk(srcUrl, rsp.getString("lastUrl", ""));
                             if (!cardTalk) {
                                 String libPath = rsp.getString("lastLibPath", "");
                                 if (libPath.length() > 0) {
                                     String fn = new org.json.JSONObject(rsp.getString("dlMap", "{}")).optString(srcUrl, "");
+                                    // v13.62 (F-1024-B-1): legacy http dlMap key
+                                    // misses the raw lookup — try the identity form.
+                                    if (fn.length() == 0) fn = new org.json.JSONObject(rsp.getString("dlMap", "{}")).optString(SiteHttp.identityUrl(srcUrl), "");
                                     cardTalk = fn.length() > 0 && fn.equals(new java.io.File(libPath).getName());
                                 }
                             }
@@ -3753,6 +3759,9 @@ public class TalksActivity extends Activity {
                     try {
                         org.json.JSONObject map = new org.json.JSONObject(rsp.getString("dlMap", "{}"));
                         String fn = map.optString(rUrl, "");
+                        // v13.62 (F-1033-B-3): legacy http dlMap key
+                        // misses the raw lookup — try the identity form.
+                        if (fn.length() == 0) fn = map.optString(SiteHttp.identityUrl(rUrl), "");
                         if (fn.length() > 0 && rSavedUrl.endsWith("/" + fn)) rMatch = true;
                     } catch (Exception ignored) {}
                 }

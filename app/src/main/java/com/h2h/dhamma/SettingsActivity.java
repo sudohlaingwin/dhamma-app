@@ -1492,9 +1492,12 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                     rsp1021.getString("dlMap", "{}"));
             boolean cardTalk1021 = false;
             for (String d1021 : dropped1021) {
-                if (d1021.equals(lastUrl1021)) { cardTalk1021 = true; break; }
+                if (SiteHttp.sameTalk(d1021, lastUrl1021)) { cardTalk1021 = true; break; }
                 if (libPath1021.length() > 0) {
                     String fn1021 = map1021.optString(d1021, "");
+                    // v13.62 (F-1001-B-01): legacy http dlMap key
+                    // misses the raw lookup — try the identity form.
+                    if (fn1021.length() == 0) fn1021 = map1021.optString(SiteHttp.identityUrl(d1021), "");
                     if (fn1021.length() > 0 && fn1021.equals(new java.io.File(libPath1021).getName())) {
                         cardTalk1021 = true; break;
                     }
@@ -1955,6 +1958,9 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                     try {
                         org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
                         String fn = map.optString(rUrl, "");
+                        // v13.62 (F-1033-B-3): legacy http dlMap key
+                        // misses the raw lookup — try the identity form.
+                        if (fn.length() == 0) fn = map.optString(SiteHttp.identityUrl(rUrl), "");
                         if (fn.length() > 0 && rSavedUrl.endsWith("/" + fn)) rMatch = true;
                     } catch (Exception ignored) {}
                 }
@@ -2595,7 +2601,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                             String local = uriCol >= 0 ? c.getString(uriCol) : null;
                             String src = srcCol >= 0 ? c.getString(srcCol) : null;
                             if ((local != null && local.contains("Dhamma/"))
-                                    || (src != null && dlNames88.containsKey(src))) {
+                                    || (src != null && dlNames88.containsKey(SiteHttp.identityUrl(src)))) {
                                 progN88++;
                                 boolean added88 = false;
                                 if (local != null) {
@@ -2608,8 +2614,11 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                                         }
                                     }
                                 }
-                                if (!added88 && src != null && dlNames88.containsKey(src)) {
-                                    String fn88 = dlNames88.get(src);
+                                // v13.62 (F-1001-B-03): the DM job's source
+                                // URL is the transport form while dlNames88
+                                // keys are https — compare by identity.
+                                if (!added88 && src != null && dlNames88.containsKey(SiteHttp.identityUrl(src))) {
+                                    String fn88 = dlNames88.get(SiteHttp.identityUrl(src));
                                     if (fn88 != null && fn88.length() > 0) inProgNames88.add(fn88);
                                 }
                             }

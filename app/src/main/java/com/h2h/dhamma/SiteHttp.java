@@ -102,6 +102,10 @@ public class SiteHttp {
     // socket on either attempt.
     public static byte[] fetchBytes(String urlStr, int connectMs, int readMs) throws IOException {
         String fetchUrl = siteUrl(urlStr);
+        // v13.62 (F-984-A-1): a fetch that dies before getResponseCode
+        // (SSL/DNS/timeout/connect) used to leave the PREVIOUS code in
+        // place, so a stale 4xx/5xx misclassified the next failure.
+        lastHttpCode = 0;
         for (int attempt = 0; attempt < 2; attempt++) {
             HttpURLConnection conn = null;
             InputStream in = null;
@@ -140,6 +144,9 @@ public class SiteHttp {
     // app) and aborts a read that grows past the cap. Portraits only.
     public static byte[] fetchBytesCapped(String urlStr, int connectMs, int readMs, int maxBytes) throws IOException {
         String fetchUrl = siteUrl(urlStr);
+        // v13.62 (F-984-A-1): same stale-code reset as fetchBytes
+        // above — no reader today, for consistency.
+        lastHttpCode = 0;
         for (int attempt = 0; attempt < 2; attempt++) {
             HttpURLConnection conn = null;
             InputStream in = null;

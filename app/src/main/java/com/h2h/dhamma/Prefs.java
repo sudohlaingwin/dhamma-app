@@ -831,6 +831,12 @@ public class Prefs {
         // replay under the other scheme.
         String alt = SiteHttp.identityUrl(url);
         if (alt != null && !alt.equals(url)) talkPosRemove(c, alt);
+        // v13.62 (F-1028-A-1): also the downgraded http form — a
+        // finish/dismiss issued under https must clear the spot
+        // stored under http too, or it resurrects on the next http
+        // replay (the identityUrl leg above only covers http->https).
+        String down = SiteHttp.downgrade(url);
+        if (down != null && !down.equals(url)) talkPosRemove(c, down);
         String other = talkPosOtherForm(c, url);
         if (other != null) talkPosRemove(c, other);
         // v8.30: also the mapped path when the file is gone —
@@ -1273,6 +1279,14 @@ public class Prefs {
             if (alt != null && !alt.equals(url)) {
                 String base = next == null ? raw : next;
                 String next2 = bookmarkRemovePure(base, alt, pos);
+                if (next2 != null) next = next2;
+            }
+            // v13.62 (F-1029-A-1): also the downgraded http form,
+            // same one-directional gap as talkPosRemoveBoth above.
+            String down = SiteHttp.downgrade(url);
+            if (down != null && !down.equals(url)) {
+                String base = next == null ? raw : next;
+                String next2 = bookmarkRemovePure(base, down, pos);
                 if (next2 != null) next = next2;
             }
             String other = talkPosOtherForm(c, url);

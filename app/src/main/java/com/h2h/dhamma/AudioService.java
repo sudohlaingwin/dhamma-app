@@ -1227,7 +1227,7 @@ public class AudioService extends Service {
                     // checkpoint safe to resume from.
                     if (pos > 5000 && currentUrl != null) {
                         getSharedPreferences("dhamma", MODE_PRIVATE).edit()
-                                .putInt("lastPos", pos).putString("lastPosUrl", currentUrl).apply();
+                                .putInt("lastPos", pos).putString("lastPosUrl", SiteHttp.identityUrl(currentUrl)).apply();
                         saveTalkPos(currentUrl, pos); // v5.34
                     }
                 } catch (Exception ignored) {}
@@ -1876,7 +1876,7 @@ public class AudioService extends Service {
                 int outPos = player.getCurrentPosition();
                 if (outPos > 5000) {
                     getSharedPreferences("dhamma", MODE_PRIVATE).edit()
-                            .putInt("lastPos", outPos).putString("lastPosUrl", currentUrl).apply();
+                            .putInt("lastPos", outPos).putString("lastPosUrl", SiteHttp.identityUrl(currentUrl)).apply();
                     saveTalkPos(currentUrl, outPos); // v5.34
                 }
             } catch (Exception ignored) {}
@@ -2420,7 +2420,10 @@ public class AudioService extends Service {
             // exact match restarted it from 0 instead of the saved
             // spot. The offlineFileFor map/candidates already know
             // both forms; anything else still restarts from 0.
-            boolean match = url != null && url.equals(savedUrl);
+            // v13.62 (F-1026-A-3/F-1033-A-1): sameTalk also covers
+            // http<->https — a retry arriving with the downgraded
+            // URL must still find the https-banked spot.
+            boolean match = url != null && SiteHttp.sameTalk(url, savedUrl);
             if (!match && url != null && savedUrl.length() > 0) {
                 java.io.File f = offlineFileFor(savedUrl);
                 match = f != null && f.getAbsolutePath().equals(url);
@@ -2479,7 +2482,7 @@ public class AudioService extends Service {
         if (url == null || pos <= 5000) return;
         try {
             getSharedPreferences("dhamma", MODE_PRIVATE).edit()
-                    .putInt("lastPos", pos).putString("lastPosUrl", url).commit();
+                    .putInt("lastPos", pos).putString("lastPosUrl", SiteHttp.identityUrl(url)).commit();
         } catch (Exception ignored) {}
         Prefs.talkPosPutBothSync(this, url, pos);
     }
@@ -2642,7 +2645,7 @@ public class AudioService extends Service {
                 // natural completion still clears it to 0 above.
                 if (pos > 5000 && currentUrl != null) {
                     getSharedPreferences("dhamma", MODE_PRIVATE).edit()
-                            .putInt("lastPos", pos).putString("lastPosUrl", currentUrl).apply();
+                            .putInt("lastPos", pos).putString("lastPosUrl", SiteHttp.identityUrl(currentUrl)).apply();
                     saveTalkPos(currentUrl, pos); // v5.34
                 } else if (currentUrl != null) {
                     // v1.72: pausing within the first 5 seconds used
@@ -3157,7 +3160,7 @@ public class AudioService extends Service {
             // clears this talk's own spot, never another's).
             if (ms > 5000) {
                 getSharedPreferences("dhamma", MODE_PRIVATE).edit()
-                        .putInt("lastPos", ms).putString("lastPosUrl", currentUrl).apply();
+                        .putInt("lastPos", ms).putString("lastPosUrl", SiteHttp.identityUrl(currentUrl)).apply();
                 saveTalkPos(currentUrl, ms); // v5.34
             } else {
                 clearSavedPosForCurrent();
@@ -3195,7 +3198,7 @@ public class AudioService extends Service {
                 // the listener back at the old checkpoint.
                 if (ms > 5000 && currentUrl != null) {
                     getSharedPreferences("dhamma", MODE_PRIVATE).edit()
-                            .putInt("lastPos", ms).putString("lastPosUrl", currentUrl).apply();
+                            .putInt("lastPos", ms).putString("lastPosUrl", SiteHttp.identityUrl(currentUrl)).apply();
                     saveTalkPos(currentUrl, ms); // v5.34
                 } else if (ms <= 5000 && currentUrl != null) {
                     // v12.20: a buffering drag to <= 5s clears this
@@ -3240,7 +3243,7 @@ public class AudioService extends Service {
         if (currentUrl != null) {
             if (ms > 5000) {
                 getSharedPreferences("dhamma", MODE_PRIVATE).edit()
-                        .putInt("lastPos", ms).putString("lastPosUrl", currentUrl).apply();
+                        .putInt("lastPos", ms).putString("lastPosUrl", SiteHttp.identityUrl(currentUrl)).apply();
                 saveTalkPos(currentUrl, ms); // v5.34
             } else {
                 // v8.32: same cross-form clear as pause() above
@@ -6663,8 +6666,12 @@ public class AudioService extends Service {
                             }
                         }
                     }
-                    if (!added && src != null && dlMap.containsKey(src)) {
-                        String fn = dlMap.get(src);
+                    // v13.62 (F-956B-1): the DM job's source URL is the
+                    // transport form (http once this launch proved TLS
+                    // refused) while dlMap keys are https — compare by
+                    // identity, not raw string (v13.60 DownloadedActivity shape).
+                    if (!added && src != null && dlMap.containsKey(SiteHttp.identityUrl(src))) {
+                        String fn = dlMap.get(SiteHttp.identityUrl(src));
                         if (fn != null && fn.length() > 0) out.add(fn);
                     }
                 }
@@ -7924,7 +7931,7 @@ public class AudioService extends Service {
                 int finalPos = player.getCurrentPosition();
                 if (finalPos > 5000) {
                     getSharedPreferences("dhamma", MODE_PRIVATE).edit()
-                            .putInt("lastPos", finalPos).putString("lastPosUrl", currentUrl).apply();
+                            .putInt("lastPos", finalPos).putString("lastPosUrl", SiteHttp.identityUrl(currentUrl)).apply();
                     saveTalkPos(currentUrl, finalPos); // v5.34
                 }
             } catch (Exception ignored) {}

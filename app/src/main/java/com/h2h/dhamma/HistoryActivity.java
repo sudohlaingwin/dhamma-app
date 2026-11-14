@@ -540,6 +540,9 @@ public class HistoryActivity extends Activity {
                     try {
                         org.json.JSONObject map = new org.json.JSONObject(rsp.getString("dlMap", "{}"));
                         String fn = map.optString(rUrl, "");
+                        // v13.62 (F-1033-B-3): legacy http dlMap key
+                        // misses the raw lookup — try the identity form.
+                        if (fn.length() == 0) fn = map.optString(SiteHttp.identityUrl(rUrl), "");
                         if (fn.length() > 0 && rSavedUrl.endsWith("/" + fn)) rMatch = true;
                     } catch (Exception ignored) {}
                 }

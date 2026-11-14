@@ -3494,8 +3494,12 @@ if (snd65 >= 0) currentIndex = snd65;
                                 }
                             }
                         }
-                        if (!added && src != null && dlMap.containsKey(src)) {
-                            String fn = dlMap.get(src);
+                        // v13.62 (F-954-A1): the DM job's source URL is the
+                        // transport form (http once this launch proved TLS
+                        // refused) while dlMap keys are https — compare by
+                        // identity, not raw string (v13.60 DownloadedActivity shape).
+                        if (!added && src != null && dlMap.containsKey(SiteHttp.identityUrl(src))) {
+                            String fn = dlMap.get(SiteHttp.identityUrl(src));
                             if (fn != null && fn.length() > 0) out.add(fn);
                         }
                     }
@@ -3649,7 +3653,7 @@ if (snd65 >= 0) currentIndex = snd65;
             android.app.DownloadManager dm71 = (android.app.DownloadManager)
                     getSystemService(android.content.Context.DOWNLOAD_SERVICE);
             android.app.DownloadManager.Request req71 =
-                    new android.app.DownloadManager.Request(android.net.Uri.parse(t.url));
+                    new android.app.DownloadManager.Request(android.net.Uri.parse(SiteHttp.siteUrl(t.url)));
             req71.setTitle(t.title);
             req71.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
             req71.setAllowedNetworkTypes(android.app.DownloadManager.Request.NETWORK_WIFI);
@@ -4089,7 +4093,9 @@ if (snd65 >= 0) currentIndex = snd65;
                     getSharedPreferences("dhamma", MODE_PRIVATE);
             String savedUrl = pp.getString("lastPosUrl", "");
             String savedLocal = localPathFor(url);
-            if (url.equals(savedUrl) || (savedLocal != null && savedLocal.equals(savedUrl))) {
+            // v13.62 (F-1025-A-2): sameTalk so a legacy http global
+            // spot still matches the https talk URL until re-saved.
+            if (SiteHttp.sameTalk(url, savedUrl) || (savedLocal != null && savedLocal.equals(savedUrl))) {
                 int saved = pp.getInt("lastPos", 0);
                 return saved > 5000 ? saved : 0;
             }
@@ -11086,7 +11092,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                 java.net.HttpURLConnection c = null;
                 try {
                     c = (java.net.HttpURLConnection)
-                            new java.net.URL(t.url).openConnection();
+                            new java.net.URL(SiteHttp.siteUrl(t.url)).openConnection();
                     c.setRequestMethod("HEAD");
                     // v1.69: same Mozilla UA as the talk loaders — a
                     // bare HEAD used to come back size-less (or
@@ -11105,7 +11111,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                     if (len <= 0) {
                         try { c.disconnect(); } catch (Exception ignored) {}
                         c = (java.net.HttpURLConnection)
-                                new java.net.URL(t.url).openConnection();
+                                new java.net.URL(SiteHttp.siteUrl(t.url)).openConnection();
                         c.setRequestMethod("GET");
                         c.setRequestProperty("User-Agent", "Mozilla/5.0");
                         c.setRequestProperty("Range", "bytes=0-0");
@@ -11351,7 +11357,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                                             // this talk's own file.
                                             String file = downloadFileNameFor(t.url);
                                             android.app.DownloadManager.Request req =
-                                                    new android.app.DownloadManager.Request(android.net.Uri.parse(t.url));
+                                                    new android.app.DownloadManager.Request(android.net.Uri.parse(SiteHttp.siteUrl(t.url)));
                                             req.setTitle(t.title);
                                             req.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
                                             req.setAllowedNetworkTypes(android.app.DownloadManager.Request.NETWORK_WIFI);
