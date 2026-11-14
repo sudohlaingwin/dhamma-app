@@ -168,6 +168,13 @@ public class DownloadedActivity extends Activity {
     // never parses prefs/JSON per row (the v2.03 cost class).
     private java.util.Map<String, Integer> libResumeMap =
             new java.util.HashMap<String, Integer>();
+    // v13.97 (slice 1092): per-file total durations (path -> ms),
+    // built once per load in refreshLibMarkCache below, same shape
+    // as libResumeMap — path form first, stream form via the dlMap
+    // reverse lookup — so getView paints the hairline from two map
+    // lookups, never prefs per row.
+    private java.util.Map<String, Integer> libDurMap =
+            new java.util.HashMap<String, Integer>();
     // v5.47: per-load sayadaw-name cache for the library rows —
     // filename -> recorded sayadaw from the v5.45 dlSayadaw map
     // (via the dlMap reverse lookup already built here), so
@@ -211,6 +218,7 @@ public class DownloadedActivity extends Activity {
         libResumePath = null;
         libResumeMs = 0;
         libResumeMap = new java.util.HashMap<String, Integer>();
+        libDurMap = new java.util.HashMap<String, Integer>();
         libSayadawMap = new java.util.HashMap<String, String>();
         try {
             android.content.SharedPreferences pp =
@@ -317,6 +325,31 @@ public class DownloadedActivity extends Activity {
             }
             if (libResumePath != null)
                 libResumeMap.put(libResumePath, libResumeMs);
+            // v13.97 (slice 1092): durations for the hairline — one
+            // parse for the whole shelf (Prefs.talkDurMap, the
+            // talkPosKeysOver shape), then per file the path form,
+            // else the stream form through the reverse lookup
+            // already built above. A file downloaded after the
+            // stream listen has no path-form duration (the file did
+            // not exist at prepare time), so the stream form is the
+            // fallback — the savedPosForFile two-leg shape. The
+            // v8.43 rule applies: dual-claimed files earn no
+            // stream-form duration, like no stream-form resume.
+            java.util.Map<String, Integer> durByKey = Prefs.talkDurMap(DownloadedActivity.this);
+            if (!durByKey.isEmpty()) {
+                for (Entry e : entries) {
+                    String p = e.file.getAbsolutePath();
+                    Integer d = durByKey.get(p);
+                    if (d == null) {
+                        if (fileClaimCount.get(e.file.getName()) == null
+                                || fileClaimCount.get(e.file.getName()) <= 1) {
+                            String u = fileToUrl.get(e.file.getName());
+                            if (u != null) d = durByKey.get(u);
+                        }
+                    }
+                    if (d != null) libDurMap.put(p, d);
+                }
+            }
         } catch (Exception ignored) {}
     }
 
@@ -11515,6 +11548,12 @@ public class DownloadedActivity extends Activity {
                 android.view.View card73 = v.findViewById(R.id.cardInner);
                 if (card73 != null) card73.setBackgroundResource(cachedDlNight ? R.drawable.card_bg_night : R.drawable.card_bg);
                 if (t73 != null) t73.setAlpha(1.0f);
+                // v13.97 (slice 1092): the hairline is row STATE
+                // too — a recycled half-heard row rebound to a
+                // stale slot kept its gold line on an empty row
+                // until the next tick prune dropped the slot.
+                android.view.View hair73 = v.findViewById(R.id.hairTrack);
+                if (hair73 != null) hair73.setVisibility(android.view.View.GONE);
                 v.setBackgroundColor(android.graphics.Color.TRANSPARENT);
                 v.clearAnimation();
                 return v;
@@ -11662,6 +11701,32 @@ public class DownloadedActivity extends Activity {
                     libResumeMap.get(e.file.getAbsolutePath());
             String resumeHint = resumeMs != null
                     ? " · " + fmtDlTime(resumeMs) + Lang.t(DownloadedActivity.this, "dl_resume_suffix") : "";
+            // v13.97 (slice 1092): listened-progress hairline —
+            // fraction = resume spot / total duration, from the
+            // per-load caches only (never prefs per row). Hidden
+            // on the playing row (its live position is on the
+            // strip; the cached spot is stale while it plays),
+            // when the file was never meaningfully heard (no spot
+            // or <= 5s), or when no duration was ever stored for
+            // it. Same 3% minimum sliver and 1.0 clamp as the
+            // chooser, same weight-split paint, reset on every
+            // bind (the stale-slot branch above hides it too).
+            float hairFrac = 0f;
+            if (!rowPlaying && resumeMs != null && resumeMs.intValue() > 5000) {
+                Integer durMs = libDurMap.get(e.file.getAbsolutePath());
+                if (durMs != null && durMs.intValue() > 0) {
+                    hairFrac = Math.min(1f, (float) resumeMs.intValue() / (float) durMs.intValue());
+                    if (hairFrac < 0.03f) hairFrac = 0.03f;
+                }
+            }
+            android.view.View hairTrack = v.findViewById(R.id.hairTrack);
+            android.view.View hairFill = v.findViewById(R.id.hairFill);
+            android.view.View hairSpace = v.findViewById(R.id.hairSpace);
+            if (hairTrack != null) hairTrack.setVisibility(hairFrac > 0f ? android.view.View.VISIBLE : android.view.View.GONE);
+            if (hairFrac > 0f && hairFill != null && hairSpace != null) {
+                hairFill.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, hairFrac));
+                hairSpace.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1f - hairFrac));
+            }
             String rowSd = libSayadawMap.get(e.file.getName());
             // v6.05: shelf-row portrait — same resolution as the
             // library strip (v6.02): the once-per-process catalog

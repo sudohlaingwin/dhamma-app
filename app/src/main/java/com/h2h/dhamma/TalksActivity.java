@@ -99,6 +99,10 @@ public class TalksActivity extends Activity {
     // the strip) and never ◈/↺ (existing rules, kept).
     private java.util.Set<String> talkFavCache = new java.util.HashSet<String>();
     private java.util.Set<String> talkPlayedCache = new java.util.HashSet<String>();
+    // v13.97 (slice 1092): per-talk total durations (url -> ms),
+    // one parse per refreshTalkRowMarks below, so getView paints
+    // the hairline from a map lookup, never talkDurGet per row.
+    private java.util.Map<String, Integer> talkDurCache = new java.util.HashMap<String, Integer>();
     private java.util.Set<String> talkDlCache = new java.util.HashSet<String>();
     // v5.59: the filename isTalkDownloaded matched per URL, filled
     // during the same scan that builds talkDlCache above — so the
@@ -444,6 +448,13 @@ public class TalksActivity extends Activity {
                     .getStringSet("playedTalks", null);
             talkPlayedCache = pl != null ? new java.util.HashSet<String>(pl) : new java.util.HashSet<String>();
         } catch (Exception ignored) { talkPlayedCache = new java.util.HashSet<String>(); }
+        // v13.97 (slice 1092): durations for the listened-progress
+        // hairline — one parse for the whole list (Prefs.talkDurMap,
+        // the talkPosKeysOver shape), refreshed with the other row
+        // caches so a return from a just-finished listen repaints
+        // the fraction at once; getView reads this map only, never
+        // talkDurGet per row.
+        talkDurCache = Prefs.talkDurMap(TalksActivity.this);
         try {
             java.util.Set<String> q = new java.util.HashSet<String>();
             org.json.JSONArray arr = new org.json.JSONArray(
@@ -5128,6 +5139,12 @@ public class TalksActivity extends Activity {
             boolean rowPlayingLib = !AudioService.liveEnded
                     && talkPlayingLibUrl.length() > 0
                     && SiteHttp.sameTalk(talks.get(talkIdx).url, talkPlayingLibUrl);
+            // v13.97 (slice 1092): listened-progress hairline
+            // fraction for this row — 0 = hidden. Set inside the
+            // resume block below (same gate as the ↺ mark: never
+            // the playing row, whose live position is on the
+            // strip), painted after it.
+            float hairFrac = 0f;
             if (!rowPlaying && !rowPlayingLib) {
                 String rUrl = talks.get(talkIdx).url;
                 int rp = Prefs.talkPosGet(TalksActivity.this, rUrl);
@@ -5140,6 +5157,49 @@ public class TalksActivity extends Activity {
                     }
                 }
                 if (rp > 5000) resumeMark = " ↺ " + Fx.fmtTime(rp);
+                // v13.97: hairline numerator is rp above; the
+                // denominator comes from the per-load duration
+                // cache — stream form first, then the downloaded
+                // path form (same two legs as rp: a duration
+                // written while streaming has no path form when
+                // the file was downloaded after the listen, and
+                // a duration written from the library has no
+                // stream form when dlMap never claimed the file).
+                // Hidden when the talk was never meaningfully
+                // heard (rp <= 5000) or no duration was ever
+                // stored; the fraction clamps to 1 and never
+                // below a 3% sliver, so a barely-started talk
+                // still reads as a visible gold dash.
+                if (rp > 5000) {
+                    Integer durI = talkDurCache.get(rUrl);
+                    if (durI == null && talkDlCache.contains(rUrl)) {
+                        String dlFn = talkDlFileCache.get(rUrl);
+                        if (dlFn != null) {
+                            String dlPath = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                                    android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + dlFn).getAbsolutePath();
+                            durI = talkDurCache.get(dlPath);
+                        }
+                    }
+                    if (durI != null && durI.intValue() > 0) {
+                        hairFrac = Math.min(1f, (float) rp / (float) durI.intValue());
+                        if (hairFrac < 0.03f) hairFrac = 0.03f;
+                    }
+                }
+            }
+            // v13.97 (slice 1092): paint the hairline — reset on
+            // every bind, like the alpha/card/wash below, so a
+            // recycled row can never keep the previous talk's
+            // fraction; the track is GONE unless this bind set a
+            // fraction above. The fill/space weights split the
+            // track 0dp-wide by fraction (no measuring, no post
+            // pass — the ListView recycle is safe).
+            android.view.View hairTrack = v.findViewById(R.id.hairTrack);
+            android.view.View hairFill = v.findViewById(R.id.hairFill);
+            android.view.View hairSpace = v.findViewById(R.id.hairSpace);
+            if (hairTrack != null) hairTrack.setVisibility(hairFrac > 0f ? android.view.View.VISIBLE : android.view.View.GONE);
+            if (hairFrac > 0f && hairFill != null && hairSpace != null) {
+                hairFill.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, hairFrac));
+                hairSpace.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1f - hairFrac));
             }
             // v5.49: drawer marks on chooser rows (see the cache
             // comment above refreshTalkRowMarks) — ★/⬇/⏳/✓ in

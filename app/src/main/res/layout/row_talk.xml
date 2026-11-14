@@ -27,16 +27,48 @@
             android:layout_gravity="center_vertical"
             android:textColor="@color/gold"
             android:textSize="14sp" />
-        <TextView
-            android:id="@+id/talkTitle"
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_gravity="center_vertical"
             android:layout_weight="1"
-            android:ellipsize="end"
-            android:maxLines="2"
-            android:textColor="@color/ink"
-            android:textSize="15sp" />
+            android:orientation="vertical">
+            <TextView
+                android:id="@+id/talkTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="@color/ink"
+                android:textSize="15sp" />
+            <!-- v13.97 (slice 1092): listened-progress hairline —
+                 thin gold line under the title, fraction = resume
+                 spot / total duration. The track is a translucent
+                 gold wash so the scale reads in a still; the fill
+                 is solid gold. GONE unless a half-heard talk
+                 binds it (TalkAdapter.getView paints the weights). -->
+            <LinearLayout
+                android:id="@+id/hairTrack"
+                android:layout_width="match_parent"
+                android:layout_height="3dp"
+                android:layout_marginTop="4dp"
+                android:background="#33C9A227"
+                android:orientation="horizontal"
+                android:visibility="gone"
+                android:weightSum="1">
+                <View
+                    android:id="@+id/hairFill"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="0"
+                    android:background="@color/gold" />
+                <View
+                    android:id="@+id/hairSpace"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1" />
+            </LinearLayout>
+        </LinearLayout>
         <!-- v7.32 (user order 2026-11-01 ~19:36 +07): row ⋮ removed — rows are tap-to-open + long-press-share only again. -->
     </LinearLayout>
 </LinearLayout>
