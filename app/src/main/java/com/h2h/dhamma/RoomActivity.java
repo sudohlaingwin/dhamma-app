@@ -1145,7 +1145,7 @@ public class RoomActivity extends Activity {
             seen.add(e.url);
             boolean inList = false;
             for (int i = 0; i < talks.size(); i++)
-                if (talks.get(i).url.equals(e.url)) { inList = true; break; }
+                if (SiteHttp.sameTalk(talks.get(i).url, e.url)) { inList = true; break; }
             if (inList) out.add(e.url);
             // v11.75: a stale v2 line for THIS sayadaw is dropped —
             // the display rule (drawerQueueDisplayLines) and
@@ -1167,7 +1167,7 @@ public class RoomActivity extends Activity {
     }
     private int queueLineIndexForUrl(String url) {
         for (int i = 0; i < queueUrls.size(); i++)
-            if (queueLineUrl(queueUrls.get(i)).equals(url)) return i;
+            if (SiteHttp.sameTalk(queueLineUrl(queueUrls.get(i)), url)) return i;
         return -1;
     }
 
@@ -1417,7 +1417,7 @@ public class RoomActivity extends Activity {
     // line; a library file's owner is its dlSayadaw record).
     private String playlistTalkTitle(String url) {
         if (url != null && currentIndex >= 0 && currentIndex < talks.size()
-                && url.equals(talks.get(currentIndex).url)) return talks.get(currentIndex).title;
+                && SiteHttp.sameTalk(url, talks.get(currentIndex).url)) return talks.get(currentIndex).title;
         return service == null ? "" : service.getCurrentTitle();
     }
 
@@ -1441,7 +1441,7 @@ public class RoomActivity extends Activity {
                         return e.sayadaw;
                 }
                 for (Talk t : talks) {
-                    if (stream.equals(t.url)) return sayadawName;
+                    if (SiteHttp.sameTalk(stream, t.url)) return sayadawName;
                 }
                 // v12.78 (sim1289): the anchors name a sounding
                 // foreign head the queue line no longer can — a
@@ -1841,7 +1841,7 @@ public class RoomActivity extends Activity {
             if (talkIndexForUrl(e.url) < 0
                     && !(e.isV2() && (sayadawName == null
                             || !e.sayadaw.equals(sayadawName)))) continue;
-            if (cur != null && e.url.equals(cur)) continue;
+            if (cur != null && SiteHttp.sameTalk(e.url, cur)) continue;
             if (isSoundingTalk(e.url)) continue;
             if (e.isV2() && isSoundingForeignTalk(e.url, e.sayadaw)) continue;
             // v13.52 (audit-1374 F1): explicit failed-talk skip — bound
@@ -2004,11 +2004,11 @@ public class RoomActivity extends Activity {
         for (String line : queueUrls) {
             QueueEntry q = QueueEntry.parse(line);
             if (q == null) continue;
-            if (!kept && q.url.equals(e.url)) { kept = true; carried.add(q.url); continue; }
+            if (!kept && SiteHttp.sameTalk(q.url, e.url)) { kept = true; carried.add(q.url); continue; }
             if (!q.isV2()) {
                 String title = "";
                 for (int i = 0; i < talks.size(); i++)
-                    if (talks.get(i).url.equals(q.url)) { title = talks.get(i).title; break; }
+                    if (SiteHttp.sameTalk(talks.get(i).url, q.url)) { title = talks.get(i).title; break; }
                 if (title.length() > 0 && leaving != null)
                     line = QueueEntry.format(
                             new QueueEntry(q.url, leaving, title));
@@ -3622,7 +3622,7 @@ if (snd65 >= 0) currentIndex = snd65;
             org.json.JSONArray qa = new org.json.JSONArray(
                     getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlQueued", "[]"));
             for (int i = 0; i < qa.length(); i++)
-                if (url.equals(qa.optString(i))) return true;
+                if (SiteHttp.sameTalk(url, qa.optString(i))) return true;
         } catch (Exception ignored) {}
         return false;
     }
@@ -9610,7 +9610,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                         }
                     }
                     if (pv == null) pv = talks.get((currentIndex - 1 + talks.size()) % talks.size());
-                    Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "room_prev_prefix") + previewHeadMarks(pv, pv.url.equals(talks.get(currentIndex).url)) + pv.title + (pvSayadaw65.length() > 0 ? " · " + pvSayadaw65 : "") + previewTalkMarks(pv, pv.url.equals(talks.get(currentIndex).url)), Toast.LENGTH_SHORT).show();
+                    Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "room_prev_prefix") + previewHeadMarks(pv, SiteHttp.sameTalk(pv.url, talks.get(currentIndex).url)) + pv.title + (pvSayadaw65.length() > 0 ? " · " + pvSayadaw65 : "") + previewTalkMarks(pv, SiteHttp.sameTalk(pv.url, talks.get(currentIndex).url)), Toast.LENGTH_SHORT).show();
                 }
                 return true;
             }
@@ -11292,7 +11292,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                                                 org.json.JSONArray qa73 = new org.json.JSONArray(
                                                         getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlQueued", "[]"));
                                                 for (int i73 = 0; i73 < qa73.length(); i73++) {
-                                                    if (t.url.equals(qa73.optString(i73))) { alreadyQueued73 = true; break; }
+                                                    if (SiteHttp.sameTalk(t.url, qa73.optString(i73))) { alreadyQueued73 = true; break; }
                                                 }
                                             } catch (Exception ignored) {}
                                             if (alreadyQueued73) {

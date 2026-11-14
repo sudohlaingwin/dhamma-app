@@ -4733,7 +4733,7 @@ public class AudioService extends Service {
             QueueEntry prevQe97 = QueueEntry.parse(prevLine97);
             QueueEntry qe97 = QueueEntry.parse(line);
             if (prevQe97 != null && qe97 != null && prevQe97.url.length() > 0
-                    && !prevQe97.url.equals(qe97.url)) {
+                    && !SiteHttp.sameTalk(prevQe97.url, qe97.url)) {
                 pendingQueueHeadLine14 = prevLine97;
                 pendingQueueHeadOwner14 = prevOwner97;
                 pendingQueueHeadPlayForm14 = prevForm98;
@@ -4778,7 +4778,7 @@ public class AudioService extends Service {
             java.util.Iterator<String> it = q.iterator();
             while (it.hasNext()) {
                 QueueEntry e = QueueEntry.parse(it.next());
-                if (e != null && e.url.equals(url)) { it.remove(); removed = true; }
+                if (e != null && SiteHttp.sameTalk(e.url, url)) { it.remove(); removed = true; }
             }
             if (removed) {
                 if (owner == null) Prefs.saveQueueLib(this, q);
@@ -4825,9 +4825,9 @@ public class AudioService extends Service {
             // v13.62 (audit-1370 N2): count this restore BEFORE the dedup check — a
             // head the Room re-added in the prepare window dedups every time, so
             // counting only real inserts would let it loop through the dedup leg.
-            Integer n = headRestoreCountN2.get(qe.url);
+            Integer n = headRestoreCountN2.get(SiteHttp.identityUrl(qe.url));
             int count = (n == null ? 0 : n.intValue()) + 1;
-            headRestoreCountN2.put(qe.url, Integer.valueOf(count));
+            headRestoreCountN2.put(SiteHttp.identityUrl(qe.url), Integer.valueOf(count));
             if (count > 2) {
                 // Give up: leave the dead head out of its queue (drop any line already
                 // there too) and say so — the next advance moves on to the next head.
@@ -4846,7 +4846,7 @@ public class AudioService extends Service {
                     for (String l : raw.split("\n")) if (l != null && l.length() > 0) q.add(l);
                 for (String l : q) {
                     QueueEntry e = QueueEntry.parse(l);
-                    if (e != null && e.url.equals(qe.url)) return;
+                    if (e != null && SiteHttp.sameTalk(e.url, qe.url)) return;
                 }
                 q.add(0, line);
                 Prefs.saveQueueLib(this, q);
@@ -4857,7 +4857,7 @@ public class AudioService extends Service {
                     for (String l : raw.split("\n")) if (l != null && l.length() > 0) q.add(l);
                 for (String l : q) {
                     QueueEntry e = QueueEntry.parse(l);
-                    if (e != null && e.url.equals(qe.url)) return;
+                    if (e != null && SiteHttp.sameTalk(e.url, qe.url)) return;
                 }
                 q.add(0, line);
                 Prefs.saveQueue(this, owner, q);
@@ -5330,7 +5330,7 @@ public class AudioService extends Service {
                         if (l11 == null || l11.length() == 0) continue;
                         int t11 = l11.indexOf('\t');
                         String u11 = t11 >= 0 ? l11.substring(0, t11) : l11;
-                        if (u11.equals(q11.url)) {
+                        if (SiteHttp.sameTalk(u11, q11.url)) {
                             title11 = t11 >= 0 ? l11.substring(t11 + 1) : "";
                             break;
                         }

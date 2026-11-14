@@ -2455,7 +2455,7 @@ public class Prefs {
         }
         HistEntry found = null;
         for (HistEntry e : recs) {
-            if (e.url.equals(url)) { found = e; break; }
+            if (SiteHttp.sameTalk(e.url, url)) { found = e; break; }
         }
         if (found != null) {
             found.seconds += seconds;

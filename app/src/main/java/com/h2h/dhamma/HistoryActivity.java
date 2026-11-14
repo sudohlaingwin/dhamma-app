@@ -226,8 +226,8 @@ public class HistoryActivity extends Activity {
         // so its mark lifts at once. Rows are built fresh per getView, but both text and colour rebind
         // here so neither can leak onto the next talk.
         boolean hsRowPlaying = !AudioService.liveEnded
-                && ((histPlayingUrl.length() > 0 && e.url.equals(histPlayingUrl))
-                        || (histPlayingLibUrl.length() > 0 && e.url.equals(histPlayingLibUrl))
+                && ((histPlayingUrl.length() > 0 && SiteHttp.sameTalk(e.url, histPlayingUrl))
+                        || (histPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(e.url, histPlayingLibUrl))
                         || (histPlayingLibPath.length() > 0 && e.url.equals(histPlayingLibPath)));
         tv.setText(hsRowPlaying ? "▶ " + (e.title.length() > 0 ? e.title : e.url)
                 : (e.title.length() > 0 ? e.title : e.url));

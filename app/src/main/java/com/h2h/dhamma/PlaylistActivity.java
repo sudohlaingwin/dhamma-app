@@ -279,8 +279,8 @@ public class PlaylistActivity extends Activity {
         // talk is not playing (v11.15 gate), so its mark lifts at once. Rows are built fresh per
         // getView, but both text and colour rebind here so neither can leak onto the next talk.
         boolean plRowPlaying = !AudioService.liveEnded
-                && ((plPlayingUrl.length() > 0 && qe.url.equals(plPlayingUrl))
-                        || (plPlayingLibUrl.length() > 0 && qe.url.equals(plPlayingLibUrl)));
+                && ((plPlayingUrl.length() > 0 && SiteHttp.sameTalk(qe.url, plPlayingUrl))
+                        || (plPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(qe.url, plPlayingLibUrl)));
         LinearLayout col = textRows(plRowPlaying ? "▶ " + title : title, qe.sayadaw, plRowPlaying);
         row.addView(col, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
