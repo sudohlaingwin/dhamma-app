@@ -441,6 +441,33 @@ public class SettingsActivity extends Activity {
                 Fx.morph(v); Fx.themeDip(root, new Runnable() { @Override public void run() { refresh(); } });
             }
         });
+        // v13.80 (slice 1072): Wi-Fi auto-download "check now" — the
+        // toggle's only checks were the 6h periodic job and the
+        // toggle-ON seed, so a listener who just starred a sayadaw
+        // waited up to 6h unless they flipped the switch off and on
+        // again. The action line under the note (visible only while
+        // the toggle is ON, see refresh) runs the same one-off seed
+        // the toggle-ON path uses, within ~1 minute; the 1s tick
+        // repaints the note when the check lands, so the result
+        // shows without leaving the screen. Off Wi-Fi the seed waits
+        // for unmetered (its own guard no-ops a deadline firing)
+        // and the toast says so in the listener's language; on
+        // Wi-Fi the toast names the check. The toggle-off guard is
+        // defensive — the view is hidden while off — and the job
+        // itself re-checks the toggle before fetching.
+        android.widget.TextView adCheckNow = findViewById(R.id.autoDlCheckNow);
+        if (adCheckNow != null) adCheckNow.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                if (!Prefs.autoDlEnabled(SettingsActivity.this)) return;
+                Fx.tap(SettingsActivity.this);
+                Fx.morph(v);
+                AutoDownloadJob.scheduleSoon(SettingsActivity.this);
+                android.widget.Toast.makeText(SettingsActivity.this,
+                        Lang.t(SettingsActivity.this,
+                                Fx.stripIsWifi(SettingsActivity.this) ? "ad_checking" : "dl_room_wifi_queued"),
+                        android.widget.Toast.LENGTH_SHORT).show();
+            }
+        });
         // v4.18: long-press the data-saver toggle opens the
         // system's data-usage settings — the mirror of the
         // notification toggle's system-settings long-press
@@ -1009,7 +1036,7 @@ android.view.View settingsStripPrev = findViewById(R.id.nowStripPrev);
                 R.id.rowFont, R.id.rowLanguage,
                 R.id.btnNoti, R.id.btnAutoplay, R.id.rowRepeat, R.id.btnShuffle, R.id.btnBackground,
                 R.id.btnKeepScreen, R.id.btnThemeAuto, R.id.rowSleep,
-                R.id.btnFx, R.id.btnDataSaver, R.id.btnAutoDl,
+                R.id.btnFx, R.id.btnDataSaver, R.id.btnAutoDl, R.id.autoDlCheckNow,
                 R.id.rowDownloaded, R.id.rowClearData, R.id.btnResetAll, R.id.rowTeam, R.id.rowPolicy}) {
             View b = findViewById(id);
             if (b != null) Fx.press(b);
@@ -2222,6 +2249,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                     syncSettingsStrip();
                     refreshDownloadedButton53(); // v7.53: button counts follow the strip tick
                     refreshDataSaverButton54(); // v7.54: network note follows the strip tick
+                    refreshAutoDlNote79(); // v13.80: check-now result lands on the note live
                     refreshBlockedChannelMark88(); // v11.88: ⚠ mark follows the strip tick
                 } finally {
                     if (stripTick != null) stripHandler.postDelayed(this, 1000);
@@ -2682,6 +2710,24 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         } catch (Exception ignored) { return Lang.t(this, "ad_never"); }
     }
 
+    // v13.80 (slice 1072): the auto-download note's live refresh —
+    // refresh() runs only on create/return/choice taps, while the
+    // seed check a "check now" tap schedules lands up to a minute
+    // later and writes a new last-run stamp; without this the note
+    // kept the old time until the next return. Change-only write,
+    // the refreshDataSaverButton54 pattern, so steady ticks never
+    // touch the view; refresh() calls this too, so there is one
+    // writer for the note.
+    private void refreshAutoDlNote79() {
+        try {
+            android.widget.TextView adn = findViewById(R.id.autoDlNote);
+            if (adn == null) return;
+            String line = autoDlStatusLine();
+            CharSequence cur = adn.getText();
+            if (cur == null || !line.equals(cur.toString())) adn.setText(line);
+        } catch (Exception ignored) {}
+    }
+
     // v7.54: the data-saver button's live network note, extracted
     // verbatim from refresh()'s v4.13 line (base Lang label + on/off
     // + dataSaverNetworkNote()) so the 1s strip tick can refresh it
@@ -2905,8 +2951,18 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         // ran and how many new talks it downloaded, or that no
         // check has run yet.
         if (btnAutoDl != null) { btnAutoDl.setText(Lang.t(this, "ad_auto_dl")); btnAutoDl.setChecked(Prefs.autoDlEnabled(this)); }
-        android.widget.TextView adn = findViewById(R.id.autoDlNote);
-        if (adn != null) adn.setText(autoDlStatusLine());
+        refreshAutoDlNote79(); // v13.80: one writer for the note (see above)
+        // v13.80: the "check now" action line — visible only while
+        // the toggle is ON (the job cannot run while off); gold like
+        // the strip title, at the button text step so it reads as a
+        // tap target, label re-read from Lang on every refresh.
+        android.widget.TextView adCheck = findViewById(R.id.autoDlCheckNow);
+        if (adCheck != null) {
+            adCheck.setText(Lang.t(this, "ad_check_now"));
+            adCheck.setTextColor(Color.parseColor("#C9A227"));
+            adCheck.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn);
+            adCheck.setVisibility(Prefs.autoDlEnabled(this) ? android.view.View.VISIBLE : android.view.View.GONE);
+        }
         // v4.13: live network note on the existing data-saver
         // button (Spotify-style context, no new view): the gate
         // only matters on mobile data, so the button now says

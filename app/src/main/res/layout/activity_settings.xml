@@ -468,6 +468,23 @@
             android:text="မစစ်ဆေးရသေးပါ"
             android:textColor="@color/muted"
             android:textSize="13sp" />
+        <!-- v13.80 (slice 1072): Wi-Fi auto-download "check now" — a
+             gold action line under the note, visible only while the
+             toggle is ON (refresh() drives it); tap runs the same
+             one-off seed check the toggle-ON path uses. -->
+        <TextView
+            android:id="@+id/autoDlCheckNow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:paddingVertical="8dp"
+            android:paddingStart="2dp"
+            android:text="↻ ပြန်စစ်ဆေးမယ်"
+            android:textColor="#C9A227"
+            android:textSize="14sp"
+            android:visibility="gone" />
     </LinearLayout>
 
     <View
