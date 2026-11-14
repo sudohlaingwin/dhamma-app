@@ -582,7 +582,11 @@ public class RoomActivity extends Activity {
     // after the rescan, with no new pref or set.
     private int drawerFilterMode = 0;
     private int talkIndexForUrl(String u) {
-        for (int i = 0; i < talks.size(); i++) if (talks.get(i).url.equals(u)) return i;
+        // v13.63 (F-1018-A-01): identity compare — a talk sounding
+        // over the http retry form (or a stored http URL) is the
+        // same talk as its https list entry; sameTalk is null-safe
+        // where the old .equals was not.
+        for (int i = 0; i < talks.size(); i++) if (SiteHttp.sameTalk(talks.get(i).url, u)) return i;
         return -1;
     }
     private java.util.ArrayList<Integer> drawerFilteredIndices() {
@@ -13253,7 +13257,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                             int saved = savedPosFor(want);
                             boolean matched = false;
                             for (int i = 0; i < talks.size(); i++) {
-                                if (talks.get(i).url.equals(want)) {
+                                if (SiteHttp.sameTalk(talks.get(i).url, want)) {
                                     // v1.76: re-entering the Room while
                                     // this talk sat PAUSED (or still
                                     // buffering) used to restart it —

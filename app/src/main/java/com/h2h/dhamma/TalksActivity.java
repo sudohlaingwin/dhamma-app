@@ -3195,12 +3195,18 @@ public class TalksActivity extends Activity {
                                 && st != android.app.DownloadManager.STATUS_PAUSED
                                 && st != android.app.DownloadManager.STATUS_PENDING) continue;
                         String src = srcCol >= 0 ? c.getString(srcCol) : null;
-                        if (src != null && talkUrls.contains(src)) progCount++;
+                        // v13.63 (F-1024-B-2): the DM source URL is the
+                        // transport form (http once this launch proved
+                        // TLS refused) while talkUrls holds https —
+                        // normalise once and compare by identity, like
+                        // the strip count below.
+                        String srcId = src == null ? null : SiteHttp.identityUrl(src);
+                        if (srcId != null && talkUrls.contains(srcId)) progCount++;
                         // v4.71: the Up Next talk's live percent, from
                         // this same query — no second query, and -1
                         // stays -1 when the talk is not downloading
                         // (saved talks read ⬇ instead, below).
-                        if (nxTalk != null && src != null && src.equals(nxTalk.url)
+                        if (nxTalk != null && srcId != null && srcId.equals(nxTalk.url)
                                 && soFarCol >= 0 && totalCol >= 0) {
                             long soFar = c.getLong(soFarCol);
                             long total = c.getLong(totalCol);
@@ -3209,7 +3215,7 @@ public class TalksActivity extends Activity {
                         // v8.64: same percent for the foreign head (its
                         // URL is not in talkUrls, so it is never counted
                         // in progCount above — only its own percent here).
-                        if (fxHead != null && src != null && src.equals(fxHead.url)
+                        if (fxHead != null && srcId != null && srcId.equals(fxHead.url)
                                 && soFarCol >= 0 && totalCol >= 0) {
                             long soFar = c.getLong(soFarCol);
                             long total = c.getLong(totalCol);

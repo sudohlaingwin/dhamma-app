@@ -602,7 +602,7 @@ public class AudioService extends Service {
                         if (SiteHttp.sameTalk(q12.url, currentUrl)) continue;
                         java.io.File qf12 = offlineFileFor(q12.url);
                         if (qf12 != null && qf12.getAbsolutePath().equals(currentUrl)) continue;
-                        if (q12.url.equals(awaitUrl)) barePos12 = i;
+                        if (SiteHttp.sameTalk(q12.url, awaitUrl)) barePos12 = i;
                         break;
                     }
                 }
@@ -759,7 +759,7 @@ public class AudioService extends Service {
             if (qf != null && qf.getAbsolutePath().equals(currentUrl)) continue;
             if (qe.isV2() && !qe.sayadaw.equals(lastName)) {
                 if (!Prefs.canonicalSayadaw99(AudioService.this, qe.sayadaw).equals(awaitSayadaw)) return -1;
-                return qu.equals(awaitUrl) ? i : -1;
+                return SiteHttp.sameTalk(qu, awaitUrl) ? i : -1;
             }
             int found = -1;
             for (int j = 0; j < lines.length; j++) {
@@ -767,7 +767,7 @@ public class AudioService extends Service {
                 if (line == null || line.length() == 0) continue;
                 int tab = line.indexOf('\t');
                 String u = tab >= 0 ? line.substring(0, tab) : line;
-                if (u.equals(qu)) { found = j; break; }
+                if (SiteHttp.sameTalk(u, qu)) { found = j; break; }
                 java.io.File f = offlineFileFor(u);
                 if (f != null && f.getAbsolutePath().equals(qu)) { found = j; break; }
             }
@@ -1418,6 +1418,17 @@ public class AudioService extends Service {
                 if (swipePos > 5000) swipeUrl = currentUrl;
             } catch (Exception ignored) {}
         }
+        // v13.63 (F-1007-A-4): an unprepared talk has no player
+        // position, but its resume spot survives in pendingSeekMs
+        // (buffering) or in the saved spot (failed after prepare)
+        // — capture it before stopPlayback() wipes both. Never
+        // re-save an ended talk; the >5s rule is enforced here
+        // and inside saveResumeSpotSync.
+        if (swipeUrl == null && currentUrl != null && !trackEnded) {
+            int held = pendingSeekMs;
+            if (held <= 5000) held = savedSeekFor(currentUrl);
+            if (held > 5000) { swipeUrl = currentUrl; swipePos = held; }
+        }
         try { stopPlayback(); } catch (Exception ignored) {}
         if (swipeUrl != null) saveResumeSpotSync(swipeUrl, swipePos);
         try { stopForeground(true); } catch (Exception ignored) {}
@@ -1999,6 +2010,13 @@ public class AudioService extends Service {
                 livePlaying = false; // v4.16
                 prepared = false;
                 bufferedPercent = 0; // a refused talk has nothing buffered
+                // v13.63 (F-1017-A-1): the outgoing talk may still be
+                // sounding — this guard returns before the :2085
+                // reset(), so pause/toggle/focus-loss all no-op on
+                // the zombie. reset() is valid in every player state
+                // (same idiom as :2085) and must run BEFORE the N1
+                // re-advance below, or it would kill the retried talk.
+                try { if (player != null) player.reset(); } catch (Exception ignored) {}
                 if (listener != null) listener.onError(Lang.t(AudioService.this, "dl_file_gone"));
                 try {
                     android.widget.Toast.makeText(AudioService.this,
@@ -2256,13 +2274,46 @@ public class AudioService extends Service {
                     // v13.57 (TLS resilience): a stream that fails to
                     // prepare because the site's TLS is refused on
                     // this phone/network retries once over plain http
-                    // (same play() retry idiom as :2468/:2836, resume
-                    // spot re-derived by savedSeekFor). The flag stops
-                    // a second retry: a failed http attempt runs the
-                    // normal error path below (restores + advance).
+                    // (resume spot re-derived by savedSeekFor).
+                    // v13.63 (F-984-C-1): onError carries no cause
+                    // (what/extra only), so a failure here cannot
+                    // prove TLS — retry this one talk over http
+                    // WITHOUT flipping the session-wide tlsBroken
+                    // flag. fetchBytes proves TLS failure itself
+                    // (SSL-gated) and sets the flag then. Retry-once
+                    // still holds: after the retry currentUrl is the
+                    // http URL, so isSiteUrl is false and a second
+                    // failure falls through to the normal error path
+                    // below (restores + advance).
                     if (!SiteHttp.tlsBroken && currentUrl != null && SiteHttp.isSiteUrl(currentUrl)) {
-                        SiteHttp.tlsBroken = true;
+                        // v13.63 (F-1007-A-1): snapshot the armed
+                        // queue-head / forward records first — the
+                        // nested play() below runs the fresh-play
+                        // clears, which would wipe them (in-memory
+                        // and persisted) before the http retry even
+                        // prepares. Re-armed after the call, through
+                        // the arm functions (never raw fields — they
+                        // carry the v13.97 displaced-record logic,
+                        // the v13.95 N1 leg, and persist the pair).
+                        String retryHead14 = pendingQueueHeadLine14;
+                        String retryHeadOwner14 = pendingQueueHeadOwner14;
+                        String retryFwdBefore14 = pendingForwardBefore14;
+                        String retryFwdAfter14 = pendingForwardAfter14;
+                        long retryFwdGen14 = pendingForwardGen14;
                         play(SiteHttp.downgrade(currentUrl), currentTitle, savedSeekFor(currentUrl));
+                        // A sync-failed retry restores at once via
+                        // the arm's trackError leg (its v13.97 logic
+                        // preserves a newer N1-armed head); a still-
+                        // buffering retry is a pure re-arm, so the
+                        // second onError still restores on failure.
+                        // Skipped only when the N1 chain already
+                        // advanced and armed a different head that is
+                        // buffering (residual corner — that head
+                        // stands, the old one is dropped).
+                        if (retryHead14 != null && (trackError || pendingQueueHeadLine14 == null))
+                            armPendingQueueHead14(retryHead14, retryHeadOwner14);
+                        if (retryFwdBefore14 != null && pendingForwardBefore14 == null)
+                            armPendingForward14(retryFwdBefore14, retryFwdAfter14, retryFwdGen14);
                         return true;
                     }
                     trackError = true;
@@ -2357,13 +2408,17 @@ public class AudioService extends Service {
             notifyState();
         } catch (Exception e) {
             // v13.57 (TLS resilience): a setDataSource failure for a
-            // site stream is the TLS refusal surfacing early — retry
-            // once over plain http (same play() retry idiom as the
-            // toggle/resume paths :2468/:2836). The flag stops a
-            // second retry: a failed http attempt falls through to
-            // the normal error path below.
+            // site stream may be the TLS refusal surfacing early —
+            // retry once over plain http. v13.63 (F-984-C-1): the
+            // catch cannot prove TLS (opaque IOException message,
+            // and it also covers non-network failures in play()),
+            // so the retry no longer flips the session-wide
+            // tlsBroken flag — fetchBytes proves TLS itself and
+            // sets the flag then. Retry-once still holds: the
+            // retried URL is http, so isSiteUrl is false and a
+            // second failure falls through to the normal error
+            // path below.
             if (!SiteHttp.tlsBroken && SiteHttp.isSiteUrl(url)) {
-                SiteHttp.tlsBroken = true;
                 play(SiteHttp.downgrade(url), title, seekMs);
                 return;
             }
