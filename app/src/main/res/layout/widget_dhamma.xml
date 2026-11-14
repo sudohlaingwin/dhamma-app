@@ -11,7 +11,20 @@
      (sim1415.py, phone font k=1.362). Now 104.1dp at default,
      109.9dp at Large (fits), 115.6dp at Largest — only transparent
      button padding cut, icons clear by 8.4dp. Margins, text sizes,
-     48dp buttons, minHeight and resizeMode untouched. -->
+     48dp buttons, minHeight and resizeMode untouched.
+     v13.92 (slice 1084): the sounding sayadaw's portrait in the
+     bottom row — the widget's own photo, the gold arc's last
+     surface. The row is already 48dp tall, so a 48dp ring frame
+     costs NO height (sim1415's 104.1/109.9/115.6dp stand); the
+     cost is width: frame 48dp + 6dp gap + 3x48dp buttons leaves
+     the sayadaw line 28dp at the 250dp minWidth (it ellipsizes;
+     at a real ~360dp placement it keeps ~138dp). The frame owns
+     visibility (GONE by default, so the picker preview shows no
+     empty slot — the photo inside stays visible, the strips'
+     v13.90 rule); the provider sets its background to the reused
+     shelf_ring_playing drawable while sounding, nothing
+     otherwise, and the 44dp photo sits centred 2dp inside the
+     2dp stroke. No new drawable, no new colour. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/wg_body"
     android:layout_width="match_parent"
@@ -50,6 +63,29 @@
         android:layout_marginTop="4dp"
         android:orientation="horizontal"
         android:gravity="center_vertical">
+
+        <!-- v13.92 (slice 1084): the sounding sayadaw's portrait.
+             48dp ring frame (the strips' v13.90 form, reused
+             shelf_ring_playing) around a centred 44dp photo — the
+             frame owns visibility, GONE until the provider names a
+             sayadaw, so the empty state and the picker preview show
+             no hole. Tap falls through to wg_body (opens the Room);
+             the photo carries no PendingIntent of its own. -->
+        <FrameLayout
+            android:id="@+id/wg_photo_ring"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginRight="6dp"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/wg_photo"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_gravity="center"
+                android:scaleType="centerCrop"
+                android:contentDescription="Sayadaw photo" />
+        </FrameLayout>
 
         <TextView
             android:id="@+id/wg_sayadaw"

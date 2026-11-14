@@ -81,6 +81,40 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
         return liveSession && liveHasTrack && !liveEnded;
     }
 
+    // v13.92 (slice 1084): the widget photo's URL — which
+    // sayadaw's portrait the widget shows. A library session
+    // takes its recorded sayadaw's catalog photo (libPhotoUrl,
+    // exact name, "" on miss); anything else takes lastPhoto,
+    // the last ROOM sayadaw. The lib branch is gated on libOk —
+    // the same file-on-disk gate the title and sayadaw lines use
+    // — so a deleted library file falls back to the Room anchors
+    // with the title and the name, never a stale face beside a
+    // Room name. An unresolvable lib owner (libPhotoUrl "") falls
+    // back the same way: the photo always names the sayadaw the
+    // line beside it shows, never a guessed face.
+    static String widgetPhotoUrlPure(boolean isLib, boolean libOk,
+                                     String lastPhoto, String libPhotoUrl) {
+        if (isLib && libOk && libPhotoUrl != null && libPhotoUrl.length() > 0)
+            return libPhotoUrl;
+        return lastPhoto == null ? "" : lastPhoto;
+    }
+
+    // v13.92 (slice 1084): the notification's 192px cap
+    // (AudioService.notiScaled, same shape) — the cached portrait
+    // is a 512px render and a 512x512 ARGB bitmap is 1MB on the
+    // Binder parcel; 192px is 147KB and still 4x the 48dp view.
+    static android.graphics.Bitmap widgetScaled(android.graphics.Bitmap src) {
+        if (src == null) return null;
+        try {
+            int m = Math.max(src.getWidth(), src.getHeight());
+            if (m <= 192) return src;
+            float s = 192f / m;
+            return android.graphics.Bitmap.createScaledBitmap(src,
+                    Math.max(1, Math.round(src.getWidth() * s)),
+                    Math.max(1, Math.round(src.getHeight() * s)), true);
+        } catch (Exception ignored) { return src; }
+    }
+
     // Buffering counts as playing (livePlaying is true through
     // the buffering window), so it shows the pause icon.
     static String widgetPlayIconPure(boolean playing) {
@@ -178,6 +212,13 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
         // an unresolvable owner keeps today's lastName — never
         // worse, never a guessed name.
         boolean isLib = "lib".equals(sp.getString("lastKind", ""));
+        // v13.92 (slice 1084): libOk + libPhotoUrl escape the lib
+        // branch below so the photo rule can share the title and
+        // sayadaw lines' own gate — one session decision for all
+        // three. Room sessions keep libOk true and no lib photo,
+        // so the photo falls back to lastPhoto with the name.
+        boolean libOk = true;
+        String libPhotoUrl = "";
         String effLastTitle = lastTitle;
         if (isLib && !hasTrack) {
             String libTitle = sp.getString("lastLibTitle", "");
@@ -201,7 +242,7 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
             // trust the owner while the file exists. A live
             // track's file exists by definition, so the live
             // branch is untouched.
-            boolean libOk = hasTrack;
+            libOk = hasTrack;
             if (!hasTrack) {
                 libOk = sounding.length() > 0
                         && new java.io.File(sounding).isFile()
@@ -209,7 +250,15 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
             }
             if (libOk) {
                 String owner = Prefs.sayadawForTalk(context, "lib", sounding, "");
-                if (owner != null && owner.length() > 0) sayadaw = widgetSayadawPure(owner);
+                if (owner != null && owner.length() > 0) {
+                    sayadaw = widgetSayadawPure(owner);
+                    // v13.92 (slice 1084): the library session's
+                    // own photo — the catalog portrait of the
+                    // recorded sayadaw (exact name, "" on miss),
+                    // so the widget never shows the stale Room
+                    // face after a library listen.
+                    libPhotoUrl = AudioService.stripPhotoUrlForSayadaw(context, owner);
+                }
             }
         }
         boolean playing = AudioService.livePlaying;
@@ -230,6 +279,52 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
         views.setTextViewText(R.id.wg_sayadaw, sayadaw);
         views.setViewVisibility(R.id.wg_sayadaw,
                 sayadaw.length() > 0 ? android.view.View.VISIBLE : android.view.View.GONE);
+
+        // v13.92 (slice 1084): the sounding sayadaw's portrait in
+        // the 48dp ring frame — the widget's own photo, the gold
+        // arc's last surface. Room sessions read lastPhoto (the
+        // last ROOM sayadaw); a library session takes its recorded
+        // sayadaw's catalog photo, so a library listen never shows
+        // the stale Room face — the notification card's lib branch
+        // (v5.99) no-guess rule, same as the name beside it.
+        // Cache-only bitmap (ImageLoader.cached, MEM + disk, never
+        // a download — the card's v5.23 rule); a miss falls back
+        // to the gold initial placeholder of the DISPLAYED sayadaw,
+        // so the face always matches the name. Scaled to the
+        // notification's 192px cap (widgetScaled) so the
+        // RemoteViews parcel stays far under the Binder limit.
+        // The frame owns visibility (the strips' v13.90 rule);
+        // the ring is the reused shelf ring while sounding (the
+        // same widgetTitleGoldPure predicate as the gold title),
+        // nothing otherwise. A photo failure never breaks the
+        // title or the buttons: the frame simply stays hidden.
+        try {
+            String photoUrl = widgetPhotoUrlPure(isLib, libOk,
+                    sp.getString("lastPhoto", ""), libPhotoUrl);
+            android.graphics.Bitmap photoBmp = null;
+            if (sayadaw.length() > 0) {
+                if (photoUrl.length() > 0)
+                    photoBmp = ImageLoader.cached(context, photoUrl);
+                if (photoBmp == null)
+                    photoBmp = ImageLoader.placeholder(sayadaw);
+                photoBmp = widgetScaled(photoBmp);
+            }
+            if (photoBmp != null) {
+                views.setImageViewBitmap(R.id.wg_photo, photoBmp);
+                views.setInt(R.id.wg_photo_ring, "setBackgroundResource",
+                        sounding ? R.drawable.shelf_ring_playing : 0);
+                views.setViewVisibility(R.id.wg_photo_ring,
+                        android.view.View.VISIBLE);
+            } else {
+                views.setViewVisibility(R.id.wg_photo_ring,
+                        android.view.View.GONE);
+            }
+        } catch (Exception ignored) {
+            try {
+                views.setViewVisibility(R.id.wg_photo_ring,
+                        android.view.View.GONE);
+            } catch (Exception ignored2) {}
+        }
 
         String icon = widgetPlayIconPure(playing);
         views.setImageViewResource(R.id.wg_play,
