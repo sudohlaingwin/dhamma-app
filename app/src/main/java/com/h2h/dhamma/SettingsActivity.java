@@ -66,6 +66,7 @@ public class SettingsActivity extends Activity {
     // v6.03: Settings strip portrait guard — the v6.00/v6.01/v6.02
     // change-only guard, so the 1s tick never re-loads a face.
     private String settingsStripPhotoName = null;
+    private boolean lastSettingsStripPhotoRing = false;
     // v10.10: download-complete listener for the paused shade card
     // (Main v10.08 pattern) — registered in onResume, unregistered
     // in onPause; Settings has no rows, its strip + button counts
@@ -1836,12 +1837,40 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
     private void syncSettingsStripPhoto(String name) {
         android.view.View pv = findViewById(R.id.nowStripPhoto);
         if (pv == null) return;
+        // v13.90 (slice 1082): strip portrait sounding gold ring — the
+        // frame's background is the shelf ring drawable (reused, no new
+        // drawable) while a live session sounds, and nothing otherwise,
+        // so the sounding sayadaw reads in a still screenshot on every
+        // strip. The predicate is the strip's own live rule
+        // (liveSession + liveHasTrack, the same gate the strip sync's
+        // live branch uses) with the v3.99 sounding identity: paused
+        // still rings, an ended talk never rings, and the resume strip
+        // (dead session) never rings — the portrait ring is what tells
+        // a live strip from a resume strip in a still, the nav_glass
+        // gold rim being identical in both modes. Change-only on the
+        // flag below, before the name-equality return, so a
+        // live-to-dead transition with the same sayadaw still clears
+        // the ring on the next 1s tick; the frame owns visibility now,
+        // the photo inside stays visible. No new view except the
+        // ring-carrier frame, no new drawable, no new key.
+        android.view.View ring = findViewById(R.id.nowStripPhotoRing);
+        boolean ringing = name != null && name.length() > 0
+                && AudioService.liveSession && AudioService.liveHasTrack && !AudioService.liveEnded;
+        if (ringing != lastSettingsStripPhotoRing) {
+            lastSettingsStripPhotoRing = ringing;
+            if (ring != null) {
+                if (ringing) ring.setBackgroundResource(R.drawable.shelf_ring_playing);
+                else ring.setBackground(null);
+            }
+        }
         if (name == null || name.length() == 0) {
             settingsStripPhotoName = null;
-            pv.setVisibility(android.view.View.GONE);
+            if (ring != null) ring.setVisibility(android.view.View.GONE);
+            else pv.setVisibility(android.view.View.GONE);
             return;
         }
-        pv.setVisibility(android.view.View.VISIBLE);
+        if (ring != null) ring.setVisibility(android.view.View.VISIBLE);
+        else pv.setVisibility(android.view.View.VISIBLE);
         if (name.equals(settingsStripPhotoName)) return;
         settingsStripPhotoName = name;
         String url = AudioService.stripPhotoUrlForSayadaw(SettingsActivity.this, name);

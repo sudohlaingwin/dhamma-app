@@ -2317,6 +2317,7 @@ public class DownloadedActivity extends Activity {
     // v6.01 strip-photo guard, mirrored, so the 1s tick never
     // re-loads a face.
     private String dlStripPhotoName = null;
+    private boolean lastDlStripPhotoRing = false;
 
     // v6.02: sayadaw portrait on the library strip — Main's v6.00
     // and Talks' v6.01 mirror, completing portrait parity across
@@ -2335,12 +2336,40 @@ public class DownloadedActivity extends Activity {
     private void syncDlStripPhoto(String name) {
         android.view.View pv = findViewById(R.id.nowStripPhoto);
         if (pv == null) return;
+        // v13.90 (slice 1082): strip portrait sounding gold ring — the
+        // frame's background is the shelf ring drawable (reused, no new
+        // drawable) while a live session sounds, and nothing otherwise,
+        // so the sounding sayadaw reads in a still screenshot on every
+        // strip. The predicate is the strip's own live rule
+        // (liveSession + liveHasTrack, the same gate the strip sync's
+        // live branch uses) with the v3.99 sounding identity: paused
+        // still rings, an ended talk never rings, and the resume strip
+        // (dead session) never rings — the portrait ring is what tells
+        // a live strip from a resume strip in a still, the nav_glass
+        // gold rim being identical in both modes. Change-only on the
+        // flag below, before the name-equality return, so a
+        // live-to-dead transition with the same sayadaw still clears
+        // the ring on the next 1s tick; the frame owns visibility now,
+        // the photo inside stays visible. No new view except the
+        // ring-carrier frame, no new drawable, no new key.
+        android.view.View ring = findViewById(R.id.nowStripPhotoRing);
+        boolean ringing = name != null && name.length() > 0
+                && AudioService.liveSession && AudioService.liveHasTrack && !AudioService.liveEnded;
+        if (ringing != lastDlStripPhotoRing) {
+            lastDlStripPhotoRing = ringing;
+            if (ring != null) {
+                if (ringing) ring.setBackgroundResource(R.drawable.shelf_ring_playing);
+                else ring.setBackground(null);
+            }
+        }
         if (name == null || name.length() == 0) {
             dlStripPhotoName = null;
-            pv.setVisibility(android.view.View.GONE);
+            if (ring != null) ring.setVisibility(android.view.View.GONE);
+            else pv.setVisibility(android.view.View.GONE);
             return;
         }
-        pv.setVisibility(android.view.View.VISIBLE);
+        if (ring != null) ring.setVisibility(android.view.View.VISIBLE);
+        else pv.setVisibility(android.view.View.VISIBLE);
         if (name.equals(dlStripPhotoName)) return;
         dlStripPhotoName = name;
         String url = AudioService.stripPhotoUrlForSayadaw(DownloadedActivity.this, name);

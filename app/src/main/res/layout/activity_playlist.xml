@@ -81,13 +81,31 @@
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal">
-            <com.h2h.dhamma.CircleImageView
-                android:id="@+id/nowStripPhoto"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
+            <!-- v13.90 (slice 1082): strip portrait sounding gold ring —
+                 the 44dp portrait now sits in a 48dp frame whose
+                 background is the shelf ring drawable (reused, no new
+                 drawable) while a live session sounds, so the sounding
+                 sayadaw reads in a still screenshot on every strip.
+                 Same 4dp geometry as the Room header's 52/48dp frame
+                 (v13.88) and the chooser header's 60/56dp frame
+                 (v13.89); the 10dp gap moved to the frame, so the row
+                 spacing is unchanged and the photo never moves or
+                 shrinks. The frame owns visibility now (gone when no
+                 sayadaw is recorded); the ring is off in resume mode
+                 (nothing sounds) and while a talk has ended. -->
+            <FrameLayout
+                android:id="@+id/nowStripPhotoRing"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:layout_marginEnd="10dp"
-                android:scaleType="centerCrop"
-                android:visibility="gone" />
+                android:visibility="gone">
+                <com.h2h.dhamma.CircleImageView
+                    android:id="@+id/nowStripPhoto"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:layout_gravity="center"
+                    android:scaleType="centerCrop" />
+            </FrameLayout>
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
