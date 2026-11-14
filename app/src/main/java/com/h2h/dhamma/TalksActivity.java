@@ -443,7 +443,7 @@ public class TalksActivity extends Activity {
             java.util.Set<String> q = new java.util.HashSet<String>();
             org.json.JSONArray arr = new org.json.JSONArray(
                     getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlQueued", "[]"));
-            for (int i = 0; i < arr.length(); i++) q.add(arr.optString(i));
+            for (int i = 0; i < arr.length(); i++) q.add(SiteHttp.identityUrl(arr.optString(i)));
             talkDlQueuedCache = q;
         } catch (Exception ignored) { talkDlQueuedCache = new java.util.HashSet<String>(); }
         long now = android.os.SystemClock.uptimeMillis();
@@ -484,6 +484,38 @@ public class TalksActivity extends Activity {
     // mark, like the Room's v7.38 queueLineIndexForUrl fix. talkQueue
     // stays bare URLs, so every downstream contains/indexOf site
     // (row marks, move, header) is unchanged.
+    // v13.71 (slice 1057): talkQueue holds parsed saved-line URLs — a
+    // legacy http line for a talk the fresh list spells https — so raw
+    // contains/remove/indexOf split one talk into two identities: the
+    // remove/move/add gates toast "queue changed", the add verb plants
+    // a twin, and the move-drop indexOf(-1) would crash. Every
+    // talkQueue membership site goes through these sameTalk-aware
+    // helpers; listHasTalk parses v2 lines too (funnel inList).
+    private boolean talkQueueHas(String url) {
+        if (url == null) return false;
+        for (String q : talkQueue) if (SiteHttp.sameTalk(q, url)) return true;
+        return false;
+    }
+    private int talkQueueIndexOf(String url) {
+        if (url == null) return -1;
+        for (int i = 0; i < talkQueue.size(); i++)
+            if (SiteHttp.sameTalk(talkQueue.get(i), url)) return i;
+        return -1;
+    }
+    private boolean talkQueueRemove(String url) {
+        int i = talkQueueIndexOf(url);
+        if (i < 0) return false;
+        talkQueue.remove(i);
+        return true;
+    }
+    private static boolean listHasTalk(java.util.ArrayList<String> lines, String url) {
+        if (url == null) return false;
+        for (String line : lines) {
+            QueueEntry e = QueueEntry.parse(line);
+            if (e != null && SiteHttp.sameTalk(e.url, url)) return true;
+        }
+        return false;
+    }
     private void refreshQueueMarks() {
         java.util.ArrayList<String> q = new java.util.ArrayList<String>();
         String saved = Prefs.savedQueue(TalksActivity.this, sayadawName);
@@ -492,7 +524,7 @@ public class TalksActivity extends Activity {
                 if (line.length() == 0) continue;
                 QueueEntry e = QueueEntry.parse(line);
                 String u = e == null ? "" : e.url;
-                if (u.length() == 0 || q.contains(u)) continue;
+                if (u.length() == 0 || listHasTalk(q, u)) continue;
                 for (int i = 0; i < talks.size(); i++)
                     if (SiteHttp.sameTalk(talks.get(i).url, u)) { q.add(u); break; }
             }
@@ -579,7 +611,7 @@ public class TalksActivity extends Activity {
         if (url == null) return false;
         for (String line : out) {
             QueueEntry e = QueueEntry.parse(line);
-            if (e != null && e.url.equals(url)) return true;
+            if (e != null && SiteHttp.sameTalk(e.url, url)) return true;
         }
         return false;
     }
@@ -587,7 +619,7 @@ public class TalksActivity extends Activity {
         if (url == null) return -1;
         for (int i = 0; i < out.size(); i++) {
             QueueEntry e = QueueEntry.parse(out.get(i));
-            if (e != null && e.url.equals(url)) return i;
+            if (e != null && SiteHttp.sameTalk(e.url, url)) return i;
         }
         return -1;
     }
@@ -731,8 +763,8 @@ public class TalksActivity extends Activity {
                     QueueEntry e = QueueEntry.parse(line);
                     if (e == null || !e.isV2()) continue;
                     if (sayadawName != null && !e.sayadaw.equals(sayadawName)
-                            && out.contains(e.url))
-                        out.set(out.indexOf(e.url), line);
+                            && outContainsUrl(out, e.url))
+                        out.set(indexOfUrl(out, e.url), line);
                 }
                 // v12.04: ADOPT entries added elsewhere + carry
                 // foreign lines, in ONE pass over the saved lines
@@ -767,7 +799,7 @@ public class TalksActivity extends Activity {
                 // Unparseable lines are still skipped, as before.
                 java.util.Set<String> removed04 = new java.util.HashSet<String>();
                 for (String u04 : lastSyncedTalkQueue04)
-                    if (u04 != null && u04.length() > 0 && !inList.contains(u04)) removed04.add(u04);
+                    if (u04 != null && u04.length() > 0 && !listHasTalk(inList, u04)) removed04.add(SiteHttp.identityUrl(u04));
                 java.util.HashMap<String, Integer> afterCount = new java.util.HashMap<String, Integer>();
                 for (int si = 0; si < savedLines.size(); si++) {
                     QueueEntry e = QueueEntry.parse(savedLines.get(si));
@@ -778,7 +810,7 @@ public class TalksActivity extends Activity {
                         for (int ti = 0; ti < talks.size(); ti++)
                             if (talks.get(ti).url != null && SiteHttp.sameTalk(talks.get(ti).url, e.url)) { inLoadedList = true; break; }
                     if (inLoadedList) {
-                        if (removed04.contains(e.url)) continue;
+                        if (removed04.contains(SiteHttp.identityUrl(e.url))) continue;
                     } else if (!e.isV2()) continue;
                     String anchor = null;
                     for (int pj = si - 1; pj >= 0; pj--) {
@@ -1008,6 +1040,11 @@ public class TalksActivity extends Activity {
         // v13.68 (audit-1369 F11): dlMap/dlSayadaw/dlQueued read-modify-write - serialize on DlLock.LOCK (see DlLock).
         synchronized (DlLock.LOCK) {
         try {
+            // v13.71 (slice 1057): bank the canonical (https) form —
+            // the Fx.stripEnqueueDownload shape (v13.67); a
+            // sounding-URL caller must never plant an http
+            // dlMap/dlSayadaw/dlQueued row.
+            url = SiteHttp.identityUrl(url);
             android.content.SharedPreferences sp =
                     getSharedPreferences("dhamma", MODE_PRIVATE);
             org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
@@ -1514,7 +1551,7 @@ public class TalksActivity extends Activity {
                 if (moveHeldUrl != null) {
                     final int dropIdx = talkIndexAtDisplay(pos);
                     if (dropIdx < 0 || dropIdx >= talks.size()) return;
-                    if (!talkQueue.contains(moveHeldUrl)) {
+                    if (!talkQueueHas(moveHeldUrl)) {
                         moveHeldUrl = null;
                         android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
                         if (adapter != null) adapter.notifyDataSetChanged();
@@ -1538,7 +1575,7 @@ public class TalksActivity extends Activity {
                         if (adapter != null) adapter.notifyDataSetChanged();
                         return;
                     }
-                    if (!talkQueue.contains(tappedUrl)) {
+                    if (!talkQueueHas(tappedUrl)) {
                         android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "queue_tap_only"), android.widget.Toast.LENGTH_SHORT).show();
                         return;
                     }
@@ -1546,8 +1583,8 @@ public class TalksActivity extends Activity {
                     for (int i = 0; i < talks.size(); i++)
                         if (talks.get(i).url.equals(moveHeldUrl)) { heldIdx = i; break; }
                     String heldTitle = heldIdx >= 0 ? talks.get(heldIdx).title : "";
-                    talkQueue.remove(moveHeldUrl);
-                    talkQueue.add(talkQueue.indexOf(tappedUrl), moveHeldUrl);
+                    talkQueueRemove(moveHeldUrl);
+                    talkQueue.add(talkQueueIndexOf(tappedUrl), moveHeldUrl);
                     moveHeldUrl = null;
                     saveTalkQueueKeepingForeign(talkQueue, (String) null);
                     refreshQueueMarks();
@@ -1644,14 +1681,14 @@ public class TalksActivity extends Activity {
                         if (adapter != null) adapter.notifyDataSetChanged();
                         return true;
                     }
-                    if (!talkQueue.contains(moveHeldUrl)) {
+                    if (!talkQueueHas(moveHeldUrl)) {
                         moveHeldUrl = null;
                         android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
                         if (adapter != null) adapter.notifyDataSetChanged();
                         return true;
                     }
                     String movedUrl86 = moveHeldUrl;
-                    talkQueue.remove(moveHeldUrl);
+                    talkQueueRemove(moveHeldUrl);
                     talkQueue.add(moveHeldUrl);
                     moveHeldUrl = null;
                     saveTalkQueueKeepingForeign(talkQueue, (String) null);
@@ -1759,7 +1796,7 @@ public class TalksActivity extends Activity {
                     } catch (Exception ignored) {}
                     dOpts.add(dFav ? Lang.t(TalksActivity.this, "menu_fav_remove") : Lang.t(TalksActivity.this, "menu_fav_add"));
                     dKeys.add(dFav ? "menu_fav_remove" : "menu_fav_add");
-                    final boolean dQueued = talkQueue.contains(dt.url);
+                    final boolean dQueued = talkQueueHas(dt.url);
                     if (dQueued) { dOpts.add(Lang.t(TalksActivity.this, "menu_queue_remove")); dKeys.add("menu_queue_remove"); }
                     else { dOpts.add(Lang.t(TalksActivity.this, "menu_queue_add")); dKeys.add("menu_queue_add"); }
                     // v13.04: "queue all from here" — the Downloaded
@@ -1901,11 +1938,11 @@ public class TalksActivity extends Activity {
                                         if (adapter != null) adapter.notifyDataSetChanged();
                                         android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, added88 ? "fav_added" : "fav_removed"), android.widget.Toast.LENGTH_SHORT).show();
                                     } else if ("menu_queue_remove".equals(dKeyArr[which])) {
-                                        if (!talkQueue.contains(dt.url)) {
+                                        if (!talkQueueHas(dt.url)) {
                                             android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
                                             return;
                                         }
-                                        talkQueue.remove(dt.url);
+                                        talkQueueRemove(dt.url);
                                         saveTalkQueueKeepingForeign(talkQueue, (String) null);
                                         refreshQueueMarks();
                                         if (!talks.isEmpty() && sayadawName != null) refreshFavHeader();
@@ -1927,7 +1964,7 @@ public class TalksActivity extends Activity {
                                             android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
                                             return;
                                         }
-                                        if (talkQueue.contains(dt.url)) {
+                                        if (talkQueueHas(dt.url)) {
                                             android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
                                             return;
                                         }
@@ -1979,7 +2016,7 @@ public class TalksActivity extends Activity {
                                             if (dt != null && dt.url != null && dt.url.length() > 0
                                                     && !((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(dt.url, talkPlayingUrl))
                                                             || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(dt.url, talkPlayingLibUrl)))
-                                                    && !talkQueue.contains(dt.url)) {
+                                                    && !talkQueueHas(dt.url)) {
                                                 talkQueue.add(dt.url);
                                                 keep04.add(dt.url);
                                                 added04++;
@@ -1992,7 +2029,7 @@ public class TalksActivity extends Activity {
                                             if (t04 == null || t04.url == null || t04.url.length() == 0) continue;
                                             if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(t04.url, talkPlayingUrl))
                                                     || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(t04.url, talkPlayingLibUrl))) continue;
-                                            if (talkQueue.contains(t04.url)) continue;
+                                            if (talkQueueHas(t04.url)) continue;
                                             talkQueue.add(t04.url);
                                             keep04.add(t04.url);
                                             added04++;
@@ -2075,7 +2112,7 @@ public class TalksActivity extends Activity {
                                             android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
                                             return;
                                         }
-                                        if (!talkQueue.contains(dt.url)) {
+                                        if (!talkQueueHas(dt.url)) {
                                             android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
                                             return;
                                         }
@@ -2136,8 +2173,8 @@ public class TalksActivity extends Activity {
                                             android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "already_next"), android.widget.Toast.LENGTH_SHORT).show();
                                             return;
                                         }
-                                        boolean wasQueued = talkQueue.contains(dt.url);
-                                        if (wasQueued) talkQueue.remove(dt.url);
+                                        boolean wasQueued = talkQueueHas(dt.url);
+                                        if (wasQueued) talkQueueRemove(dt.url);
                                         String fw = null;
                                         if (talkPlayingUrl != null && talkPlayingUrl.length() > 0) {
                                             for (String q : talkQueue)
@@ -2271,7 +2308,7 @@ public class TalksActivity extends Activity {
                 // and the bind's own queue-membership guard is
                 // the second check.
                 String mh = savedInstanceState.getString("moveHeldUrl");
-                if (mh != null && talkQueue.contains(mh)) moveHeldUrl = mh;
+                if (mh != null && talkQueueHas(mh)) moveHeldUrl = mh;
                 refreshTalkRowMarks(true); // v5.49: row marks ready before the rebind below
                 // v4.93: restore the search query too — setting the
                 // box text fires the watcher, which rebuilds the
@@ -3295,14 +3332,14 @@ public class TalksActivity extends Activity {
         if (talkQueue != null) {
             waitQ = talkQueue.size();
             if (talkPlayingUrl != null && talkPlayingUrl.length() > 0
-                    && talkQueue.contains(talkPlayingUrl)) waitQ--;
+                    && talkQueueHas(talkPlayingUrl)) waitQ--;
             // v11.76: same skip for the library-playing talk — it stays queued
             // (a library play never pops the Room queue), so without this the
             // header ◈ read one above the row marks; the inequality guard keeps
             // a talk that is somehow both forms from being subtracted twice.
             if (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0
                     && !SiteHttp.sameTalk(talkPlayingLibUrl, talkPlayingUrl)
-                    && talkQueue.contains(talkPlayingLibUrl)) waitQ--;
+                    && talkQueueHas(talkPlayingLibUrl)) waitQ--;
         }
         // v7.42: header ◈ count foreign-aware -- talkQueue holds
         // in-list URLs only (v7.39), so a foreign v2 line waiting
@@ -3330,7 +3367,7 @@ public class TalksActivity extends Activity {
                     if (sayadawName != null && e42.sayadaw.equals(sayadawName)) continue;
                     String u42 = e42.url;
                     if (u42.length() == 0 || !seenQ42.add(u42)) continue;
-                    if (talkQueue != null && talkQueue.contains(u42)) continue;
+                    if (talkQueue != null && talkQueueHas(u42)) continue;
                     if (talkPlayingUrl != null && talkPlayingUrl.length() > 0
                             && SiteHttp.sameTalk(u42, talkPlayingUrl)) continue;
                     // v11.76: foreign line that is the library-sounding talk skips too.

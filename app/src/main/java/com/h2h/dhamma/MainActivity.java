@@ -1211,7 +1211,7 @@ public class MainActivity extends Activity {
                             String u = keys.next();
                             if (fn.equals(map.optString(u, ""))) { nClaim49++; onlyClaim49 = u; }
                         }
-                        if (nClaim49 == 1 && onlyClaim49 != null && ft.contains(onlyClaim49)) lFav = true;
+                        if (nClaim49 == 1 && onlyClaim49 != null && ft.contains(SiteHttp.identityUrl(onlyClaim49))) lFav = true;
                     }
                 } catch (Exception ignored) {}
                 int lSec = rPos / 1000;
@@ -1334,7 +1334,7 @@ public class MainActivity extends Activity {
                             String u = keys.next();
                             if (fn.equals(map.optString(u, ""))) { nClaim49++; onlyClaim49 = u; }
                         }
-                        if (nClaim49 == 1 && onlyClaim49 != null && ft.contains(onlyClaim49)) stripFav = true;
+                        if (nClaim49 == 1 && onlyClaim49 != null && ft.contains(SiteHttp.identityUrl(onlyClaim49))) stripFav = true;
                     }
                 }
             }

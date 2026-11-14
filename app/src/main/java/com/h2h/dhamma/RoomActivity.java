@@ -275,6 +275,16 @@ public class RoomActivity extends Activity {
     // with the hand queue, and the marker with its question; a
     // fresh Room starts empty.
     private java.util.ArrayList<String> prevHistory = new java.util.ArrayList<String>();
+    // v13.71 (slice 1057): prevHistory entries are popped from the
+    // persisted trail, so a legacy http entry for a talk the fresh
+    // list spells https — raw contains would let the shuffle re-pick
+    // a just-heard talk. SameTalk-aware membership, like the
+    // queueLineIndexForUrl helper below.
+    private boolean prevHistoryHas(String url) {
+        if (url == null) return false;
+        for (String h : prevHistory) if (SiteHttp.sameTalk(h, url)) return true;
+        return false;
+    }
     // v8.36: history-clear generation last observed by this Room
     // (-1 = not yet observed). Settings' doClearHistory bumps the
     // "historyClearGen" pref on every clear; onResume compares it
@@ -933,7 +943,7 @@ public class RoomActivity extends Activity {
                 java.util.Set<String> removed03 = new java.util.HashSet<String>();
                 for (String line03 : lastQueueUrls03) {
                     String u03 = queueLineUrl(line03);
-                    if (u03.length() > 0 && queueLineIndexForUrl(u03) < 0) removed03.add(u03);
+                    if (u03.length() > 0 && queueLineIndexForUrl(u03) < 0) removed03.add(SiteHttp.identityUrl(u03));
                 }
                 for (int i02 = queueUrls.size() - 1; i02 >= 0; i02--) {
                     String u02 = queueLineUrl(queueUrls.get(i02));
@@ -965,18 +975,18 @@ public class RoomActivity extends Activity {
                     java.util.Map<String, Integer> order03 = new java.util.HashMap<String, Integer>();
                     for (int i03 = 0; i03 < adoptable03.size(); i03++) {
                         String u03 = queueLineUrl(adoptable03.get(i03));
-                        if (u03.length() > 0 && !order03.containsKey(u03)) order03.put(u03, Integer.valueOf(i03));
+                        if (u03.length() > 0 && !order03.containsKey(SiteHttp.identityUrl(u03))) order03.put(SiteHttp.identityUrl(u03), Integer.valueOf(i03));
                     }
                     for (String line03 : adoptable03) {
                         String u03 = queueLineUrl(line03);
                         if (u03.length() == 0) continue;
                         if (queueLineIndexForUrl(u03) >= 0) continue;
-                        if (removed03.contains(u03)) continue;
+                        if (removed03.contains(SiteHttp.identityUrl(u03))) continue;
                         int at03 = queueUrls.size();
-                        Integer pos03 = order03.get(u03);
+                        Integer pos03 = order03.get(SiteHttp.identityUrl(u03));
                         if (pos03 != null) {
                             for (int j03 = 0; j03 < queueUrls.size(); j03++) {
-                                Integer pj03 = order03.get(queueLineUrl(queueUrls.get(j03)));
+                                Integer pj03 = order03.get(SiteHttp.identityUrl(queueLineUrl(queueUrls.get(j03))));
                                 if (pj03 != null && pj03.intValue() > pos03.intValue()) { at03 = j03; break; }
                             }
                         }
@@ -1141,7 +1151,9 @@ public class RoomActivity extends Activity {
         if (saved == null || saved.length() == 0) return out;
         for (String line : saved.split("\n")) {
             QueueEntry e = QueueEntry.parse(line);
-            if (e == null || seen.contains(e.url)) continue;
+            boolean dupSeen1057 = false;
+            if (e != null) for (String s1057 : seen) if (SiteHttp.sameTalk(s1057, e.url)) { dupSeen1057 = true; break; }
+            if (e == null || dupSeen1057) continue;
             seen.add(e.url);
             boolean inList = false;
             for (int i = 0; i < talks.size(); i++)
@@ -3694,6 +3706,11 @@ if (snd65 >= 0) currentIndex = snd65;
         // v13.68 (audit-1369 F11): dlMap/dlSayadaw/dlQueued read-modify-write - serialize on DlLock.LOCK (see DlLock).
         synchronized (DlLock.LOCK) {
         try {
+            // v13.71 (slice 1057): bank the canonical (https) form —
+            // the Fx.stripEnqueueDownload shape (v13.67); a
+            // sounding-URL caller must never plant an http
+            // dlMap/dlSayadaw/dlQueued row.
+            url = SiteHttp.identityUrl(url);
             android.content.SharedPreferences sp =
                     getSharedPreferences("dhamma", MODE_PRIVATE);
             org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
@@ -10415,7 +10432,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                 // consume still agree on the same pick, and the
                 // forward step above still outranks this branch.
                 for (int i = 0; i < talks.size(); i++)
-                    if (talks.get(i).url.equals(shuffleNextUrl) && i != snd69 && !prevHistory.contains(shuffleNextUrl) && !isFailedUrl(talks.get(i).url)) return i; // v13.52: never shuffle-pick the failed talk (F1)
+                    if (talks.get(i).url.equals(shuffleNextUrl) && i != snd69 && !prevHistoryHas(shuffleNextUrl) && !isFailedUrl(talks.get(i).url)) return i; // v13.52: never shuffle-pick the failed talk (F1)
             }
             // v7.47: a fresh shuffle pick used to exclude only the
             // current talk, so with shuffle on a just-heard talk
@@ -10436,7 +10453,7 @@ if (snd67q >= 0) currentIndex = snd67q;
             for (int i = 0; i < talks.size(); i++) {
                 if (i == snd69) continue;
                 if (isFailedUrl(talks.get(i).url)) continue; // v13.52: never shuffle-pick the failed talk (F1)
-                if (!prevHistory.contains(talks.get(i).url)) pool.add(i);
+                if (!prevHistoryHas(talks.get(i).url)) pool.add(i);
             }
             int pick;
             if (!pool.isEmpty()) {

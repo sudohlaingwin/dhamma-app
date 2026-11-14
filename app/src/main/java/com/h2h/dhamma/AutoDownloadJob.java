@@ -561,6 +561,11 @@ public class AutoDownloadJob extends JobService {
         // v13.68 (audit-1369 F11): dlMap/dlSayadaw/dlQueued read-modify-write - serialize on DlLock.LOCK (see DlLock).
         synchronized (DlLock.LOCK) {
         try {
+            // v13.71 (slice 1057): bank the canonical (https) form —
+            // the Fx.stripEnqueueDownload shape (v13.67); a
+            // sounding-URL caller must never plant an http
+            // dlMap/dlSayadaw/dlQueued row.
+            url = SiteHttp.identityUrl(url);
             android.content.SharedPreferences sp =
                     getSharedPreferences("dhamma", MODE_PRIVATE);
             org.json.JSONObject map = new org.json.JSONObject(

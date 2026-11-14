@@ -239,8 +239,8 @@ public class DownloadedActivity extends Activity {
                 // last-wins claimant (see above).
                 if (fileClaimCount.get(e.file.getName()) != null
                         && fileClaimCount.get(e.file.getName()) > 1) continue;
-                if (favs != null && favs.contains(u)) libFavFiles.add(e.file.getName());
-                if (played != null && played.contains(u)) libListenedFiles.add(e.file.getName());
+                if (favs != null && favs.contains(SiteHttp.identityUrl(u))) libFavFiles.add(e.file.getName());
+                if (played != null && played.contains(SiteHttp.identityUrl(u))) libListenedFiles.add(e.file.getName());
                 String sd = sdMap.optString(u, "");
                 if (sd.length() > 0) libSayadawMap.put(e.file.getName(), sd);
             }
