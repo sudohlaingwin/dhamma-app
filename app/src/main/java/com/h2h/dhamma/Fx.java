@@ -1313,6 +1313,11 @@ public class Fx {
     // Returns true when the talk is now a favourite.
     public static boolean toggleFavTalk(Context ctx, String url) {
         if (url == null || url.length() == 0) return false;
+        // v13.65 (F-983-A-1): funnel canonicalisation — a legacy http
+        // dlMap key (pre-v13.59 enqueue) reaches here from Downloaded
+        // and the card star toggle; banking it verbatim splits the
+        // favourite in two so the star never clears. Paths pass through.
+        url = SiteHttp.identityUrl(url);
         try {
             android.content.SharedPreferences sp = ctx.getSharedPreferences(
                     "dhamma", Context.MODE_PRIVATE);

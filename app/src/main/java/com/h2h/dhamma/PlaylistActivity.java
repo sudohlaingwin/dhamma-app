@@ -520,7 +520,10 @@ public class PlaylistActivity extends Activity {
         it.putExtra("group", cat[0]);
         it.putExtra("url", cat[1]);
         it.putExtra("photo", cat[2]);
-        it.putExtra("autoUrl", first.url);
+        // v13.65 (planters): a legacy http ITEM row must not plant an
+        // http autoUrl — canonicalise at the source (the queue lines
+        // stay as stored; advance / sounding match them by identity).
+        it.putExtra("autoUrl", SiteHttp.identityUrl(first.url));
         it.putExtra("autoTitle", first.title);
         // v12.79: marks a playlist-originated auto-play, so the
         // Room's load completion may fall through to the next

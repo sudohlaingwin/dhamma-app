@@ -11094,6 +11094,11 @@ if (snd67q >= 0) currentIndex = snd67q;
                 // rotation/back press, and a dialog on a dead window
                 // throws instead of asking.
                 java.net.HttpURLConnection c = null;
+                // v13.65 (F-971-B-1): the probe retries once over http
+                // when TLS proves broken mid-probe — see the SSL catch
+                // below. Only an SSL failure retries; a success or an
+                // empty size breaks out at once (trailing break).
+                for (int probeAttempt = 0; probeAttempt < 2; probeAttempt++) {
                 try {
                     c = (java.net.HttpURLConnection)
                             new java.net.URL(SiteHttp.siteUrl(t.url)).openConnection();
@@ -11155,7 +11160,21 @@ if (snd67q >= 0) currentIndex = snd67q;
                     // — a 900KB talk showed "≈ 0 MB" and an 8.9MB talk
                     // showed 8MB. One decimal reads as the real size.
                     if (len > 0) sizeText = String.format(" (≈ %.1f MB)", len / 1048576.0);
-                } catch (Exception ignored) {}
+                } catch (javax.net.ssl.SSLException sslx) {
+                    // v13.65 (F-971-B-1): the gate probe is the one place
+                    // that still learns TLS is broken by failing — every
+                    // other probe rides fetchBytes, which sets tlsBroken
+                    // on SSLException (v13.63 F-984-C-1). Only an SSL
+                    // failure sets the flag (never DNS / timeout / HTTP
+                    // status) and only it retries, once, over http via
+                    // siteUrl — so a cached-list Room entry on the
+                    // TLS-broken phone shows its size and the dialog's
+                    // Wi-Fi leg enqueues http too.
+                    if (probeAttempt == 0 && !SiteHttp.tlsBroken) { SiteHttp.tlsBroken = true; continue; }
+                    break;
+                } catch (Exception ignored) {
+                    break;
+                }
                 finally {
                     // v1.97: disconnect() alone does not close the
                     // response body — the 1-byte ranged GET's body
@@ -11169,6 +11188,8 @@ if (snd67q >= 0) currentIndex = snd67q;
                         catch (Exception ignored) {}
                         try { c.disconnect(); } catch (Exception ignored) {}
                     }
+                }
+                break; // v13.65 (F-971-B-1): probed once — only the SSL catch above retries.
                 }
                 final String sz = sizeText;
                 runOnUiThread(new Runnable() {

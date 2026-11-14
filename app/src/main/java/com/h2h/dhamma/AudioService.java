@@ -7960,6 +7960,8 @@ public class AudioService extends Service {
         liveHasTrack = false; // v10.40: no session, no track
         liveTrackError = false; // v13.53 (audit-1375 F-N): stop paths that bypass stopAndClear (ACTION_STOP, task-removed) still reach onDestroy, so a static mirror must clear here or it sits stale-true until the next onCreate
         livePlaying = false; // v13.64 (audit-964 F-964-A-01): same stale-mirror class — a destroyed-while-playing service otherwise repaints the pause icon on the widget
+        liveSleepActive = false; // v13.65 (F-1007-B-4): same stale-mirror class — a destroyed service otherwise leaves a frozen sleep countdown on every strip's 1s tick until the next sleep edge or process death
+        liveSleepRemainingMs = 0; // v13.65 (F-1007-B-4): with liveSleepActive above; liveSleepEndOfTalk was already cleared
         liveEnded = false;
         liveSleepEndOfTalk = false; // v4.82: no session, no one-shot
         if (mediaSession != null) {

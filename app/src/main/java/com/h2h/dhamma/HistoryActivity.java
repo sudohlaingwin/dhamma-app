@@ -383,7 +383,10 @@ public class HistoryActivity extends Activity {
             return;
         }
         java.util.ArrayList<String> lines = new java.util.ArrayList<String>();
-        String line = QueueEntry.format(new QueueEntry(e.url, sd, e.title));
+        // v13.65 (planters): a legacy http REC row must not plant an
+        // http queue line + autoUrl — canonicalise at the source.
+        String playUrl = SiteHttp.identityUrl(e.url);
+        String line = QueueEntry.format(new QueueEntry(playUrl, sd, e.title));
         if (line.length() > 0) lines.add(line);
         Prefs.saveQueue(this, sd, lines);
         Intent it = new Intent(this, RoomActivity.class);
@@ -391,7 +394,7 @@ public class HistoryActivity extends Activity {
         it.putExtra("group", cat[0]);
         it.putExtra("url", cat[1]);
         it.putExtra("photo", cat[2]);
-        it.putExtra("autoUrl", e.url);
+        it.putExtra("autoUrl", playUrl);
         it.putExtra("autoTitle", e.title);
         Fx.tap(this);
         Fx.go(this, it);

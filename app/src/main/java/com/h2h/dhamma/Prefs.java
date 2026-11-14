@@ -659,8 +659,13 @@ public class Prefs {
                 int t = line.indexOf('\t');
                 if (t <= 0) continue;
                 try {
-                    if (Integer.parseInt(line.substring(t + 1)) > minPos)
+                    if (Integer.parseInt(line.substring(t + 1)) > minPos) {
+                        // v13.65 (F-978-A-4): a legacy http-only spot must
+                        // count for the https catalog URL too — the resume
+                        // header undercounts it otherwise.
                         out.add(line.substring(0, t));
+                        out.add(SiteHttp.identityUrl(line.substring(0, t)));
+                    }
                 } catch (Exception ignored) {}
             }
         } catch (Exception ignored) {}
@@ -2565,9 +2570,12 @@ public class Prefs {
             QueueEntry e = QueueEntry.parse(line);
             String u = e == null ? line : e.url;
             if (u.length() == 0) continue;
+            // v13.65 (F-978-B-4): a legacy http queue line for a listed
+            // talk must not be judged stale — compare by identity, not
+            // raw string, or the rewrite drops a live queued talk.
             if (soundingUrl != null && soundingUrl.length() > 0
-                    && u.equals(soundingUrl)) continue;
-            if (inListUrls != null && inListUrls.contains(u)) continue;
+                    && SiteHttp.sameTalk(u, soundingUrl)) continue;
+            if (inListUrls != null && (inListUrls.contains(u) || inListUrls.contains(SiteHttp.identityUrl(u)))) continue;
             if (e != null && e.isV2()
                     && (sayadaw == null || !e.sayadaw.equals(sayadaw))) continue;
             return true;

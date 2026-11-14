@@ -1305,10 +1305,11 @@ public class TalksActivity extends Activity {
     // pendingLandingFerr null = clean load; pendingLandingEmpty = the
     // clean load came back with zero talks. landingDeferred clears
     // before the flush fires, so a second onResume never re-fires.
-    // A rotation loses the stash (instance state) — the toast is
-    // lost, but autoUrl stays unconsumed, so the restored path still
-    // auto-opens; the list state itself (empty + retry) carries the
-    // failure.
+    // A rotation loses the stash (instance state) — the clean-empty
+    // toast is lost, but the failure toast is re-shown by the
+    // talkLoadFailed restore and autoUrl stays unconsumed, so the
+    // restored path still auto-opens; the list state itself (empty +
+    // retry) carries the failure.
     private boolean landingDeferred = false;
     private String pendingLandingFerr = null;
     private boolean pendingLandingEmpty = false;
