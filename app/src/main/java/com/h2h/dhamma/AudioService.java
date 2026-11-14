@@ -854,6 +854,16 @@ public class AudioService extends Service {
     // clear plus onCreate/onDestroy, so a stale true never outlives the
     // session. Read only through the Room's failedUrl() unbound leg.
     public static volatile boolean liveTrackError = false;
+    // v13.94 (F-920 F-NEW-5): live buffering mirror for the no-bind strips —
+    // the same pattern as livePlaying/liveTrackError. True exactly while a
+    // talk is still preparing (the isBuffering() definition: player != null
+    // && !prepared && currentTitle != null && !trackError); set at every
+    // state edge below, so a stuck true can never outlive the prepare
+    // window. The four strips read it on their 1s tick and prefix the
+    // title with the Room's own buffering word; a held buffering talk
+    // still reads loading (the stream IS still loading — only the Room,
+    // which binds, splits hold from load).
+    public static volatile boolean liveBuffering = false;
     // v4.25: a sleep timer is armed or pause-suspended — Main's mini
     // strip reads this on its 1s tick (no bind, like livePlaying),
     // because the strip otherwise cannot know a timer is running.
@@ -1323,6 +1333,7 @@ public class AudioService extends Service {
         liveSession = true; // v3.91: a session is loaded from here on
         liveHasTrack = false; // v10.40: fresh instance, no track yet
         liveTrackError = false; // v13.53: fresh instance, no failure yet
+        liveBuffering = false; // v13.94 (F-920 F-NEW-5): fresh instance, nothing loading yet
         // v13.74 (audit-1366 F3): a process death in the prepare window left
         // the armed head in prefs (see armPendingQueueHead14) with no live
         // service to restore it — recover it here, on the next service
@@ -1957,6 +1968,7 @@ public class AudioService extends Service {
         // before trackEnded is reset below.
         if (trackEnded && sleepEndFired && sleepEndOfTalk) consumeSleepEndOfTalk();
         livePlaying = true; // v4.16: new talk (buffering counts as playing)
+        liveBuffering = true; // v13.94 (F-920 F-NEW-5): a new talk starts loading
         // v10.69: a new talk used to leave the strip mirrors on the
         // PREVIOUS talk until prepare finished — play() never called
         // updateSession, and the 1s livePos tick only re-posts while
@@ -2033,6 +2045,7 @@ public class AudioService extends Service {
                 trackError = true;
                 liveTrackError = true; // v13.53: mirror for the unbound Room
                 livePlaying = false; // v4.16
+                liveBuffering = false; // v13.94 (F-920 F-NEW-5): a refused talk never loads
                 prepared = false;
                 bufferedPercent = 0; // a refused talk has nothing buffered
                 // v13.63 (F-1017-A-1): the outgoing talk may still be
@@ -2122,6 +2135,7 @@ public class AudioService extends Service {
             player.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
                 @Override public void onPrepared(MediaPlayer mp) {
                     prepared = true;
+                    liveBuffering = false; // v13.94 (F-920 F-NEW-5): the talk sounds — loading is over
                     // v13.14 (Q10): the pending queue head sounds now — its failure
                     // window is closed, so the record is cleared, never restored.
                     // v13.54 (audit-1372 F2): same for the forward stack — the new
@@ -2344,6 +2358,7 @@ public class AudioService extends Service {
                     trackError = true;
                     liveTrackError = true; // v13.53: mirror for the unbound Room
                     livePlaying = false; // v4.16
+                    liveBuffering = false; // v13.94 (F-920 F-NEW-5): a failed talk never loads
                     // v13.14 (Q10): a failed background queue head goes back to the
                     // front of its queue instead of vanishing — but only if this
                     // failure is the armed head's own prepare (cross-form URL match);
@@ -2450,6 +2465,7 @@ public class AudioService extends Service {
             trackError = true;
             liveTrackError = true; // v13.53: mirror for the unbound Room
             livePlaying = false; // v4.16
+            liveBuffering = false; // v13.94 (F-920 F-NEW-5): a failed setDataSource never loads
 
             if (listener != null) listener.onError(Lang.t(AudioService.this, "play_failed_prefix") + e.getMessage());
             // v11.01: the v1.40 onError path toasts directly because no
@@ -6431,6 +6447,7 @@ public class AudioService extends Service {
         // this is a no-op outside the prepare window.
         if (pendingQueueHeadLine14 != null) restorePendingQueueHead14();
         livePlaying = false; // v4.16 (covers stopAndClear + notification stop)
+        liveBuffering = false; // v13.94 (F-920 F-NEW-5): a stop ends the load
         // v4.04: a stop ends any sleep fade with it.
         cancelSleepFade();
         // v4.13: and both UI fades — a stop must never leave a
@@ -7984,6 +8001,7 @@ public class AudioService extends Service {
         liveSession = false; // v3.91: no session, no auto-scroll
         liveHasTrack = false; // v10.40: no session, no track
         liveTrackError = false; // v13.53 (audit-1375 F-N): stop paths that bypass stopAndClear (ACTION_STOP, task-removed) still reach onDestroy, so a static mirror must clear here or it sits stale-true until the next onCreate
+        liveBuffering = false; // v13.94 (F-920 F-NEW-5): same stale-mirror class — a destroyed service otherwise leaves a frozen loading word on every strip
         livePlaying = false; // v13.64 (audit-964 F-964-A-01): same stale-mirror class — a destroyed-while-playing service otherwise repaints the pause icon on the widget
         liveSleepActive = false; // v13.65 (F-1007-B-4): same stale-mirror class — a destroyed service otherwise leaves a frozen sleep countdown on every strip's 1s tick until the next sleep edge or process death
         liveSleepRemainingMs = 0; // v13.65 (F-1007-B-4): with liveSleepActive above; liveSleepEndOfTalk was already cleared

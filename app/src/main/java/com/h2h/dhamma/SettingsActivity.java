@@ -2075,19 +2075,29 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         android.view.View pvPrev0 = findViewById(R.id.nowStripPrev);
         if (pvPrev0 != null) pvPrev0.setVisibility(android.view.View.VISIBLE);
         String kind = sp.getString("lastKind", "");
+        // v13.94 (F-920 F-NEW-5): the strip names a stream still loading or
+        // already failed — until now both read exactly like a paused talk
+        // (▶ + title). Buffering borrows the Room's own word
+        // (notif_state_buffering, the drawer-row / status-line prefix); a
+        // failure borrows the Settings ⚠ mark. Error wins: the two states
+        // are exclusive by construction (isBuffering() requires !trackError)
+        // and both flags clear on every new play, so neither sticks to the
+        // next talk. Resume mode is untouched (no live track there).
+        String statePre94 = AudioService.liveTrackError ? "⚠ "
+                : (AudioService.liveBuffering ? Lang.t(SettingsActivity.this, "notif_state_buffering") + " " : "");
         String text = null;
         String subText = null;
         if ("room".equals(kind)) {
             String name = sp.getString("lastName", "");
             String title = sp.getString("lastTitle", "");
             if (name.length() > 0 && title.length() > 0) {
-                text = "🎵 " + title;
+                text = "🎵 " + statePre94 + title;
                 subText = name;
             }
         } else if ("lib".equals(kind)) {
             String title = sp.getString("lastLibTitle", "");
             if (title.length() > 0) {
-                text = "🎵 " + title;
+                text = "🎵 " + statePre94 + title;
                 // v5.45: a library session names its sayadaw when
                 // one was recorded at download time, like a Room
                 // session does above; an unrecorded download keeps
