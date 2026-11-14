@@ -2956,7 +2956,6 @@ public class MainActivity extends Activity {
             v.setScaleY(1f);
             final Sayadaw s = shown.get(pos);
             boolean night = cachedNight;
-            v.setBackgroundResource(night ? R.drawable.card_bg_night : R.drawable.card_bg);
             ImageLoader.load(MainActivity.this, s.photo, s.name, (CircleImageView) v.findViewById(R.id.photo));
             // v13.85 (Main L3, M9/F5 row sweep — main-talks-recheck-1355): the card views
             // were dereferenced bare, like the onCreate sites v13.37 closed — a renamed
@@ -2996,6 +2995,8 @@ public class MainActivity extends Activity {
             boolean gridPlaying = !AudioService.liveEnded
                     && soundingVisual != null
                     && soundingVisual.equals(s.name);
+            // v13.86 (slice 1078): sounding-sayadaw gold card — the row language, finally on the Main grid: the sounding card's background becomes the gold tile (main_card_playing.xml, the chooser tile's body: gold gradient + 2dp rim, 24dp radius like card_bg, theme-independent), so the sounding sayadaw reads in a still screenshot, not only while the name breathes. The same gridPlaying boolean drives the ▶ text and the gold name above, so tile, mark and name colour can never disagree; a paused session still tiles (liveSession counts paused as live, v3.99), a library session tiles its recorded sayadaw (v11.94), an ended talk never tiles (the liveEnded gate, v5.44/v11.15). Set on every bind, so a recycled card rebinds its background and the tile can never leak onto another sayadaw; the v12.38 tick already rebinds the grid exactly when the sounding name changes, so the tile stays fresh while Main sits on top. The press squash (scale-only), entrance pour (alpha+scale), star morph (star child) and breath (name view) all live on other views/channels — the tile is the card root's background alone. Not the banned favStar badge: no new view, no ★, background only.
+            v.setBackgroundResource(gridPlaying ? R.drawable.main_card_playing : (night ? R.drawable.card_bg_night : R.drawable.card_bg));
             if (nameView != null) nameView.setText(gridPlaying ? "▶ " + s.name : s.name);
             if (nameView != null) nameView.setTextColor(gridPlaying ? Color.parseColor("#C9A227")
                     : (night ? Color.WHITE : Color.parseColor("#3B2314")));
