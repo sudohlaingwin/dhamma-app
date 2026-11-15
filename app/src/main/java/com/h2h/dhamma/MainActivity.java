@@ -2838,6 +2838,15 @@ public class MainActivity extends Activity {
         kb.append(cachedNight ? "N" : "D");
         for (Sayadaw s : favList) kb.append('|').append(s.name);
         kb.append('|').append(soundingShelf == null ? "∅" : soundingShelf);
+        // v14.07 (slice 1102): the failure + loading bits join the
+        // pour key — a stream failing (or starting to load) under
+        // the same sounding sayadaw used to leave the chip's mark
+        // + ring stale until the next filter run, while the grid
+        // card already said ⚠. The Main tick already re-pours
+        // on both flips (mainGridFailed / mainGridBuffering), so
+        // the chip now moves within a tick of either edge.
+        kb.append(AudioService.liveTrackError ? "|F" : "|f");
+        kb.append(AudioService.liveBuffering ? "|B" : "|b");
         String key = kb.toString();
         if (key.equals(lastFavShelfKey)
                 && favShelfWrap.getVisibility() == android.view.View.VISIBLE) return;
@@ -2865,7 +2874,15 @@ public class MainActivity extends Activity {
             android.widget.FrameLayout ring = new android.widget.FrameLayout(this);
             int rp = (int) (56 * d);
             ring.setLayoutParams(new android.widget.LinearLayout.LayoutParams(rp, rp));
-            if (shelfPlaying) ring.setBackgroundResource(R.drawable.shelf_ring_playing);
+            // v14.07 (slice 1102): the chip ring names the failure too —
+            // gold while sounding, the red failed ring while sounding +
+            // failed (reused shelf_ring_failed.xml, v14.05), nothing
+            // otherwise. The chip name below says ⚠ through the same
+            // soundingRowMark the grid card uses, so mark and ring can
+            // never disagree; loading keeps the gold ring (v14.06:
+            // the ring says sounding, the name carries the word).
+            if (shelfPlaying && AudioService.liveTrackError) ring.setBackgroundResource(R.drawable.shelf_ring_failed);
+            else if (shelfPlaying) ring.setBackgroundResource(R.drawable.shelf_ring_playing);
             CircleImageView photo = new CircleImageView(this);
             int px = (int) (52 * d);
             android.widget.FrameLayout.LayoutParams flp =
@@ -2882,7 +2899,14 @@ public class MainActivity extends Activity {
                             android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
             nlp.setMargins(0, (int) (4 * d), 0, 0);
             name.setLayoutParams(nlp);
-            name.setText(shelfPlaying ? "▶ " + s.name : s.name);
+            // v14.07 (slice 1102): the chip name borrows the grid card's
+            // soundingRowMark (v14.05/v14.06) — the hardcoded "▶ " used to
+            // survive a failed stream, so a favourited sayadaw's chip read
+            // as playing while its card already said ⚠. Error wins, then
+            // the loading word, in the glyph's own slot (the Main mirror
+            // rule, like the grid card); the gold colour below stays —
+            // gold says sounding, the mark says failed.
+            name.setText(Fx.soundingRowMark(shelfPlaying, AudioService.liveTrackError, AudioService.liveBuffering ? Lang.t(MainActivity.this, "notif_state_buffering") : "", "\u25B6") + s.name);
             name.setTextColor(shelfPlaying ? android.graphics.Color.parseColor("#C9A227")
                     : (cachedNight ? android.graphics.Color.WHITE
                     : android.graphics.Color.parseColor("#3B2314")));

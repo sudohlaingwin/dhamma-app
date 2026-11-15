@@ -525,6 +525,11 @@ public class TalksActivity extends Activity {
     // untouched.
     private android.view.View talksHeaderPhotoRing = null;
     private boolean lastChooserHeaderRing = false;
+    // v14.07 (slice 1102): failed state the chooser header ring was
+    // last bound against — the ring is three-state now (gold / red /
+    // none), so the change-only memory needs the failure bit beside
+    // the ringing bit, like the Room header ring (v14.05).
+    private boolean lastChooserHeaderRingFailed = false;
     // v7.39: line-aware -- a saved line is parsed and matched by its
     // URL, so a v2-spelled line (handover-carried, owned by another
     // sayadaw) for a talk that IS in this list still earns its
@@ -3412,10 +3417,24 @@ public class TalksActivity extends Activity {
                         && SiteHttp.sameTalk(t.url, talkPlayingLibUrl))) { ringing = true; break; }
             }
         }
-        if (ringing != lastChooserHeaderRing) {
+        // v14.07 (slice 1102): the header ring names the failure too —
+        // gold while an in-list talk sounds, the red failed ring while
+        // it sounds + failed (reused shelf_ring_failed.xml, v14.05),
+        // nothing otherwise. The rows below already say ⚠ (v14.05),
+        // but the portrait itself read exactly like a healthy sounding
+        // talk — the same class v14.05 fixed on the Room header ring.
+        // Change-only on both bits, so a steady refresh never re-sets
+        // the background; no tick change — refreshFavHeader rides the
+        // tick's failure-flip branch already (talkRowFailed) and this
+        // update runs at its top, so the ring flips within a tick.
+        // Loading keeps the gold ring (v14.06: the ring says sounding).
+        boolean ringFailed = ringing && AudioService.liveTrackError;
+        if (ringing != lastChooserHeaderRing || ringFailed != lastChooserHeaderRingFailed) {
             lastChooserHeaderRing = ringing;
+            lastChooserHeaderRingFailed = ringFailed;
             if (talksHeaderPhotoRing != null) {
-                if (ringing) talksHeaderPhotoRing.setBackgroundResource(R.drawable.shelf_ring_playing);
+                if (ringFailed) talksHeaderPhotoRing.setBackgroundResource(R.drawable.shelf_ring_failed);
+                else if (ringing) talksHeaderPhotoRing.setBackgroundResource(R.drawable.shelf_ring_playing);
                 else talksHeaderPhotoRing.setBackground(null);
             }
         }
