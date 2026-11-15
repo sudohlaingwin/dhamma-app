@@ -81,6 +81,29 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
         return liveSession && liveHasTrack && !liveEnded;
     }
 
+    // v14.04 (slice 1099): the widget title's state marks — the strips
+    // name a failed stream (\u26A0, v13.94) and a downloaded talk (\u2B07,
+    // v14.02); the widget named neither, so on the home screen a
+    // failed stream read exactly like a paused talk and a sounding
+    // downloaded talk read exactly like a stream. Same marks, same
+    // order as the strips: \u26A0 prefix (error wins, exclusive with the
+    // buffering word by construction — isBuffering() requires
+    // !trackError), \u2B07 suffix after the title (after \u2605 on the strips;
+    // the widget has no \u2605). The empty state returns "" — the caller
+    // keeps today's choose_talk text, so marks only ever decorate a
+    // real title, never the placeholder. A new play() clears
+    // liveTrackError (AudioService :2011), so \u26A0 never sticks to the
+    // next talk; every failure path refreshes the widget through
+    // notifyState, so the mark lands on the failure edge, not the
+    // next poll (the widget is never polled).
+    static String widgetTitleMarkedPure(boolean failed, String title, String dlMark) {
+        String t = clean67(title);
+        if (t.length() == 0) return "";
+        String out = (failed ? "\u26A0 " : "") + t;
+        if (" \u2B07".equals(dlMark)) out += dlMark;
+        return out;
+    }
+
     // v13.92 (slice 1084): the widget photo's URL — which
     // sayadaw's portrait the widget shows. A library session
     // takes its recorded sayadaw's catalog photo (libPhotoUrl,
@@ -263,10 +286,32 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
         }
         boolean playing = AudioService.livePlaying;
 
+        // v14.04 (slice 1099): the widget title's state marks — see
+        // widgetTitleMarkedPure. Room kind reuses
+        // Fx.stripResumeDownloadMark on the stored lastUrl (the strips'
+        // own call, v14.02 — only its \u2B07 return is kept; the \u23F3 return
+        // would name a job the widget has no count for). Lib kind is
+        // downloaded by definition, so the file-exists guard on the
+        // sounding path keeps a stale path from claiming the mark
+        // (the strips' lib leg, same gate — a dead lib session reads
+        // lastLibPath, a live one the live URL, which is the file).
+        boolean widgetFailed = AudioService.liveTrackError;
+        String widgetDlMark = "";
+        if (isLib) {
+            String wPath = hasTrack ? AudioService.liveUrl : sp.getString("lastLibPath", "");
+            if (wPath != null && wPath.length() > 0) {
+                java.io.File wf = new java.io.File(wPath);
+                if (wf.isFile() && wf.length() > 0) widgetDlMark = " \u2B07";
+            }
+        } else {
+            String m = Fx.stripResumeDownloadMark(context, sp, sp.getString("lastUrl", ""));
+            if (" \u2B07".equals(m)) widgetDlMark = m;
+        }
+        String markedTitle = widgetTitleMarkedPure(widgetFailed, title, widgetDlMark);
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_dhamma);
         views.setTextViewText(R.id.wg_app, Lang.t(context, "wg_app"));
         views.setTextViewText(R.id.wg_title,
-                title.length() > 0 ? title : Lang.t(context, "choose_talk"));
+                markedTitle.length() > 0 ? markedTitle : Lang.t(context, "choose_talk"));
         // v13.91 (slice 1083): gold title while a live session
         // sounds — the same gold as the wg_app label (#E8C878),
         // white otherwise. No new colour, no layout change; the
