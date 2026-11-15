@@ -2602,6 +2602,13 @@ public class DownloadedActivity extends Activity {
                 } catch (Exception ignored) {}
                 int lSec = rPos / 1000;
                 String lTime = Fx.stripResumeTime(lSec);
+                // v14.03 (slice 1098): same total + bar as the room branch —
+                // legs are the saved URL, the file path, then the dlMap
+                // single-claimant stream URL (a file downloaded after the
+                // listen has no path-form duration yet).
+                int lDur = Fx.stripResumeDuration(DownloadedActivity.this, rsp, rSavedUrl, lPath);
+                String lClock = Fx.stripClockSuffix(rPos, lDur, Prefs.stripClockRemaining(DownloadedActivity.this));
+                String lClockTxt = lClock.length() > 0 ? lClock : " · " + lTime;
                 // v8.52: Main's v7.94 resume mark, mirrored — the proven file is offline, like Main's lib branch.
                 if (tx != null) tx.setText("↺ " + lTitle + (lFav ? " ★" : "") + (Fx.stripInProgressDlFilenames(DownloadedActivity.this, rsp).contains(new java.io.File(lPath).getName()) ? " ⏳" : " ⬇"));
                 // v5.46: a dead library strip names its recorded
@@ -2610,7 +2617,7 @@ public class DownloadedActivity extends Activity {
                 // shape; an unrecorded download keeps today's
                 // generic line, never a guessed name.
                 String libSd = Fx.stripLibSayadaw(DownloadedActivity.this, rsp);
-                if (sb != null) sb.setText(libSd != null ? libSd + " · " + lTime + Lang.t(DownloadedActivity.this, "resume_from") : Lang.t(DownloadedActivity.this, "downloaded_talk") + " · " + lTime + Lang.t(DownloadedActivity.this, "resume_from"));
+                if (sb != null) sb.setText(libSd != null ? libSd + lClockTxt + Lang.t(DownloadedActivity.this, "resume_from") : Lang.t(DownloadedActivity.this, "downloaded_talk") + lClockTxt + Lang.t(DownloadedActivity.this, "resume_from"));
                 if (tg != null) tg.setText("▶");
                 if (nx != null) nx.setVisibility(android.view.View.GONE);
                 // v7.35: Previous hides with Next in resume mode (Main/Talks v7.31) —
@@ -2620,7 +2627,7 @@ public class DownloadedActivity extends Activity {
                 android.view.View pv0 = findViewById(R.id.nowStripPrev);
                 if (pv0 != null) pv0.setVisibility(android.view.View.GONE);
                 android.widget.ProgressBar lPb = findViewById(R.id.nowStripProgress);
-                if (lPb != null) lPb.setProgress(0);
+                if (lPb != null) Fx.stripResumeProgress(lPb, rPos, lDur);
                 dlResumeStripMode = true;
                 syncDlStripPhoto(libSd);
                 strip.setVisibility(android.view.View.VISIBLE);
@@ -2639,16 +2646,23 @@ public class DownloadedActivity extends Activity {
             } catch (Exception ignored) {}
             int rSec = rPos / 1000;
             String rTime = Fx.stripResumeTime(rSec);
+            // v14.03 (slice 1098): the ↺ strip gains its total — the stored
+            // duration (v13.96) turns the position-only sub-line into
+            // "pos / total" (or "−left" in remaining mode, the live strip's
+            // own clock rule) and fills the bar; unknown duration keeps
+            // today's exact line and empty bar.
+            int rDur = Fx.stripResumeDuration(DownloadedActivity.this, rsp, rUrl, null);
+            String rClock = Fx.stripClockSuffix(rPos, rDur, Prefs.stripClockRemaining(DownloadedActivity.this));
             // v8.52: Main's v7.94 resume download mark, mirrored — a ↺ strip here never said whether resuming streams or plays offline.
             if (tx != null) tx.setText("↺ " + rTitle + (rFav ? " ★" : "") + Fx.stripResumeDownloadMark(DownloadedActivity.this, rsp, rUrl));
-            if (sb != null) sb.setText(rName + " · " + rTime + Lang.t(DownloadedActivity.this, "resume_from"));
+            if (sb != null) sb.setText(rName + (rClock.length() > 0 ? rClock : " · " + rTime) + Lang.t(DownloadedActivity.this, "resume_from"));
             if (tg != null) tg.setText("▶");
             if (nx != null) nx.setVisibility(android.view.View.GONE);
                 // v7.35: same Previous hide as the library resume branch above.
                 android.view.View pv0 = findViewById(R.id.nowStripPrev);
                 if (pv0 != null) pv0.setVisibility(android.view.View.GONE);
             android.widget.ProgressBar rPb = findViewById(R.id.nowStripProgress);
-            if (rPb != null) rPb.setProgress(0);
+            if (rPb != null) Fx.stripResumeProgress(rPb, rPos, rDur);
             dlResumeStripMode = true;
             syncDlStripPhoto(rName);
             strip.setVisibility(android.view.View.VISIBLE);

@@ -997,6 +997,83 @@ public class Fx {
         return stripClockSuffix(posMs, durMs, remaining);
     }
 
+    // v14.03 (slice 1098): resume-strip duration — the ↺ strip is the
+    // only strip surface that never showed a total: it printed the saved
+    // position alone and forced its bar to 0, because "no duration
+    // survives a dead session" (v4.60). Since v13.96 the duration DOES
+    // survive, in Prefs.talkDurMap (written in AudioService.onPrepared
+    // under both forms). Legs, cheapest first: the URL as stored, its
+    // alternate-scheme twin (the putBoth twin), then the downloaded
+    // path, then the dlMap reverse lookup — a file downloaded AFTER
+    // the listen has no path-form duration yet (the v13.96 asymmetry),
+    // so the single claimant's stream URL is the last leg; >1
+    // claimants read as unknown rather than a possibly wrong talk
+    // (the v8.49 exactly-one rule). 0 means never stored — the caller
+    // keeps today's exact position-only line and empty bar.
+    public static int stripResumeDuration(Context ctx,
+            android.content.SharedPreferences sp, String url, String path) {
+        if (ctx != null && sp != null) {
+            if (url != null && url.length() > 0) {
+                int d = Prefs.talkDurGet(ctx, url);
+                if (d > 0) return d;
+                String alt = SiteHttp.identityUrl(url);
+                if (alt != null && !alt.equals(url)) {
+                    d = Prefs.talkDurGet(ctx, alt);
+                    if (d > 0) return d;
+                }
+            }
+            if (path != null && path.length() > 0) {
+                // sim1548 catch: the path leg skips when path==url
+                // (already tried as the URL leg above), but the dlMap
+                // reverse lookup below must still run — when the saved
+                // URL IS the path, dlMap is the only way back to the
+                // stream URL the duration was stored under.
+                if (!path.equals(url)) {
+                    int d = Prefs.talkDurGet(ctx, path);
+                    if (d > 0) return d;
+                }
+                try {
+                    org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+                    String fn = new java.io.File(path).getName();
+                    java.util.Iterator<String> keys = map.keys();
+                    int n = 0;
+                    String only = null;
+                    while (keys.hasNext()) {
+                        String u = keys.next();
+                        if (fn.equals(map.optString(u, ""))) { n++; only = u; }
+                    }
+                    if (n == 1 && only != null) {
+                        int d = Prefs.talkDurGet(ctx, only);
+                        if (d > 0) return d;
+                        String alt = SiteHttp.identityUrl(only);
+                        if (alt != null && !alt.equals(only)) {
+                            d = Prefs.talkDurGet(ctx, alt);
+                            if (d > 0) return d;
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+        return 0;
+    }
+
+    // v14.03 (slice 1098): resume-strip progress — the live strip's
+    // syncStripProgress reads the live service, which a dead session
+    // has none of, so the resume branch fills from the stored
+    // duration instead. Same 1000 scale as the layout max and
+    // syncStripProgress, same empty read when the duration was never
+    // stored; the position clamps to the duration (the v13.51 rule)
+    // and never below a 3% sliver, so a barely-started talk still
+    // reads as a visible gold dash (the v13.97 hairline rule).
+    public static void stripResumeProgress(android.widget.ProgressBar pb,
+            int posMs, int durMs) {
+        if (pb == null) return;
+        if (durMs <= 0 || posMs < 0) { pb.setProgress(0); return; }
+        int frac = (int) ((long) Math.min(posMs, durMs) * 1000 / durMs);
+        if (frac < 30) frac = 30;
+        pb.setProgress(frac);
+    }
+
     // v5.34: shared mm:ss / H:MM:SS formatter — the strips kept it
     // private, but the Talks rows and Room drawer rows now show a
     // per-talk resume time too, and they must read identically.
