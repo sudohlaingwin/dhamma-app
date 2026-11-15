@@ -219,6 +219,12 @@ public class RoomActivity extends Activity {
     // this the bind gate below would only move the mark on
     // the next scroll, return or menu action.
     private boolean lastPollEnded = false;
+    // v14.05 (slice 1100): failed state the poll last saw — the v11.16
+    // twin for the failure class: a stream failing (same talk,
+    // liveTrackError flipped) would otherwise leave the ⏸ on the
+    // failed drawer row until the next scroll, while the Room title
+    // already said ⚠.
+    private boolean lastPollFailed = false;
     // v13.88 (slice 1080): the Room header photo's gold ring — the
     // last sounding surface without the gold language (drawer rows
     // v12.92, chooser rows v13.83, library rows v13.84, grid card
@@ -235,6 +241,10 @@ public class RoomActivity extends Activity {
     // ▶/⏸ glyph, so the ring never has to carry transport state.
     private View headerPhotoRing;
     private boolean lastHeaderRing = false;
+    // v14.05 (slice 1100): failed state the header ring was last bound
+    // against — the ring is three-state now (gold / red / none), so the
+    // change-only memory needs the failure bit beside the ringing bit.
+    private boolean lastHeaderRingFailed = false;
     // v3.20: play/pause glyph crossfade — the label used to swap at
     // full alpha in the same frame the v2.07 morph snapped scale to
     // 0.86, so the ▶/⏸ glyph visibly popped mid-squash. The label
@@ -4618,8 +4628,10 @@ if (snd65 >= 0) currentIndex = snd65;
                 // replay clears liveEnded in play(), so the
                 // mark returns the same way. Steady ticks
                 // never touch the adapter.
-                if (AudioService.liveEnded != lastPollEnded) {
+                if (AudioService.liveEnded != lastPollEnded
+                        || AudioService.liveTrackError != lastPollFailed) {
                     lastPollEnded = AudioService.liveEnded;
+                    lastPollFailed = AudioService.liveTrackError;
                     if (adapter != null) adapter.notifyDataSetChanged();
                 }
                 // v13.88 (slice 1080): the header photo ring — the
@@ -4644,10 +4656,19 @@ if (snd65 >= 0) currentIndex = snd65;
                 boolean headerRinging = curUrl1088 != null
                         && !AudioService.liveEnded
                         && isCurrentTalk(curUrl1088);
-                if (headerRinging != lastHeaderRing) {
+                // v14.05 (slice 1100): the ring names the failure too — gold
+                // while sounding, the red failed ring while sounding + failed,
+                // none otherwise. The Room title already said ⚠ (v14.01), but
+                // the portrait itself read exactly like a healthy sounding
+                // talk. Change-only on both bits, so a steady 500ms tick
+                // never re-sets the background.
+                boolean headerRingFailed = headerRinging && AudioService.liveTrackError;
+                if (headerRinging != lastHeaderRing || headerRingFailed != lastHeaderRingFailed) {
                     lastHeaderRing = headerRinging;
+                    lastHeaderRingFailed = headerRingFailed;
                     if (headerPhotoRing != null) {
-                        if (headerRinging) headerPhotoRing.setBackgroundResource(R.drawable.shelf_ring_playing);
+                        if (headerRingFailed) headerPhotoRing.setBackgroundResource(R.drawable.shelf_ring_failed);
+                        else if (headerRinging) headerPhotoRing.setBackgroundResource(R.drawable.shelf_ring_playing);
                         else headerPhotoRing.setBackground(null);
                     }
                 }
@@ -12755,7 +12776,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                     // recycled row.
                     boolean fHeld = moveHeldUrl != null && moveHeldUrl.equals(fe.url)
                             && queueLineIndexForUrl(fe.url) >= 0;
-                    if (fTitle != null) fTitle.setText((fHeld ? "✋ " : "") + (fSounding ? "⏸ " : "") + fHand + (fFav ? "★ " : "")
+                    if (fTitle != null) fTitle.setText((fHeld ? "✋ " : "") + Fx.soundingRowMark(fSounding, AudioService.liveTrackError, "\u23F8") + fHand + (fFav ? "★ " : "")
                             + (fDownloaded ? "⬇ " : "") + fQueueMark
                             + (fPlayed && !fSounding ? "✓ " : "")
                             + (fe.title.length() > 0 ? fe.title : fe.url)
@@ -13031,7 +13052,7 @@ if (snd67q >= 0) currentIndex = snd67q;
             // ended state; pulse, ◈, ▸, ✋ and ↺ keep
             // playIdx71 untouched, as v11.15 did elsewhere.
             boolean rowPlaying116 = talkIdx == playIdx71 && !AudioService.liveEnded;
-            if (titleView != null) titleView.setText((held ? "✋ " : "") + (rowPlaying116 ? "⏸ " : "") + handMark + (fav ? "★ " : "") + (downloaded ? "⬇ " : "") + queueMark + (played && !rowPlaying116 ? "✓ " : "") + t.title + resumeMark);
+            if (titleView != null) titleView.setText((held ? "✋ " : "") + Fx.soundingRowMark(rowPlaying116, AudioService.liveTrackError, "\u23F8") + handMark + (fav ? "★ " : "") + (downloaded ? "⬇ " : "") + queueMark + (played && !rowPlaying116 ? "✓ " : "") + t.title + resumeMark);
             if (titleView != null) titleView.setTextColor(rowPlaying116
                     ? android.graphics.Color.parseColor("#C9A227")
                     : android.graphics.Color.WHITE);

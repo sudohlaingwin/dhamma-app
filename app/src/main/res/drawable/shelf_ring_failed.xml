@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v14.05 (slice 1100): failed-sounding ring for the Room header photo —
+     the oval-ring form of the gold tile (shelf_ring_playing.xml, v13.87),
+     re-stroked in warning red (#C0392B) so a failed stream reads as failed
+     on the portrait itself, not only in the Room title's ⚠ (v14.01). Same
+     1dp inset / 2dp stroke geometry as the gold ring, so the two swap
+     without moving the frame; theme-independent like the gold ring. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:bottom="1dp"
+        android:left="1dp"
+        android:right="1dp"
+        android:top="1dp">
+        <shape android:shape="oval">
+            <stroke
+                android:width="2dp"
+                android:color="#C0392B" />
+            <solid android:color="#00000000" />
+        </shape>
+    </item>
+</layer-list>

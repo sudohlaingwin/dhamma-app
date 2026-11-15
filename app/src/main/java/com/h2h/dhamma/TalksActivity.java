@@ -494,6 +494,12 @@ public class TalksActivity extends Activity {
     // natural end (same URL, liveEnded flipped) would otherwise
     // leave the ▶ on the ended row until the next rebind.
     private boolean talkRowEnded = false;
+    // v14.05 (slice 1100): failed state the rows were last bound
+    // against — the v11.15 twin for the failure class: a stream
+    // failing (same URL, liveTrackError flipped) would otherwise
+    // leave the ▶ on the failed row until the next rebind, while
+    // the strip already said ⚠.
+    private boolean talkRowFailed = false;
     // v13.85 (slice 1077): the Up Next talk's URL the rows were last bound against — the chooser's Up Next ▸ mark (Room v4.13, in the chooser rows). Written only by refreshFavHeader, alongside the header line it mirrors (queued head / forward top / shuffle-gated list-next; empty when a foreign head waits or nothing resolves), and read only by TalkAdapter.getView; the tick's change branch refreshes the header BEFORE the rebind below, so a row never binds against a stale next talk. Cleared at the top of every header refresh, so an early return can never leave a stale crown.
     private String upNextRowUrl = "";
     // v13.89 (slice 1081): chooser header photo ring — the last photo
@@ -4093,10 +4099,12 @@ public class TalksActivity extends Activity {
         // and the list needs no special case here.
         if (adapter != null && (marksChanged44 || !talkPlayingUrl.equals(talkRowPlayingUrl == null ? "" : talkRowPlayingUrl)
                 || !talkPlayingLibUrl.equals(talkRowPlayingLibUrl == null ? "" : talkRowPlayingLibUrl)
-                || AudioService.liveEnded != talkRowEnded)) {
+                || AudioService.liveEnded != talkRowEnded
+                || AudioService.liveTrackError != talkRowFailed)) {
             talkRowPlayingUrl = talkPlayingUrl;
             talkRowPlayingLibUrl = talkPlayingLibUrl;
             talkRowEnded = AudioService.liveEnded;
+            talkRowFailed = AudioService.liveTrackError;
             // v7.55: the filter view follows the same mark change
             // -- v7.44 rebinds the rows and v7.51 refreshes the
             // header when a mark changes under the chooser, but
@@ -5262,7 +5270,7 @@ public class TalksActivity extends Activity {
             // (played, never the playing row, Room or library form).
             boolean rowListened = !rowPlaying && !rowPlayingLib && talkPlayedCache.contains(rowUrl);
             String playedMark = rowListened ? "✓ " : "";
-            if (titleView != null) titleView.setText((held ? "✋ " : "") + ((rowPlaying || rowPlayingLib) ? "▶ " : "") + qMark + favMark + offMark + playedMark + talks.get(talkIdx).title + resumeMark);
+            if (titleView != null) titleView.setText((held ? "✋ " : "") + Fx.soundingRowMark(rowPlaying || rowPlayingLib, AudioService.liveTrackError, "\u25B6") + qMark + favMark + offMark + playedMark + talks.get(talkIdx).title + resumeMark);
             // v1.52: rows fade + rise in once when first shown
             if (pos > lastAnimPos) {
                 lastAnimPos = pos;

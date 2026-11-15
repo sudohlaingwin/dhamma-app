@@ -2322,6 +2322,13 @@ public class DownloadedActivity extends Activity {
     // condition never refreshed the row after that tap.
     private boolean lastDlActive = false;
     private String lastDlTrack = null;
+    // v14.05 (slice 1100): failed state the rows were last bound
+    // against — the v1.47 tick's playing/track/active change
+    // detection never saw a failure: a first failure while playing
+    // flips isPlaying, but a same-talk retry that fails again
+    // moves no playing/track/active flag, so its ▶ would sit
+    // until the next rebind while the strip already said ⚠.
+    private boolean lastDlFailed = false;
     // v1.85: which ended file the refresh already handled — the
     // Room got this marker in v1.69, the library never did. Without
     // it, an ended file that left the shown list (a search typed
@@ -4051,11 +4058,13 @@ public class DownloadedActivity extends Activity {
                     && (service.isPlaying()
                             || (service.isBuffering() && !service.isHoldPaused()));
             if (adapter != null && (curPlaying != lastDlPlaying || trackChanged
-                    || curActive != lastDlActive)) {
+                    || curActive != lastDlActive
+                    || AudioService.liveTrackError != lastDlFailed)) {
                 adapter.notifyDataSetChanged();
                 lastDlPlaying = curPlaying;
                 lastDlTrack = curTrack;
                 lastDlActive = curActive;
+                lastDlFailed = AudioService.liveTrackError;
             }
             // v4.66: a Next landing while the shelf sits open used
             // to leave the footer's Up Next line pointing at the
@@ -11688,7 +11697,7 @@ public class DownloadedActivity extends Activity {
             // both playing and finished at once. ★ stays, like
             // both mirrors; the 1s tick already rebinds on a
             // track change, so the mark moves with the ▶.
-            if (title != null) title.setText((rowPlaying ? "▶ " : "")
+            if (title != null) title.setText(Fx.soundingRowMark(rowPlaying, AudioService.liveTrackError, "\u25B6")
                     + (libFavFiles.contains(e.file.getName()) ? "★ " : "")
                     + (rowListened ? "✓ " : "")
                     // v4.57: hand-queue position mark, the Talks
