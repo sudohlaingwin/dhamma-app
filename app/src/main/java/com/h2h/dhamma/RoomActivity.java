@@ -3477,13 +3477,14 @@ if (snd65 >= 0) currentIndex = snd65;
         // the EXISTING room_count_prefix/suffix and choose_talk keys
         // (same keys the list-load path at 3092/3139 already uses, so
         // Burmese display is byte-identical). Guarded: a line starting
-        // with the play/pause glyphs or the buffering prefix is a live
-        // track line owned by the poll and is left alone; a loading
+        // with the play/pause glyphs, the ⚠ failure mark (v14.01) or
+        // the buffering prefix is a live track line owned by the poll
+        // and is left alone; a loading
         // line is overwritten only until the load finishes and sets
         // the count line itself.
         if (nowPlaying != null) {
             String np = nowPlaying.getText().toString();
-            if (!np.startsWith("\u25B6 ") && !np.startsWith("\u23F8")
+            if (!np.startsWith("\u25B6 ") && !np.startsWith("\u23F8") && !np.startsWith("\u26A0 ")
                     && !np.startsWith(Lang.t(this, "notif_state_buffering"))) {
                 nowPlaying.setText(talks.isEmpty() ? Lang.t(this, "choose_talk")
                         : Lang.t(this, "room_count_prefix") + talks.size() + Lang.t(this, "room_count_suffix"));
@@ -5081,9 +5082,21 @@ if (snd65 >= 0) currentIndex = snd65;
                     // branch still matches.
                     String endedSuf = (!playing && service.hasTrackEnded())
                             ? " · " + Lang.t(RoomActivity.this, "notif_state_ended") : "";
-                    String pollLine = (playing ? "⏸ "
-                            : (service.isBuffering() && !service.isHoldPaused()
-                                    ? Lang.t(RoomActivity.this, "notif_state_buffering") + " " : "▶ "))
+                    // v14.01: a failed stream used to read exactly like a
+                    // paused one on this line (▶ + title) — the listener
+                    // back in the Room could not tell the talk had failed
+                    // to load. The strips already prefix ⚠ on a failed
+                    // stream since v13.94; the Room title now borrows the
+                    // same mark, in the same icon slot, error wins (the
+                    // two states are exclusive by construction —
+                    // isBuffering() requires !trackError — and play()
+                    // clears the flag on every new play, so the mark
+                    // never sticks to the next talk). The change-only
+                    // guard below adds/removes it within one 500ms tick.
+                    String pollLine = (service.hasTrackError() ? "⚠ "
+                            : (playing ? "⏸ "
+                                    : (service.isBuffering() && !service.isHoldPaused()
+                                            ? Lang.t(RoomActivity.this, "notif_state_buffering") + " " : "▶ ")))
                             + queuePos + dlMark + progMark + favMark + service.getCurrentTitle() + endedSuf;
                     // v13.40: status-line guards (M9/F5 class, poll/tick +
                     // loadTalks/playTalk/bind) — nowPlaying is a field assigned
@@ -5287,7 +5300,12 @@ if (snd65 >= 0) currentIndex = snd65;
                     // only ▶/⏸ lines were cleared. The list-loading
                     // line ("တရားစာရင်း ဆွဲထုတ်နေသည်…") starts
                     // differently and is left alone, as are count lines.
-                    if (np.startsWith("▶ ") || np.startsWith("⏸ ")
+                    // v14.01: a failed title line starts with ⚠, so it
+                    // clears here too — a notification stop clears the
+                    // flag and the title together (stopAndClear), so only
+                    // this branch can take the stale failed line back to
+                    // the count line.
+                    if (np.startsWith("▶ ") || np.startsWith("⏸ ") || np.startsWith("⚠ ")
                             || np.startsWith(Lang.t(RoomActivity.this, "notif_state_buffering"))) {
                         // v1.82: back to the count line, like the
                         // stale-row branch above — the bare line used
@@ -10120,7 +10138,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                 // paused talks read exactly as before.
                 boolean bindActive = service.isPlaying()
                         || (service.isBuffering() && !service.isHoldPaused());
-                if (nowPlaying != null) nowPlaying.setText((bindActive ? "⏸ " : "▶ ") + service.getCurrentTitle());
+                if (nowPlaying != null) nowPlaying.setText((bindActive ? "⏸ " : (service.hasTrackError() ? "⚠ " : "▶ ")) + service.getCurrentTitle()); // v14.01: a rebind onto a still-failed talk reads ⚠ at once, like the poll line — the poll would rewrite it within 500ms, but the bind should not flash ▶ first.
                 // v1.75: a track from elsewhere leaves the old index
                 // stale (gold ▶ on a row that is not playing) — the
                 // poll clears it too, but clear it here at once so
