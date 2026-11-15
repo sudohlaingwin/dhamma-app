@@ -1803,24 +1803,28 @@ public class Fx {
         return out;
     }
 
-    // v14.05 (slice 1100): sounding-row glyph — the strips' ⚠ truth (v13.94)
-    // carried onto the rows, the Main grid card and (via the Room poll's
-    // ring branch) the header ring: a failed stream used to read as a
-    // normal/paused talk on every row surface, because the rows only ever
-    // wrote their sounding glyph (▶ on the chooser/library/grid, ⏸ on
-    // the Room drawer). Error wins, in the sounding glyph's own slot, so
-    // no mark order changes and no new view: not sounding returns "",
-    // sounding + failed returns the strips' ⚠ (U+26A0, the same codepoint
-    // the strips, the Room title and the widget use — never U+269A),
-    // sounding + fine returns the caller's play glyph + space. The gold
-    // tile / gold name / pulse stay — the tile says "sounding", the glyph
-    // says "failed", exactly like the strips keep their gold rim under ⚠.
-    // A new play() clears liveTrackError, so the mark can never stick to
-    // the next talk; every caller passes the service's static mirror, so
-    // no new state is invented here.
-    public static String soundingRowMark(boolean sounding, boolean failed, String playGlyph) {
+    // v14.06 (slice 1101): sounding-row glyph, now with the loading
+    // word — the strips' ⚠ truth (v13.94, carried onto the rows in
+    // v14.05) plus the strips' buffering word (v13.94): a stream still
+    // loading used to read as a normal playing/paused talk on every row
+    // surface, because the rows only ever wrote their sounding glyph (▶
+    // on the chooser/library/grid, ⏸ on the Room drawer). Error wins,
+    // then loading, in the sounding glyph's own slot, so no mark order
+    // changes and no new view: not sounding returns "", sounding +
+    // failed returns the strips' ⚠ (U+26A0, the same codepoint the
+    // strips, the Room title and the widget use — never U+269A),
+    // sounding + loading returns the caller's buffering word + space
+    // (the bare notif_state_buffering word, no new Lang key), sounding
+    // + fine returns the caller's play glyph + space. The gold tile /
+    // gold name / pulse stay — the tile says "sounding", the word says
+    // "loading", exactly like the strips keep their gold rim under the
+    // word. A new play() clears liveTrackError, so the mark can never
+    // stick to the next talk; every caller passes the service's static
+    // mirror, so no new state is invented here.
+    public static String soundingRowMark(boolean sounding, boolean failed, String bufferingWord, String playGlyph) {
         if (!sounding) return "";
         if (failed) return "\u26A0 ";
+        if (bufferingWord != null && bufferingWord.length() > 0) return bufferingWord + " ";
         return (playGlyph == null ? "" : playGlyph) + " ";
     }
 

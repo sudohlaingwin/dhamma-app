@@ -11697,7 +11697,7 @@ public class DownloadedActivity extends Activity {
             // both playing and finished at once. ★ stays, like
             // both mirrors; the 1s tick already rebinds on a
             // track change, so the mark moves with the ▶.
-            if (title != null) title.setText(Fx.soundingRowMark(rowPlaying, AudioService.liveTrackError, "\u25B6")
+            if (title != null) title.setText(Fx.soundingRowMark(rowPlaying, AudioService.liveTrackError, service != null && service.isBuffering() && !service.isHoldPaused() ? Lang.t(DownloadedActivity.this, "notif_state_buffering") : "", "\u25B6")
                     + (libFavFiles.contains(e.file.getName()) ? "★ " : "")
                     + (rowListened ? "✓ " : "")
                     // v4.57: hand-queue position mark, the Talks

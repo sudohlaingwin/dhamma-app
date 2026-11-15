@@ -95,11 +95,15 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
     // liveTrackError (AudioService :2011), so \u26A0 never sticks to the
     // next talk; every failure path refreshes the widget through
     // notifyState, so the mark lands on the failure edge, not the
-    // next poll (the widget is never polled).
-    static String widgetTitleMarkedPure(boolean failed, String title, String dlMark) {
+    // next poll (the widget is never polled). v14.06 (slice 1101):
+    // the loading word prefixes the title after the ⚠ (failed wins
+    // over loading), from the same liveBuffering mirror — the
+    // play()/onPrepared edges already refresh the widget, so the
+    // word lands on the loading edge and clears when it sounds.
+    static String widgetTitleMarkedPure(boolean failed, String bufferingWord, String title, String dlMark) {
         String t = clean67(title);
         if (t.length() == 0) return "";
-        String out = (failed ? "\u26A0 " : "") + t;
+        String out = (failed ? "\u26A0 " : (bufferingWord != null && bufferingWord.length() > 0 ? bufferingWord + " " : "")) + t;
         if (" \u2B07".equals(dlMark)) out += dlMark;
         return out;
     }
@@ -307,7 +311,8 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
             String m = Fx.stripResumeDownloadMark(context, sp, sp.getString("lastUrl", ""));
             if (" \u2B07".equals(m)) widgetDlMark = m;
         }
-        String markedTitle = widgetTitleMarkedPure(widgetFailed, title, widgetDlMark);
+        String widgetBuf = AudioService.liveBuffering ? Lang.t(context, "notif_state_buffering") : "";
+        String markedTitle = widgetTitleMarkedPure(widgetFailed, widgetBuf, title, widgetDlMark);
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_dhamma);
         views.setTextViewText(R.id.wg_app, Lang.t(context, "wg_app"));
         views.setTextViewText(R.id.wg_title,

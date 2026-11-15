@@ -131,6 +131,7 @@ public class MainActivity extends Activity {
     // leave the ▶ on the failed card until the next rebind, while the
     // strip already said ⚠.
     private boolean mainGridFailed = false;
+    private boolean mainGridBuffering = false;
     // v4.60: is the mini strip currently showing the resume mode
     // (dead session + saved spot) instead of a live session? The
     // strip's toggle and long-press read it, so a resume tap
@@ -449,6 +450,7 @@ public class MainActivity extends Activity {
         mainGridEnded = AudioService.liveEnded;
         mainGridSounding = AudioService.liveEnded ? null : soundingSayadawNameVisual();
         mainGridFailed = AudioService.liveTrackError; // v14.05
+        mainGridBuffering = AudioService.liveBuffering; // v14.06
         refreshFavShelf(); // v13.74: shelf recolour on theme return
     }
 
@@ -1620,10 +1622,12 @@ public class MainActivity extends Activity {
                     if (AudioService.liveEnded != mainGridEnded
                             || (sndNow38 == null ? mainGridSounding != null
                                     : !sndNow38.equals(mainGridSounding))
-                            || AudioService.liveTrackError != mainGridFailed) {
+                            || AudioService.liveTrackError != mainGridFailed
+                            || AudioService.liveBuffering != mainGridBuffering) {
                         mainGridEnded = AudioService.liveEnded;
                         mainGridSounding = sndNow38;
                         mainGridFailed = AudioService.liveTrackError;
+                        mainGridBuffering = AudioService.liveBuffering;
                         if (adapter != null) adapter.notifyDataSetChanged();
                         // v13.87: the same change moves the shelf ring
                         // (refreshFavShelf's key carries the sounding
@@ -3124,7 +3128,7 @@ public class MainActivity extends Activity {
                     && soundingVisual.equals(s.name);
             // v13.86 (slice 1078): sounding-sayadaw gold card — the row language, finally on the Main grid: the sounding card's background becomes the gold tile (main_card_playing.xml, the chooser tile's body: gold gradient + 2dp rim, 24dp radius like card_bg, theme-independent), so the sounding sayadaw reads in a still screenshot, not only while the name breathes. The same gridPlaying boolean drives the ▶ text and the gold name above, so tile, mark and name colour can never disagree; a paused session still tiles (liveSession counts paused as live, v3.99), a library session tiles its recorded sayadaw (v11.94), an ended talk never tiles (the liveEnded gate, v5.44/v11.15). Set on every bind, so a recycled card rebinds its background and the tile can never leak onto another sayadaw; the v12.38 tick already rebinds the grid exactly when the sounding name changes, so the tile stays fresh while Main sits on top. The press squash (scale-only), entrance pour (alpha+scale), star morph (star child) and breath (name view) all live on other views/channels — the tile is the card root's background alone. Not the banned favStar badge: no new view, no ★, background only.
             v.setBackgroundResource(gridPlaying ? R.drawable.main_card_playing : (night ? R.drawable.card_bg_night : R.drawable.card_bg));
-            if (nameView != null) nameView.setText(Fx.soundingRowMark(gridPlaying, AudioService.liveTrackError, "\u25B6") + s.name);
+            if (nameView != null) nameView.setText(Fx.soundingRowMark(gridPlaying, AudioService.liveTrackError, AudioService.liveBuffering ? Lang.t(MainActivity.this, "notif_state_buffering") : "", "\u25B6") + s.name);
             if (nameView != null) nameView.setTextColor(gridPlaying ? Color.parseColor("#C9A227")
                     : (night ? Color.WHITE : Color.parseColor("#3B2314")));
             if (nameView != null) nameView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, cachedNameSize);
