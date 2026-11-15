@@ -1391,6 +1391,27 @@ public class MainActivity extends Activity {
             }
         } catch (Exception ignored) {}
         if (stripFav) text += " ★";
+        // v14.02 (slice 1097): the live strip names a downloaded talk —
+        // the Room title has carried ⬇ since v1.57 and the resume strips
+        // since v13.66, but a live strip never did, so a sounding
+        // downloaded talk read exactly like a stream. Room kind reuses
+        // Fx.stripResumeDownloadMark (dlMap + length>0 gate, the same
+        // helper the resume branch uses, in-progress-first so a partial
+        // file never reads ⬇); only its ⬇ return is kept — the ⏳ return
+        // would duplicate the app-wide " ⏳ N" suffix below. Library
+        // kind is downloaded by definition; the file-exists guard keeps
+        // a stale path from claiming the mark. Suffix, after ★, the
+        // resume branches' own order.
+        if ("room".equals(kind)) {
+            String dlMarkLive = Fx.stripResumeDownloadMark(MainActivity.this, sp, sp.getString("lastUrl", ""));
+            if (" ⬇".equals(dlMarkLive)) text += dlMarkLive;
+        } else if ("lib".equals(kind)) {
+            String lpLive = sp.getString("lastLibPath", "");
+            if (lpLive.length() > 0) {
+                java.io.File lfLive = new java.io.File(lpLive);
+                if (lfLive.isFile() && lfLive.length() > 0) text += " ⬇";
+            }
+        }
         // v4.25: the mini strip names a running sleep timer — a
         // listener back on Main had no bedtime cue at all (the
         // countdown lived only in Settings and, now, the Room).
