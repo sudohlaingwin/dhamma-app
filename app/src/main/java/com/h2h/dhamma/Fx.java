@@ -1828,6 +1828,109 @@ public class Fx {
         return (playGlyph == null ? "" : playGlyph) + " ";
     }
 
+    // v14.08 (slice 1103): live download percent, folded onto queued
+    // talk URLs — the Room drawer rows (v4.24), the Room title (v4.27)
+    // and the Downloaded rows (v4.27) all name the number ("⏳ 42%"),
+    // but the Talks chooser rows — the screen where a download is
+    // STARTED — read a bare ⏳ until the file lands. Same two maps
+    // the Room's prune builds (progressBySource keyed by the DM
+    // source URL's identity form, progressByFile keyed by the
+    // %XX-decoded destination basename, v11.81): a source-URL hit
+    // wins, else the dlMap filename for the queued URL; a queued
+    // talk with no known total (or no live job row) stays absent,
+    // so the row keeps its bare ⏳ rather than a lie. Pure, so the
+    // sim pins it 1:1; dlProgressByUrl below pays the one DM query.
+    public static java.util.Map<String, Integer> dlProgressFold(
+            java.util.Map<String, Integer> bySource,
+            java.util.Map<String, Integer> byFile,
+            java.util.Set<String> queued,
+            java.util.Map<String, String> fileFor) {
+        java.util.Map<String, Integer> out = new java.util.HashMap<String, Integer>();
+        if (queued == null) return out;
+        for (String u : queued) {
+            if (u == null) continue;
+            Integer pct = (bySource == null) ? null : bySource.get(u);
+            if (pct == null && byFile != null && fileFor != null) {
+                String fn = fileFor.get(u);
+                if (fn != null) pct = byFile.get(fn);
+            }
+            if (pct != null) out.put(u, pct);
+        }
+        return out;
+    }
+
+    // v14.08 (slice 1103): the chooser row's offline mark — ⬇ wins
+    // over ⏳, like the drawer (a saved talk is not still
+    // downloading); a queued talk names its live percent when one
+    // is known and keeps the bare ⏳ when the total is unknown
+    // (Room v4.24 rule), so the row never prints a guessed number.
+    public static String dlRowMark(boolean downloaded, boolean queued, Integer pct) {
+        if (downloaded) return "⬇ ";
+        if (!queued) return "";
+        return pct != null ? "⏳ " + pct.intValue() + "% " : "⏳ ";
+    }
+
+    // v14.08 (slice 1103): one filtered DownloadManager query for
+    // the queued talks' live percents — the stripInProgressDlFilenames
+    // shape (RUNNING | PAUSED | PENDING only, same columns, same
+    // %XX decode on the destination basename, same identityUrl on
+    // the source), folded through dlProgressFold above. Empty queue
+    // pays no query at all; a failed query returns an empty map,
+    // so the rows fall back to the bare ⏳ instead of a stale
+    // number (the Room prune's rule). The dlMap parse gives the
+    // filename leg, keyed by identity URL like dlProgressFold wants.
+    public static java.util.Map<String, Integer> dlProgressByUrl(
+            Context ctx, android.content.SharedPreferences sp, java.util.Set<String> queued) {
+        java.util.Map<String, Integer> out = new java.util.HashMap<String, Integer>();
+        if (ctx == null || queued == null || queued.isEmpty()) return out;
+        try {
+            java.util.Map<String, String> fileFor = new java.util.HashMap<String, String>();
+            try {
+                org.json.JSONObject map = new org.json.JSONObject(sp == null ? "{}" : sp.getString("dlMap", "{}"));
+                java.util.Iterator<String> keys = map.keys();
+                while (keys.hasNext()) {
+                    String u = keys.next();
+                    String fn = map.optString(u, "");
+                    if (fn != null && fn.length() > 0) fileFor.put(SiteHttp.identityUrl(u), fn);
+                }
+            } catch (Exception ignored) {}
+            java.util.Map<String, Integer> bySource = new java.util.HashMap<String, Integer>();
+            java.util.Map<String, Integer> byFile = new java.util.HashMap<String, Integer>();
+            android.app.DownloadManager dm = (android.app.DownloadManager)
+                    ctx.getSystemService(Context.DOWNLOAD_SERVICE);
+            android.database.Cursor c = dm.query(new android.app.DownloadManager.Query()
+                    .setFilterByStatus(android.app.DownloadManager.STATUS_RUNNING
+                            | android.app.DownloadManager.STATUS_PAUSED
+                            | android.app.DownloadManager.STATUS_PENDING));
+            if (c != null) {
+                try {
+                    int srcCol = c.getColumnIndex(android.app.DownloadManager.COLUMN_URI);
+                    int uriCol = c.getColumnIndex(android.app.DownloadManager.COLUMN_LOCAL_URI);
+                    int doneCol = c.getColumnIndex(android.app.DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR);
+                    int totalCol = c.getColumnIndex(android.app.DownloadManager.COLUMN_TOTAL_SIZE_BYTES);
+                    while (c.moveToNext()) {
+                        String src = srcCol >= 0 ? c.getString(srcCol) : null;
+                        String uri = uriCol >= 0 ? c.getString(uriCol) : null;
+                        long done = doneCol >= 0 ? c.getLong(doneCol) : -1;
+                        long total = totalCol >= 0 ? c.getLong(totalCol) : -1;
+                        if (done < 0 || total <= 0) continue;
+                        int pct = (int) (done * 100 / total);
+                        if (src != null) bySource.put(SiteHttp.identityUrl(src), pct);
+                        if (uri != null) {
+                            String dec = android.net.Uri.decode(uri);
+                            if (dec == null) dec = uri;
+                            int slash = dec.lastIndexOf('/');
+                            if (slash >= 0 && slash + 1 < dec.length())
+                                byFile.put(dec.substring(slash + 1), pct);
+                        }
+                    }
+                } finally { c.close(); }
+            }
+            out = dlProgressFold(bySource, byFile, queued, fileFor);
+        } catch (Exception ignored) {}
+        return out;
+    }
+
     public static String stripResumeDownloadMark(
             Context ctx, android.content.SharedPreferences sp, String url) {
         if (sp == null || url == null || url.length() == 0) return "";

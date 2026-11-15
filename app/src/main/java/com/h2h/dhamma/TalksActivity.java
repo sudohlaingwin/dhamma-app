@@ -111,6 +111,8 @@ public class TalksActivity extends Activity {
     // Room drawer's downloadedFiles set (v1.57 rule).
     private java.util.Map<String, String> talkDlFileCache = new java.util.HashMap<String, String>();
     private java.util.Set<String> talkDlQueuedCache = new java.util.HashSet<String>();
+    // v14.08 (slice 1103): live download percents for the chooser rows, identity URL -> pct — the Room drawer rows (v4.24), the Room title (v4.27) and the Downloaded rows (v4.27) all name the number, but the chooser rows read a bare ⏳ until the file lands. Refreshed by refreshTalkDlProgress at the tail of refreshTalkRowMarks (every 1s tick via refreshTalksQueuePreview, plus every load/return/menu call site), so a percent moves within a tick; the tick snapshots it with the other mark caches and rebinds on a change. Empty while nothing is queued, so the getView lookup below never inherits a stale number.
+    private java.util.Map<String, Integer> talkDlProgress = new java.util.HashMap<String, Integer>();
     private long talkDlCacheAt = 0;
     // v11.57: filenames owned by a live DownloadManager job (RUNNING/
     // PAUSED/PENDING) — the Talks mirror of the Room's v11.56
@@ -481,6 +483,21 @@ public class TalksActivity extends Activity {
         // until the next rebind. The queued cache was already rebuilt
         // from the pruned prefs above, so this rebind reads it fresh.
         if (pruned77 && adapter != null) adapter.notifyDataSetChanged();
+        refreshTalkDlProgress();
+    }
+
+    // v14.08 (slice 1103): refresh the chooser rows' live download percents — Fx.dlProgressByUrl pays one filtered DownloadManager query, folded onto talkDlQueuedCache (fresh from refreshTalkRowMarks above, so a just-queued download starts ticking at once). Empty queue pays no query: the map clears, so a later queue never inherits an old download's number (the Room prune's rule). A failed query returns an empty map, so the rows fall back to the bare ⏳ rather than a stale number.
+    private void refreshTalkDlProgress() {
+        try {
+            if (talkDlQueuedCache == null || talkDlQueuedCache.isEmpty()) {
+                if (!talkDlProgress.isEmpty()) talkDlProgress.clear();
+                return;
+            }
+            java.util.Map<String, Integer> next = Fx.dlProgressByUrl(TalksActivity.this,
+                    getSharedPreferences("dhamma", MODE_PRIVATE), talkDlQueuedCache);
+            if (next == null) next = new java.util.HashMap<String, Integer>();
+            talkDlProgress = next;
+        } catch (Exception ignored) {}
     }
     // v4.89: last playing URL the rows were bound against — the
     // tick detects a change here and rebinds once (below).
@@ -4100,12 +4117,14 @@ public class TalksActivity extends Activity {
         java.util.Set<String> marksPlayed44 = new java.util.HashSet<String>(talkPlayedCache);
         java.util.Set<String> marksDlQueued44 = new java.util.HashSet<String>(talkDlQueuedCache);
         java.util.Set<String> marksDl44 = new java.util.HashSet<String>(talkDlCache);
+        java.util.Map<String, Integer> marksDlProg44 = new java.util.HashMap<String, Integer>(talkDlProgress);
         java.util.ArrayList<String> marksQueue44 = new java.util.ArrayList<String>(talkQueue);
         refreshTalksQueuePreview(); // v4.87: tick head — every early return below still refreshes it
         boolean marksChanged44 = !marksFav44.equals(talkFavCache)
                 || !marksPlayed44.equals(talkPlayedCache)
                 || !marksDlQueued44.equals(talkDlQueuedCache)
                 || !marksDl44.equals(talkDlCache)
+                || !marksDlProg44.equals(talkDlProgress)
                 || !marksQueue44.equals(talkQueue);
         // v4.89: rebind the rows exactly when the playing talk
         // changes under the chooser — auto-advance while
@@ -5273,9 +5292,9 @@ public class TalksActivity extends Activity {
             // drawer (a saved talk is not still downloading).
             String rowUrl = talks.get(talkIdx).url;
             String favMark = talkFavCache.contains(rowUrl) ? "★ " : "";
-            String offMark = "";
-            if (talkDlCache.contains(rowUrl)) offMark = "⬇ ";
-            else if (talkDlQueuedCache.contains(rowUrl)) offMark = "⏳ ";
+            // v14.08 (slice 1103): the row names its live download percent — the Room drawer rows (v4.24), the Room title (v4.27) and the Downloaded rows (v4.27) all read "⏳ 42%", but this row read a bare ⏳ until the file landed. The lookup is by identity URL (the http retry form of a queued https URL still matches, v13.59 rule); an unknown total keeps the bare ⏳ (Fx.dlRowMark), and ⬇ still wins over ⏳.
+            String offMark = Fx.dlRowMark(talkDlCache.contains(rowUrl), talkDlQueuedCache.contains(rowUrl),
+                    talkDlProgress.get(SiteHttp.identityUrl(rowUrl)));
             // v11.07: a library-sounding row reads as the playing
             // row — ▶ + gold + no ✓, exactly like a Room playing
             // row (v4.89). Before this, v11.06 only suppressed its
