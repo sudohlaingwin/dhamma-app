@@ -2,7 +2,8 @@
 <!-- v2.43 Liquid Glass: floating glass card. Outer padding makes the gap
      (ListView ignores item margins); inner card carries the glass. A talk
      row is its number, title and marks (v5.49: ▶/◈/★/⬇/⏳/✓/↺, same
-     order as the Room drawer) — nothing else. -->
+     order as the Room drawer) — plus a v13.99 duration clock
+     on the right edge. -->
 <!-- v7.32: row ⋮ removed by user order — the row is number + title + marks only. -->
 
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -69,6 +70,21 @@
                     android:layout_weight="1" />
             </LinearLayout>
         </LinearLayout>
+        <!-- v13.99 (slice 1094): talk duration — the stored total
+             length (Prefs.talkDurMap, v13.96) as a small muted clock
+             on the row's right edge, so a listener can judge "do I
+             have time for this one" without opening it. GONE unless
+             a duration was ever stored; TalkAdapter.getView paints
+             it, reset on every bind. -->
+        <TextView
+            android:id="@+id/talkDur"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="8dp"
+            android:textColor="@color/muted"
+            android:textSize="13sp"
+            android:visibility="gone" />
         <!-- v7.32 (user order 2026-11-01 ~19:36 +07): row ⋮ removed — rows are tap-to-open + long-press-share only again. -->
     </LinearLayout>
 </LinearLayout>

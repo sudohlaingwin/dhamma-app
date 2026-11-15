@@ -11763,9 +11763,23 @@ public class DownloadedActivity extends Activity {
             // name:length only, so an mtime-only change fires no
             // reload; the captured value is the truth until a real
             // (length-changing) reload re-captures it.
+            // v13.99 (slice 1094): talk duration in the sub-line —
+            // the stored total length (libDurMap, v13.96) between
+            // the date and the resume cue, so the shelf reads like
+            // a streaming list. Same map as the hairline above but
+            // ungated by the resume spot: a never-heard file still
+            // has a known length. Hidden when unknown — never
+            // guessed. The line is recomposed fresh on every bind,
+            // so a recycled row can never keep the previous file's
+            // clock; the playing row's tick line overwrites this
+            // line while it plays and the next rebind restores it.
+            String durText99 = "";
+            Integer durMs99 = libDurMap.get(e.file.getAbsolutePath());
+            if (durMs99 != null && durMs99.intValue() > 0)
+                durText99 = " · " + fmtDlTime(durMs99.intValue());
             if (size != null) size.setText((rowSd != null ? rowSd + " · " : "")
                     + String.format("%.1f MB · %s", mb,
-                    android.text.format.DateFormat.format("dd/MM/yyyy", e.mod)) + resumeHint);
+                    android.text.format.DateFormat.format("dd/MM/yyyy", e.mod)) + durText99 + resumeHint);
             if (size != null) size.setTextColor(night ? android.graphics.Color.parseColor("#AAAAAA")
                     : android.graphics.Color.parseColor("#7A6A58"));
             // v1.96: the size+date line stayed at a fixed 13sp while

@@ -5279,6 +5279,41 @@ public class TalksActivity extends Activity {
             // a dim can never leak onto the next talk; the playing row
             // is never dimmed — its gold tile owns its emphasis.
             if (titleView != null) titleView.setAlpha(rowListened ? 0.6f : 1.0f);
+            // v13.99 (slice 1094): talk duration clock — the stored
+            // total length (talkDurCache, v13.96) as a small muted
+            // clock on the row's right edge, so a listener can judge
+            // "do I have time for this one" without opening it.
+            // Same two legs as the hairline above (stream form,
+            // then the downloaded path form), but ungated by the
+            // resume spot: a never-heard talk still has a known
+            // length, and the playing row shows it too (its live
+            // position is on the strip, the length is a property
+            // of the talk). Hidden when no duration was ever
+            // stored — never guessed. Reset on every bind (text,
+            // size, colour, visibility), like the alpha above, so
+            // a recycled row can never keep the previous talk's
+            // clock.
+            android.widget.TextView durView = v.findViewById(R.id.talkDur);
+            if (durView != null) {
+                Integer durI99 = talkDurCache.get(rowUrl);
+                if (durI99 == null && talkDlCache.contains(rowUrl)) {
+                    String dlFn99 = talkDlFileCache.get(rowUrl);
+                    if (dlFn99 != null) {
+                        String dlPath99 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                                android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + dlFn99).getAbsolutePath();
+                        durI99 = talkDurCache.get(dlPath99);
+                    }
+                }
+                if (durI99 != null && durI99.intValue() > 0) {
+                    durView.setText(Fx.fmtTime(durI99.intValue()));
+                    durView.setVisibility(android.view.View.VISIBLE);
+                } else {
+                    durView.setText("");
+                    durView.setVisibility(android.view.View.GONE);
+                }
+                durView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, cachedFont == 0 ? 12 : (cachedFont == 1 ? 13 : 16));
+                durView.setTextColor(cachedNight ? android.graphics.Color.parseColor("#AAAAAA") : android.graphics.Color.parseColor("#7A6A58"));
+            }
             // v13.85 (slice 1077): Up Next row mark — the Room drawer's v4.13 ▸, now on the chooser rows too: the row the header's Up Next line names carries a ▸ prefix at full alpha, even when already listened, so the imminent talk stands out in the long list instead of hiding behind its ✓ dim. The mark follows upNextRowUrl, the URL refreshFavHeader resolved alongside that line (queued head first, else forward-history top, else shuffle-gated list-next — the Room's peekNextIndex order, restated in the chooser), so the row and the line can never disagree. No ▸ when a foreign queue head waits (upNextRowUrl is empty then, the drawer's v11.60 rule — the foreign head has no row here), while shuffle is on with no head (order unknowable, v5.84), or with no live Room session for this sayadaw (the resolution gates on talkPlayingUrl). The playing row itself never carries it: the guard below, plus the resolution can never name the sounding talk. Set on every bind — the dim above runs first, so a recycled listened row rebinds its alpha here and the mark can never leak onto the next talk.
             if (titleView != null && !rowPlaying && !rowPlayingLib
                     && upNextRowUrl.length() > 0
