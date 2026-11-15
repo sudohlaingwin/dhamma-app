@@ -68,6 +68,23 @@
                     android:layout_weight="1" />
             </LinearLayout>
         </LinearLayout>
+        <!-- v14.00 (slice 1095): talk duration — the stored total
+             length (drawerDurCache, v13.96) as a small muted clock
+             on the row's right edge, mirroring the chooser clock
+             (v13.99). Fixed #AAAAAA: the drawer is a dark glass
+             surface in both themes, so the day/night muted pair
+             would be too dark here. GONE unless a duration was
+             ever stored; TalkAdapter.getView paints it, reset on
+             every bind. -->
+        <TextView
+            android:id="@+id/talkDur"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="8dp"
+            android:textColor="#AAAAAA"
+            android:textSize="13sp"
+            android:visibility="gone" />
         <!-- v13.73 (slice 1061): visible queue-move grip — gold ↕ at the
              right edge of waiting queue rows in the queue-only drawer view.
              Tap picks the talk up for a pick-up/drop move; hidden everywhere

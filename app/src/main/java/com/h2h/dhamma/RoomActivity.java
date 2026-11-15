@@ -5804,6 +5804,37 @@ if (snd65 >= 0) currentIndex = snd65;
                         }
                     } else if (service.hasTrack() && !service.hasTrackError()) { // v12.74 (sim1282): a failed mid-play stream must not snap elapsed to 0:00 — the getters read 0 when unprepared, so the last real elapsed stays until a retry/replay/stop
                         if (elapsedText != null) elapsedText.setText(formatTime(pos));
+                        // v14.00 (slice 1095): total-clock fallback
+                        // while buffering — the talk-change reset
+                        // (playIndex) leaves 0:00 until onPrepared,
+                        // but the length is often already stored
+                        // (v13.96). Show it so the clock reads the
+                        // real length while the stream loads; the
+                        // first dur > 0 tick overwrites it with the
+                        // live value (same string = no re-fade, the
+                        // change-only guard above). Remaining mode
+                        // shows − + length (pos is 0 while
+                        // unprepared, the same formula). Gated on
+                        // isBuffering so no other unprepared state
+                        // is touched; hidden when nothing was ever
+                        // stored — never guessed. Lookup is the
+                        // drawer cache's two legs via
+                        // bookmarkTalkUrl (service URL wins,
+                        // indexed fallback), the same map the
+                        // drawer hairline reads.
+                        if (service.isBuffering() && totalText != null) {
+                            String fbUrl100 = bookmarkTalkUrl();
+                            Integer fbDur100 = fbUrl100 == null ? null : drawerDurCache.get(fbUrl100);
+                            if (fbDur100 == null && fbUrl100 != null && isDownloadedFile(fbUrl100)) {
+                                String fbFn100 = downloadedFileName(fbUrl100);
+                                if (fbFn100 != null)
+                                    fbDur100 = drawerDurCache.get(downloadsFile(fbFn100).getAbsolutePath());
+                            }
+                            if (fbDur100 != null && fbDur100.intValue() > 0) {
+                                String fbTotal100 = showRemaining ? "−" + formatTime(fbDur100.intValue()) : formatTime(fbDur100.intValue());
+                                if (!fbTotal100.equals(totalText.getText().toString())) totalText.setText(fbTotal100);
+                            }
+                        }
                     }
                 }
                 // track ended (polling: no listener here, so the Talks
@@ -12548,6 +12579,15 @@ if (snd67q >= 0) currentIndex = snd67q;
             // or a row the paint below never reaches.
             android.view.View hairReset98 = v.findViewById(R.id.hairTrack);
             if (hairReset98 != null) hairReset98.setVisibility(View.GONE);
+            // v14.00 (slice 1095): duration-clock reset — same
+            // recycled-row rule as the grip/hairline above: a
+            // recycled row must never keep the previous talk's
+            // clock when rebound.
+            android.widget.TextView durReset100 = v.findViewById(R.id.talkDur);
+            if (durReset100 != null) {
+                durReset100.setText("");
+                durReset100.setVisibility(View.GONE);
+            }
             // v3.45: premium drawer recycled-row pour hygiene, mirroring
             // the delivered v3.40 hygiene in the Main, Talks and
             // Downloaded adapters, which this drawer adapter never got.
@@ -12723,6 +12763,39 @@ if (snd67q >= 0) currentIndex = snd67q;
                     if (hairFrac > 0f && hairFill != null && hairSpace != null) {
                         hairFill.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, hairFrac));
                         hairSpace.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1f - hairFrac));
+                    }
+                    // v14.00 (slice 1095): talk duration clock on
+                    // the foreign queue row — the stored total
+                    // length (drawerDurCache, v13.96) on the row's
+                    // right edge, mirroring the chooser clock
+                    // (v13.99). Same two legs as the hairline
+                    // above (stream form, then the downloaded
+                    // path form), but ungated by the resume spot:
+                    // a never-heard talk still has a known length,
+                    // and the sounding row shows it too (its live
+                    // position is on the strip, the length is a
+                    // property of the talk). Hidden when no
+                    // duration was ever stored — never guessed.
+                    // Size follows the bind's local tf (12/13/16);
+                    // colour is fixed #AAAAAA on the dark drawer
+                    // surface.
+                    android.widget.TextView durView100 = v.findViewById(R.id.talkDur);
+                    if (durView100 != null) {
+                        Integer durI100 = drawerDurCache.get(fe.url);
+                        if (durI100 == null && fDownloaded) {
+                            String dlFn100 = downloadedFileName(fe.url);
+                            if (dlFn100 != null)
+                                durI100 = drawerDurCache.get(downloadsFile(dlFn100).getAbsolutePath());
+                        }
+                        if (durI100 != null && durI100.intValue() > 0) {
+                            durView100.setText(formatTime(durI100.intValue()));
+                            durView100.setVisibility(android.view.View.VISIBLE);
+                        } else {
+                            durView100.setText("");
+                            durView100.setVisibility(android.view.View.GONE);
+                        }
+                        durView100.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, tf == 0 ? 12 : (tf == 1 ? 13 : 16));
+                        durView100.setTextColor(android.graphics.Color.parseColor("#AAAAAA"));
                     }
                     // v13.73: visible move grip on the foreign queue row.
                     bindMoveGrip73(v, fe.url, fe.title.length() > 0 ? fe.title : fe.url, true, fe.sayadaw);
@@ -12995,6 +13068,37 @@ if (snd67q >= 0) currentIndex = snd67q;
             if (hairFrac > 0f && hairFill != null && hairSpace != null) {
                 hairFill.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, hairFrac));
                 hairSpace.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1f - hairFrac));
+            }
+            // v14.00 (slice 1095): talk duration clock on the
+            // in-list queue row — the stored total length
+            // (drawerDurCache, v13.96) on the row's right edge,
+            // mirroring the chooser clock (v13.99). Same two
+            // legs as the hairline above (stream form, then the
+            // downloaded path form), but ungated by the resume
+            // spot: a never-heard talk still has a known length,
+            // and the playing row shows it too (its live
+            // position is on the strip, the length is a property
+            // of the talk). Hidden when no duration was ever
+            // stored — never guessed. Size follows the bind's
+            // local tf (12/13/16); colour is fixed #AAAAAA on
+            // the dark drawer surface.
+            android.widget.TextView durView100 = v.findViewById(R.id.talkDur);
+            if (durView100 != null) {
+                Integer durI100 = drawerDurCache.get(t.url);
+                if (durI100 == null && downloaded) {
+                    String dlFn100 = downloadedFileName(t.url);
+                    if (dlFn100 != null)
+                        durI100 = drawerDurCache.get(downloadsFile(dlFn100).getAbsolutePath());
+                }
+                if (durI100 != null && durI100.intValue() > 0) {
+                    durView100.setText(formatTime(durI100.intValue()));
+                    durView100.setVisibility(android.view.View.VISIBLE);
+                } else {
+                    durView100.setText("");
+                    durView100.setVisibility(android.view.View.GONE);
+                }
+                durView100.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, tf == 0 ? 12 : (tf == 1 ? 13 : 16));
+                durView100.setTextColor(android.graphics.Color.parseColor("#AAAAAA"));
             }
             // v13.73: visible move grip on the in-list queue row.
             bindMoveGrip73(v, t.url, t.title, false, null);
