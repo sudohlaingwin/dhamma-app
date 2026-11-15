@@ -108,6 +108,43 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
         return out;
     }
 
+    // v14.09 (slice 1104): the widget's sleep suffix — the strips
+    // (v4.72) and the Room clock row name the live sleep countdown,
+    // the notification sub (v5.39) too, but the home-screen widget
+    // named nothing: a sleeping listener's widget read exactly like
+    // a plain playing talk. The Main strip's sleep rule, verbatim
+    // (MainActivity :1455): the one-shot names its word, a running
+    // countdown its M:SS clock, a pause-suspended countdown the same
+    // clock with ⏸, an armed timer with no remainder the bare mark.
+    // clockText is the caller's AudioService.sleepClock(remainingMs);
+    // endWord is Lang "sleep_end". Applied in buildViews only onto a
+    // real title (never the choose_talk placeholder), after the ⬇
+    // suffix — the strips' order.
+    static String widgetSleepSuffixPure(boolean active, boolean endOfTalk, boolean playing,
+                                        long remainingMs, String clockText, String endWord) {
+        if (!active) return "";
+        String clock = clockText == null ? "" : clockText;
+        String word = endWord == null ? "" : endWord;
+        if (endOfTalk) return playing ? " 😴 " + word : " 😴 ⏸ " + word;
+        if (remainingMs > 0) return playing ? " 😴 " + clock : " 😴 ⏸ " + clock;
+        return " 😴";
+    }
+
+    // v14.09 (slice 1104): the 15s-tick gate for the widget's sleep
+    // countdown — the widget is push-only (no tick of its own), so a
+    // live countdown needs a periodic refresh, and the service's 15s
+    // posRunnable is the existing one (the notification's sleep
+    // countdown rides the same tick, v5.39). Gated to a running
+    // minute countdown while actually playing: a sleep-free session
+    // pays nothing, a paused talk's frozen remainder rides the pause
+    // edge instead (notifyState), and the one-shot has no countdown
+    // to move (its arm edge refreshes). Prepared + playing is the
+    // card's own gate, so a buffering-held talk never refreshes.
+    static boolean widgetSleepTickPure(boolean playing, boolean prepared,
+                                       boolean sleepActive, boolean endOfTalk, long sleepEndMs) {
+        return playing && prepared && sleepActive && !endOfTalk && sleepEndMs != 0;
+    }
+
     // v13.92 (slice 1084): the widget photo's URL — which
     // sayadaw's portrait the widget shows. A library session
     // takes its recorded sayadaw's catalog photo (libPhotoUrl,
@@ -313,10 +350,22 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
         }
         String widgetBuf = AudioService.liveBuffering ? Lang.t(context, "notif_state_buffering") : "";
         String markedTitle = widgetTitleMarkedPure(widgetFailed, widgetBuf, title, widgetDlMark);
+        // v14.09 (slice 1104): the sleep countdown on the widget title —
+        // see widgetSleepSuffixPure. Only onto a real title (never the
+        // choose_talk placeholder); the live mirrors are false with a
+        // dead service, so the suffix dies with the session.
+        String widgetSleep = "";
+        if (markedTitle.length() > 0 && AudioService.liveSleepActive) {
+            long widgetSleepRem = AudioService.liveSleepRemainingMs;
+            widgetSleep = widgetSleepSuffixPure(true, AudioService.liveSleepEndOfTalk,
+                    AudioService.livePlaying, widgetSleepRem,
+                    widgetSleepRem > 0 ? AudioService.sleepClock(widgetSleepRem) : "",
+                    Lang.t(context, "sleep_end"));
+        }
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_dhamma);
         views.setTextViewText(R.id.wg_app, Lang.t(context, "wg_app"));
         views.setTextViewText(R.id.wg_title,
-                markedTitle.length() > 0 ? markedTitle : Lang.t(context, "choose_talk"));
+                markedTitle.length() > 0 ? markedTitle + widgetSleep : Lang.t(context, "choose_talk"));
         // v13.91 (slice 1083): gold title while a live session
         // sounds — the same gold as the wg_app label (#E8C878),
         // white otherwise. No new colour, no layout change; the

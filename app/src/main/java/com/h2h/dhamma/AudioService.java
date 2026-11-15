@@ -1247,6 +1247,17 @@ public class AudioService extends Service {
             // the notification is rebuilt — refresh it on the same
             // 15s tick, but only while actually playing.
             if (player != null && prepared && player.isPlaying()) showNotification(true);
+            // v14.09 (slice 1104): the widget's sleep countdown rides
+            // the same 15s tick — the widget is push-only, so without
+            // this the countdown froze at its arming value until the
+            // next state edge. Gated by widgetSleepTickPure: a running
+            // minute countdown while playing only; a sleep-free session
+            // pays nothing, a paused remainder rides the pause edge,
+            // the one-shot has no countdown to move.
+            if (DhammaWidgetProvider.widgetSleepTickPure(
+                    player != null && prepared && player.isPlaying(), prepared,
+                    liveSleepActive, liveSleepEndOfTalk, sleepEndMs))
+                DhammaWidgetProvider.refresh(AudioService.this);
             // v1.78: a trackless service used to re-post this tick
             // forever — opening the Room starts the service, and
             // leaving again without ever playing a talk left the
@@ -1710,22 +1721,31 @@ public class AudioService extends Service {
                 // v4.80: see ACTION_SLEEP above — a trackless
                 // service started by this intent alone ends at
                 // once instead of idling (the v1.78 toggle rule).
+                // v14.09 (slice 1104): the widget refreshes beside
+                // the card on all four sleep edges below — no sleep
+                // edge ever reached the widget before (only the card
+                // was rebuilt), so arming/cancelling a timer left the
+                // home screen stale until the next play/pause edge.
+                // All four are user gestures (stripApplySleep is
+                // gesture-only, Settings uses ACTION_SLEEP_PICK), so
+                // no tick cost; the internal sync sites need nothing
+                // (every one ends in notifyState, which refreshes).
                 if (currentTitle == null) stopSelf();
-                else { syncSettingsFromPrefs(); refreshNotification(); }
+                else { syncSettingsFromPrefs(); refreshNotification(); DhammaWidgetProvider.refresh(this); }
             } else if (ACTION_SLEEP_END.equals(intent.getAction())) {
                 // v4.82: arm the one-shot from a strip / Settings
                 // picker (no bind, like ACTION_SLEEP above). A
                 // trackless service started by this intent alone
                 // ends at once instead of idling (see v1.78).
                 if (currentTitle == null) stopSelf();
-                else { armSleepEndOfTalk(); refreshNotification(); }
+                else { armSleepEndOfTalk(); refreshNotification(); DhammaWidgetProvider.refresh(this); }
             } else if (ACTION_SLEEP_END_CANCEL.equals(intent.getAction())) {
                 // v4.82: explicit cancel gestures (strip long-press,
                 // Settings sleep long-press) clear the one-shot even
                 // when the minute pref never changed, so the pref
                 // guard in syncSettingsFromPrefs cannot see them.
                 if (currentTitle == null) stopSelf();
-                else { cancelSleepEndOfTalk(); refreshNotification(); }
+                else { cancelSleepEndOfTalk(); refreshNotification(); DhammaWidgetProvider.refresh(this); }
             } else if (ACTION_SLEEP_PICK.equals(intent.getAction())) {
                 // v8.56: an explicit picker minute choice (see the
                 // constant note) — not a routine sync, so it applies
@@ -1738,7 +1758,7 @@ public class AudioService extends Service {
                 if (currentTitle == null) stopSelf();
                 else {
                     int mins = intent.getIntExtra("mins", -1);
-                    if (mins >= 0) { setSleepMinutes(mins); refreshNotification(); }
+                    if (mins >= 0) { setSleepMinutes(mins); refreshNotification(); DhammaWidgetProvider.refresh(this); }
                 }
             } else if (ACTION_SPEED.equals(intent.getAction())) {
                 // v4.91: see ACTION_SPEED above — a trackless
