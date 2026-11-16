@@ -5527,6 +5527,110 @@ public class TalksActivity extends Activity {
         return out;
     }
 
+    // v14.13 (slice 1294): hub-page crawl — a catalog row whose page
+    // lists no mp3 itself but links to sub-pages that do (1290 NEW 3,
+    // re-measured live, correcting slice 1290's "5 hub pages" framing:
+    // only idx1 is a true hub — its 3 sub-pages hold 601 + 47 + 381 =
+    // 1,029 mp3 talks. idx4 is a biography stub with no links at all;
+    // idx33/60/63 are .wma-only pages (38/11/12 distinct talks —
+    // idx33 lists one .wma twice — no mp3 twins, and Android
+    // cannot play WMA), so those stay empty rather than listing
+    // unplayable rows. The crawl fires only on a 0-talk parse,
+    // for it; a failed sub-fetch is skipped, never an error).
+    // HubFetcher supplies one sub-page's HTML (the caller's own
+    // fetch — SiteHttp in the loaders, fetchPageHtml68 in the job —
+    // so the TLS retry and the Wi-Fi binding ride along unchanged).
+    public interface HubFetcher {
+        String fetch(String url) throws Exception;
+    }
+
+    // The site's nav chrome, on every page (filenames, lowercased):
+    // crawling these would merge the whole site into one row
+    // (AudioInMyanmar.htm is the catalog index — every sayadaw's
+    // talks would land in this row). Never crawled.
+    private static final java.util.Set<String> HUB_NAV =
+            new java.util.HashSet<String>(java.util.Arrays.asList(
+                    "index.htm", "abhidhammainenglish.htm",
+                    "abhidhammainmyanmar.htm", "audioinenglish.htm",
+                    "audioinmyanmar.htm", "videoinenglish.htm",
+                    "videoinmyanmar.htm", "ebook-english.htm",
+                    "ebook-myanmar.htm", "dhammadownload-news.htm",
+                    "contribute-to-dhammadownload.htm",
+                    "suggestion-cbox.htm", "contact.htm",
+                    "usefullinks.htm", "live.htm"));
+
+    // Same-host .htm/.html sub-page links of a hub page, in order:
+    // nav dropped, the page itself dropped, other hosts dropped,
+    // duplicates dropped, capped at 40 (measured max is 3).
+    // Pure static core, so WgTest proves it in real Java.
+    public static java.util.List<String> extractHubLinks(String pageUrl, String html) {
+        java.util.List<String> out = new java.util.ArrayList<String>();
+        if (pageUrl == null || html == null) return out;
+        URL base;
+        try { base = new URL(pageUrl); } catch (Exception ignored) { return out; }
+        String self;
+        try { self = stripHubFragment(new URL(base, pageUrl).toString()); }
+        catch (Exception ignored) { self = pageUrl; }
+        Pattern pat = Pattern.compile("<a[^>]*href\\s*=\\s*(?:\"([^\"]*\\.htm[^\"]*)\"|'([^']*\\.htm[^']*)'|([^\\s>]*\\.htm[^\\s>]*))[^>]*>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+        Matcher m = pat.matcher(html);
+        java.util.Set<String> seen = new java.util.LinkedHashSet<String>();
+        while (m.find() && out.size() < 40) {
+            String href = m.group(1) != null ? m.group(1)
+                    : (m.group(2) != null ? m.group(2) : m.group(3));
+            href = href.trim();
+            // Same wrap class as the v14.11 mp3 fix: the site wraps
+            // long hrefs across a line break inside the quoted value
+            // (the .wma anchors on idx33/63 wrap after "Audio-Library/").
+            href = href.replace("\t", "").replace("\n", "").replace("\r", "");
+            String abs;
+            try {
+                abs = stripHubFragment(new URL(base, href.replace("&amp;", "&")
+                        .replace(" ", "%20")).toString());
+            } catch (Exception ignored) { continue; }
+            URL u;
+            try { u = new URL(abs); } catch (Exception ignored) { continue; }
+            if (!u.getHost().equalsIgnoreCase(base.getHost())) continue;
+            String path = u.getPath();
+            if (path == null) continue;
+            String lower = path.toLowerCase();
+            if (!lower.endsWith(".htm") && !lower.endsWith(".html")) continue;
+            String file = path.substring(path.lastIndexOf('/') + 1).toLowerCase();
+            if (HUB_NAV.contains(file)) continue;
+            if (abs.equals(self)) continue;
+            if (seen.add(abs)) out.add(abs);
+        }
+        return out;
+    }
+
+    private static String stripHubFragment(String url) {
+        int h = url.indexOf('#');
+        return h >= 0 ? url.substring(0, h) : url;
+    }
+
+    // Fetch each hub sub-page and merge its talks (parseTalkList's
+    // rules, deduped by URL across sub-pages). A sub-page that fails
+    // to fetch or parse is skipped — the hub still shows the talks
+    // its other sub-pages hold. Never throws.
+    public static java.util.List<Talk> crawlHubTalks(String pageUrl, String html,
+            HubFetcher fetcher) {
+        java.util.List<Talk> out = new java.util.ArrayList<Talk>();
+        if (fetcher == null) return out;
+        java.util.Set<String> seen = new java.util.HashSet<String>();
+        for (String sub : extractHubLinks(pageUrl, html)) {
+            if (out.size() >= 10000) break;
+            String sh;
+            try { sh = fetcher.fetch(sub); } catch (Exception ignored) { continue; }
+            if (sh == null || sh.length() == 0) continue;
+            java.util.List<Talk> subTalks;
+            try { subTalks = parseTalkList(sub, sh); } catch (Exception ignored) { continue; }
+            for (Talk t : subTalks) {
+                if (t == null || t.url == null || t.url.length() == 0) continue;
+                if (seen.add(t.url)) out.add(t);
+            }
+        }
+        return out;
+    }
+
     private static String cleanTitle(String raw) {
         String title = raw.replaceAll("<[^>]+>", " ")
                 .replace("&nbsp;", " ").replace("&quot;", "\"")
@@ -5766,6 +5870,26 @@ public class TalksActivity extends Activity {
                             try { html = new String(bytes, cm.group(1)); } catch (Exception ignored) {}
                         }
                         found.addAll(parseTalkList(pageUrl, html));
+                        // v14.13 (slice 1294): hub pages — when the
+                        // first parse is empty, follow the page's own
+                        // sub-page links (idx1's 3 sub-pages hold
+                        // 1,029 talks the row shows as empty today).
+                        // A failed sub-fetch is skipped inside the
+                        // crawl, never an error, so err stays null
+                        // and the row lands clean-empty as before.
+                        if (found.isEmpty()) {
+                            try {
+                                found.addAll(crawlHubTalks(pageUrl, html,
+                                        new HubFetcher() {
+                                    @Override public String fetch(String u)
+                                            throws Exception {
+                                        byte[] b = SiteHttp.fetchBytes(
+                                                u, 20000, 30000);
+                                        return new String(b, "UTF-8");
+                                    }
+                                }));
+                            } catch (Exception ignored) {}
+                        }
                     }
                 } catch (Exception e) {
                     // v1.92: a null/empty message used to leave err

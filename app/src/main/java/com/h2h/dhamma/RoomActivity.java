@@ -13484,6 +13484,28 @@ if (snd67q >= 0) currentIndex = snd67q;
                         }
                     }
                     for (Map.Entry<String, String> e : seen.entrySet()) found.add(new Talk(e.getValue(), e.getKey()));
+                    // v14.13 (slice 1294): hub pages — same crawl as
+                    // the Talks chooser (see there): when the first
+                    // parse is empty, follow the page's own sub-page
+                    // links. A failed sub-fetch is skipped inside
+                    // the crawl, never an error. The crawl returns
+                    // TalksActivity.Talk; the Room keeps its own Talk
+                    // type (same title/url shape), so convert per row.
+                    if (found.isEmpty()) {
+                        try {
+                            for (TalksActivity.Talk t : TalksActivity.crawlHubTalks(loadPageUrl, html,
+                                    new TalksActivity.HubFetcher() {
+                                @Override public String fetch(String u)
+                                        throws Exception {
+                                    byte[] b = SiteHttp.fetchBytes(
+                                            u, 20000, 30000);
+                                    return new String(b, "UTF-8");
+                                }
+                            })) {
+                                if (t != null) found.add(new Talk(t.title, t.url));
+                            }
+                        } catch (Exception ignored) {}
+                    }
                 } catch (Exception e) {
                     // v1.92: same null-message class as the Talks
                     // chooser — a null message used to leave err

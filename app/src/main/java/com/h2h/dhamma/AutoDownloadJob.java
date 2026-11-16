@@ -362,6 +362,24 @@ public class AutoDownloadJob extends JobService {
             talks = TalksActivity.parseTalkList(page, html);
         } catch (Exception ignored) { return 0; }
         if (talks == null) return 0;
+        // v14.13 (slice 1294): hub pages — same crawl as the choosers
+        // (see TalksActivity): when the first parse is empty, follow
+        // the page's own sub-page links, so a favourited hub row
+        // (idx1: 1,029 talks across 3 sub-pages) seeds and diffs
+        // instead of re-checking an empty page every run. A failed
+        // sub-fetch is skipped inside the crawl, never an error; the
+        // v12.76 no-seed-on-empty rule below still guards a page
+        // whose sub-pages hold nothing either.
+        if (talks.isEmpty()) {
+            try {
+                talks.addAll(TalksActivity.crawlHubTalks(page, html,
+                        new TalksActivity.HubFetcher() {
+                    @Override public String fetch(String u) throws Exception {
+                        return fetchPageHtml68(u);
+                    }
+                }));
+            } catch (Exception ignored) {}
+        }
         java.util.List<String> fresh = new java.util.ArrayList<String>();
         java.util.Map<String, String> titles =
                 new java.util.HashMap<String, String>();
