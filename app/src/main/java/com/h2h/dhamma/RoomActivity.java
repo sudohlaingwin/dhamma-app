@@ -13432,15 +13432,17 @@ if (snd67q >= 0) currentIndex = snd67q;
                         String href = m.group(1) != null ? m.group(1)
                                 : (m.group(2) != null ? m.group(2) : m.group(3));
                         href = href.trim();
-                        // v11.83: a line-wrapped href (newline/tab
-                        // inside the quoted value) would poison every
-                        // newline-joined store the URL enters (hand
-                        // queue, handover map, trails) — the fragments
-                        // fail every restore filter and the talk
-                        // silently drops. Skip it, like any
-                        // unparseable href.
-                        if (href.indexOf('\n') >= 0 || href.indexOf('\r') >= 0
-                                || href.indexOf('\t') >= 0) continue;
+                        // v14.11 (slice 1292): a line-wrapped href (newline/tab
+                        // inside the quoted value) is a REAL link — the site
+                        // wraps long mp3 hrefs across a line break, and the
+                        // WHATWG URL parser strips tab/LF/CR from URLs, so the
+                        // link works in a browser. The v11.83 skip dropped these
+                        // talks (1,993 across the catalog, 8 sayadaws to zero —
+                        // Pa Auk 23 of 670, Shwe Oo Min 0 of 14, measured live).
+                        // Strip the control chars at the source instead: the
+                        // stripped URL can never poison a newline-joined store,
+                        // so the skip is unnecessary for this class.
+                        href = href.replace("\t", "").replace("\n", "").replace("\r", "");
                         String title = cleanTitle(m.group(4));
                         // v12.87: remember whether this title is the filename
                         // fallback, so a later duplicate link with a real title
