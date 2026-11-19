@@ -696,6 +696,46 @@ public class TalksActivity extends Activity {
             }
         });
     }
+    // v14.75 (slice 1733): melt the just-marked row in at its display
+    // position — the fadeLandedTalkRow shape (post after the rebind,
+    // resolve fresh, fade 250ms). The display position resolves
+    // through visibleHits, so a search or filter narrows it; a row
+    // filtered out of the shown list has no row (-1) — the star-only
+    // unstar case, where rebuildFilter already dropped the row
+    // before the rebind, so nothing fades and the row just leaves.
+    // A scrolled-out row is skipped, never scrolled to. The v14.47
+    // getView hygiene restores row alpha 1 on any rebind, so a fade
+    // cut short by a tick percent rebind, a return theme-dip swap
+    // or a filter/search change can never strand the row
+    // half-transparent; Fx.fadeIn is restart-safe (v3.52), so a
+    // landing/sounding melt on the same row in the same tick just
+    // restarts the glide. The 1s tick cannot double-melt: the menu
+    // branches reload the mark caches synchronously
+    // (refreshTalkRowMarks / refreshQueueMarks), so the tick
+    // snapshots the new state and sees no change, and the tick
+    // arms no melt for a pure mark change anyway. Consume-once:
+    // the field is nulled here.
+    private void fadeMenuMarkedTalkRow() {
+        final String url = menuMarkFadeUrl75;
+        menuMarkFadeUrl75 = null;
+        if (url == null || talkList == null) return;
+        talkList.post(new Runnable() {
+            @Override public void run() {
+                if (talkList == null || isFinishing() || isDestroyed()) return;
+                int ti = -1;
+                if (talks != null) for (int i = 0; i < talks.size(); i++) {
+                    if (talks.get(i) != null && SiteHttp.sameTalk(talks.get(i).url, url)) { ti = i; break; }
+                }
+                if (ti < 0) return;
+                int disp = (visibleHits != null) ? visibleHits.indexOf(Integer.valueOf(ti)) : ti;
+                if (disp < 0) return;
+                int first = talkList.getFirstVisiblePosition();
+                android.view.View row = talkList.getChildAt(disp - first);
+                if (row == null) return;
+                Fx.fadeIn(row, 250);
+            }
+        });
+    }
     // v14.56 (slice 1713): the header's live-percent strip — the
     // header carries the Up Next talk's LIVE download percent
     // ("⏳42%"), and the branch's own progress diff can move that
@@ -777,6 +817,21 @@ public class TalksActivity extends Activity {
     // stopped case.
     private String upNextFadeUrl = null;
     private boolean upNextPrimed = false;
+    // v14.75 (slice 1733): the row-menu mark flip's melt URL — the
+    // row-menu favourite toggle and the queue add/remove verbs used
+    // to end in a bare notifyDataSetChanged, so the mark snapped
+    // onto the row in one frame while every other chooser arrival
+    // already has a beat (list pour v14.23, landing rows v14.47,
+    // sounding row v14.48, Up Next row v14.55, stopped row v14.60).
+    // menuMarkFadeUrl75 holds the marked talk's URL until
+    // fadeMenuMarkedTalkRow consumes it; a second menu action
+    // without a new mark is a no-op. Not the header: the v14.56
+    // boundary stands — menu actions never fade the header, only
+    // the row. Not queue-from-here (many rows; the Up Next melt
+    // owns the head change), not the download verb (the tick owns
+    // the mark and v14.47 covers the landing), not play-next
+    // (v14.55 owns the Up Next row).
+    private String menuMarkFadeUrl75 = null;
     // v14.56 (slice 1713): the chooser header's melt prime — the
     // header (R.id.title: sayadaw name + counts + Up Next line) is
     // one TextView, written bare at the end of refreshFavHeader, so
@@ -2476,6 +2531,7 @@ public class TalksActivity extends Activity {
                                         // live filter needs no such call.
                                         if (filterMode != 0) rebuildFilter();
                                         if (adapter != null) adapter.notifyDataSetChanged();
+                                        if (dt != null && dt.url != null) { menuMarkFadeUrl75 = dt.url; fadeMenuMarkedTalkRow(); }
                                         android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, added88 ? "fav_added" : "fav_removed"), android.widget.Toast.LENGTH_SHORT).show();
                                     } else if ("menu_queue_remove".equals(dKeyArr[which])) {
                                         if (!talkQueueHas(dt.url)) {
@@ -2487,6 +2543,7 @@ public class TalksActivity extends Activity {
                                         refreshQueueMarks();
                                         if (!talks.isEmpty() && sayadawName != null) refreshFavHeader();
                                         if (adapter != null) adapter.notifyDataSetChanged();
+                                        if (dt != null && dt.url != null) { menuMarkFadeUrl75 = dt.url; fadeMenuMarkedTalkRow(); }
                                         android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "removed_from_queue"), android.widget.Toast.LENGTH_SHORT).show();
                                     } else if ("menu_queue_add".equals(dKeyArr[which])) {
                                         // v11.14: tap-time sounding re-check — the mirror of the v11.12
@@ -2513,6 +2570,7 @@ public class TalksActivity extends Activity {
                                         refreshQueueMarks();
                                         if (!talks.isEmpty() && sayadawName != null) refreshFavHeader();
                                         if (adapter != null) adapter.notifyDataSetChanged();
+                                        if (dt != null && dt.url != null) { menuMarkFadeUrl75 = dt.url; fadeMenuMarkedTalkRow(); }
                                         android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "added_to_queue"), android.widget.Toast.LENGTH_SHORT).show();
                                     } else if ("menu_queue_from_here".equals(dKeyArr[which])) {
                                         // v13.04: queue this talk and every shown talk
