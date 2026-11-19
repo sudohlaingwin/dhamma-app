@@ -117,6 +117,19 @@ public class TalksActivity extends Activity {
     // the hairline from a map lookup, never talkDurGet per row.
     private java.util.Map<String, Integer> talkDurCache = new java.util.HashMap<String, Integer>();
     private java.util.Set<String> talkDlCache = new java.util.HashSet<String>();
+    // v14.47 (slice 1704): the just-landed talk melts in — the
+    // downloaded-set scan in refreshTalkRowMarks below used to end
+    // in a bare notifyDataSetChanged, so a file landing while the
+    // chooser sat open flipped the row's ⏳→⬇ mark in one frame
+    // while every other chooser arrival already has a beat (list
+    // pour v14.23, landing rows v14.45, search-row fades v14.44,
+    // Room drop landing v14.46). dlLandFadeUrl holds the first
+    // newly-landed URL (talk order) until fadeLandedTalkRow
+    // consumes it; talkDlCachePrimed stays false until the first
+    // scan fills the cache, so a load or rotation restore — which
+    // also fills it — never arms a fade.
+    private String dlLandFadeUrl = null;
+    private boolean talkDlCachePrimed = false;
     // v5.59: the filename isTalkDownloaded matched per URL, filled
     // during the same scan that builds talkDlCache above — so the
     // ↺ hint can look a talk's spot up under its downloaded-file
@@ -487,8 +500,30 @@ public class TalksActivity extends Activity {
                 try { if (isTalkDownloaded(t.url)) dl.add(t.url); } catch (Exception ignored) {}
             }
             boolean changed = !dl.equals(talkDlCache);
+            // v14.47 (slice 1704): additions only, primed only — a
+            // removal (deleted file) flips a mark too but is not a
+            // landing, and the first scan is a load/restore fill,
+            // not a landing. talkDlCache still holds the OLD set
+            // here, so the difference is exact; the fade arms only
+            // when the set really changed, and the helper fades
+            // the first landed URL in talk order (one row per
+            // scan — several landings in one tick melt the first,
+            // the rest already read ⬇ on the same rebind).
+            java.util.Set<String> landed = null;
+            if (talkDlCachePrimed && changed) {
+                landed = new java.util.HashSet<String>(dl);
+                landed.removeAll(talkDlCache);
+            }
             talkDlCache = dl;
+            talkDlCachePrimed = true;
             if (changed && adapter != null) adapter.notifyDataSetChanged();
+            if (landed != null && !landed.isEmpty() && talks != null) {
+                String first = null;
+                for (Talk t : talks) {
+                    if (t != null && landed.contains(t.url)) { first = t.url; break; }
+                }
+                if (first != null) { dlLandFadeUrl = first; fadeLandedTalkRow(); }
+            }
         }
         // v7.77: a prune above changed the queued cache the rows bind
         // against, but the scan branch above only rebinds on a
@@ -511,6 +546,43 @@ public class TalksActivity extends Activity {
             if (next == null) next = new java.util.HashMap<String, Integer>();
             talkDlProgress = next;
         } catch (Exception ignored) {}
+    }
+    // v14.47 (slice 1704): melt the just-landed talk's row in at
+    // its display position — the v14.46 Room drop-landing shape
+    // (post after the rebind, resolve fresh, fade 250ms). The
+    // display position resolves through visibleHits, so a search
+    // or filter narrows it and a landed talk filtered out of the
+    // shown list has no row (-1); a scrolled-out row (getChildAt
+    // null) is skipped, never scrolled to. Consume-once: a second
+    // run without a new landing is a no-op. Guards: the activity
+    // may be finishing/destroyed by the time the post runs, and a
+    // return theme-dip swap (v2.99) rebinds after this post — the
+    // v14.47 getView hygiene below restores row alpha 1 on any
+    // rebind, so a fade cut short by it can never strand the row
+    // half-transparent. The 1s tick's percent rebind is the same
+    // class: a landing leaves the queued set, so no percent rebind
+    // follows it, and any other row's rebind only cancels this
+    // fade early, never strands it.
+    private void fadeLandedTalkRow() {
+        final String url = dlLandFadeUrl;
+        dlLandFadeUrl = null;
+        if (url == null || talkList == null) return;
+        talkList.post(new Runnable() {
+            @Override public void run() {
+                if (talkList == null || isFinishing() || isDestroyed()) return;
+                int ti = -1;
+                if (talks != null) for (int i = 0; i < talks.size(); i++) {
+                    if (talks.get(i) != null && SiteHttp.sameTalk(talks.get(i).url, url)) { ti = i; break; }
+                }
+                if (ti < 0) return;
+                int disp = (visibleHits != null) ? visibleHits.indexOf(Integer.valueOf(ti)) : ti;
+                if (disp < 0) return;
+                int first = talkList.getFirstVisiblePosition();
+                android.view.View row = talkList.getChildAt(disp - first);
+                if (row == null) return;
+                Fx.fadeIn(row, 250);
+            }
+        });
     }
     // v4.89: last playing URL the rows were bound against — the
     // tick detects a change here and rebinds once (below).
@@ -5292,6 +5364,19 @@ public class TalksActivity extends Activity {
             Fx.cancelPress(v); // v3.90: press squash is an ObjectAnimator now — the cancel above cannot stop it.
             v.setScaleX(1f);
             v.setScaleY(1f);
+            // v14.47 (slice 1704): row-alpha hygiene, the Room
+            // drawer v3.45 mirror — the landed-row fade above runs
+            // on the row view itself, so a rebind landing mid-fade
+            // (tick percent rebind, return theme-dip swap, user
+            // filter/search change) used to cancel the animator
+            // and strand the row half-transparent: this getView
+            // never touched row alpha. A rebind now restores alpha
+            // 1 with the scale, so a cut-short fade just ends
+            // fully visible. The pour (v14.23) is a view Animation
+            // and the press squash (v2.08/v3.90) is scale-only, so
+            // neither reads this property; the listened title dim
+            // lives on titleView, untouched.
+            v.setAlpha(1f);
             // v1.96: the row number stayed at a fixed 14sp while the
             // title beside it followed the font size — on ကြီး the
             // numbers read a size smaller than the titles they count.
