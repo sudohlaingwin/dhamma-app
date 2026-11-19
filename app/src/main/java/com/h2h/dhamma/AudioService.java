@@ -7532,7 +7532,17 @@ public class AudioService extends Service {
                         String u = keys.next();
                         if (base.equals(map.optString(u, ""))) { nClaim49++; onlyClaim49 = u; }
                     }
-                    if (nClaim49 == 1 && onlyClaim49 != null && ft.contains(onlyClaim49)) title = "★ " + title;
+                    // v14.81 (slice 1739): the AudioService twin of the
+                    // Room v14.78 / Talks v14.79 / Downloaded v14.80
+                    // fix — the dlMap key claiming this file may be a
+                    // legacy http URL (a pre-v13.67 download; the v13.66
+                    // migration does NOT migrate dlMap keys) while
+                    // favTalks holds canonical https, so the raw read
+                    // dropped the card's ★ for a favourited offline
+                    // talk. Compare the canonical form; the lastUrl
+                    // branch above stays raw BY DESIGN (lastUrl is
+                    // banked canonical at every write site).
+                    if (nClaim49 == 1 && onlyClaim49 != null && ft.contains(SiteHttp.identityUrl(onlyClaim49))) title = "★ " + title;
                 }
             }
         } catch (Exception ignored) {}
