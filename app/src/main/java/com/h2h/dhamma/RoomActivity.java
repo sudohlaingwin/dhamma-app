@@ -12448,7 +12448,18 @@ if (snd67q >= 0) currentIndex = snd67q;
             // ahead of the held talk is preserved (F2). Unreachable
             // with a live error today (:11180 needs !hasTrackError);
             // symmetry with the fresh-play site below.
-            if (qiHeld >= 0) { dropQueueAheadUpTo(qiHeld); saveQueue(null, true); if (adapter != null) adapter.notifyDataSetChanged(); }
+            // v14.54 (slice 1711): the bar follows this play at once —
+            // every queue-mutating dialog already calls
+            // refreshQueueBar72() right after its mutation (v14.30,
+            // v14.53), but the two playIndex ahead-drops never did, so
+            // the toggle's "· N" sat stale until the next poll tick
+            // (up to ~1s late, the v14.30 class) while the rows below
+            // had already re-bound. The refresh is change-only, so a
+            // drop that leaves the count alone (qiHeld == 0, or a
+            // failed-head preservation) is a no-op and the count melts
+            // (v14.43) when it does change. Visual only; the queue,
+            // the flags and the play itself are untouched.
+            if (qiHeld >= 0) { dropQueueAheadUpTo(qiHeld); saveQueue(null, true); if (adapter != null) adapter.notifyDataSetChanged(); refreshQueueBar72(); }
             // v1.92: refresh the last* anchors here too — a talk
             // first started from the downloaded library (its file,
             // no sayadaw page) and then opened in its Room used to
@@ -12905,7 +12916,15 @@ if (snd67q >= 0) currentIndex = snd67q;
         // 0..qi drops the ahead entries and the tapped talk.
         // v13.52: ahead-drop via the helper — a restored failed head
         // ahead of the tapped talk is preserved (F2), not deleted.
-        if (qi >= 0) { dropQueueAheadUpTo(qi); saveQueue(null, true); if (adapter != null) adapter.notifyDataSetChanged(); }
+        // v14.54 (slice 1711): same bar sync as the already-holding
+        // site above — the fresh play drops the tapped talk + the
+        // entries ahead of it, and the toggle's "· N" used to sit
+        // stale until the next poll tick (up to ~1s late, the
+        // v14.30 class) while the rows below had already re-bound.
+        // Change-only, so a failed-head preservation that leaves
+        // the count alone is a no-op; the count melts (v14.43)
+        // when it does change. Visual only.
+        if (qi >= 0) { dropQueueAheadUpTo(qi); saveQueue(null, true); if (adapter != null) adapter.notifyDataSetChanged(); refreshQueueBar72(); }
         // v13.58 (audit-1371 F3): the v5.16 history block moved here,
         // past the service==null queue branch, beside the other
         // real-play anchors — it used to run BEFORE the queue, so a
