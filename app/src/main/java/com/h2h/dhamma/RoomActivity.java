@@ -3979,11 +3979,43 @@ if (snd65 >= 0) currentIndex = snd65;
     // mapped name wins, and a basename the map claims for another
     // url never matches. Files downloaded before this map existed
     // have no entry and keep the old basename fallback.
+    // v14.87 (slice 1745): the Room's downloaded ⬇ now actually
+    // appears for a scheme-mismatched download — the downloaded twin
+    // of the fav v14.79 / played v14.83 fixes. dlMap keys are written
+    // under the URL form current at download time, and the same talk
+    // is spelled both ways in the wild: a file downloaded by the
+    // delivered v13.57 build over the http fallback keeps its legacy
+    // http key forever (the v13.66 migration does NOT migrate dlMap keys),
+    // while newer downloads record the canonical https key (v13.59),
+    // and one catalog page carries absolute-http mp3 hrefs the parser
+    // keeps as-is (Dr Nandamalabhivamsa, 15 hrefs, 1737)
+    // — so a talk downloaded under one scheme and listed under the
+    // other missed its mapped name here AND had its basename blocked
+    // by the twin's own claim below: the drawer row, the Room title
+    // line and the Up Next marks all lost their ⬇, localPathFor
+    // streamed a file already on disk, and the data-saver gate asked
+    // about a download that had already landed. The mapped lookup
+    // now tries the raw URL, then its canonical https form, then its
+    // downgraded http form (raw first, so a talk downloaded twice
+    // under both schemes keeps the file its current spelling
+    // recorded); the claim guard below treats the scheme-twin as the
+    // same talk, not another talk, so a re-download reuses the
+    // existing file instead of minting a hash-suffixed duplicate
+    // (downloadFileNameFor reads the guard directly). The v8.40/v8.50
+    // are unchanged: a name claimed by a DIFFERENT talk's key still
+    // forces the hash suffix and still blocks the basename fallback.
+    // The Talks chooser twin (talkMappedFileName /
+    // talkFileClaimedByOther) and the shared DlLanded prune leg keep
+    // their raw lookups for now — their slices follow.
     private String mappedFileName(String url) {
         try {
             org.json.JSONObject map = new org.json.JSONObject(
                     getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlMap", "{}"));
             if (map.has(url)) return map.getString(url);
+            String canon = SiteHttp.identityUrl(url);
+            if (canon != null && !canon.equals(url) && map.has(canon)) return map.getString(canon);
+            String down = SiteHttp.downgrade(url);
+            if (down != null && !down.equals(url) && map.has(down)) return map.getString(down);
         } catch (Exception ignored) {}
         return null;
     }
@@ -3992,10 +4024,11 @@ if (snd65 >= 0) currentIndex = snd65;
         try {
             org.json.JSONObject map = new org.json.JSONObject(
                     getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlMap", "{}"));
+            String self = SiteHttp.identityUrl(url);
             java.util.Iterator<String> keys = map.keys();
             while (keys.hasNext()) {
                 String k = keys.next();
-                if (!k.equals(url) && filename.equals(map.optString(k, ""))) return true;
+                if (!SiteHttp.identityUrl(k).equals(self) && filename.equals(map.optString(k, ""))) return true;
             }
         } catch (Exception ignored) {}
         return false;
