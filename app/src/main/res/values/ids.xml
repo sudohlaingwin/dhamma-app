@@ -21,4 +21,10 @@
          steady 1s tick never re-animates a settled title/sub. -->
     <item name="stripTextAnim" type="id"/>
     <item name="stripTextLast" type="id"/>
+    <!-- v14.22: tag key for the strip-photo crossfade (Fx.crossfadeStripPhoto).
+         The running crossfade animator rides on the photo view itself,
+         so it dies with the view and a steady 1s tick never re-animates
+         a settled portrait. No last-name key: the activity's
+         <field>StripPhotoName is the single record (see Fx). -->
+    <item name="stripPhotoAnim" type="id"/>
 </resources>

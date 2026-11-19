@@ -4084,9 +4084,16 @@ public class TalksActivity extends Activity {
         if (ring != null) ring.setVisibility(android.view.View.VISIBLE);
         else pv.setVisibility(android.view.View.VISIBLE);
         if (name.equals(talksStripPhotoName)) return;
+        boolean firstPhoto = talksStripPhotoName == null;
         talksStripPhotoName = name;
         String url = AudioService.stripPhotoUrlForSayadaw(TalksActivity.this, name);
-        ImageLoader.load(TalksActivity.this, url, name, (CircleImageView) pv);
+        // v14.22 (slice 1676): the photo crossfades on a sayadaw
+        // change instead of swapping — see Fx.crossfadeStripPhoto.
+        Fx.crossfadeStripPhoto((CircleImageView) pv, url, firstPhoto, new Runnable() {
+            @Override public void run() {
+                ImageLoader.load(TalksActivity.this, url, name, (CircleImageView) pv);
+            }
+        });
     }
 
     private void syncTalksStrip() {

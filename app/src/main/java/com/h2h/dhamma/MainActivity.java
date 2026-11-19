@@ -1098,13 +1098,21 @@ public class MainActivity extends Activity {
         if (ring != null) ring.setVisibility(android.view.View.VISIBLE);
         else pv.setVisibility(android.view.View.VISIBLE);
         if (name.equals(stripPhotoName)) return;
+        boolean firstPhoto = stripPhotoName == null;
         stripPhotoName = name;
         String url = "";
         try {
             for (Sayadaw s : all)
                 if (s.name.equals(name)) { url = s.photo; break; }
         } catch (Exception ignored) {}
-        ImageLoader.load(MainActivity.this, url, name, (CircleImageView) pv);
+        final String photoUrl = url;
+        // v14.22 (slice 1676): the photo crossfades on a sayadaw
+        // change instead of swapping — see Fx.crossfadeStripPhoto.
+        Fx.crossfadeStripPhoto((CircleImageView) pv, photoUrl, firstPhoto, new Runnable() {
+            @Override public void run() {
+                ImageLoader.load(MainActivity.this, photoUrl, name, (CircleImageView) pv);
+            }
+        });
     }
 
     // v4.15: mini now-playing strip above the nav (Spotify-style) —

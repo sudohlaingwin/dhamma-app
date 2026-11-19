@@ -620,9 +620,16 @@ public class PlaylistActivity extends Activity {
         if (ring != null) ring.setVisibility(android.view.View.VISIBLE);
         else pv.setVisibility(android.view.View.VISIBLE);
         if (name.equals(plStripPhotoName)) return;
+        boolean firstPhoto = plStripPhotoName == null;
         plStripPhotoName = name;
         String url = AudioService.stripPhotoUrlForSayadaw(PlaylistActivity.this, name);
-        ImageLoader.load(PlaylistActivity.this, url, name, (CircleImageView) pv);
+        // v14.22 (slice 1676): the photo crossfades on a sayadaw
+        // change instead of swapping — see Fx.crossfadeStripPhoto.
+        Fx.crossfadeStripPhoto((CircleImageView) pv, url, firstPhoto, new Runnable() {
+            @Override public void run() {
+                ImageLoader.load(PlaylistActivity.this, url, name, (CircleImageView) pv);
+            }
+        });
     }
 
     private void syncPlaylistStrip() {

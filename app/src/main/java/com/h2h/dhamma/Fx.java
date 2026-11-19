@@ -1303,6 +1303,112 @@ public class Fx {
         dip.start();
     }
 
+    // v14.22 (slice 1676): the strip photo used to swap instantly —
+    // all six strips end their photo sync with a bare
+    // ImageLoader.load on a sayadaw change, while everything around
+    // it on the same strip already moves: the glyph flips (v14.20),
+    // the title/sub fade (v14.21), the bar glides (v14.19) and the
+    // ring crossfades (v14.16). Now the photo crossfades the same
+    // way: dip the alpha to 0 over 90ms, load the new portrait at
+    // the dip, fade the new face back over 180ms. Same 90+180ms
+    // Decelerate rhythm as the glyph and the text, so the whole
+    // strip transitions in one choreography on a talk change.
+    // The load runs AT the dip end, never before it:
+    // ImageLoader.load's setInstant cancels the view's animator and
+    // forces alpha 1 (the v3.50 hygiene — instant means instant, so
+    // scrolling never re-fades a row), so loading first would kill
+    // the dip in the same frame. At the dip end the load swaps the
+    // bitmap, alpha is dropped to 0 in the same UI-thread callback
+    // (no frame ever renders the new face at full alpha) and the
+    // rise runs. A never-cached portrait still lands the way the
+    // grid does: the placeholder letter fades in over 180ms here,
+    // then the download's own 250ms arrival fade (v2.24) takes over
+    // when it lands — fadeTo cancels this rise first, so the two
+    // fades never stack.
+    // The view tag is claimed for the new URL BEFORE the dip
+    // starts: ImageLoader's async landing (fadeTo) is tag-guarded,
+    // and a stale download for the OLD portrait landing inside the
+    // 90ms dip would otherwise cancel the dip — and the dip end is
+    // the only place the load runs, while the activity's
+    // <field>StripPhotoName already moved to the new name, so no
+    // later tick would retry and the strip would keep the old face.
+    // Claiming the tag first makes the stale landing fail its guard.
+    // A landing for the NEW portrait is legitimate: it cancels the
+    // dip but performs the swap itself (sets the new bitmap, fades
+    // 0->1), so nothing is stranded. No name record lives in this
+    // helper: the activity field is the single record (the
+    // change-only guard at each call site), because an async landing
+    // can swap the bitmap behind any helper-side record and a return
+    // to the previous sayadaw would then no-op while the view shows
+    // the other face. First sighting loads instantly (no dip on
+    // first paint, the v14.19/v14.20/v14.21 rule) — the strip slides
+    // in anyway (v14.14). Alpha-only: the ring crossfade owns the
+    // frame's background and the strip slide owns the container;
+    // this owns only the photo view's alpha. A rapid change cancels
+    // the in-flight dip/rise first, restores alpha 1, and the newer
+    // call dips again; every cancel path either is superseded by a
+    // newer dip (which loads) or is a legitimate landing (which
+    // loaded), so a cancelled dip never strands a load. The animator
+    // rides on the view's own tag (see ids.xml), so it dies with
+    // the view. Deliberately NOT done: a second ImageView for a
+    // true overlap crossfade (new layout in six strips for a small
+    // circular portrait — the dip+rise reads the same at this size);
+    // touching the Room shrine photo (already crossfades, v14.17 +
+    // v2.21); touching grid portraits (cache hits set instantly on
+    // purpose, v2.24/v3.50); touching the notification large icon
+    // (a cached bitmap, no animator).
+    public static void crossfadeStripPhoto(final android.widget.ImageView pv,
+            final String url, boolean first, final Runnable swap) {
+        if (pv == null) return;
+        Object aObj = pv.getTag(R.id.stripPhotoAnim);
+        if (aObj instanceof android.animation.Animator) ((android.animation.Animator) aObj).cancel();
+        if (first) {
+            if (swap != null) swap.run();
+            return;
+        }
+        if (url != null) pv.setTag(url);
+        final android.widget.ImageView v = pv;
+        android.animation.ObjectAnimator dip =
+                android.animation.ObjectAnimator.ofFloat(v, "alpha", v.getAlpha(), 0f);
+        dip.setDuration(90);
+        dip.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        dip.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                if (v.getTag(R.id.stripPhotoAnim) != a) return;
+                if (swap != null) swap.run();
+                v.setAlpha(0f);
+                android.animation.ObjectAnimator rise =
+                        android.animation.ObjectAnimator.ofFloat(v, "alpha", 0f, 1f);
+                rise.setDuration(180);
+                rise.setInterpolator(new android.view.animation.DecelerateInterpolator());
+                rise.addListener(new android.animation.AnimatorListenerAdapter() {
+                    @Override public void onAnimationEnd(android.animation.Animator a2) {
+                        if (v.getTag(R.id.stripPhotoAnim) == a2) {
+                            v.setTag(R.id.stripPhotoAnim, null);
+                            v.setAlpha(1f);
+                        }
+                    }
+                    @Override public void onAnimationCancel(android.animation.Animator a2) {
+                        if (v.getTag(R.id.stripPhotoAnim) == a2) {
+                            v.setTag(R.id.stripPhotoAnim, null);
+                            v.setAlpha(1f);
+                        }
+                    }
+                });
+                v.setTag(R.id.stripPhotoAnim, rise);
+                rise.start();
+            }
+            @Override public void onAnimationCancel(android.animation.Animator a) {
+                if (v.getTag(R.id.stripPhotoAnim) == a) {
+                    v.setTag(R.id.stripPhotoAnim, null);
+                    v.setAlpha(1f);
+                }
+            }
+        });
+        pv.setTag(R.id.stripPhotoAnim, dip);
+        dip.start();
+    }
+
     // v5.32: the mini-player's live clock — every now-playing strip
     // (Main, Talks, library, Settings) shows a progress bar but no
     // times, so a listener could never tell how far into a talk

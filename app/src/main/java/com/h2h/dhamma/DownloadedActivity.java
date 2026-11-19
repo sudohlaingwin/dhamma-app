@@ -2412,9 +2412,16 @@ public class DownloadedActivity extends Activity {
         if (ring != null) ring.setVisibility(android.view.View.VISIBLE);
         else pv.setVisibility(android.view.View.VISIBLE);
         if (name.equals(dlStripPhotoName)) return;
+        boolean firstPhoto = dlStripPhotoName == null;
         dlStripPhotoName = name;
         String url = AudioService.stripPhotoUrlForSayadaw(DownloadedActivity.this, name);
-        ImageLoader.load(DownloadedActivity.this, url, name, (CircleImageView) pv);
+        // v14.22 (slice 1676): the photo crossfades on a sayadaw
+        // change instead of swapping — see Fx.crossfadeStripPhoto.
+        Fx.crossfadeStripPhoto((CircleImageView) pv, url, firstPhoto, new Runnable() {
+            @Override public void run() {
+                ImageLoader.load(DownloadedActivity.this, url, name, (CircleImageView) pv);
+            }
+        });
     }
 
     // v4.40: real mini-player on the library, the same strip as

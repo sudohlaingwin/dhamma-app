@@ -956,9 +956,16 @@ public class HistoryActivity extends Activity {
         if (ring != null) ring.setVisibility(android.view.View.VISIBLE);
         else pv.setVisibility(android.view.View.VISIBLE);
         if (name.equals(hsStripPhotoName)) return;
+        boolean firstPhoto = hsStripPhotoName == null;
         hsStripPhotoName = name;
         String url = AudioService.stripPhotoUrlForSayadaw(HistoryActivity.this, name);
-        ImageLoader.load(HistoryActivity.this, url, name, (CircleImageView) pv);
+        // v14.22 (slice 1676): the photo crossfades on a sayadaw
+        // change instead of swapping — see Fx.crossfadeStripPhoto.
+        Fx.crossfadeStripPhoto((CircleImageView) pv, url, firstPhoto, new Runnable() {
+            @Override public void run() {
+                ImageLoader.load(HistoryActivity.this, url, name, (CircleImageView) pv);
+            }
+        });
     }
 
     private void syncHistoryStrip() {
