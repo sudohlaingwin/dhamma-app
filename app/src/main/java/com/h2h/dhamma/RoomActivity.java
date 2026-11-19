@@ -8692,9 +8692,32 @@ if (snd67n >= 0) currentIndex = snd67n;
                                             }
                                             queueUrls.remove(fqi);
                                             if (ffe.url.equals(moveHeldUrl)) moveHeldUrl = null; // v7.86: same held-row rule as the full-list dialog
+                                            boolean wasQueueOnlyF = drawerQueueOnly;
                                             exitQueueOnlyIfNothingWaiting(); // v11.48: leave the view when nothing waits, not only when the raw queue empties
                                             saveQueue(null, true);
                                             if (adapter != null) adapter.notifyDataSetChanged();
+                                            // v14.29 (slice 1684): premium single-remove exit
+                                            // pour — removing the last waiting talk only
+                                            // flipped the flag (via the v11.48 helper) and
+                                            // re-bound, so the full list snapped back in
+                                            // one frame behind the dismissing dialog, the
+                                            // same snap shape as the v14.27 toggle exit
+                                            // and the v14.28 clear confirms. The re-bound
+                                            // rows now cascade with the same
+                                            // Fx.staggerChildren the open / v3.06 / v14.27
+                                            // paths use, guarded exactly like v3.06
+                                            // (panel open + translationX == 0f) and only
+                                            // when the remove actually exits queue-only
+                                            // view (wasQueueOnlyF true AND drawerQueueOnly
+                                            // false now — the helper flips only when
+                                            // nothing waits, so a remove that leaves talks
+                                            // waiting only re-binds the remaining queue
+                                            // rows and stays still). Visual only; the
+                                            // remove, the flag and the scroll position
+                                            // are untouched.
+                                            android.view.View qPanel29 = findViewById(R.id.roomPlayListPanel);
+                                            if (wasQueueOnlyF && !drawerQueueOnly && isPlayListPanelOpen() && qPanel29 != null && qPanel29.getTranslationX() == 0f && roomList != null)
+                                                Fx.staggerChildren(roomList);
                                             Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "removed_from_queue"), Toast.LENGTH_SHORT).show();
                                         } else if ("menu_move".equals(fKeyArr[which])) {
                                             // v7.15: arm the foreign row
@@ -8937,9 +8960,30 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         }
                                         queueUrls.remove(qi);
                                         if (qt.url.equals(moveHeldUrl)) moveHeldUrl = null;
+                                        boolean wasQueueOnlyQ = drawerQueueOnly;
                                         exitQueueOnlyIfNothingWaiting(); // v11.48: leave the view when nothing waits, not only when the raw queue empties
                                         saveQueue(null, true);
                                         if (adapter != null) adapter.notifyDataSetChanged();
+                                        // v14.29 (slice 1684): same single-remove exit pour
+                                        // as the foreign-row remove above — removing the
+                                        // last waiting talk only flipped the flag (via
+                                        // the v11.48 helper) and re-bound, so the full
+                                        // list snapped back in one frame behind the
+                                        // dismissing dialog. The re-bound rows now
+                                        // cascade with the same Fx.staggerChildren the
+                                        // open / v3.06 / v14.27 paths use, guarded
+                                        // exactly like v3.06 (panel open +
+                                        // translationX == 0f) and only when the remove
+                                        // actually exits queue-only view (wasQueueOnlyQ
+                                        // true AND drawerQueueOnly false now — the
+                                        // helper flips only when nothing waits, so a
+                                        // remove that leaves talks waiting only
+                                        // re-binds the remaining queue rows and stays
+                                        // still). Visual only; the remove, the flag
+                                        // and the scroll position are untouched.
+                                        android.view.View qPanel29 = findViewById(R.id.roomPlayListPanel);
+                                        if (wasQueueOnlyQ && !drawerQueueOnly && isPlayListPanelOpen() && qPanel29 != null && qPanel29.getTranslationX() == 0f && roomList != null)
+                                            Fx.staggerChildren(roomList);
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "removed_from_queue"), Toast.LENGTH_SHORT).show();
                                     } else if ("menu_move".equals(qKeyArr[which])) {
                                         // v11.22: tap-time sounding re-check (v11.12
