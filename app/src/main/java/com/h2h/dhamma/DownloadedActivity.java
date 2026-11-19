@@ -2365,6 +2365,10 @@ public class DownloadedActivity extends Activity {
     // condition never refreshed the row after that tap.
     private boolean lastDlActive = false;
     private String lastDlTrack = null;
+    // v14.49 (slice 1706): the newly-sounding shelf row's melt — the Talks chooser's v14.48 twin, restated for the library. dlSoundPrevPath is the sounding shelf path the rows were last bound against (libRowPlayingPath, set by refreshLibQueuePreview earlier in the same tick); dlSoundFadePath is the armed path the helper below fades in; dlSoundPrimed stays false until the first tick evaluation adopts the tracker, so a load or rotation restore never arms a fade on top of the list pour (v2.12). Consumed by fadeSoundingDlRow, which nulls it — a second tick without a new sounding change is a no-op — and the download-landing / delete arms are separate, so the melts never overwrite each other.
+    private String dlSoundFadePath = null;
+    private String dlSoundPrevPath = null;
+    private boolean dlSoundPrimed = false;
     // v14.05 (slice 1100): failed state the rows were last bound
     // against — the v1.47 tick's playing/track/active change
     // detection never saw a failure: a first failure while playing
@@ -3311,6 +3315,54 @@ public class DownloadedActivity extends Activity {
         }
     }
 
+    // v14.49 (slice 1706): melt the newly-sounding shelf row in at
+    // its display position — the Talks chooser's v14.48 shape (post
+    // after the rebind, resolve fresh, fade 250ms), restated for the
+    // library's display mapping. The display position resolves the
+    // v3.93 way: the queue index in queue-only view (the sounding
+    // file is popped from the queue, so it has no row there), else
+    // the shelf index in shownDl, so a search/filter that hides the
+    // sounding file leaves no row (-1); a scrolled-out row
+    // (getChildAt null) is skipped, never scrolled to — the return
+    // glide (tryDlReturnGlide) only scrolls to an off-screen
+    // sounding row on its own, and only fires when the row is
+    // off-screen, so the two never fight: a row the glide moves was
+    // skipped here, a row on screen never glides. Consume-once: a
+    // second run without a new sounding change is a no-op. Guards:
+    // the activity may be finishing/destroyed by the time the post
+    // runs, and a rebind landing mid-fade (tick percent rebind,
+    // return theme-dip swap, user filter/search change) is safe via
+    // the v14.49 getView hygiene below, which restores row alpha 1
+    // on any rebind, so a fade cut short can never strand the row
+    // half-transparent. Fx.fadeIn is restart-safe (v3.52: a second
+    // fade flows from the current alpha), so a second melt on the
+    // same row in the same tick just restarts the glide and still
+    // ends at alpha 1. The pulse lives on the state icon child, not
+    // the row, and the listened title dim lives on titleView, so
+    // neither reads the row alpha this fade moves.
+    private void fadeSoundingDlRow() {
+        final String path = dlSoundFadePath;
+        dlSoundFadePath = null;
+        if (path == null || dlListView == null) return;
+        dlListView.post(new Runnable() {
+            @Override public void run() {
+                if (dlListView == null || isFinishing() || isDestroyed()) return;
+                int dispPos = -1;
+                if (libQueueOnly) {
+                    dispPos = libQueueCache.indexOf(path);
+                } else {
+                    for (int i = 0; i < shownDl.size(); i++)
+                        if (shownDl.get(i).file.getAbsolutePath().equals(path)) { dispPos = i; break; }
+                }
+                if (dispPos < 0) return;
+                int first = dlListView.getFirstVisiblePosition();
+                android.view.View row = dlListView.getChildAt(dispPos - first);
+                if (row == null) return;
+                Fx.fadeIn(row, 250);
+            }
+        });
+    }
+
     private void wireDlStrip() {
         android.view.View nowStrip = findViewById(R.id.nowStrip);
         if (nowStrip != null) {
@@ -4102,6 +4154,15 @@ public class DownloadedActivity extends Activity {
                 // the bind can confirm the flag is really gone.
                 dlEndedHandledFor = null;
             }
+            // v14.49 (slice 1706): arm the newly-sounding shelf row's melt — the Talks chooser's v14.48 arm, restated for the library. libRowPlayingPath is fresh for this tick (refreshLibQueuePreview above set it from the live lib session, or the v13.17 Room-session mirror, before the end block), so a change to a NEW non-empty shelf path arms it: auto-advance while browsing, Next from the strip or the notification, a library advance. A play/pause flip (same path), a mark-only change (the v7.45 block above rebinds the same rows with no new sounding file), an end / failure / buffering flip (same path, the ▶ leaves with the rebind) and a path changing to empty (stopped — no row to melt) never arm. dlSoundPrimed stays false until the first tick evaluation adopts the tracker, so a load or rotation restore never melts on top of the list pour (v2.12); a change discovered on a back-stack return (primed, same instance) melts the row as the return beat. The tracker adopts every tick, so the arm can never go stale: a sounding change implies a track change, one of the v1.47 conditions below, so the rebind below always fires on an armed tick.
+            String soundTarget49 = "";
+            if (!dlSoundPrimed) {
+                dlSoundPrimed = true;
+            } else if (libRowPlayingPath != null && libRowPlayingPath.length() > 0
+                    && !libRowPlayingPath.equals(dlSoundPrevPath)) {
+                soundTarget49 = libRowPlayingPath;
+            }
+            dlSoundPrevPath = libRowPlayingPath;
             // v1.47: rebind only when the playing state or track changed
             // — the old every-second rebind flickered rows and fought
             // with scrolling while a file played.
@@ -4122,6 +4183,7 @@ public class DownloadedActivity extends Activity {
                 lastDlTrack = curTrack;
                 lastDlActive = curActive;
                 lastDlFailed = AudioService.liveTrackError;
+                if (soundTarget49.length() > 0) { dlSoundFadePath = soundTarget49; fadeSoundingDlRow(); }
             }
             // v4.66: a Next landing while the shelf sits open used
             // to leave the footer's Up Next line pointing at the
@@ -11727,6 +11789,8 @@ public class DownloadedActivity extends Activity {
             Fx.cancelPress(v); // v3.90: press squash is an ObjectAnimator now — the cancel above cannot stop it.
             v.setScaleX(1f);
             v.setScaleY(1f);
+            // v14.49 (slice 1706): row-alpha hygiene, the Talks chooser v14.47 mirror — the sounding-row fade above runs on the row view itself, so a rebind landing mid-fade (tick percent rebind, return theme-dip swap, user filter/search change) used to cancel the animator and strand the row half-transparent: this getView never touched row alpha (its v3.48 hygiene restores scale only). A rebind now restores alpha 1 with the scale, so a cut-short fade just ends fully visible. The pour (v2.12/v2.57) is a view Animation and the press squash (v2.08/v3.90) is scale-only, so neither reads this property; the listened title dim lives on titleView, untouched; the delete fade is an ObjectAnimator on alpha (a different channel from the ViewPropertyAnimator getView cancels) whose finish already restores 1 before deleting, and a rebind landing inside its 200ms only ever touches a row about to be deleted while the running animator keeps writing its own interpolated alpha each frame, so the fade still ends and the row still deletes.
+            v.setAlpha(1f);
             // v4.58: queue-only mapping — a stale queue slot binds
             // nothing rather than crashing on a shelf lookup.
             Entry e = libEntryAtDisplay(pos);
