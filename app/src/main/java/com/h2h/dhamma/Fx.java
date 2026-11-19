@@ -605,6 +605,40 @@ public class Fx {
         glide.start();
     }
 
+    // v15.08 (slice 1767): premium rank-close glide from an explicit
+    // start — the carry half of glideHome above. A rebuild landing
+    // mid-glide replaces the gliding view with a fresh one at home,
+    // so the fresh chip is parked at the captured translationX and
+    // glides home over the exact remainder instead of snapping. The
+    // animator is recorded in glideAnims exactly like glideHome's,
+    // so a later departure's glideHome cancels it and re-parks from
+    // the current position (the v15.03 stacking rule) and an alpha
+    // fade on the same view is never touched. Visual only.
+    public static void glideHomeFrom(final View v, float fromX, long durationMs) {
+        if (v == null) return;
+        android.animation.ObjectAnimator prev = glideAnims.get(v);
+        if (prev != null) prev.cancel();
+        v.setTranslationX(fromX);
+        android.animation.ObjectAnimator glide =
+                android.animation.ObjectAnimator.ofFloat(v, "translationX", 0f);
+        glide.setDuration(durationMs);
+        glide.setInterpolator(new DecelerateInterpolator());
+        glideAnims.put(v, glide);
+        glide.start();
+    }
+
+    // v15.08 (slice 1767): cancel a view's recorded rank-close glide
+    // without touching anything else — a departing chip re-seated
+    // mid-glide must stop sliding before its translationX is reset
+    // to 0, or the still-running animator would undo the reset on
+    // its next frame. A view with no recorded glide is a no-op; a
+    // finished glide cancels harmlessly. Visual only.
+    public static void cancelGlide(final View v) {
+        if (v == null) return;
+        android.animation.ObjectAnimator prev = glideAnims.get(v);
+        if (prev != null) prev.cancel();
+    }
+
     // v14.14 (slice 1668): mini-player strip slide — the strip on Main /
     // Talks / Settings / Downloaded / History / Playlist used to pop in
     // and out instantly on every sync-tick visibility edge. It now

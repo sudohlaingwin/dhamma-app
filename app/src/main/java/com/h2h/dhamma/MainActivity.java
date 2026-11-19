@@ -117,6 +117,25 @@ public class MainActivity extends Activity {
     // parent check there.
     private java.util.List<android.view.View> shelfDepartingViews63 =
             new java.util.ArrayList<android.view.View>();
+    // v15.08 (slice 1767): the rank-close glides still running — the
+    // mirror of shelfMeltViews62 above, for the translationX side. A
+    // rebuild landing inside the v15.03 glide's 250ms window used to
+    // replace the gliding views with fresh ones at translationX 0, so
+    // the shelf snapped to home positions mid-glide (the 1766 open
+    // question, traced first-hand this run: a rebuild at t=350 jumps
+    // a chip ~0.36 of a slot left in one frame). Each glide records
+    // its (name, view) here plus its start translationX and duration
+    // below; the rebuild snapshots the still-attached ones before
+    // removeAllViews and the fresh chip parks at the captured
+    // translationX and glides home over the exact remainder
+    // (duration * sqrt(x / start)). Cleared at every rebuild after
+    // the snapshot, so a stale entry can never outlive one cycle.
+    private java.util.Map<String, android.view.View> shelfGlideViews65 =
+            new java.util.HashMap<String, android.view.View>();
+    private java.util.Map<String, Float> shelfGlideStart65 =
+            new java.util.HashMap<String, Float>();
+    private java.util.Map<String, Long> shelfGlideDur65 =
+            new java.util.HashMap<String, Long>();
     // v14.15 (slice 1669): ★ favourites shelf first-appearance
     // cascade — the shelf's chips used to pop in instantly while
     // the header (v2.17) and the grid (v2.07) pour in around them,
@@ -3085,6 +3104,30 @@ public class MainActivity extends Activity {
         return maxRemain64 < 0 ? maxRemain64 : maxRemain64 + 250;
     }
 
+    // v15.08 (slice 1767): the exact remainder of a rank-close glide
+    // at translationX x, of a glide that started at start over dur —
+    // the DecelerateInterpolator curve is quadratic, so dur *
+    // sqrt(x / start) reproduces the original curve and the chip
+    // still lands home at the same instant as the uninterrupted
+    // glide (the v15.05 remainder rule, for translationX instead of
+    // alpha). -1 when the glide is not really running (no start, no
+    // duration, already home — |x| at dust, 0.01f: the curve drops x
+    // below 0.5 within ~73ms, so a 0.5 threshold would miss most of
+    // the glide window). The caller melts in at once then.
+    // Clamped to [1, dur]: a dust remainder still animates one
+    // frame, and a float wobble above the start never stretches the
+    // glide. The glide carry below and the parked-chip wait in the
+    // melt carry share it, so the two can never disagree on when a
+    // glide ends.
+    private long shelfGlideRemain65(float x, float start, long dur) {
+        if (start <= 0.01f || dur <= 0) return -1;
+        if (x <= 0.01f) return -1;
+        long r65 = (long) (dur * Math.sqrt(x / start));
+        if (r65 < 1) r65 = 1;
+        if (r65 > dur) r65 = dur;
+        return r65;
+    }
+
     // v13.74 (slice 1065): ★ favourites shelf — pours the starred
     // sayadaws (catalogue order) as photo + name chips above the grid.
     // Hidden while a query is typed or the favourites-only filter is
@@ -3364,6 +3407,55 @@ public class MainActivity extends Activity {
             }
             shelfDepartingViews63.clear();
         }
+        // v15.08 (slice 1767): snapshot the glides still running —
+        // the mirror of the v15.04 melt snapshot and the v15.05
+        // departure snapshot above. Only views still attached to the
+        // shelf count (a superseding rebuild's leftovers are already
+        // detached), only names that survive into the new list (a
+        // gliding chip that was itself unstarred leaves with no fresh
+        // chip to carry), and only a translationX above dust (0.01f)
+        // — a settled glide sits at exactly 0 and records nothing,
+        // while a mid-glide chip is still visibly displaced (the
+        // curve drops x below 0.5 within ~73ms, so 0.5 would miss
+        // most of the window). The start and duration come from the
+        // glide-time record: the
+        // remainder is duration * sqrt(x / start) (the
+        // DecelerateInterpolator curve is quadratic, the v15.05
+        // remainder rule), so a stacked glide (start above one slot)
+        // carries its true remainder, not a one-slot guess. The record
+        // maps are cleared here, so a stale entry never outlives one
+        // cycle; the apply block below records the carried glide
+        // again, so a third rebuild carries it onward.
+        java.util.Map<String, Float> carryGlideX65 = null;
+        java.util.Map<String, Float> carryGlideStart65 = null;
+        java.util.Map<String, Long> carryGlideDur65 = null;
+        if (!shelfGlideViews65.isEmpty()) {
+            for (java.util.Map.Entry<String, android.view.View> e65 : shelfGlideViews65.entrySet()) {
+                android.view.View v65 = e65.getValue();
+                if (v65 == null || v65.getParent() != favShelf) continue;
+                boolean survives65 = false;
+                for (Sayadaw s65 : favList) {
+                    if (s65.name.equals(e65.getKey())) { survives65 = true; break; }
+                }
+                if (!survives65) continue;
+                float x65 = v65.getTranslationX();
+                if (Math.abs(x65) <= 0.01f) continue;
+                Float st65 = shelfGlideStart65.get(e65.getKey());
+                Long du65 = shelfGlideDur65.get(e65.getKey());
+                if (st65 == null || du65 == null || st65 <= 0.01f || du65 <= 0) continue;
+                if (carryGlideX65 == null) {
+                    carryGlideX65 = new java.util.HashMap<String, Float>();
+                    carryGlideStart65 = new java.util.HashMap<String, Float>();
+                    carryGlideDur65 = new java.util.HashMap<String, Long>();
+                }
+                carryGlideX65.put(e65.getKey(), x65);
+                carryGlideStart65.put(e65.getKey(), st65);
+                carryGlideDur65.put(e65.getKey(), du65);
+            }
+            shelfGlideViews65.clear();
+            shelfGlideStart65.clear();
+            shelfGlideDur65.clear();
+        }
         favShelf.removeAllViews();
         float d = getResources().getDisplayMetrics().density;
         for (final Sayadaw s : favList) {
@@ -3380,6 +3472,15 @@ public class MainActivity extends Activity {
             clp.setMargins(0, 0, (int) (10 * d), 0);
             chip.setLayoutParams(clp);
             Fx.press(chip); // v2.08 press feedback, like the grid cards
+            // v15.08 (slice 1767): the chip carries its sayadaw name
+            // in its tag — a removal end action runs 250ms later, when
+            // child indices are no longer reliable (re-seated
+            // departures interleave the shelf), so the glide it starts
+            // is recorded against the name, which rides the view
+            // instead of an index. The unkeyed tag slot on a shelf
+            // chip is otherwise unused (the keyed R.id tags live on
+            // strip views, never here), and nothing else reads it.
+            chip.setTag(s.name);
             // v13.87: 56dp ring frame around the 52dp portrait — the
             // frame's background is the gold ring while sounding and
             // nothing otherwise, so the photo itself never shrinks
@@ -3624,6 +3725,27 @@ public class MainActivity extends Activity {
                 // the 250ms rank-close glide, so a re-parked chip
                 // keeps the extended anchor across rebuilds.
                 long parkDelay62 = shelfParkDelay64(i62, departingIdx00, carryDepIdx63, carryDepAlpha63);
+                // v15.08 (slice 1767): a still-parked chip that is
+                // ALSO mid-glide waits out its carried glide's
+                // remainder too — its departure already left, so the
+                // helper above returns -1, but the chip is still
+                // sliding home (the glide carry below parks it at its
+                // captured translationX) and melting in now would be
+                // the v15.07 melt-while-sliding through the carry.
+                // The wait is the LONGER of the two: a departure
+                // still displacing it already carries the full glide
+                // in its own delay (departure end + 250, the v15.07
+                // anchor), so the max keeps the melt starting exactly
+                // when the glide ends either way.
+                if (a62 < 0.001f && carryGlideX65 != null) {
+                    Float gx65 = carryGlideX65.get(favList.get(i62).name);
+                    Float gs65 = carryGlideStart65.get(favList.get(i62).name);
+                    Long gd65 = carryGlideDur65.get(favList.get(i62).name);
+                    if (gx65 != null && gs65 != null && gd65 != null) {
+                        long gr65 = shelfGlideRemain65(gx65, gs65, gd65);
+                        if (gr65 >= 0 && gr65 > parkDelay62) parkDelay62 = gr65;
+                    }
+                }
                 if (a62 < 0.001f && parkDelay62 >= 0) {
                     final android.view.View chipFinal62 = chip62;
                     chip62.setAlpha(0f);
@@ -3646,6 +3768,41 @@ public class MainActivity extends Activity {
                 chip62.setAlpha(a62);
                 Fx.fadeIn(chip62, 250);
                 shelfMeltViews62.put(favList.get(i62).name, chip62);
+            }
+        }
+        // v15.08 (slice 1767): carry a mid-glide chip's travel across
+        // the rebuild — for each name the snapshot caught mid-glide,
+        // the fresh chip parks at the captured translationX and glides
+        // home over the exact remainder (shelfGlideRemain65), so a
+        // rebuild landing inside the glide window reads as one
+        // continuous slide instead of a snap to home. The remainder
+        // reproduces the original DecelerateInterpolator curve, so the
+        // chip lands home at the same instant as the uninterrupted
+        // glide. Recorded again (start = the captured position, the
+        // remainder as the duration), so a third rebuild carries it
+        // onward the same way. Runs after the melt carry above and
+        // before the v15.00 re-seat below, so the favList indices are
+        // still exact; a carried chip beside a re-seated departure
+        // rides the next rank-close glide home while it glides
+        // (glideHomeFrom never touches alpha, fadeIn never touches
+        // translationX — the two carries compose, and a parked chip
+        // gliding invisibly keeps its melt-in at the instant this
+        // carried glide ends, step 6 above).
+        if (carryGlideX65 != null) {
+            for (int i65 = 0; i65 < favList.size(); i65++) {
+                Float x65 = carryGlideX65.get(favList.get(i65).name);
+                if (x65 == null) continue;
+                android.view.View chip65 = favShelf.getChildAt(i65);
+                if (chip65 == null) continue;
+                Float st65o = carryGlideStart65.get(favList.get(i65).name);
+                Long du65o = carryGlideDur65.get(favList.get(i65).name);
+                if (st65o == null || du65o == null) continue;
+                long remain65 = shelfGlideRemain65(x65, st65o, du65o);
+                if (remain65 < 0) continue;
+                Fx.glideHomeFrom(chip65, x65, remain65);
+                shelfGlideViews65.put(favList.get(i65).name, chip65);
+                shelfGlideStart65.put(favList.get(i65).name, x65);
+                shelfGlideDur65.put(favList.get(i65).name, remain65);
             }
         }
         // v15.00 (slice 1758): melt a removed chip out — the
@@ -3677,6 +3834,17 @@ public class MainActivity extends Activity {
                 int at00 = departingIdx00.get(i00);
                 if (at00 > favShelf.getChildCount()) at00 = favShelf.getChildCount();
                 favShelf.addView(dv00, at00);
+                // v15.08 (slice 1767): a departing chip captured
+                // mid-glide keeps its translationX on re-seat and
+                // would fade out up to a slot right of its own slot,
+                // overlapping its neighbour while fading (the v15.00
+                // comment says it fades out "in its old slot"). Cancel
+                // the recorded glide first — a bare setTranslationX
+                // would be undone on the next animation frame by the
+                // still-running glide animator — then reset to 0, so
+                // it fades out exactly in its slot.
+                Fx.cancelGlide(dv00);
+                dv00.setTranslationX(0f);
                 // v15.05 (slice 1763): record the departure — a
                 // rebuild landing inside this fade-out re-seats it
                 // and continues the fade (snapshot above).
@@ -3720,7 +3888,23 @@ public class MainActivity extends Activity {
                         // untouched). No trailing sibling (the
                         // removed last chip) glides nothing.
                         for (int i03 = atFinal03; i03 < favShelf.getChildCount(); i03++) {
-                            Fx.glideHome(favShelf.getChildAt(i03), shift03, 250);
+                            android.view.View sib03 = favShelf.getChildAt(i03);
+                            Fx.glideHome(sib03, shift03, 250);
+                            // v15.08 (slice 1767): record the glide —
+                            // a rebuild landing mid-glide carries it
+                            // below instead of snapping the fresh chip
+                            // home. The name comes from the chip's tag
+                            // (step 2): the child index is meaningless
+                            // here, re-seated departures interleave.
+                            // The start is the parked translationX just
+                            // after glideHome (old position + shift),
+                            // the duration the 250 literal below.
+                            Object tag03 = sib03 == null ? null : sib03.getTag();
+                            if (tag03 instanceof String) {
+                                shelfGlideViews65.put((String) tag03, sib03);
+                                shelfGlideStart65.put((String) tag03, sib03.getTranslationX());
+                                shelfGlideDur65.put((String) tag03, 250L);
+                            }
                         }
                     }
                 });
@@ -3750,6 +3934,12 @@ public class MainActivity extends Activity {
                 int at63 = carryDepIdx63.get(i63);
                 if (at63 > favShelf.getChildCount()) at63 = favShelf.getChildCount();
                 favShelf.addView(dv63, at63);
+                // v15.08 (slice 1767): same reset as the v15.00
+                // re-seat above — a carried departure re-seated while
+                // a later departure's removal glided it would otherwise
+                // fade out displaced from its slot.
+                Fx.cancelGlide(dv63);
+                dv63.setTranslationX(0f);
                 dv63.setAlpha(a63);
                 // v15.03 (slice 1761): the departing chip's slot
                 // width — measured exactly as in the v15.00 block
@@ -3780,7 +3970,18 @@ public class MainActivity extends Activity {
                 Fx.fadeOutAndRemove(dv63, remain63, new Runnable() {
                     @Override public void run() {
                         for (int j63 = atFinal63; j63 < favShelf.getChildCount(); j63++) {
-                            Fx.glideHome(favShelf.getChildAt(j63), shift63, 250);
+                            android.view.View sib63 = favShelf.getChildAt(j63);
+                            Fx.glideHome(sib63, shift63, 250);
+                            // v15.08 (slice 1767): record the glide —
+                            // same as the v15.00 block above (the
+                            // carried departure's removal glides the
+                            // same trailing siblings home).
+                            Object tag63 = sib63 == null ? null : sib63.getTag();
+                            if (tag63 instanceof String) {
+                                shelfGlideViews65.put((String) tag63, sib63);
+                                shelfGlideStart65.put((String) tag63, sib63.getTranslationX());
+                                shelfGlideDur65.put((String) tag63, 250L);
+                            }
                         }
                     }
                 });
