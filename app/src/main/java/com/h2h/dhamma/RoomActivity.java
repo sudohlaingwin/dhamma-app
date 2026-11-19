@@ -12992,8 +12992,9 @@ if (snd67q >= 0) currentIndex = snd67q;
                             ? android.graphics.Color.parseColor("#C9A227")
                             : android.graphics.Color.WHITE);
                     // v12.92: raised row tile — gold tile for the sounding row, glass tile otherwise; set on every bind so a recycled view never keeps a stale tile.
+                    // v14.32 (slice 1687): the tile used to snap on a sounding flip — the 500ms poll rebinds the drawer on a resync (currentIndex = resync59 + notifyDataSetChanged) and every open/queue/download rebind re-set the background in one frame, so a talk advancing, ending or handing over with the drawer open flashed the gold tile from one row to the next. It now crossfades through the v14.31 helper (same TransitionDrawable model: 250ms, crossFade on, recorded target, no-op when unchanged, instant seed on a fresh view) — the ▸/★/✓/⬇ marks and the gold name stay instant per the v14.16 settled decision.
                     android.view.View fRowCard = v.findViewById(R.id.rowCard);
-                    if (fRowCard != null) fRowCard.setBackgroundResource(fSounding ? R.drawable.drawer_row_playing : R.drawable.drawer_row);
+                    if (fRowCard != null) Fx.crossfadeCardTile(fRowCard, fSounding ? R.drawable.drawer_row_playing : R.drawable.drawer_row);
                     if (fHeld) v.setBackgroundColor(0x33C9A227);
                     if (fPlayed && !fSounding && fTitle != null) fTitle.setAlpha(0.6f);
                     // v13.98 (slice 1093): paint the hairline — reset
@@ -13264,8 +13265,9 @@ if (snd67q >= 0) currentIndex = snd67q;
                     ? android.graphics.Color.parseColor("#C9A227")
                     : android.graphics.Color.WHITE);
             // v12.92: raised row tile — gold tile for the playing row, glass tile otherwise; set on every bind so a recycled view never keeps a stale tile.
+            // v14.32 (slice 1687): same crossfade as the foreign branch above — the tile used to snap on a sounding flip while the drawer sat open; now it melts through Fx.crossfadeCardTile (v14.31 helper: 250ms, crossFade on, recorded target, no-op when unchanged, instant seed on a fresh view). Marks and gold name stay instant per the v14.16 settled decision.
             android.view.View rowCard = v.findViewById(R.id.rowCard);
-            if (rowCard != null) rowCard.setBackgroundResource(rowPlaying116 ? R.drawable.drawer_row_playing : R.drawable.drawer_row);
+            if (rowCard != null) Fx.crossfadeCardTile(rowCard, rowPlaying116 ? R.drawable.drawer_row_playing : R.drawable.drawer_row);
             // v4.92: held-row wash (see the ✋ mark above).
             if (held) v.setBackgroundColor(0x33C9A227);
             // v4.12: listened talks sit dimmer in the queue (Spotify
