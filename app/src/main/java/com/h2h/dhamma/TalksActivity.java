@@ -36,6 +36,19 @@ public class TalksActivity extends Activity {
 
     private List<Talk> talks = new ArrayList<Talk>();
     private int lastAnimPos = -1;
+    // v14.23 (slice 1677): key of the visible set the rows last
+    // poured for — the change-only guard for the chooser pour
+    // (see maybePourOnListChange below). Null until the first
+    // chip tap / search keystroke, so that first change always
+    // pours; a rotation restores it null too, but the restore
+    // flag (below) keeps the restored rows still regardless.
+    private String lastVisibleKey = null;
+    // v14.23 (slice 1677): rotation-restore flag — while this is
+    // up, the search watcher rebuilds + rebinds but never pours
+    // (Main's restoringSearch, same shape). Set only around the
+    // saved-query setText in the onCreate restore branch; a real
+    // keystroke never sees it up.
+    private boolean restoringTalkSearch = false;
     private TalkAdapter adapter;
     // v4.48: chooser queue marks — the Room drawer rows carry
     // their hand-queue position (◈N, v4.32) but the chooser rows
@@ -1386,20 +1399,59 @@ public class TalksActivity extends Activity {
         chipTalkDl.setTypeface(null, filterMode == 3 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
     }
 
+    // v14.23 (slice 1677): chooser list-change pour — the first
+    // grid load pours (v2.07) and Main's search pours on a
+    // keystroke that changes the set (v2.48), but this chooser's
+    // filter-chip tap and search keystroke both pinned lastAnimPos
+    // to MAX (v13.95), so the new rows snapped in instantly while
+    // every other list change in the app pours. visibleKey is the
+    // order-sensitive key of the visible set — size + every display
+    // talk index, the Main v11.69 full key, so a tail-only swap
+    // ({A,B,C,D,E} -> {A,B,C,D,F}) never reads as unchanged; the
+    // helper resets the guard only when the key actually moved,
+    // so a chip tap on an unchanged set (every talk already
+    // starred) or a keystroke that leaves the set alone never
+    // replays, and fast typing does not flicker. A rotation
+    // restore never pours: restoringTalkSearch is up while the
+    // saved query goes back into the box, and the guard stays at
+    // its restored pin (v1.53) instead. The pour itself is the
+    // existing getView cascade (300ms fade + 24dp rise, 45ms
+    // stagger) — no new animation, no new view.
+    private String visibleKey() {
+        StringBuilder kb = new StringBuilder();
+        int n = visibleHits == null ? talks.size() : visibleHits.size();
+        kb.append(n);
+        for (int i = 0; i < n; i++) kb.append('|').append(talkIndexAtDisplay(i));
+        return kb.toString();
+    }
+    private void maybePourOnListChange() {
+        if (restoringTalkSearch) return;
+        String key = visibleKey();
+        if (!key.equals(lastVisibleKey)) {
+            lastAnimPos = -1;
+            lastVisibleKey = key;
+        } else {
+            lastAnimPos = Integer.MAX_VALUE;
+        }
+    }
+
     // v13.95 (slice 1090): one direct-set path for the filter mode —
     // the cycling button's click body, extracted verbatim (dedent
     // 20sp -> 8sp) so a chip tap can never disagree with it: same
-    // toast keys, same lastAnimPos pin (rows rebind without the
-    // pour), same rebuild + rebind. A tap on the already-active
+    // toast keys, same rebuild + rebind. A tap on the already-active
     // chip just returns (the caller taps first); the old cycle's
     // increment could never land on the same mode. The cycling
     // button itself is gone — the chips are the only filter control.
+    // v14.23 (slice 1677): the old body pinned lastAnimPos to MAX
+    // here, so a chip tap snapped the new rows in; the rows now
+    // pour when the filtered set actually changes (helper above),
+    // the same set-changed rule as Main's search (v2.48).
     private void setTalkFilterMode(int mode) {
         if (mode == filterMode) return;
         filterMode = mode;
-        lastAnimPos = Integer.MAX_VALUE;
         refreshTalkFilterChips();
         rebuildFilter();
+        maybePourOnListChange();
         if (adapter != null) adapter.notifyDataSetChanged();
         android.widget.Toast.makeText(TalksActivity.this,
                 filterMode == 1 ? Lang.t(TalksActivity.this, "filter_starred_only")
@@ -1414,6 +1466,7 @@ public class TalksActivity extends Activity {
         filterHits = null;
         refreshTalkFilterChips();
         rebuildVisible();
+        maybePourOnListChange(); // v14.23: same set-changed pour as a chip tap
         if (adapter != null) adapter.notifyDataSetChanged();
     }
     private void rebuildSearch() {
@@ -2519,8 +2572,17 @@ public class TalksActivity extends Activity {
                     if (sRow != null) sRow.setVisibility(View.VISIBLE);
                     android.view.View fRow = findViewById(R.id.talkFilterRow);
                     if (fRow != null) fRow.setVisibility(View.VISIBLE);
+                    // v14.23 (slice 1677): hold the restore flag while
+                    // the saved query goes back into the box — the
+                    // watcher fires on setText, and without the flag its
+                    // pour-key logic would reset the guard and replay
+                    // the fade + rise on restored rows (v1.53: a
+                    // rotation restores still). The flag only skips the
+                    // pour decision; the rebuild + rebind still run.
+                    restoringTalkSearch = true;
                     if (searchBox != null) searchBox.setText(savedSearch);
                     else { searchQuery = savedSearch; rebuildSearch(); }
+                    restoringTalkSearch = false;
                 }
                 adapter.notifyDataSetChanged();
                 // v4.24: rotation restore re-applies the title count
@@ -4995,8 +5057,8 @@ public class TalksActivity extends Activity {
             @Override public void onTextChanged(CharSequence s, int st, int b, int c) {}
             @Override public void afterTextChanged(android.text.Editable s) {
                 searchQuery = s.toString().trim();
-                lastAnimPos = Integer.MAX_VALUE;
                 rebuildSearch();
+                maybePourOnListChange(); // v14.23: rows pour when the searched set actually changes
                 if (adapter != null) adapter.notifyDataSetChanged();
             }
         });
@@ -5020,8 +5082,9 @@ public class TalksActivity extends Activity {
         // own body); the cycling button is gone. The chips paint
         // from refreshTalkFilterChips below, and setTalkFilterMode
         // repaints them on every later change. A filtered view
-        // applies to the full list, and rows rebind without the
-        // pour (same lastAnimPos pin as the search watcher).
+        // applies to the full list, and the rows pour when the
+        // filtered set actually changes (v14.23, same set-changed
+        // rule as the search watcher).
         chipTalkAll = findViewById(R.id.chipTalkAll);
         chipTalkStar = findViewById(R.id.chipTalkStar);
         chipTalkNew = findViewById(R.id.chipTalkNew);
