@@ -111,6 +111,23 @@ public class TalksActivity extends Activity {
     // ★/⬇ like the drawer but never ✓ (its live position is on
     // the strip) and never ◈/↺ (existing rules, kept).
     private java.util.Set<String> talkFavCache = new java.util.HashSet<String>();
+    // v14.79 (slice 1737): READ the set in canonical form —
+    // every write funnel banks the https identity (Fx.toggleFavTalk
+    // v13.65, the v13.66 lazy-once migration heals stored rows in
+    // place), so a raw contains() misses an http-spelled talk
+    // and its star never appears on the chooser row, in the
+    // ★-only filter, on the header count, on the Up Next /
+    // foreign-head lines, or in the row-menu label — even though
+    // the toast says it was favourited. The http form genuinely
+    // reaches this chooser: one catalog page carries 15 absolute
+    // http mp3 hrefs (Dr Nandamalabhivamsa), which parseTalkList
+    // keeps as-is. All nine read sites below compare
+    // SiteHttp.identityUrl() of the talk URL — identity for https,
+    // so https talks read exactly as today. The cached set itself
+    // stays raw: the 1s tick's v7.55 change detector snapshots
+    // this cache and .equals-compares it after refreshTalkRowMarks,
+    // and canonicalising the cache would churn that detector.
+    // The Room twin is v14.78 (slice 1736).
     private java.util.Set<String> talkPlayedCache = new java.util.HashSet<String>();
     // v13.97 (slice 1092): per-talk total durations (url -> ms),
     // one parse per refreshTalkRowMarks below, so getView paints
@@ -1691,7 +1708,7 @@ public class TalksActivity extends Activity {
             for (int i = 0; i < talks.size(); i++) {
                 String u = talks.get(i).url;
                 if (filterMode == 1) {
-                    if (ft != null && ft.contains(u)) hits.add(i);
+                    if (ft != null && ft.contains(SiteHttp.identityUrl(u))) hits.add(i);
                 } else if (filterMode == 3) {
                     // v5.13: downloaded only — reuses the chooser
                     // header's isTalkDownloaded (dlMap + candidates
@@ -2387,7 +2404,7 @@ public class TalksActivity extends Activity {
                     boolean dFav = false;
                     try {
                         java.util.Set<String> ft88 = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favTalks", null);
-                        dFav = ft88 != null && dt.url != null && ft88.contains(dt.url);
+                        dFav = ft88 != null && dt.url != null && ft88.contains(SiteHttp.identityUrl(dt.url));
                     } catch (Exception ignored) {}
                     dOpts.add(dFav ? Lang.t(TalksActivity.this, "menu_fav_remove") : Lang.t(TalksActivity.this, "menu_fav_add"));
                     dKeys.add(dFav ? "menu_fav_remove" : "menu_fav_add");
@@ -2955,7 +2972,7 @@ public class TalksActivity extends Activity {
                         for (int i = 0; i < talks.size(); i++) {
                             String u = talks.get(i).url;
                             if (savedFilter == 3) { if (isTalkDownloaded(u)) { filterOk = true; break; } }
-                            else if (savedFilter == 1) { if (ft != null && ft.contains(u)) { filterOk = true; break; } }
+                            else if (savedFilter == 1) { if (ft != null && ft.contains(SiteHttp.identityUrl(u))) { filterOk = true; break; } }
                             else if (pl == null || !pl.contains(u)) { filterOk = true; break; }
                         }
                     } catch (Exception ignored) {}
@@ -3972,7 +3989,7 @@ public class TalksActivity extends Activity {
         int fc = 0;
         try {
             java.util.Set<String> ft = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favTalks", null);
-            if (ft != null) for (Talk t : talks) if (ft.contains(t.url)) fc++;
+            if (ft != null) for (Talk t : talks) if (ft.contains(SiteHttp.identityUrl(t.url))) fc++;
         } catch (Exception ignored) {}
         // v5.66: the chooser header also counts offline talks
         // ("· ⬇ M") and finished talks ("· ✓ M") — the two
@@ -4350,7 +4367,7 @@ public class TalksActivity extends Activity {
             try {
                 java.util.Set<String> ft64 = getSharedPreferences("dhamma", MODE_PRIVATE)
                         .getStringSet("favTalks", null);
-                if (ft64 != null && ft64.contains(fxHead.url)) fxMark += " ★";
+                if (ft64 != null && ft64.contains(SiteHttp.identityUrl(fxHead.url))) fxMark += " ★";
             } catch (Exception ignored) {}
             try {
                 java.util.Set<String> pl64 = getSharedPreferences("dhamma", MODE_PRIVATE)
@@ -4388,7 +4405,7 @@ public class TalksActivity extends Activity {
             try {
                 java.util.Set<String> ft2 = getSharedPreferences("dhamma", MODE_PRIVATE)
                         .getStringSet("favTalks", null);
-                if (ft2 != null) nxFav = ft2.contains(nx.url);
+                if (ft2 != null) nxFav = ft2.contains(SiteHttp.identityUrl(nx.url));
             } catch (Exception ignored) {}
             // v5.62: the chooser header's Up Next line gains the
             // ✓ finished and ↺ resume marks its own preview rows
@@ -5023,7 +5040,7 @@ public class TalksActivity extends Activity {
                             String u = keys.next();
                             if (fn.equals(map.optString(u, ""))) { nClaim49++; onlyClaim49 = u; }
                         }
-                        if (nClaim49 == 1 && onlyClaim49 != null && ft.contains(onlyClaim49)) lFav = true;
+                        if (nClaim49 == 1 && onlyClaim49 != null && ft.contains(SiteHttp.identityUrl(onlyClaim49))) lFav = true;
                     }
                 } catch (Exception ignored) {}
                 int lSec = rPos / 1000;
@@ -5163,7 +5180,7 @@ public class TalksActivity extends Activity {
                             String u = keys.next();
                             if (fn.equals(map.optString(u, ""))) { nClaim49++; onlyClaim49 = u; }
                         }
-                        if (nClaim49 == 1 && onlyClaim49 != null && ft.contains(onlyClaim49)) stripFav = true;
+                        if (nClaim49 == 1 && onlyClaim49 != null && ft.contains(SiteHttp.identityUrl(onlyClaim49))) stripFav = true;
                     }
                 }
             }
@@ -5994,7 +6011,7 @@ public class TalksActivity extends Activity {
             // prefs or file reads. ⬇ wins over ⏳, like the
             // drawer (a saved talk is not still downloading).
             String rowUrl = talks.get(talkIdx).url;
-            String favMark = talkFavCache.contains(rowUrl) ? "★ " : "";
+            String favMark = talkFavCache.contains(SiteHttp.identityUrl(rowUrl)) ? "★ " : "";
             // v14.08 (slice 1103): the row names its live download percent — the Room drawer rows (v4.24), the Room title (v4.27) and the Downloaded rows (v4.27) all read "⏳ 42%", but this row read a bare ⏳ until the file landed. The lookup is by identity URL (the http retry form of a queued https URL still matches, v13.59 rule); an unknown total keeps the bare ⏳ (Fx.dlRowMark), and ⬇ still wins over ⏳.
             String offMark = Fx.dlRowMark(talkDlCache.contains(rowUrl), talkDlQueuedCache.contains(rowUrl),
                     talkDlProgress.get(SiteHttp.identityUrl(rowUrl)));
