@@ -63,6 +63,15 @@ public class MainActivity extends Activity {
     // actually changes the results can re-pour them (below) while
     // a keystroke that changes nothing never replays the cascade.
     private String lastShownKey = "";
+    // v14.26 (slice 1681): ★ filter-toggle pour arm — toggling the
+    // favourites-only filter (or clearing it by gesture: Home
+    // long-press reset, star long-press last-favourite exit) changes
+    // the shown set through the silent applyFilter(), so the new
+    // cards snapped in while a search keystroke pours (v2.48).
+    // Armed only at those gesture sites, never on rotation,
+    // restore or return (onResume staleness guard), and consumed
+    // on every applyFilter pass below.
+    private boolean mainFavToggleChange = false;
     private Set<String> favs = new HashSet<String>();
     // v13.74 (slice 1065): ★ favourites shelf views + the key of the
     // last poured shelf (favourite names + night flag) — a rebuild
@@ -2038,7 +2047,9 @@ public class MainActivity extends Activity {
                     // favourites-only filter, so a reset always
                     // returns to the full catalogue, never to a
                     // filtered view the listener forgot was on.
-                    if (favOnly) { favOnly = false; applyFilter(); refreshFavHint(); }
+                    // v14.26: the reset clears the ★ filter, so the
+                    // restored full grid pours like a toggle-off.
+                    if (favOnly) { favOnly = false; mainFavToggleChange = true; applyFilter(); refreshFavHint(); }
                     if (gridView != null) gridView.smoothScrollToPosition(0);
                     return true;
                 }
@@ -2440,7 +2451,10 @@ public class MainActivity extends Activity {
                 // re-run shows the full catalogue; the toast
                 // still says the favourites are gone.
                 if (favOnly) {
-                        if (favs.isEmpty()) { favOnly = false; refreshFavHint(); }
+                        // v14.26: exiting the ★ filter this way pours
+                        // the restored grid; a non-last unfavourite
+                        // keeps the filter on and stays rows-only (v1.44).
+                        if (favs.isEmpty()) { favOnly = false; mainFavToggleChange = true; refreshFavHint(); }
                         applyFilter();
                         if (favs.isEmpty())
                             Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "no_fav_sayadaw"), Toast.LENGTH_SHORT).show();
@@ -2781,6 +2795,10 @@ public class MainActivity extends Activity {
         // within favourites, and the empty toast path
         // stays untouched (it only fires for a typed
         // query). No favourites yet just says so.
+        // v14.26: remember the pre-toggle state — the no-favourites
+        // refusal below flips favOnly back, and a refused toggle
+        // changes nothing, so it must not arm the pour.
+        boolean wasFavOnly = favOnly;
         favOnly = !favOnly;
         if (favOnly && (favs == null || favs.isEmpty())) {
             // v7.29: the toggle used to ENTER the filter
@@ -2803,6 +2821,10 @@ public class MainActivity extends Activity {
         // keeps the keyboard: a cleared query means a
         // retype is imminent, but a toggle never is.
         hideKeyboard(v);
+        // v14.26: arm the grid pour only when the toggle actually
+        // stuck — a refused toggle (no favourites) leaves the grid
+        // untouched.
+        if (favOnly != wasFavOnly) mainFavToggleChange = true;
         applyFilter();
         refreshFavHint();
     }
@@ -3053,8 +3075,22 @@ public class MainActivity extends Activity {
         // keystroke (allowToast) that actually changes the set scrolls;
         // rotations, restores, star taps and fav toggles never reach here
         // with allowToast, so their scroll positions stay put (v1.44).
+        // v14.26 (slice 1681): the ★ filter toggle is the same gap
+        // in the other direction — toggleFavOnly, the Home long-press
+        // reset and the star long-press last-favourite exit all flip
+        // or clear favOnly and re-run this filter silently, so the
+        // narrowed (or restored) grid snapped in in one frame while
+        // a keystroke pours. The flag below arms only at those three
+        // gesture sites and rides the same key comparison, so an
+        // unchanged set (toggle with every sayadaw favourited) never
+        // replays; the scroll-to-top above stays keystroke-only.
         boolean setChanged = false;
-        if (allowToast) {
+        // v14.26: consume the ★ toggle arm on every pass, so a
+        // gesture that armed it always pours on this pass and never
+        // leaks into a later silent filter (rotation, return).
+        boolean favToggleChange = mainFavToggleChange;
+        mainFavToggleChange = false;
+        if (allowToast || favToggleChange) {
             // v11.69: the key covers EVERY shown name, not just the
             // first three -- a query replacement that swaps a tail
             // item while keeping the size and the first three names
