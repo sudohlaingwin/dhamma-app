@@ -625,6 +625,43 @@ public class TalksActivity extends Activity {
             }
         });
     }
+    // v14.60 (slice 1717): melt the just-stopped row in at its
+    // display position — the fadeSoundingTalkRow shape above,
+    // restated for the DEPARTING talk. The posted runnable runs
+    // after the branch's rebind, resolves the talk index with
+    // sameTalk and the display position through visibleHits (a
+    // search/filter narrows it, a filtered-out departing talk
+    // has no row), and fades 250ms (the v14.48 rhythm); a
+    // scrolled-out row is skipped, never scrolled to. The
+    // v14.47 getView hygiene restores row alpha 1 on any rebind,
+    // so a fade cut short by a tick percent rebind, a return
+    // theme-dip swap or a filter/search change can never strand
+    // the row half-transparent; Fx.fadeIn is restart-safe
+    // (v3.52), so a sounding/landing melt on the same row in the
+    // same tick just restarts the glide. The whole-row fade keeps
+    // the listened title dim intact (per-bind, v14.47 note).
+    // Consume-once: the field is nulled here.
+    private void fadePrevSoundTalkRow() {
+        final String url = prevSoundFadeUrl;
+        prevSoundFadeUrl = null;
+        if (url == null || talkList == null) return;
+        talkList.post(new Runnable() {
+            @Override public void run() {
+                if (talkList == null || isFinishing() || isDestroyed()) return;
+                int ti = -1;
+                if (talks != null) for (int i = 0; i < talks.size(); i++) {
+                    if (talks.get(i) != null && SiteHttp.sameTalk(talks.get(i).url, url)) { ti = i; break; }
+                }
+                if (ti < 0) return;
+                int disp = (visibleHits != null) ? visibleHits.indexOf(Integer.valueOf(ti)) : ti;
+                if (disp < 0) return;
+                int first = talkList.getFirstVisiblePosition();
+                android.view.View row = talkList.getChildAt(disp - first);
+                if (row == null) return;
+                Fx.fadeIn(row, 250);
+            }
+        });
+    }
     // v14.55 (slice 1712): melt the new Up Next row in at its display
     // position — the fadeSoundingTalkRow shape above, restated for the
     // ▸ row (v13.85). The posted runnable runs after the branch's
@@ -695,6 +732,22 @@ public class TalksActivity extends Activity {
     // separate field, so the two melts never overwrite each other.
     private String soundingFadeUrl = null;
     private boolean talkSoundPrimed = false;
+    // v14.60 (slice 1717): the just-stopped talk's URL the melt
+    // below fades in — the v14.48 sounding-row melt's twin for the
+    // DEPARTING row. talkSoundPrimed (same first-tick adoption as
+    // the sounding arm) stays false until the first tick evaluation
+    // adopts the trackers, so a load or rotation restore never arms
+    // a fade on top of the list pour (v14.23); a sounding change
+    // discovered on a back-stack return melts the row as the return
+    // beat, like the sounding arm. Consumed by fadePrevSoundTalkRow,
+    // which nulls it — a second tick without a new departing change
+    // is a no-op — and the sounding (soundingFadeUrl), Up Next
+    // (upNextFadeUrl) and download-landing (dlLandFadeUrl) arms are
+    // separate fields, so the melts never overwrite each other. The
+    // departing row is never the new sounding or Up Next row in the
+    // same tick (repeat-one re-sounds the same URL, so no change
+    // arms at all), so the two fades never land on the same view.
+    private String prevSoundFadeUrl = null;
     // v14.55 (slice 1712): the Up Next talk's URL the melt below fades
     // in — the chooser's ▸ row (v13.85), the v14.48 sounding-row melt's
     // twin, restated for the imminent talk. The ▸ used to march to its
@@ -4565,6 +4618,35 @@ public class TalksActivity extends Activity {
                 && talkPlayingLibUrl.length() > 0) {
             soundTarget48 = talkPlayingLibUrl;
         }
+        // v14.60 (slice 1717): arm the departing row's melt BEFORE
+        // the trackers below adopt the fresh URLs — the v14.48
+        // shape, restated for the row that just STOPPED sounding.
+        // Only a sounding-URL change AWAY from a non-empty old URL
+        // arms it: the old row loses its ▶ + gold and gains ✓ + the
+        // listened dim + a filled hairline on this same rebind
+        // (played cache refreshed on the tick path, v7.44; the
+        // service banks the played mark at onCompletion, v7.21),
+        // so it used to snap its marks in one frame while the new
+        // sounding row melted beside it (v14.48). A stop arms too
+        // (fresh URL empty — the old row still loses ▶ + gold);
+        // a same-talk replay (repeat-one) arms nothing (fresh ==
+        // old); a marks-only change or an end/failure/buffering
+        // flip without a URL change arms nothing (the v14.48
+        // deliberate rule — the sounding row's own mark swap is a
+        // different class). Room wins over library, like
+        // soundTarget48 above. Unprimed first evaluation adopts
+        // silently — the entrance pour (v14.23) already carries
+        // the row.
+        String prevSoundTarget60 = "";
+        if (talkSoundPrimed
+                && talkRowPlayingUrl != null && talkRowPlayingUrl.length() > 0
+                && !talkPlayingUrl.equals(talkRowPlayingUrl)) {
+            prevSoundTarget60 = talkRowPlayingUrl;
+        } else if (talkSoundPrimed
+                && talkRowPlayingLibUrl != null && talkRowPlayingLibUrl.length() > 0
+                && !talkPlayingLibUrl.equals(talkRowPlayingLibUrl)) {
+            prevSoundTarget60 = talkRowPlayingLibUrl;
+        }
         if (adapter != null && (marksChanged44 || !talkPlayingUrl.equals(talkRowPlayingUrl == null ? "" : talkRowPlayingUrl)
                 || !talkPlayingLibUrl.equals(talkRowPlayingLibUrl == null ? "" : talkRowPlayingLibUrl)
                 || AudioService.liveEnded != talkRowEnded
@@ -4664,6 +4746,7 @@ public class TalksActivity extends Activity {
             }
             adapter.notifyDataSetChanged();
             if (soundTarget48.length() > 0) { soundingFadeUrl = soundTarget48; fadeSoundingTalkRow(); }
+            if (prevSoundTarget60.length() > 0) { prevSoundFadeUrl = prevSoundTarget60; fadePrevSoundTalkRow(); }
             if (upNextTarget55.length() > 0) { upNextFadeUrl = upNextTarget55; fadeUpNextTalkRow(); }
             if (headerChanged56) Fx.fadeIn(findViewById(R.id.title), 250);
         }
