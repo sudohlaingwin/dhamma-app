@@ -155,6 +155,23 @@ public class DownloadedActivity extends Activity {
     // the single-claimant branch below. The tick snapshots
     // (dlMarkFav45/dlMarkPlayed45) stay raw copies: the 1s tick
     // .equals-compares stored-vs-stored, never a membership read.
+    // v14.85 (slice 1743): the played twin of the v14.80 fav fix —
+    // READ and BANK the played set in canonical form too. The
+    // end block and the five mark/un-mark verbs below banked the
+    // raw dlMap key, so a file downloaded by the delivered v13.57
+    // build from an http-spelled talk planted a legacy http row
+    // in playedTalks (the v13.66 migration heals playedTalks rows
+    // in place, but only rows already stored — a raw bank after
+    // the migration stays http). The row cache above reads
+    // canonical, so the ✓ evaporated on the next loadList; the
+    // Talks chooser (v14.84) and Room drawer (v14.83) read
+    // canonical too, so the ✓ never showed there either; and the
+    // un-mark verbs could not clear a canonical mark at all
+    // (their raw remove missed it) while the mark verbs re-offered
+    // an already-marked file. The AudioService library-file leg
+    // (markPlayedForCurrent, key = hit) still banks raw — its
+    // slice follows, one activity per slice. The tick snapshots
+    // above stay raw copies for the same stored-vs-stored reason.
     private java.util.Set<String> libFavFiles = new java.util.HashSet<String>();
     private java.util.Set<String> libListenedFiles = new java.util.HashSet<String>();
     // v7.45: tick snapshots of the fav/played URL sets behind the
@@ -4041,7 +4058,8 @@ public class DownloadedActivity extends Activity {
                                         getSharedPreferences("dhamma", MODE_PRIVATE);
                                 java.util.Set<String> played = new java.util.HashSet<String>(
                                         pp.getStringSet("playedTalks", new java.util.HashSet<String>()));
-                                if (played.add(hit)) {
+                                // v14.85 (slice 1743): bank the canonical form — the old raw add planted an http twin the row cache (canonical read) missed on the next loadList, so the ✓ evaporated on reload and never showed in the chooser/drawer.
+                                if (played.add(SiteHttp.identityUrl(hit))) {
                                     pp.edit().putStringSet("playedTalks", played).apply();
                                     libListenedFiles.add(fn);
                                 }
@@ -8836,7 +8854,7 @@ public class DownloadedActivity extends Activity {
                     if (se644 == null) continue;
                     if (se644.file.getAbsolutePath().equals(cur644)) continue;
                     String u644 = fn644.get(se644.file.getName());
-                    if (u644 != null && (pt644 == null || !pt644.contains(u644))) { hasUnplayed644 = true; break; }
+                    if (u644 != null && (pt644 == null || !pt644.contains(SiteHttp.identityUrl(u644)))) { hasUnplayed644 = true; break; }
                 }
             } catch (Exception ignored) {}
             if (hasUnplayed644) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_mark_shown")); itemKeys.add("dl_menu_mark_shown"); }
@@ -8887,7 +8905,7 @@ public class DownloadedActivity extends Activity {
                     if (se697.file.getAbsolutePath().equals(cur697)) continue;
                     if (!libFavFiles.contains(se697.file.getName())) continue;
                     String u697 = fn697.get(se697.file.getName());
-                    if (u697 != null && (pt697 == null || !pt697.contains(u697))) { hasMarkFavShown697 = true; break; }
+                    if (u697 != null && (pt697 == null || !pt697.contains(SiteHttp.identityUrl(u697)))) { hasMarkFavShown697 = true; break; }
                 }
             } catch (Exception ignored) {}
             if (hasMarkFavShown697) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_mark_shown_star")); itemKeys.add("dl_menu_mark_shown_star"); }
@@ -8945,7 +8963,7 @@ public class DownloadedActivity extends Activity {
                     if (se698.file.getAbsolutePath().equals(cur698)) continue;
                     if (!libFavFiles.contains(se698.file.getName())) continue;
                     String u698 = fn698.get(se698.file.getName());
-                    if (u698 != null && pt698 != null && pt698.contains(u698)) { hasUnmarkFavShown698 = true; break; }
+                    if (u698 != null && pt698 != null && pt698.contains(SiteHttp.identityUrl(u698))) { hasUnmarkFavShown698 = true; break; }
                 }
             } catch (Exception ignored) {}
             if (hasUnmarkFavShown698) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_unmark_shown_star")); itemKeys.add("dl_menu_unmark_shown_star"); }
@@ -9003,7 +9021,7 @@ public class DownloadedActivity extends Activity {
                     if (se699 == null) continue;
                     if (se699.file.getAbsolutePath().equals(cur699)) continue;
                     String u699 = fn699.get(se699.file.getName());
-                    if (u699 != null && (pt699 == null || !pt699.contains(u699))) { hasMarkNewShown699 = true; break; }
+                    if (u699 != null && (pt699 == null || !pt699.contains(SiteHttp.identityUrl(u699)))) { hasMarkNewShown699 = true; break; }
                 }
             } catch (Exception ignored) {}
             if (hasMarkNewShown699) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_mark_shown_new")); itemKeys.add("dl_menu_mark_shown_new"); }
@@ -9060,7 +9078,7 @@ public class DownloadedActivity extends Activity {
                     if (se645 == null) continue;
                     if (se645.file.getAbsolutePath().equals(cur645)) continue;
                     String u645 = fn645.get(se645.file.getName());
-                    if (u645 != null && pt645 != null && pt645.contains(u645)) { hasPlayed645 = true; break; }
+                    if (u645 != null && pt645 != null && pt645.contains(SiteHttp.identityUrl(u645))) { hasPlayed645 = true; break; }
                 }
             } catch (Exception ignored) {}
             if (hasPlayed645) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_unmark_shown")); itemKeys.add("dl_menu_unmark_shown"); }
@@ -10388,7 +10406,9 @@ public class DownloadedActivity extends Activity {
                                     if (de644 == null) continue;
                                     if (de644.file.getAbsolutePath().equals(curPath644)) continue;
                                     String u644 = fn644.get(de644.file.getName());
-                                    if (u644 != null && next644.add(u644)) { added++; libListenedFiles.add(de644.file.getName()); }
+                                    // v14.85 (slice 1743): bank the canonical form — the old raw add planted an http twin the row cache (canonical read) missed on the next loadList, so the ✓ evaporated on reload.
+                                    String c644 = SiteHttp.identityUrl(u644);
+                                    if (u644 != null && next644.add(c644)) { added++; libListenedFiles.add(de644.file.getName()); }
                                 }
                                 sp644.edit().putStringSet("playedTalks", next644).apply();
                             } catch (Exception ignored) {}
@@ -10439,7 +10459,9 @@ public class DownloadedActivity extends Activity {
                                     if (de697.file.getAbsolutePath().equals(curPath697)) continue;
                                     if (!libFavFiles.contains(de697.file.getName())) continue;
                                     String u697 = fn697.get(de697.file.getName());
-                                    if (u697 != null && next697.add(u697)) { added697++; libListenedFiles.add(de697.file.getName()); }
+                                    // v14.85 (slice 1743): bank the canonical form — same raw-add evaporation as the v6.44 verb above.
+                                    String c697 = SiteHttp.identityUrl(u697);
+                                    if (u697 != null && next697.add(c697)) { added697++; libListenedFiles.add(de697.file.getName()); }
                                 }
                                 sp697.edit().putStringSet("playedTalks", next697).apply();
                             } catch (Exception ignored) {}
@@ -10491,7 +10513,9 @@ public class DownloadedActivity extends Activity {
                                     if (de699 == null) continue;
                                     if (de699.file.getAbsolutePath().equals(curPath699)) continue;
                                     String u699 = fn699.get(de699.file.getName());
-                                    if (u699 != null && next699.add(u699)) { added699++; libListenedFiles.add(de699.file.getName()); }
+                                    // v14.85 (slice 1743): bank the canonical form — same raw-add evaporation as the v6.44 verb above.
+                                    String c699 = SiteHttp.identityUrl(u699);
+                                    if (u699 != null && next699.add(c699)) { added699++; libListenedFiles.add(de699.file.getName()); }
                                 }
                                 sp699.edit().putStringSet("playedTalks", next699).apply();
                             } catch (Exception ignored) {}
@@ -10541,7 +10565,14 @@ public class DownloadedActivity extends Activity {
                                     if (de698.file.getAbsolutePath().equals(curPath698)) continue;
                                     if (!libFavFiles.contains(de698.file.getName())) continue;
                                     String u698 = fn698.get(de698.file.getName());
-                                    if (u698 != null && next698.remove(u698)) { removed698++; libListenedFiles.remove(de698.file.getName()); }
+                                    // v14.85 (slice 1743): remove BOTH forms — a legacy http twin banked by the old raw verb must go too, or the ✓ survives the un-mark while the toast says it is gone.
+                                    String c698 = SiteHttp.identityUrl(u698);
+                                    boolean took698 = false;
+                                    if (u698 != null) {
+                                        if (next698.remove(c698)) took698 = true;
+                                        if (next698.remove(u698)) took698 = true;
+                                    }
+                                    if (took698) { removed698++; libListenedFiles.remove(de698.file.getName()); }
                                 }
                                 sp698.edit().putStringSet("playedTalks", next698).apply();
                             } catch (Exception ignored) {}
@@ -10595,7 +10626,14 @@ public class DownloadedActivity extends Activity {
                                     if (de645 == null) continue;
                                     if (de645.file.getAbsolutePath().equals(curPath645)) continue;
                                     String u645 = fn645.get(de645.file.getName());
-                                    if (u645 != null && next645.remove(u645)) { removed++; libListenedFiles.remove(de645.file.getName()); }
+                                    // v14.85 (slice 1743): remove BOTH forms — same legacy http twin as the v6.98 verb above.
+                                    String c645 = SiteHttp.identityUrl(u645);
+                                    boolean took645 = false;
+                                    if (u645 != null) {
+                                        if (next645.remove(c645)) took645 = true;
+                                        if (next645.remove(u645)) took645 = true;
+                                    }
+                                    if (took645) { removed++; libListenedFiles.remove(de645.file.getName()); }
                                 }
                                 sp645.edit().putStringSet("playedTalks", next645).apply();
                             } catch (Exception ignored) {}
