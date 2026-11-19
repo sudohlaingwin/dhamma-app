@@ -128,6 +128,28 @@ public class TalksActivity extends Activity {
     // this cache and .equals-compares it after refreshTalkRowMarks,
     // and canonicalising the cache would churn that detector.
     // The Room twin is v14.78 (slice 1736).
+    // v14.84 (slice 1742): the played twin of the v14.79 star
+    // fix — every playedTalks read in this chooser compared
+    // the raw talk URL while the set holds canonical https
+    // (the v13.66 migration heals stored rows in place; the
+    // v13.59 service stream leg and the v13.79 fallback bank
+    // canonical; the Room end block banks canonical since
+    // v14.83), so a talk finishing while its list URL was
+    // http-spelled (absolute-http href, list parsed over the
+    // v13.57 http retry, foreign queue-line talk) lost its
+    // tick on the chooser row, the header count, the Up Next
+    // / foreign-head lines, the "New" filter and its rotation
+    // restore — while its star stayed right on the same row.
+    // All six read sites now compare SiteHttp.identityUrl()
+    // — identity for https, so https talks read exactly as
+    // today. The cached set itself stays raw, same reason as
+    // the star note above (the v7.55 .equals detector).
+    // Remaining raw planters live in other activities — the
+    // Downloaded end block + mark-shown verbs and the
+    // AudioService library-file leg bank dlMap keys, legacy
+    // http for pre-v13.67 downloads — their slices follow; a
+    // tick planted from the Library still misses here until
+    // then.
     private java.util.Set<String> talkPlayedCache = new java.util.HashSet<String>();
     // v13.97 (slice 1092): per-talk total durations (url -> ms),
     // one parse per refreshTalkRowMarks below, so getView paints
@@ -1716,7 +1738,7 @@ public class TalksActivity extends Activity {
                     // Room is picked up by the on-return rebuild.
                     if (isTalkDownloaded(u)) hits.add(i);
                 } else {
-                    if (pl == null || !pl.contains(u)) hits.add(i);
+                    if (pl == null || !pl.contains(SiteHttp.identityUrl(u))) hits.add(i);
                 }
             }
             filterHits = hits;
@@ -2973,7 +2995,7 @@ public class TalksActivity extends Activity {
                             String u = talks.get(i).url;
                             if (savedFilter == 3) { if (isTalkDownloaded(u)) { filterOk = true; break; } }
                             else if (savedFilter == 1) { if (ft != null && ft.contains(SiteHttp.identityUrl(u))) { filterOk = true; break; } }
-                            else if (pl == null || !pl.contains(u)) { filterOk = true; break; }
+                            else if (pl == null || !pl.contains(SiteHttp.identityUrl(u))) { filterOk = true; break; }
                         }
                     } catch (Exception ignored) {}
                     if (filterOk) {
@@ -4015,7 +4037,7 @@ public class TalksActivity extends Activity {
         int playedCount = 0;
         try {
             java.util.Set<String> pl = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("playedTalks", null);
-            if (pl != null) for (Talk t : talks) if (pl.contains(t.url)) playedCount++;
+            if (pl != null) for (Talk t : talks) if (pl.contains(SiteHttp.identityUrl(t.url))) playedCount++;
         } catch (Exception ignored) {}
         // v5.70: the chooser header also counts half-heard talks
         // ("· ↺ M") — the mirror of the Room drawer header's
@@ -4372,7 +4394,7 @@ public class TalksActivity extends Activity {
             try {
                 java.util.Set<String> pl64 = getSharedPreferences("dhamma", MODE_PRIVATE)
                         .getStringSet("playedTalks", null);
-                if (pl64 != null && pl64.contains(fxHead.url)) fxMark += " ✓";
+                if (pl64 != null && pl64.contains(SiteHttp.identityUrl(fxHead.url))) fxMark += " ✓";
             } catch (Exception ignored) {}
             int fxRp = Prefs.talkPosGet(TalksActivity.this, fxHead.url);
             if (fxRp <= 5000 && fxDl) {
@@ -4455,7 +4477,7 @@ public class TalksActivity extends Activity {
             try {
                 java.util.Set<String> pl2 = getSharedPreferences("dhamma", MODE_PRIVATE)
                         .getStringSet("playedTalks", null);
-                if (pl2 != null) nxPlayed = pl2.contains(nx.url);
+                if (pl2 != null) nxPlayed = pl2.contains(SiteHttp.identityUrl(nx.url));
             } catch (Exception ignored) {}
             int nxRp = Prefs.talkPosGet(TalksActivity.this, nx.url);
             if (nxRp <= 5000 && nxDl) {
@@ -6029,7 +6051,11 @@ public class TalksActivity extends Activity {
             // and the dim below, so the two can never disagree about
             // which rows count as listened — same gate as before
             // (played, never the playing row, Room or library form).
-            boolean rowListened = !rowPlaying && !rowPlayingLib && talkPlayedCache.contains(rowUrl);
+            // v14.84 (slice 1742): the cache read compares the
+            // canonical identity — the cache itself stays raw
+            // (the v7.55 .equals detector), only the query
+            // changes, so a rebind can never strand the mark.
+            boolean rowListened = !rowPlaying && !rowPlayingLib && talkPlayedCache.contains(SiteHttp.identityUrl(rowUrl));
             String playedMark = rowListened ? "✓ " : "";
             if (titleView != null) titleView.setText((held ? "✋ " : "") + Fx.soundingRowMark(rowPlaying || rowPlayingLib, AudioService.liveTrackError, AudioService.liveBuffering ? Lang.t(TalksActivity.this, "notif_state_buffering") : "", "\u25B6") + qMark + favMark + offMark + playedMark + talks.get(talkIdx).title + resumeMark);
             // v1.52: rows fade + rise in once when first shown
