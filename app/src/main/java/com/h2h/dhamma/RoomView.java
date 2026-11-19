@@ -299,6 +299,75 @@ public class RoomView extends View {
         }
     };
 
+    // v14.17 (slice 1671): altar theme crossfade — the live altar
+    // swap melts instead of blinking (see setPhoto). A frozen
+    // snapshot of the whole view (one transient RGB_565 bitmap,
+    // ~3MB at phone size) fades out over XFADE_MS above the live
+    // new scene; the ticker owns the fade's frames at the same
+    // 50ms quantum as the lit animator and fadeTicker, so a
+    // paused altar still melts. The overlay paint is dedicated —
+    // the shared paint's shader/style/alpha are frame state the
+    // scene draws with, and the overlay must never disturb them.
+    private Bitmap xfadeBmp;
+    private long xfadeStart = 0;
+    private static final long XFADE_MS = 500;
+    private final Paint xfadePaint = new Paint();
+    private final Runnable xfadeTicker = new Runnable() {
+        @Override public void run() {
+            if (xfadeBmp == null) return;
+            invalidate();
+            postDelayed(this, 50);
+        }
+    };
+
+    // Snapshot the currently visible altar frame for the crossfade:
+    // draw() replays onDraw into the bitmap, so the frozen frame
+    // holds the exact visible scene — image, washes, flames, halo,
+    // smoke — at the instant of the swap. Returns null on any
+    // failure (OOM included): the caller falls back to the v11.02
+    // dip instead of crashing a talk change.
+    private Bitmap snapshotAltar() {
+        if (w <= 0 || h <= 0) return null;
+        try {
+            Bitmap b = Bitmap.createBitmap((int) w, (int) h, Bitmap.Config.RGB_565);
+            draw(new Canvas(b));
+            return b;
+        } catch (Throwable t) { return null; }
+    }
+
+    // Begin melting the snapshot out over the new scene. A fade
+    // already in flight is retargeted, not stacked: the snapshot
+    // was drawn with the old overlay inside it at its current
+    // alpha, so the new melt starts from the exact visible frame
+    // (same rule as the old v3.21 mid layer); the old bitmap is
+    // recycled at once, so only one snapshot is ever alive.
+    private void startXfade(Bitmap snap) {
+        if (xfadeBmp != null) { try { xfadeBmp.recycle(); } catch (Exception ignored) {} }
+        xfadeBmp = snap;
+        xfadeStart = SystemClock.uptimeMillis();
+        removeCallbacks(xfadeTicker);
+        post(xfadeTicker);
+    }
+
+    // Draw the melting snapshot over the live scene, at the end of
+    // onDraw so it covers every scene branch. p runs 0 -> 1 over
+    // XFADE_MS on wall time; at p >= 1 the bitmap is recycled and
+    // the ticker stops itself. Called from both onDraw exits (the
+    // AI/theme early return and the drawn-fallback tail).
+    private void drawXfadeOverlay(Canvas c) {
+        if (xfadeBmp == null) return;
+        long now = SystemClock.uptimeMillis();
+        float p = (now - xfadeStart) / (float) XFADE_MS;
+        if (p >= 1f) {
+            try { xfadeBmp.recycle(); } catch (Exception ignored) {}
+            xfadeBmp = null;
+            removeCallbacks(xfadeTicker);
+            return;
+        }
+        xfadePaint.setAlpha((int) (255 * (1f - p)));
+        c.drawBitmap(xfadeBmp, 0, 0, xfadePaint);
+    }
+
     // v9.15: the 0..3 slots RoomActivity sends are unchanged (0 day,
     // 1 candle night, 2 morning, 3 dusk — the old hour slots),
     // but they now pick a composed-scene THEME instead of a photo:
@@ -319,21 +388,38 @@ public class RoomView extends View {
     private static final int[] SHRINE_THEMES = {0, 1, 2, 6};
     public int setPhoto(int idx) {
         if (idx < 0 || idx >= PHOTO_COUNT) idx = 0;
-        // v11.02: soften the theme hard-cut on talk change — the
-        // 08:33 +07 altar audit's open item: AI/theme scenes switch
-        // instantly (the v1.52 photo crossfade died with the retired
-        // photo scene), and a bitmap-only fade would misplace the
-        // flames mid-transition, so the whole altar view dips
-        // instead: alpha to 0.55 over 150ms, back to 1 over 250ms.
-        // Flames/smoke/halo all fade WITH the view, so nothing can
-        // drift off its wick mid-transition. Guarded to changes on
-        // an already-visible view only: w==0 means first paint
-        // (fresh open / rotation restore), which must not dip.
-        // A second change mid-dip restarts from the current alpha
-        // and still ends at 1; detach cancels + resets (below), so
-        // no stranded dim is reachable. Nothing else animates
-        // this view's alpha, so no animation channel is fought.
-        boolean dip = (w > 0);
+        // v14.17 (slice 1671): the altar theme now MELTS instead of
+        // blinking — replaces the v11.02 dip. Scout (this slice):
+        // Room open already fades in (Fx.fadeIn 500ms, v2.21) and
+        // the per-talk roll dipped the whole view (150ms to 0.55,
+        // 250ms back) — a visible blink on every talk change — while
+        // the v1.52 700ms photo crossfade died with the retired
+        // photo scene (prevPhoto is never assigned; only the dead
+        // drawPhotoScene path still references it). The swap itself
+        // is one still image (altar_ai.jpg) whose washes, flame
+        // heights and motif colours change with the theme, so a
+        // bitmap-only fade would misplace the flames — the v11.02
+        // objection — but a frozen snapshot of the WHOLE view melts
+        // correctly: flames, smoke and halo are inside the frame,
+        // so nothing can drift off its wick mid-transition. Before
+        // the swap, snapshot the visible frame (RGB_565, one
+        // transient ~3MB bitmap); after the swap, the new scene
+        // draws live underneath while the snapshot fades out over
+        // 500ms. A second change mid-fade re-snapshots — the draw
+        // includes the fading overlay at its current alpha, so the
+        // retarget starts from the exact visible frame (same rule
+        // as the old v3.21 mid layer). Guards: w==0 means first
+        // paint (fresh open / rotation restore) — no snapshot, the
+        // open fadeIn owns that entrance; alpha < 0.99 means the
+        // open fadeIn is still running — the swap hides under it;
+        // a same-effective-theme re-set (failed decode keeps the
+        // old image) starts no fade at all — the old dip blinked
+        // pointlessly there. If the snapshot fails (OOM), the old
+        // v11.02 dip runs as the fallback, so the cut is still
+        // softened. Detach recycles + resets (below); nothing else
+        // animates this view's alpha, so no channel is fought.
+        boolean canFade = (w > 0 && getAlpha() >= 0.99f);
+        Bitmap snap = canFade ? snapshotAltar() : null;
         // v12.47: remember the theme actually showing, so the smoke
         // below can be dropped only when the visible altar changes
         // (loadAiImage may revise aiTheme: a failed decode falls
@@ -375,21 +461,30 @@ public class RoomView extends View {
         // ~29s, a second ghost column rising from mid-air where the
         // new altar has no incense, while the new ribbon spawned
         // alongside. A puff lives until it has risen 0.30h, so the
-        // drain alone could never hide it. The dip above masks the
-        // clear (the view is at 0.55 alpha while it happens) and
-        // the new ribbon respawns from the new tips within a
-        // second. Guarded on the EFFECTIVE theme (aiTheme after
-        // loadAiImage): a same-theme re-set and a keep-old-image
-        // fallback keep their smoke; a rotation restore is a fresh
-        // view with an empty list, and restoreSmoke runs after
-        // this call, so its puffs are never caught by the clear.
-        // pendingSmoke is cleared with it, so a restore still
-        // waiting for layout cannot re-apply old-theme puffs.
+        // drain alone could never hide it. The crossfade masks the
+        // clear (the old smoke melts out inside the snapshot while
+        // it happens) and the new ribbon respawns from the new tips
+        // within a second. Guarded on the EFFECTIVE theme (aiTheme
+        // after loadAiImage): a same-theme re-set and a
+        // keep-old-image fallback keep their smoke; a rotation
+        // restore is a fresh view with an empty list, and
+        // restoreSmoke runs after this call, so its puffs are never
+        // caught by the clear. pendingSmoke is cleared with it, so
+        // a restore still waiting for layout cannot re-apply
+        // old-theme puffs.
         if (aiTheme != oldAiTheme) {
             smokes.clear();
             pendingSmoke = null;
         }
-        if (dip) {
+        if (snap != null) {
+            // Melt only on a real visible change; a same-theme
+            // re-set recycles the unused snapshot instead of
+            // blinking at an altar that did not change.
+            if (aiTheme != oldAiTheme) startXfade(snap);
+            else { try { snap.recycle(); } catch (Exception ignored) {} }
+        } else if (canFade) {
+            // Snapshot failed (OOM): the v11.02 dip as fallback,
+            // so the cut is still softened.
             animate().cancel();
             animate().alpha(0.55f).setDuration(150)
                     .withEndAction(new Runnable() {
@@ -1732,6 +1827,12 @@ public class RoomView extends View {
         removeCallbacks(animator);
         animatorLive = false;
         removeCallbacks(fadeTicker); // v3.25: no tick on a dead view
+        // v14.17: a detach mid-crossfade must not leak the snapshot
+        // bitmap or tick a dead view — recycle it; a reattach
+        // starts from a clean slate (a rotation rebuilds the view
+        // and its fresh-open fadeIn owns the entrance anyway).
+        removeCallbacks(xfadeTicker);
+        if (xfadeBmp != null) { try { xfadeBmp.recycle(); } catch (Exception ignored) {} xfadeBmp = null; }
         // v11.02: never reattach dimmed — a detach mid-dip must not
         // strand the altar at 0.55 (the end action may never run).
         animate().cancel();
@@ -1906,6 +2007,7 @@ public class RoomView extends View {
         if (aiImage != null) {
             if (aiTheme == 0) drawAiScene(c, cx, t);
             else drawThemeScene(c, cx, t);
+            drawXfadeOverlay(c);
             return;
         }
 
@@ -2276,5 +2378,6 @@ public class RoomView extends View {
         paint.setColor(theme.cushion);
         rect.set(cx - 52 * u, h - 66 * u, cx + 52 * u, h - 40 * u);
         c.drawOval(rect, paint);
+        drawXfadeOverlay(c);
     }
 }
