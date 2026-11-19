@@ -6454,7 +6454,22 @@ public class AudioService extends Service {
                     if (fn.equals(map.optString(u, ""))) { hit = u; matches++; }
                 }
                 if (matches != 1) return;
-                key = hit;
+                // v14.86 (slice 1744): bank the canonical (https)
+                // identity of the dlMap hit, not the hit itself —
+                // the hit is the dlMap KEY, and a file downloaded by
+                // the delivered v13.57 build from an http-spelled
+                // talk keeps its legacy http key forever (the v13.66
+                // migration does NOT migrate dlMap keys), while
+                // playedTalks holds canonical https and every reader
+                // compares canonical (Room drawer v14.83, Talks
+                // chooser v14.84, Downloaded cache v14.85). The raw
+                // bank planted an http row the cache missed on the
+                // next loadList, so a library file heard to the end
+                // in the background lost its tick on reload and never
+                // showed it in the chooser or drawer — the last
+                // member of the played class; the stream leg above
+                // banks canonical since v13.59.
+                key = SiteHttp.identityUrl(hit);
             }
             android.content.SharedPreferences pp =
                     getSharedPreferences("dhamma", MODE_PRIVATE);
