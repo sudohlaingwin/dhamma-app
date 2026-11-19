@@ -71,6 +71,19 @@ public class MainActivity extends Activity {
     private android.widget.LinearLayout favShelfWrap;
     private android.widget.LinearLayout favShelf;
     private String lastFavShelfKey = null;
+    // v14.15 (slice 1669): ★ favourites shelf first-appearance
+    // cascade — the shelf's chips used to pop in instantly while
+    // the header (v2.17) and the grid (v2.07) pour in around them,
+    // so the first screen opened with a dead strip between two
+    // moving ones. The chips now pour with the same staggerChildren
+    // fade + rise the Settings content and the Downloaded list use.
+    // Only a GONE -> VISIBLE appearance pours: a rebuild while the
+    // shelf is already visible (sounding change, star toggle) just
+    // rebinds, like the grid's rows-only refresh, so a track change
+    // never re-pours the shelf. A rotation restores the shelf
+    // still (shelfSkipFirstPour, set in onCreate) — same rule as
+    // the grid's v2.07 guard.
+    private boolean shelfSkipFirstPour = false;
     private View rootView;
     private TextView titleText;
     private Button themeToggle;
@@ -2465,6 +2478,11 @@ public class MainActivity extends Activity {
                 && favs != null && !favs.isEmpty()) favOnly = true;
         // v2.07: a rotated grid must not replay its entrance.
         if (savedInstanceState != null) lastGridAnimPos = Integer.MAX_VALUE;
+        // v14.15 (slice 1669): same rule for the ★ shelf — a
+        // rotated shelf restores still, never re-pours its first
+        // appearance. Cleared at the end of onCreate, so a later
+        // appearance (cleared search, first favourite) still pours.
+        if (savedInstanceState != null) shelfSkipFirstPour = true;
         if (searchField != null) searchField.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
             @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
@@ -2559,6 +2577,11 @@ public class MainActivity extends Activity {
         // GitHub for a newer published release on every launch; a
         // newer release shows the blocking update dialog.
         UpdateChecker.check(this);
+        // v14.15 (slice 1669): the rotation pour-skip above only
+        // covers this onCreate's own shelf build — clear it here so
+        // a later first appearance (cleared search, first favourite)
+        // still pours.
+        shelfSkipFirstPour = false;
     }
 
     // v12.95: back is swallowed while the update block is up — the
@@ -2851,6 +2874,9 @@ public class MainActivity extends Activity {
         if (key.equals(lastFavShelfKey)
                 && favShelfWrap.getVisibility() == android.view.View.VISIBLE) return;
         lastFavShelfKey = key;
+        // v14.15 (slice 1669): remember whether the shelf was
+        // hidden — only a GONE -> VISIBLE appearance pours (below).
+        boolean shelfWasGone = favShelfWrap.getVisibility() != android.view.View.VISIBLE;
         favShelf.removeAllViews();
         float d = getResources().getDisplayMetrics().density;
         for (final Sayadaw s : favList) {
@@ -2924,6 +2950,12 @@ public class MainActivity extends Activity {
             favShelf.addView(chip);
         }
         favShelfWrap.setVisibility(android.view.View.VISIBLE);
+        // v14.15 (slice 1669): first-appearance cascade — fresh
+        // launch with favourites, first favourite added, or a
+        // cleared search bringing the shelf back. A rebuild while
+        // visible never pours, and a rotation's first build is
+        // skipped by shelfSkipFirstPour above.
+        if (shelfWasGone && !shelfSkipFirstPour) Fx.staggerChildren(favShelf);
     }
 
     // v4.22: hide the search keyboard — the only keyboard-hide
