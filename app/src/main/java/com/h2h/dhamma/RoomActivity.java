@@ -6195,7 +6195,25 @@ if (snd65 >= 0) currentIndex = snd65;
                             }
                             if (fbDur100 != null && fbDur100.intValue() > 0) {
                                 String fbTotal100 = showRemaining ? "−" + formatTime(fbDur100.intValue()) : formatTime(fbDur100.intValue());
-                                if (!fbTotal100.equals(totalText.getText().toString())) totalText.setText(fbTotal100);
+                                if (!fbTotal100.equals(totalText.getText().toString())) {
+                                    totalText.setText(fbTotal100);
+                                    // v14.63 (slice 1720): the cached length used
+                                    // to snap in from 0:00 while the stream
+                                    // loaded — the main arrival fade (v4.12)
+                                    // never covered this v14.00 fallback leg,
+                                    // so a buffering talk's clock jumped in one
+                                    // frame. It now fades on the label itself,
+                                    // exactly like the live arrival; remaining
+                                    // mode stays unfaded (v4.12) — the live
+                                    // total rewrites it every tick once dur is
+                                    // known, so a fade there would flicker.
+                                    // Change-only, so a steady poll never
+                                    // re-fades; Fx.fadeIn is restart-safe
+                                    // (v3.52), so a live arrival landing
+                                    // mid-fade flows on from the current
+                                    // alpha instead of snapping back to 0.
+                                    if (!showRemaining) Fx.fadeIn(totalText, 250);
+                                }
                             }
                         }
                     }
