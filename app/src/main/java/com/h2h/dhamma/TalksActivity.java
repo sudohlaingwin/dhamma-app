@@ -980,13 +980,16 @@ public class TalksActivity extends Activity {
     // branch's fadeSyncMarkedTalkRows97 consumes them. The menu path
     // never writes it (menu branches reload the caches synchronously,
     // so the next tick snapshots the new state and sees no change —
-    // v10.88 / v14.75), and the return path never writes it (onResume
-    // refreshes the caches before any tick runs) — the melt arms only
-    // in the tick's sync path, never in getView (scroll-recycle would
-    // arm it on every scroll). syncMarksPrimed97 is the first-tick
-    // adoption, set at the tail of syncTalksStrip beside the sibling
-    // primes, so a load / rotation restore never melts on top of the
-    // list pour (v14.23).
+    // v10.88 / v14.75). The return path writes it too:
+    // v14.98 (slice 1756) — onResume diffs its pre-return snapshots
+    // against the refreshed caches and banks the changed URLs here;
+    // the tick arm still reads only what its own tick found, because
+    // onResume refreshes the caches before any tick runs. The melt
+    // arms only in the tick's sync path and the onResume return path,
+    // never in getView (scroll-recycle would arm it on every scroll).
+    // syncMarksPrimed97 is the first-tick adoption, set at the tail
+    // of syncTalksStrip beside the sibling primes, so a load /
+    // rotation restore never melts on top of the list pour (v14.23).
     private java.util.Set<String> syncMarksFadeUrls97 = null;
     private boolean syncMarksPrimed97 = false;
     // v14.56 (slice 1713): the chooser header's melt prime — the
@@ -3716,6 +3719,25 @@ public class TalksActivity extends Activity {
     protected void onResume() {
         super.onResume();
         talksResumed = true; // v13.24 (T2): the landing's resumed read
+        // v14.98 (slice 1756): snapshot the ★/✓ caches at the very
+        // top of the return, BEFORE applyTheme's tail
+        // refreshTalksQueuePreview (or the dip's applyTheme) refreshes
+        // them — the diff below is taken against these pre-return
+        // snapshots, so a ★ gained in the Room (or a ✓ banked by a
+        // finish) is exactly the changed set. Gated on resumedOnce
+        // (a real return): the first onResume is creation, whose
+        // load pour already carries the rows, and a rotation restore
+        // is a fresh instance (resumedOnce false), so neither melts
+        // on top of the entrance pour (v14.23).
+        boolean retIsReturn98 = resumedOnce;
+        java.util.Set<String> retFavBefore98 = null;
+        java.util.Set<String> retPlayedBefore98 = null;
+        if (retIsReturn98) {
+            retFavBefore98 = talkFavCache != null
+                    ? new java.util.HashSet<String>(talkFavCache) : new java.util.HashSet<String>();
+            retPlayedBefore98 = talkPlayedCache != null
+                    ? new java.util.HashSet<String>(talkPlayedCache) : new java.util.HashSet<String>();
+        }
         // v1.81: count this screen as on top (see AppForeground).
         AppForeground.activityResumed();
         // v4.14: the share chooser is gone by now — a later onPause
@@ -3825,6 +3847,42 @@ public class TalksActivity extends Activity {
         // did not. The ↺ guard reads the same fresh cache now.
         refreshTalkRowMarks(true); // v5.49: a return can change ★/✓/⬇ sets (Room favour, finish, download)
         refreshFavHeader();
+        // v14.98 (slice 1756): melt the rows whose ★/✓ changed while
+        // this chooser sat paused — the return twin of the v14.97
+        // tick melt. First-hand this run: on return with filterMode
+        // == 0 the new mark sat STALE, neither melting nor snapping
+        // — applyTheme's tail notify rebinds BEFORE the caches
+        // refresh (its own tail refreshTalksQueuePreview refreshes
+        // them after the notify), the refreshTalkRowMarks call above
+        // rebinds only on a downloaded-set change or a prune, the
+        // notify below is gated on filterMode != 0, and the next
+        // tick snapshots the already-refreshed caches, so
+        // marksChanged44 is false and the v14.97 arm never fires.
+        // The header count refreshed (refreshFavHeader above) while
+        // the row kept its old mark — a visible disagreement until
+        // the next load, menu action, sounding change or
+        // scroll-recycle repaint. The diff reuses the pure
+        // syncMarksChanged97 (a spelling-only http/https split diffs
+        // to nothing); the rebind runs only when the set is
+        // non-empty and only in mode 0 (mode != 0 rebinds just
+        // below), and the fade reuses fadeSyncMarkedTalkRows97
+        // (posted, resolved at fade time through visibleHits,
+        // Fx.fadeIn 250ms, consume-once) — a ★-only filter unstar
+        // drops the row in rebuildFilter before the posted resolve
+        // and fades nothing (the v14.75 case). A theme-dip return
+        // still ends correct: the dip's applyTheme rebind reads the
+        // refreshed caches, and the v14.47 getView hygiene restores
+        // row alpha 1 on any rebind, so the fade can never strand a
+        // row half-transparent.
+        if (retIsReturn98 && retFavBefore98 != null && retPlayedBefore98 != null) {
+            java.util.Set<String> retChanged98 = syncMarksChanged97(retFavBefore98, talkFavCache,
+                    retPlayedBefore98, talkPlayedCache);
+            if (retChanged98 != null && !retChanged98.isEmpty()) {
+                if (filterMode == 0 && adapter != null) adapter.notifyDataSetChanged();
+                syncMarksFadeUrls97 = retChanged98;
+                fadeSyncMarkedTalkRows97();
+            }
+        }
         // v10.33: unconditional return card refresh, Talks leg of the v1.74
         // family -- Talks never binds (its own comments say so), so it
         // has no bound refreshNotification like the Room / library
