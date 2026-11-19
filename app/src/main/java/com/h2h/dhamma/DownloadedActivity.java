@@ -2521,6 +2521,56 @@ public class DownloadedActivity extends Activity {
     // the service intent with no bind claim; Next routes like
     // Main's Next (lib -> this screen's ACTION_NEXT, room ->
     // Room's ACTION_NEXT); long-press stops the session outright.
+    // v14.72 (slice 1730): the Downloaded resume strip's title melts on a
+    // structural change instead of snapping — the 1s tick re-runs
+    // syncDlStrip in resume mode, and the title carries the download
+    // mark (the lib branch's inline in-progress check, the room branch
+    // via Fx.stripResumeDownloadMark), so a download landing while the
+    // shelf sits open flipped its ⏳ to ⬇ in one frame on the visible
+    // strip; a ★ gained or lost on a favour/clear return flips the same
+    // way. This screen is where downloads land, so the lib-branch flip
+    // is the most likely one in the whole family to be seen. The sub
+    // line carries no mark (sayadaw + the static saved spot) and the ▶
+    // glyph never changes in resume mode, so the title is the only
+    // writer here. Not fadeStripText: that helper is keyed on TALK
+    // IDENTITY (the Room URL / library path), so a same-talk text change
+    // writes instantly by design (v14.21) — the mark flip is exactly a
+    // same-talk change, and routing the resume title through it would
+    // melt nothing. The resume title has no live-ticking part (no
+    // clock in the title; the sub's clock is the saved spot, which
+    // never moves without a live session), so every change IS the
+    // structure — the v14.65 skeleton rule, restated for the strip:
+    // first resume sighting writes instantly (the 280ms slide-in
+    // owns that entrance), steady ticks never touch the view, and a
+    // change melts 250ms via Fx.fadeIn only while the view is
+    // VISIBLE and settled (alpha >= 0.999f). A stale live dip is
+    // cancelled first: the live branch's fadeStripText dip runs on
+    // this same view, and a session dying inside its 90ms dip would
+    // otherwise swap the stale live title over the resume text at
+    // the dip end (its end-action only skips when the tag moved) —
+    // the cancel listener restores alpha 1 and clears the tag, so
+    // the resume write lands clean and the stale swap never fires.
+    // The tracker resets where the strip leaves resume mode — the
+    // live entry below (the live branch owns tx via fadeStripText
+    // from then on) and both resume hide paths — so a later
+    // re-appear with a different talk never melts under its own
+    // slide-in. Rotation recreates the activity, so the tracker
+    // resets there too. The live branch's stripTextLast tag is
+    // untouched: fadeStripText keys on identity, not text, so a
+    // resume write never desyncs its next live melt (v14.43 class).
+    private String resumeStripTitle72 = null;
+    private void meltResumeStripTitle72(android.widget.TextView tx, String want) {
+        if (tx == null || want == null) return;
+        Object aObj72 = tx.getTag(R.id.stripTextAnim);
+        if (aObj72 instanceof android.animation.Animator) ((android.animation.Animator) aObj72).cancel();
+        String prev72 = resumeStripTitle72;
+        resumeStripTitle72 = want;
+        if (prev72 == null) { tx.setText(want); return; }
+        if (prev72.equals(want)) return;
+        tx.setText(want);
+        if (tx.getVisibility() == android.view.View.VISIBLE && tx.getAlpha() >= 0.999f) Fx.fadeIn(tx, 250);
+    }
+
     private void syncDlStrip() {
         android.view.View strip = findViewById(R.id.nowStrip);
         if (strip == null) return;
@@ -2658,6 +2708,7 @@ public class DownloadedActivity extends Activity {
                 }
                 if (lTitle.length() == 0 || !lMatch) {
                     syncDlStripPhoto(null);
+                    resumeStripTitle72 = null;
                     Fx.hideStrip(strip);
                     return;
                 }
@@ -2705,7 +2756,8 @@ public class DownloadedActivity extends Activity {
                 String lClock = Fx.stripClockSuffix(rPos, lDur, Prefs.stripClockRemaining(DownloadedActivity.this));
                 String lClockTxt = lClock.length() > 0 ? lClock : " · " + lTime;
                 // v8.52: Main's v7.94 resume mark, mirrored — the proven file is offline, like Main's lib branch.
-                if (tx != null) tx.setText("↺ " + lTitle + (lFav ? " ★" : "") + (Fx.stripInProgressDlFilenames(DownloadedActivity.this, rsp).contains(new java.io.File(lPath).getName()) ? " ⏳" : " ⬇"));
+                String want72 = "↺ " + lTitle + (lFav ? " ★" : "") + (Fx.stripInProgressDlFilenames(DownloadedActivity.this, rsp).contains(new java.io.File(lPath).getName()) ? " ⏳" : " ⬇");
+                meltResumeStripTitle72(tx, want72);
                 // v5.46: a dead library strip names its recorded
                 // sayadaw like the live strip since v5.45, in the
                 // Room strip's "name · mm:ss မှ ဆက်နားထောင်ရန်"
@@ -2731,6 +2783,7 @@ public class DownloadedActivity extends Activity {
             if (!"room".equals(rKind) || rName.length() == 0 || rTitle.length() == 0
                     || rPage.length() == 0 || rPos <= 5000 || !rMatch) {
                 syncDlStripPhoto(null);
+                resumeStripTitle72 = null;
                 Fx.hideStrip(strip);
                 return;
             }
@@ -2749,7 +2802,8 @@ public class DownloadedActivity extends Activity {
             int rDur = Fx.stripResumeDuration(DownloadedActivity.this, rsp, rUrl, null);
             String rClock = Fx.stripClockSuffix(rPos, rDur, Prefs.stripClockRemaining(DownloadedActivity.this));
             // v8.52: Main's v7.94 resume download mark, mirrored — a ↺ strip here never said whether resuming streams or plays offline.
-            if (tx != null) tx.setText("↺ " + rTitle + (rFav ? " ★" : "") + Fx.stripResumeDownloadMark(DownloadedActivity.this, rsp, rUrl));
+            String want72 = "↺ " + rTitle + (rFav ? " ★" : "") + Fx.stripResumeDownloadMark(DownloadedActivity.this, rsp, rUrl);
+            meltResumeStripTitle72(tx, want72);
             if (sb != null) sb.setText(rName + (rClock.length() > 0 ? rClock : " · " + rTime) + Lang.t(DownloadedActivity.this, "resume_from"));
             if (tg != null) tg.setText("▶");
             if (nx != null) nx.setVisibility(android.view.View.GONE);
@@ -2764,6 +2818,7 @@ public class DownloadedActivity extends Activity {
             return;
         }
         dlResumeStripMode = false;
+        resumeStripTitle72 = null; // v14.72: live branch owns tx via fadeStripText from here
         if (nx != null) nx.setVisibility(android.view.View.VISIBLE);
         // v7.35: Previous returns with Next on a live session (hidden only by the
         // resume branches above, never by layout).
