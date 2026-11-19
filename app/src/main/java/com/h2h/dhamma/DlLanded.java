@@ -117,13 +117,33 @@ public final class DlLanded {
     // the Room v14.87 / Talks v14.88 three-form rule in shared form.
     // Returns null when no form has an entry; an empty entry is
     // returned as-is (callers treat "" as absent).
-    private static String mappedName(org.json.JSONObject map, String url) {
+    // v14.90 (slice 1748): package-private since this slice — the
+    // enqueue-filename twins read through it too
+    // (AutoDownloadJob.mappedFileName68, Fx.stripDownloadFileName),
+    // so the three-form rule lives in exactly one place; the
+    // Map overload below serves downloadFileNameFor68's HashMap form.
+    static String mappedName(org.json.JSONObject map, String url) {
         if (map == null || url == null) return null;
         if (map.has(url)) return map.optString(url, "");
         String canon = SiteHttp.identityUrl(url);
         if (canon != null && !canon.equals(url) && map.has(canon)) return map.optString(canon, "");
         String down = SiteHttp.downgrade(url);
         if (down != null && !down.equals(url) && map.has(down)) return map.optString(down, "");
+        return null;
+    }
+
+    // v14.90 (slice 1748): the Map<String, String> form of the same
+    // three-form rule, for AutoDownloadJob.downloadFileNameFor68,
+    // which builds its dlMap as a HashMap from the stored JSON.
+    // Same order (raw, canonical, downgrade), same empty-entry
+    // passthrough, same null when no form matches.
+    static String mappedName(java.util.Map<String, String> map, String url) {
+        if (map == null || url == null) return null;
+        if (map.containsKey(url)) return map.get(url);
+        String canon = SiteHttp.identityUrl(url);
+        if (canon != null && !canon.equals(url) && map.containsKey(canon)) return map.get(canon);
+        String down = SiteHttp.downgrade(url);
+        if (down != null && !down.equals(url) && map.containsKey(down)) return map.get(down);
         return null;
     }
 

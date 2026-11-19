@@ -742,16 +742,38 @@ public class AutoDownloadJob extends JobService {
         return cands;
     }
 
+    // v14.90 (slice 1748): the job-side twin of the Room v14.87 /
+    // Talks v14.88 / DlLanded v14.89 three-form rule — the mapped
+    // lookup reads through the shared DlLanded.mappedName (raw,
+    // then canonical https, then downgraded http), so a talk
+    // downloaded under one scheme and auto-checked under the other
+    // finds its mapped name instead of falling to the basename
+    // candidates, which the twin's own claim then blocked (see
+    // fileClaimedByOther68 below): the job re-enqueued a talk
+    // already on disk and minted a duplicate file. Same provenance
+    // as 1747: legacy http keys (v13.57 fallback, never migrated
+    // by v13.66) vs canonical https keys (v13.59), plus absolute-
+    // http hrefs kept as-is (1737). Raw first, so a talk downloaded
+    // twice under both schemes keeps the file its current spelling
+    // recorded; an empty entry still returns as-is, exactly as the
+    // old raw read did.
     private String mappedFileName68(String url) {
         try {
             org.json.JSONObject map = new org.json.JSONObject(
                     getSharedPreferences("dhamma", MODE_PRIVATE)
                             .getString("dlMap", "{}"));
-            if (map.has(url)) return map.getString(url);
+            return DlLanded.mappedName(map, url);
         } catch (Exception ignored) {}
         return null;
     }
 
+    // v14.90 (slice 1748): the claim twin of mappedFileName68 —
+    // the guard reads SiteHttp.sameTalk, so the scheme-twin is the
+    // same talk, not another talk: a talk's own legacy-http key no
+    // longer blocks its basename fallback when the talk is listed
+    // under https (the old raw !k.equals did exactly that). A name
+    // claimed by a DIFFERENT talk's key still blocks (v8.40/v8.50,
+    // unchanged) — sameTalk only merges the twin spellings.
     private boolean fileClaimedByOther68(String filename, String url) {
         try {
             org.json.JSONObject map = new org.json.JSONObject(
@@ -760,7 +782,7 @@ public class AutoDownloadJob extends JobService {
             java.util.Iterator<String> keys = map.keys();
             while (keys.hasNext()) {
                 String k = keys.next();
-                if (!k.equals(url) && filename.equals(map.optString(k, "")))
+                if (!SiteHttp.sameTalk(k, url) && filename.equals(map.optString(k, "")))
                     return true;
             }
         } catch (Exception ignored) {}
@@ -775,7 +797,18 @@ public class AutoDownloadJob extends JobService {
     // instead of overwriting that talk's file.
     static String downloadFileNameFor68(String url,
             java.util.Map<String, String> dlMap) {
-        String mapped = dlMap == null ? null : dlMap.get(url);
+        // v14.90 (slice 1748): the enqueue destination reads the
+        // mapped name through the shared three-form rule (the
+        // DlLanded Map overload: raw, then canonical https, then
+        // downgraded http) — a re-download after an outside-app
+        // delete reuses the mapped hash name instead of landing
+        // under the plain basename while dlMap still points at the
+        // hash name; and the claim loop below treats the
+        // scheme-twin as the same talk (sameTalk), so the twin's
+        // own claim no longer forces a hash suffix on its own
+        // re-download. Cross-talk claims still force the suffix
+        // (v8.40, unchanged).
+        String mapped = DlLanded.mappedName(dlMap, url);
         if (mapped != null) return mapped;
         String base = url.substring(url.lastIndexOf('/') + 1);
         int q = base.indexOf('?');
@@ -785,7 +818,7 @@ public class AutoDownloadJob extends JobService {
         if (!base.toLowerCase().endsWith(".mp3")) base = base + ".mp3";
         if (dlMap != null) {
             for (java.util.Map.Entry<String, String> e : dlMap.entrySet()) {
-                if (!e.getKey().equals(url)
+                if (!SiteHttp.sameTalk(e.getKey(), url)
                         && base.equals(e.getValue())) {
                     String hash = "";
                     try {

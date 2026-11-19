@@ -2353,9 +2353,19 @@ public class Fx {
     // the stripped basename with a guaranteed .mp3, plus the 8-hex
     // MD5 suffix when another talk already owns that basename).
     public static String stripDownloadFileName(android.content.SharedPreferences sp, String url) {
+        // v14.90 (slice 1748): the strip twin of the job's
+        // mappedFileName68 — the mapped lookup reads through the
+        // shared DlLanded.mappedName (raw, then canonical https,
+        // then downgraded http), so a strip re-download of a talk
+        // whose dlMap key is spelled under the other scheme reuses
+        // its mapped name instead of minting a hash-suffixed
+        // duplicate file (the v14.88 chooser case, strip-side).
+        // The claim twin below (stripFileClaimedByOther) already
+        // reads sameTalk; only the mapped lookup was still raw.
         try {
             org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
-            if (map.has(url)) return map.getString(url);
+            String mapped = DlLanded.mappedName(map, url);
+            if (mapped != null) return mapped;
         } catch (Exception ignored) {}
         String base = url.substring(url.lastIndexOf('/') + 1);
         int q = base.indexOf('?');
