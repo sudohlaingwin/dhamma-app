@@ -1410,11 +1410,41 @@ public class TalksActivity extends Activity {
     // prefs wins, else any candidate basename in Downloads/Dhamma
     // counts unless another URL's download claims that name.
     // File-exists checks only, once per header refresh.
+    // v14.88 (slice 1746): the chooser's downloaded ⬇ now actually
+    // appears for a scheme-mismatched download — the downloaded twin
+    // of the Room v14.87 fix (same provenance, same three-form rule):
+    // dlMap keys are written under the URL form current at download
+    // time, and the same talk is spelled both ways in the wild: a file
+    // downloaded by the delivered v13.57 build over the http fallback
+    // keeps its legacy http key forever (the v13.66 migration
+    // does NOT migrate dlMap keys), while newer downloads record the
+    // canonical https key (v13.59), and one catalog page carries
+    // absolute-http mp3 hrefs the parser keeps as-is (Dr Nandamalabhivamsa,
+    // 15 hrefs, 1737) — so a talk downloaded under one scheme and listed under
+    // the other missed its mapped name here AND had its basename blocked
+    // by the twin's own claim below: the chooser row, the header Up Next
+    // mark and the downloaded-only filter all lost their ⬇, the prune's
+    // downloaded leg kept the queue hourglass, and a chooser re-download
+    // minted a hash-suffixed duplicate. The mapped lookup now tries the
+    // raw URL, then its canonical https form, then its downgraded http
+    // form (raw first, so a talk downloaded twice under both schemes
+    // keeps the file its current spelling recorded); the claim guard
+    // below treats the scheme-twin as the same talk, not another talk,
+    // so a re-download reuses the existing file instead of minting a
+    // hash-suffixed duplicate (talkDownloadFileNameFor reads the guard
+    // directly). The v8.40/v8.50 rules are unchanged: a name claimed by
+    // a DIFFERENT talk's key still forces the hash suffix and still
+    // blocks the basename fallback. The shared DlLanded prune leg keeps
+    // its raw lookups for now — its slice follows.
     private String talkMappedFileName(String url) {
         try {
             org.json.JSONObject map = new org.json.JSONObject(
                     getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlMap", "{}"));
             if (map.has(url)) return map.getString(url);
+            String canon = SiteHttp.identityUrl(url);
+            if (canon != null && !canon.equals(url) && map.has(canon)) return map.getString(canon);
+            String down = SiteHttp.downgrade(url);
+            if (down != null && !down.equals(url) && map.has(down)) return map.getString(down);
         } catch (Exception ignored) {}
         return null;
     }
@@ -1422,10 +1452,11 @@ public class TalksActivity extends Activity {
         try {
             org.json.JSONObject map = new org.json.JSONObject(
                     getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlMap", "{}"));
+            String self = SiteHttp.identityUrl(url);
             java.util.Iterator<String> keys = map.keys();
             while (keys.hasNext()) {
                 String k = keys.next();
-                if (!k.equals(url) && filename.equals(map.optString(k, ""))) return true;
+                if (!SiteHttp.identityUrl(k).equals(self) && filename.equals(map.optString(k, ""))) return true;
             }
         } catch (Exception ignored) {}
         return false;
