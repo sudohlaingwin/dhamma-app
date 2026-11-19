@@ -3049,13 +3049,26 @@ public class MainActivity extends Activity {
     // and the melt carry (re-parked chips) share it, so a wait started
     // in one rebuild and re-posted in the next still ends at the same
     // departure-leave moment.
+    // v15.07 (slice 1766): PLUS the v15.03 rank-close glide's own
+    // duration (250ms) — the parked chip's fadeIn used to fire at the
+    // departure's leave, the exact frame the glide starts, so it
+    // melted in WHILE sliding home (slice 1765's first-hand trace:
+    // glide and fadeIn both run t=250->500, the chip ~75% visible
+    // while still a quarter-slot right of home). The melt now starts
+    // when the glide has finished, so the entrance reads as
+    // glide-then-melt instead of melt-while-sliding: the handoff is
+    // out 250 -> glide 250 -> in 250. The glide's duration is the
+    // same 250 literal the two glideHome call sites below pass, so a
+    // change there must change this +250 too.
     private long shelfParkDelay64(int homeIdx,
             java.util.List<Integer> freshIdx64,
             java.util.List<Integer> carryIdx64,
             java.util.List<Float> carryAlpha64) {
         if (freshIdx64 != null) {
             for (int d64 = 0; d64 < freshIdx64.size(); d64++) {
-                if (freshIdx64.get(d64) <= homeIdx) return 250;
+                // v15.07: 250 (this fresh fade's own end) + 250 (the
+                // rank-close glide that starts at that end).
+                if (freshIdx64.get(d64) <= homeIdx) return 250 + 250;
             }
         }
         long maxRemain64 = -1;
@@ -3067,7 +3080,9 @@ public class MainActivity extends Activity {
                 }
             }
         }
-        return maxRemain64;
+        // v15.07: the longest carried remainder, plus the same 250ms
+        // glide — -1 stays -1 when nothing displaces the chip.
+        return maxRemain64 < 0 ? maxRemain64 : maxRemain64 + 250;
     }
 
     // v13.74 (slice 1065): ★ favourites shelf — pours the starred
@@ -3472,16 +3487,19 @@ public class MainActivity extends Activity {
         // it reaches full opacity (its entrance read as two motions,
         // slice 1758's open question (b), traced first-hand this
         // run). A displaced added chip is now parked at alpha 0 and
-        // its fadeIn is posted 250ms later — the v15.00 fade's own
-        // duration — so the rank-close has already moved it home
-        // invisibly by the time it melts in: one 500ms handoff
-        // (out 250 -> in 250), no visible teleport. Undisplaced
-        // added chips still melt in at once, as today. v15.06
-        // (slice 1764): the 250ms is now anchored to the departure's
-        // own end (shelfParkDelay64) — a carried departure leaves
-        // sooner, so the wait ends when the slot frees, and the melt
-        // carry re-parks a still-parked chip with the same anchor
-        // instead of melting it in early.
+        // its fadeIn is posted after the departure leaves — so the
+        // rank-close has already moved it home invisibly by the time
+        // it melts in: one handoff (out 250 -> glide 250 -> in 250),
+        // no visible teleport. Undisplaced added chips still melt in
+        // at once, as today. v15.06 (slice 1764): the wait is anchored
+        // to the departure's own end (shelfParkDelay64) — a carried
+        // departure leaves sooner, so the wait ends when the slot
+        // frees, and the melt carry re-parks a still-parked chip
+        // with the same anchor instead of melting it in early.
+        // v15.07 (slice 1766): the anchor is the departure's end
+        // PLUS the 250ms rank-close glide — the fadeIn used to fire
+        // at the departure's leave, the exact frame the glide starts,
+        // so the chip melted in while sliding home (slice 1765).
         if (!shelfWasGone && prevShelfNames99 != null) {
             for (int i99 = 0; i99 < favList.size(); i99++) {
                 if (!prevShelfNames99.contains(favList.get(i99).name)) {
@@ -3539,7 +3557,9 @@ public class MainActivity extends Activity {
                     // at t=0, star D at t=100, D's wait stretched to
                     // t=350 while B left at t=250). If the remainder
                     // is already spent, melt in at once — the slot is
-                    // free.
+                    // free. v15.07 (slice 1766): the anchor adds the
+                    // 250ms rank-close glide, so the melt starts when
+                    // the glide has finished, not when it starts.
                     final long delay02 = shelfParkDelay64(i99, departingIdx00, carryDepIdx63, carryDepAlpha63);
                     if (delay02 <= 0) {
                         Fx.fadeIn(added99, 250);
@@ -3570,9 +3590,10 @@ public class MainActivity extends Activity {
         // are still exact; a carried chip beside a re-seated
         // departure rides the v15.03 rank-close glide home while it
         // melts (glideHome never touches alpha, fadeIn never touches
-        // translationX — the two motions compose, like the v15.02
-        // parked chip). Settled chips carry nothing (the snapshot
-        // only stores alpha under 0.999).
+        // translationX — the two motions compose for a chip already
+        // melting; the v15.02 parked chip no longer composes —
+        // v15.07 waits out the glide first). Settled chips carry
+        // nothing (the snapshot only stores alpha under 0.999).
         // v15.06 (slice 1764): a chip still PARKED — displaced by a
         // departure at-or-before its home AND never started melting
         // (alpha under 0.001) — is re-parked below, not melted in:
@@ -3598,7 +3619,10 @@ public class MainActivity extends Activity {
                 // so the wait ends when the slot frees no matter how
                 // many rebuilds land inside it. The old view's
                 // runnable no-ops once detached (parent check), so
-                // this fresh view owns the entrance now.
+                // this fresh view owns the entrance now. v15.07
+                // (slice 1766): the anchored delay now also carries
+                // the 250ms rank-close glide, so a re-parked chip
+                // keeps the extended anchor across rebuilds.
                 long parkDelay62 = shelfParkDelay64(i62, departingIdx00, carryDepIdx63, carryDepAlpha63);
                 if (a62 < 0.001f && parkDelay62 >= 0) {
                     final android.view.View chipFinal62 = chip62;
