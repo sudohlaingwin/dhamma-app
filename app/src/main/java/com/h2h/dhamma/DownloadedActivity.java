@@ -1213,6 +1213,22 @@ public class DownloadedActivity extends Activity {
     // assignment and never call setDlFilterMode, so they never
     // pour either.
     private boolean dlFilterChange = false;
+    // v14.25 (slice 1679): filter-change empty-state fade flag —
+    // armed only by setDlFilterMode (chip tap + search long-press
+    // cycle), consumed by applyDlFilter's empty-view block below.
+    // A chip tap to an empty ★ / New set used to snap the empty
+    // word in instantly: the two show branches gate the fade on
+    // (dlSearchKeystroke || fadeEmpty), and neither is set on a
+    // mode change (the watcher sets the first, delete handlers
+    // arm the second). The flag rides the same arm point as
+    // dlFilterChange (v14.24), so a tap on the already-active chip
+    // returns before arming and never fades; rotations restore
+    // dlFilterMode by direct field assignment and never call
+    // setDlFilterMode, so they never fade either. The clear-button
+    // long-press reset needs no arm: it returns to mode 0 (all),
+    // so the shown set only grows and the empty word can never
+    // newly appear there.
+    private boolean dlFilterEmptyFade = false;
     // v2.55: delete-change entrance flag — set only by a confirmed
     // single-row delete below (delete-all never sets it: an emptied
     // list has no rows to pour; its empty view fades via dlEmptyFade
@@ -6535,6 +6551,11 @@ public class DownloadedActivity extends Activity {
         // v14.24 (slice 1678): a real mode change re-filters below —
         // arm the filter-change pour (consumed in applyDlFilter).
         dlFilterChange = true;
+        // v14.25 (slice 1679): the same tap may land on an empty
+        // set — arm the empty-view fade with it (consumed in
+        // applyDlFilter's empty-view block; harmless when rows
+        // match, since the else branch ignores the flag).
+        dlFilterEmptyFade = true;
         // v4.58: the filter view redefines the shown list, so it
         // exits queue-only first.
         if (libQueueOnly) libQueueOnly = false;
@@ -6821,6 +6842,14 @@ public class DownloadedActivity extends Activity {
             // unchanged reloads never set it and stay instant.
             boolean fadeEmpty = dlEmptyFade;
             dlEmptyFade = false;
+            // v14.25 (slice 1679): filter-change empty-state fade —
+            // consumed on every pass, so a later reload can never
+            // inherit it; a chip tap that lands on rows consumes it
+            // harmlessly in the else branch below, and a chip tap
+            // from one empty set to another swaps the already-visible
+            // text with no fade (v2.51 rule), since wasGone is false.
+            boolean filterEmptyFade = dlFilterEmptyFade;
+            dlFilterEmptyFade = false;
             if (origEmptyText == null) origEmptyText = Lang.t(DownloadedActivity.this, "dl_empty");
             // v2.51: premium empty-state fade — v2.49 made the rows
             // pour in on a filter change, but the empty word that
@@ -6836,6 +6865,9 @@ public class DownloadedActivity extends Activity {
             // sort/delete reloads and the truly-empty library stay
             // instant as before, and hiding cancels any running
             // fade so a later show never strands at half alpha.
+            // v14.25: a filter-chip tap to an empty set fades the
+            // same way (dlFilterEmptyFade, armed in
+            // setDlFilterMode); the condition below ORs it in.
             // Visual only; no new element, text unchanged.
             boolean wasGone = empty.getVisibility() != android.view.View.VISIBLE;
             if (entries.isEmpty()) {
@@ -6851,7 +6883,7 @@ public class DownloadedActivity extends Activity {
                         : dlProgCount > 0
                         ? "⏳ " + dlProgCount + Lang.t(DownloadedActivity.this, "dl_downloading_suffix")
                         : origEmptyText);
-                if (wasGone && (dlSearchKeystroke || fadeEmpty) && dlListLoaded) {
+                if (wasGone && (dlSearchKeystroke || fadeEmpty || filterEmptyFade) && dlListLoaded) {
                     empty.setVisibility(android.view.View.VISIBLE);
                     Fx.fadeIn(empty, 250);
                 } else if (empty.getAlpha() >= 0.999f) {
@@ -6899,7 +6931,7 @@ public class DownloadedActivity extends Activity {
                         : dlFilterMode == 2 && dlQuery.length() == 0
                         ? Lang.t(DownloadedActivity.this, "all_listened")
                         : Lang.t(DownloadedActivity.this, "no_search_match"));
-                if (wasGone && (dlSearchKeystroke || fadeEmpty) && dlListLoaded) {
+                if (wasGone && (dlSearchKeystroke || fadeEmpty || filterEmptyFade) && dlListLoaded) {
                     empty.setVisibility(android.view.View.VISIBLE);
                     Fx.fadeIn(empty, 250);
                 } else if (empty.getAlpha() >= 0.999f) {
