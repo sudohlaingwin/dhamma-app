@@ -640,6 +640,19 @@ public class RoomActivity extends Activity {
     // helper, so a cancel / stale-dialog / sounding-guard path
     // — or any other rebind — never inherits a fade.
     private String menuMarkFadeUrl77 = null;
+    // v14.96 (slice 1754): the open drawer's rows' melt state for
+    // an external mark change — syncOpenDrawerMarks46's rebind
+    // (v7.46) used to snap the changed ★/✓ onto their rows in one
+    // frame while the header melts (v14.58), the ▸ row melts
+    // (v14.57) and the sounding tile crossfades (v14.32). The set
+    // holds the identity URLs whose fav/played membership changed
+    // (the symmetric difference, canonicalised through
+    // SiteHttp.identityUrl, so a spelling-only http/https split
+    // arms nothing), consumed once by fadeSyncMarkedDrawerRows96.
+    // Never armed in getView — getView also fires on scroll-recycle,
+    // so only the sync path arms it. Its ✓ never double-rebinds:
+    // the finish path refreshes its own sets, so it never arms.
+    private java.util.Set<String> syncMarksFadeUrls96 = null;
     // v14.58 (slice 1715): the drawer header's melt state — the
     // chooser header's v14.56 arm restated for the Room drawer.
     // The header (roomPlayListTitle: "Play List (N) · ⬇ M · ★ M ·
@@ -972,6 +985,90 @@ public class RoomActivity extends Activity {
                 int first = roomList.getFirstVisiblePosition();
                 android.view.View row = dp >= 0 ? roomList.getChildAt(dp - first) : null;
                 if (row != null) Fx.fadeIn(row, 250);
+            }
+        });
+    }
+    // v14.96 (slice 1754): the changed-mark set for the sync melt —
+    // pure (only SiteHttp.identityUrl + java.util), so the sim
+    // transcribes it directly. Null prefs/cache sets read as empty;
+    // null entries are skipped. Canonicalised both sides, so a
+    // stored http row against an https cache entry is the SAME
+    // talk and arms no melt — the detector's raw .equals may still
+    // fire its rebind on that spelling split, but with no visible
+    // mark change there is nothing to melt.
+    static java.util.Set<String> syncMarksChanged96(
+            java.util.Set<String> liveFav, java.util.Set<String> cacheFav,
+            java.util.Set<String> livePlayed, java.util.Set<String> cachePlayed) {
+        java.util.Set<String> out = new java.util.HashSet<String>();
+        java.util.Set<String> lf = new java.util.HashSet<String>();
+        if (liveFav != null) for (String u : liveFav) {
+            String id = SiteHttp.identityUrl(u);
+            if (id != null) lf.add(id);
+        }
+        java.util.Set<String> cf = new java.util.HashSet<String>();
+        if (cacheFav != null) for (String u : cacheFav) {
+            String id = SiteHttp.identityUrl(u);
+            if (id != null) cf.add(id);
+        }
+        for (String id : lf) if (!cf.contains(id)) out.add(id);
+        for (String id : cf) if (!lf.contains(id)) out.add(id);
+        java.util.Set<String> lp = new java.util.HashSet<String>();
+        if (livePlayed != null) for (String u : livePlayed) {
+            String id = SiteHttp.identityUrl(u);
+            if (id != null) lp.add(id);
+        }
+        java.util.Set<String> cp = new java.util.HashSet<String>();
+        if (cachePlayed != null) for (String u : cachePlayed) {
+            String id = SiteHttp.identityUrl(u);
+            if (id != null) cp.add(id);
+        }
+        for (String id : lp) if (!cp.contains(id)) out.add(id);
+        for (String id : cp) if (!lp.contains(id)) out.add(id);
+        return out;
+    }
+    // v14.96 (slice 1754): melt the rows whose ★/✓ just changed
+    // under an open drawer — the fadeMenuMarkedDrawerRow77 shape
+    // verbatim, over a set: posted after the sync's rebind so the
+    // position->child mapping is read fresh; resolved at fade time
+    // through drawerPosOfQueueUrl (queue-only counts display lines,
+    // foreign rows included; any other view maps the talk index
+    // through drawerPosOfTalk, so a filter/search view narrows it
+    // the same way); only while the drawer is open; a scrolled-out
+    // row is skipped (getChildAt null) rather than scrolled to; a
+    // ★-only filter unstar drops the row before the posted resolve
+    // and reads -1, so it fades nothing — the row just leaves, as
+    // it does today (same as the v14.77 case). Fade 250ms via
+    // Fx.fadeIn. The v3.45 rebind hygiene restores row alpha 1 on
+    // any rebind, so a fade cut short by a later rebind can never
+    // strand the row half-transparent; Fx.fadeIn is restart-safe
+    // (v3.52), so a sounding-tile crossfade or a drop-landing melt
+    // on the same row in the same tick just restarts the glide and
+    // still ends at alpha 1. The sounding row melts whole-row like
+    // the v14.77 case: its gold tile crossfade (v14.32) lives on
+    // the card background and its title pulse (v2.27) on the title
+    // view, so neither fights the row fade; a ✓ gain also dims the
+    // title to 0.6 (v4.12) on the title view, a separate channel.
+    // Consume-once: the field is nulled here. Visible rows only
+    // bound the melt — a mass change melts at most the rows on
+    // screen.
+    private void fadeSyncMarkedDrawerRows96() {
+        if (syncMarksFadeUrls96 == null || syncMarksFadeUrls96.isEmpty()
+                || roomList == null || adapter == null) {
+            syncMarksFadeUrls96 = null;
+            return;
+        }
+        final java.util.Set<String> urls =
+                new java.util.HashSet<String>(syncMarksFadeUrls96);
+        syncMarksFadeUrls96 = null;
+        roomList.post(new Runnable() {
+            @Override public void run() {
+                if (roomList == null || !isPlayListPanelOpen()) return;
+                int first = roomList.getFirstVisiblePosition();
+                for (String url : urls) {
+                    int dp = drawerPosOfQueueUrl(url);
+                    android.view.View row = dp >= 0 ? roomList.getChildAt(dp - first) : null;
+                    if (row != null) Fx.fadeIn(row, 250);
+                }
             }
         });
     }
@@ -2821,8 +2918,18 @@ public class RoomActivity extends Activity {
             boolean playedDiff = (played == null)
                     ? (playedSet != null && !playedSet.isEmpty()) : !played.equals(playedSet);
             if (favDiff || playedDiff) {
+                // v14.96 (slice 1754): arm the melt for exactly the
+                // rows whose ★/✓ changed — the diff is taken BEFORE
+                // refreshMarkSets overwrites the caches, and the
+                // arm is consumed by the posted fade below. A
+                // spelling-only split diffs to nothing and arms
+                // nothing (the rebind still runs, as today).
+                java.util.Set<String> changed96 =
+                        syncMarksChanged96(favs, favSet, played, playedSet);
                 refreshMarkSets();
                 adapter.notifyDataSetChanged();
+                syncMarksFadeUrls96 = changed96.isEmpty() ? null : changed96;
+                if (syncMarksFadeUrls96 != null) fadeSyncMarkedDrawerRows96();
             }
         } catch (Exception ignored) {}
     }
