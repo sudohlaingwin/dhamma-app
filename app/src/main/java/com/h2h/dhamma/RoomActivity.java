@@ -573,6 +573,12 @@ public class RoomActivity extends Activity {
         } catch (Exception ignored) {}
     }
     private String moveHeldUrl = null;
+    // v14.46 (slice 1703): URL of the talk a pick-up/drop move just
+    // landed, waiting for its landing fade (fadeDroppedQueueRow
+    // below). Set only on a successful drop, consumed by the
+    // helper, so a cancel / stale-arm / sounding-guard path — or
+    // any other rebind — never inherits a fade.
+    private String dropFadeUrl = null;
     // v4.92: pick-up/drop queue move — the URL of the talk the
     // listener picked up (v6.85: queue-only long-press, after the
     // v6.61 drawer row ⋮ removal + v6.84 menu deletion killed the
@@ -747,6 +753,55 @@ public class RoomActivity extends Activity {
         // caller already guards sp >= 0).
         if (drawerSearchQuery != null && drawerSearchQuery.length() > 0) return dp >= 0 ? dp : -1;
         return dp >= 0 ? dp : ((drawerQueueOnly || drawerFilterMode != 0) ? 0 : talkIdx);
+    }
+    // v14.46 (slice 1703): display position of a queued URL in the
+    // current drawer view — the drop-landing fade's target.
+    // Queue-only (unsearched) counts display lines, foreign rows
+    // included, the drawerPosOfTalk shape (a raw queueUrls index
+    // would be wrong wherever drawerQueueDisplayLines skips a stale
+    // line); any other view maps the talk index through
+    // drawerPosOfTalk, so a drawer search narrows it the same way
+    // and a foreign row outside the queue-only view has no row
+    // and returns -1.
+    private int drawerPosOfQueueUrl(String url) {
+        if (drawerQueueOnly && !drawerSearching()) {
+            int seen = -1;
+            for (String line : drawerQueueDisplayLines()) {
+                seen++;
+                if (SiteHttp.sameTalk(queueLineUrl(line), url)) return seen;
+            }
+            return -1;
+        }
+        int ti = talkIndexForUrl(url);
+        if (ti < 0) return -1;
+        return drawerPosOfTalk(ti);
+    }
+    // v14.46 (slice 1703): the dropped talk melts in at its new slot
+    // — a pick-up/drop reorder used to end in a bare
+    // notifyDataSetChanged, so the moved talk snapped into its new
+    // position with no motion while every other drawer arrival
+    // already has a beat (open pour v2.10, new-current-row fade
+    // v3.24, queue-toggle melt v14.43). Posted after the rebind so
+    // the position->child mapping is read fresh (the v3.24 shape),
+    // only while the drawer is open, and a scrolled-out row is
+    // skipped (getChildAt null) rather than scrolled to — the drop
+    // must never fight the listener's scroll position. The v3.45
+    // rebind hygiene cancels any stale row animator, so a scroll
+    // mid-fade can never strand the row half-transparent. Visual
+    // only; the mutation, the toast and the rebind are untouched.
+    private void fadeDroppedQueueRow() {
+        if (dropFadeUrl == null || roomList == null || adapter == null) { dropFadeUrl = null; return; }
+        final String url = dropFadeUrl;
+        dropFadeUrl = null;
+        roomList.post(new Runnable() {
+            @Override public void run() {
+                if (roomList == null || !isPlayListPanelOpen()) return;
+                int first = roomList.getFirstVisiblePosition();
+                int dp = drawerPosOfQueueUrl(url);
+                android.view.View row = dp >= 0 ? roomList.getChildAt(dp - first) : null;
+                if (row != null) Fx.fadeIn(row, 250);
+            }
+        });
     }
     // v4.98: title search in the Room Play List drawer — the
     // chooser gained one (v4.93) and the drawer gained filter
@@ -8464,10 +8519,12 @@ if (snd67n >= 0) currentIndex = snd67n;
                             queueUrls.remove(heldLine);
                             int at = queueLineIndexForUrl(fe.url);
                             queueUrls.add(at >= 0 ? at : queueUrls.size(), heldLineStr);
+                            dropFadeUrl = moveHeldUrl;
                             moveHeldUrl = null;
                             saveQueue(null, true);
                             Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "moved_item") + heldTitle, Toast.LENGTH_SHORT).show();
                             if (adapter != null) adapter.notifyDataSetChanged();
+                            fadeDroppedQueueRow();
                             return;
                         }
                         // v11.36: tapping the SOUNDING foreign row
@@ -8592,10 +8649,12 @@ if (snd67n >= 0) currentIndex = snd67n;
                             : QueueEntry.parse(heldLineStr).title;
                     queueUrls.remove(heldLineIdx);
                     queueUrls.add(queueLineIndexForUrl(tappedUrl), heldLineStr);
+                    dropFadeUrl = moveHeldUrl;
                     moveHeldUrl = null;
                     saveQueue(null, true);
                     Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "moved_item") + heldTitle, Toast.LENGTH_SHORT).show();
                     if (adapter != null) adapter.notifyDataSetChanged();
+                    fadeDroppedQueueRow();
                     return;
                 }
                 // v3.24: a row tap owns its row via the morph below —
