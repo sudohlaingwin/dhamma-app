@@ -3889,6 +3889,23 @@ public class MainActivity extends Activity {
                         // removed last chip) glides nothing.
                         for (int i03 = atFinal03; i03 < favShelf.getChildCount(); i03++) {
                             android.view.View sib03 = favShelf.getChildAt(i03);
+                            // v15.09 (slice 1768): never glide a still-fading
+                            // departure — a second departure re-seated behind
+                            // this one is still fading out in its own slot,
+                            // and this loop used to park it one slot right
+                            // and slide it home while it faded (traced
+                            // first-hand this run: unstar B at t=0, unstar
+                            // C at t=200, B leaves at t=250 and C — 64%
+                            // opaque — slides a full slot left while fading
+                            // to 0 at t=450, the v15.08 "fades out in its
+                            // old slot" rule broken by the end action
+                            // itself). A departure's own end action closes
+                            // its rank when it leaves, so skipping it here
+                            // loses nothing; the record list still holds
+                            // it (cleared only by a rebuild snapshot, and
+                            // a rebuild would have suppressed this stale
+                            // end action through the fade gen guard).
+                            if (shelfDepartingViews63.contains(sib03)) continue;
                             Fx.glideHome(sib03, shift03, 250);
                             // v15.08 (slice 1767): record the glide —
                             // a rebuild landing mid-glide carries it
@@ -3971,6 +3988,16 @@ public class MainActivity extends Activity {
                     @Override public void run() {
                         for (int j63 = atFinal63; j63 < favShelf.getChildCount(); j63++) {
                             android.view.View sib63 = favShelf.getChildAt(j63);
+                            // v15.09 (slice 1768): never glide a still-fading
+                            // departure — same as the v15.00 loop above: a
+                            // carried departure leaving through this end
+                            // action used to glide a second, still-fading
+                            // departure home while it faded (B leaves via
+                            // its carried fade at t=250, C — unstarred at
+                            // t=200 — slides a full slot left while fading
+                            // to 0 at t=450). Its own end action closes
+                            // its rank when it leaves.
+                            if (shelfDepartingViews63.contains(sib63)) continue;
                             Fx.glideHome(sib63, shift63, 250);
                             // v15.08 (slice 1767): record the glide —
                             // same as the v15.00 block above (the
