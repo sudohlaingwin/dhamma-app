@@ -2884,8 +2884,17 @@ public class MainActivity extends Activity {
             for (Sayadaw s : all) if (favs.contains(s.name)) favList.add(s);
         }
         if (favList.isEmpty()) {
+            // v14.38 (slice 1693): the shelf fades out instead of
+            // vanishing — its appearance pours (v14.15 stagger
+            // cascade) but the last favourite un-starred (or a
+            // search keystroke / favOnly toggle emptying the shelf)
+            // used to snap the whole wrap to GONE in one frame.
+            // Fx.fadeOut (200ms, the v14.33 sleep-line rhythm),
+            // GONE at the end, gen-guarded (v3.62) so a re-appear
+            // landing mid-fade never strands it hidden. The
+            // steady-empty case is unchanged (already GONE skips).
             if (favShelfWrap.getVisibility() != android.view.View.GONE)
-                favShelfWrap.setVisibility(android.view.View.GONE);
+                Fx.fadeOut(favShelfWrap, 200);
             lastFavShelfKey = null;
             return;
         }
@@ -2987,6 +2996,14 @@ public class MainActivity extends Activity {
             favShelf.addView(chip);
         }
         favShelfWrap.setVisibility(android.view.View.VISIBLE);
+        // v14.38 (slice 1693): re-arm guard — a re-appear landing
+        // mid-fade-out rides the v14.33 sleep-line pattern: the wrap
+        // is still VISIBLE but half-transparent, and a stale fadeOut
+        // end action would GONE it. Fx.fadeIn bumps the fade gen
+        // (v3.62), so the stale end action is suppressed and the
+        // wrap rides back to full. A steady VISIBLE shelf (alpha 1)
+        // never re-fades.
+        if (favShelfWrap.getAlpha() < 0.999f) Fx.fadeIn(favShelfWrap, 250);
         // v14.15 (slice 1669): first-appearance cascade — fresh
         // launch with favourites, first favourite added, or a
         // cleared search bringing the shelf back. A rebuild while
