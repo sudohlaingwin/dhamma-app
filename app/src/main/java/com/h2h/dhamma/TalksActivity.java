@@ -788,6 +788,95 @@ public class TalksActivity extends Activity {
             }
         });
     }
+    // v14.97 (slice 1755): the changed-mark set for the sync melt —
+    // pure (only SiteHttp.identityUrl + java.util), so the sim
+    // transcribes it directly. Null prefs/cache sets read as empty;
+    // null entries are skipped. Canonicalised both sides, so a
+    // stored http row against an https cache entry is the SAME
+    // talk and arms no melt — the v7.44 detector's raw .equals may
+    // still fire its rebind on that spelling split, but with no
+    // visible mark change there is nothing to melt.
+    static java.util.Set<String> syncMarksChanged97(
+            java.util.Set<String> beforeFav, java.util.Set<String> afterFav,
+            java.util.Set<String> beforePlayed, java.util.Set<String> afterPlayed) {
+        java.util.Set<String> out = new java.util.HashSet<String>();
+        java.util.Set<String> bf = new java.util.HashSet<String>();
+        if (beforeFav != null) for (String u : beforeFav) {
+            String id = SiteHttp.identityUrl(u);
+            if (id != null) bf.add(id);
+        }
+        java.util.Set<String> af = new java.util.HashSet<String>();
+        if (afterFav != null) for (String u : afterFav) {
+            String id = SiteHttp.identityUrl(u);
+            if (id != null) af.add(id);
+        }
+        for (String id : bf) if (!af.contains(id)) out.add(id);
+        for (String id : af) if (!bf.contains(id)) out.add(id);
+        java.util.Set<String> bp = new java.util.HashSet<String>();
+        if (beforePlayed != null) for (String u : beforePlayed) {
+            String id = SiteHttp.identityUrl(u);
+            if (id != null) bp.add(id);
+        }
+        java.util.Set<String> ap = new java.util.HashSet<String>();
+        if (afterPlayed != null) for (String u : afterPlayed) {
+            String id = SiteHttp.identityUrl(u);
+            if (id != null) ap.add(id);
+        }
+        for (String id : bp) if (!ap.contains(id)) out.add(id);
+        for (String id : ap) if (!bp.contains(id)) out.add(id);
+        return out;
+    }
+    // v14.97 (slice 1755): melt the rows whose ★/✓ just changed
+    // under the open chooser — the fadeMenuMarkedTalkRow shape
+    // verbatim, over a set: posted after the tick branch's rebind
+    // so the position->child mapping is read fresh; resolved at
+    // fade time through visibleHits (a search/filter narrows it,
+    // a filtered-out row reads -1); only while the activity lives;
+    // a scrolled-out row is skipped (getChildAt null) rather than
+    // scrolled to; a ★-only filter unstar drops the row in the
+    // branch's rebuildFilter before the posted resolve and reads
+    // -1, so it fades nothing — the row just leaves, as it does
+    // today (the v14.75 case). Fade 250ms via Fx.fadeIn. The
+    // v14.47 getView hygiene restores row alpha 1 on any rebind,
+    // so a fade cut short by a tick percent rebind, a return
+    // theme-dip swap or a filter/search change can never strand
+    // the row half-transparent; Fx.fadeIn is restart-safe (v3.52),
+    // so a sounding/landing melt on the same row in the same tick
+    // just restarts the glide and still ends at alpha 1. The
+    // sounding row melts whole-row like the v14.75 case: its gold
+    // lives on the card background (v13.83) and its title pulse on
+    // the title view, so neither fights the row fade; a ✓ gain
+    // also dims the title to 0.6 on the title view, a separate
+    // channel. Consume-once: the field is nulled here. Visible
+    // rows only bound the melt — a mass change melts at most the
+    // rows on screen.
+    private void fadeSyncMarkedTalkRows97() {
+        if (syncMarksFadeUrls97 == null || syncMarksFadeUrls97.isEmpty()
+                || talkList == null) {
+            syncMarksFadeUrls97 = null;
+            return;
+        }
+        final java.util.Set<String> urls =
+                new java.util.HashSet<String>(syncMarksFadeUrls97);
+        syncMarksFadeUrls97 = null;
+        talkList.post(new Runnable() {
+            @Override public void run() {
+                if (talkList == null || isFinishing() || isDestroyed()) return;
+                int first = talkList.getFirstVisiblePosition();
+                for (String url : urls) {
+                    int ti = -1;
+                    if (talks != null) for (int i = 0; i < talks.size(); i++) {
+                        if (talks.get(i) != null && SiteHttp.sameTalk(talks.get(i).url, url)) { ti = i; break; }
+                    }
+                    if (ti < 0) continue;
+                    int disp = (visibleHits != null) ? visibleHits.indexOf(Integer.valueOf(ti)) : ti;
+                    if (disp < 0) continue;
+                    android.view.View row = talkList.getChildAt(disp - first);
+                    if (row != null) Fx.fadeIn(row, 250);
+                }
+            }
+        });
+    }
     // v14.56 (slice 1713): the header's live-percent strip — the
     // header carries the Up Next talk's LIVE download percent
     // ("⏳42%"), and the branch's own progress diff can move that
@@ -884,6 +973,22 @@ public class TalksActivity extends Activity {
     // the mark and v14.47 covers the landing), not play-next
     // (v14.55 owns the Up Next row).
     private String menuMarkFadeUrl75 = null;
+    // v14.97 (slice 1755): the tick-detected external ★/✓ change's
+    // melt set — the Room drawer's v14.96 sync-melt field, restated
+    // for the chooser. syncTalksStrip diffs the fav/played caches
+    // (syncMarksChanged97) and banks the changed URLs here; the
+    // branch's fadeSyncMarkedTalkRows97 consumes them. The menu path
+    // never writes it (menu branches reload the caches synchronously,
+    // so the next tick snapshots the new state and sees no change —
+    // v10.88 / v14.75), and the return path never writes it (onResume
+    // refreshes the caches before any tick runs) — the melt arms only
+    // in the tick's sync path, never in getView (scroll-recycle would
+    // arm it on every scroll). syncMarksPrimed97 is the first-tick
+    // adoption, set at the tail of syncTalksStrip beside the sibling
+    // primes, so a load / rotation restore never melts on top of the
+    // list pour (v14.23).
+    private java.util.Set<String> syncMarksFadeUrls97 = null;
+    private boolean syncMarksPrimed97 = false;
     // v14.56 (slice 1713): the chooser header's melt prime — the
     // header (R.id.title: sayadaw name + counts + Up Next line) is
     // one TextView, written bare at the end of refreshFavHeader, so
@@ -4763,6 +4868,32 @@ public class TalksActivity extends Activity {
         java.util.Map<String, Integer> marksDlProg44 = new java.util.HashMap<String, Integer>(talkDlProgress);
         java.util.ArrayList<String> marksQueue44 = new java.util.ArrayList<String>(talkQueue);
         refreshTalksQueuePreview(); // v4.87: tick head — every early return below still refreshes it
+        // v14.97 (slice 1755): the changed ★/✓ set for the sync melt
+        // — the Room drawer's v14.96 shape, restated for the chooser:
+        // the tick already rebinds on a fav/played change (v7.44
+        // marksChanged44), but the rebind is bare, so a ★ gained on
+        // the notification card (or a ✓ banked by a finish in
+        // another session) snapped onto its row in one frame while
+        // the sounding row (v14.48), the ▸ row (v14.55), the stopped
+        // row (v14.60) and the header (v14.56) melt beside it. The
+        // diff is taken here, from the pre-refresh snapshots against
+        // the refreshed caches, canonicalised through
+        // SiteHttp.identityUrl (pure syncMarksChanged97) — a
+        // spelling-only http/https split diffs to nothing and arms
+        // nothing. Primed only (syncMarksPrimed97, set at the tail
+        // of this same evaluation, like the sibling primes), so a
+        // load / rotation restore never melts on top of the list
+        // pour (v14.23). The menu path cannot double-arm: the menu
+        // branches reload the mark caches synchronously
+        // (refreshTalkRowMarks), so the next tick snapshots the new
+        // state and sees no change (v10.88 / v14.75), and the return
+        // path refreshes the caches in onResume before any tick
+        // runs — the arm reads only what this tick itself found.
+        java.util.Set<String> syncChanged97 = null;
+        if (syncMarksPrimed97) {
+            syncChanged97 = syncMarksChanged97(marksFav44, talkFavCache,
+                    marksPlayed44, talkPlayedCache);
+        }
         boolean marksChanged44 = !marksFav44.equals(talkFavCache)
                 || !marksPlayed44.equals(talkPlayedCache)
                 || !marksDlQueued44.equals(talkDlQueuedCache)
@@ -4938,6 +5069,7 @@ public class TalksActivity extends Activity {
             if (prevSoundTarget60.length() > 0) { prevSoundFadeUrl = prevSoundTarget60; fadePrevSoundTalkRow(); }
             if (upNextTarget55.length() > 0) { upNextFadeUrl = upNextTarget55; fadeUpNextTalkRow(); }
             if (headerChanged56) Fx.fadeIn(findViewById(R.id.title), 250);
+            if (syncChanged97 != null && !syncChanged97.isEmpty()) { syncMarksFadeUrls97 = syncChanged97; fadeSyncMarkedTalkRows97(); }
         }
         // v14.48 (slice 1705): first tick evaluation adopts the
         // trackers silently — the arm above only ever reads the
@@ -4952,6 +5084,10 @@ public class TalksActivity extends Activity {
         // header arm — a load / rotation restore never melts the
         // header on top of the entrance pour (v14.23).
         headerFadePrimed = true;
+        // v14.97 (slice 1755): same first-tick adoption for the
+        // sync-marks arm — a load / rotation restore never melts
+        // rows on top of the entrance pour (v14.23).
+        syncMarksPrimed97 = true;
         android.view.View strip = findViewById(R.id.nowStrip);
         if (strip == null) return;
         boolean night = cachedNight;
