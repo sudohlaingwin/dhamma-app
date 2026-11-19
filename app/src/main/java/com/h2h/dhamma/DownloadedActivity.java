@@ -1229,6 +1229,24 @@ public class DownloadedActivity extends Activity {
     // so the shown set only grows and the empty word can never
     // newly appear there.
     private boolean dlFilterEmptyFade = false;
+    // v14.40 (slice 1695): filter-chip colour melt flag — armed
+    // only by setDlFilterMode (chip tap + search long-press
+    // cycle), consumed by applyDlFilter's tail below. The tail
+    // repaints the chips on every pass, so a melt called in
+    // setDlFilterMode would be cancelled at once by the tail's
+    // instant repaint (setTextColorNow cancels in-flight melts);
+    // the flag rides the same arm point as dlFilterChange
+    // (v14.24) / dlFilterEmptyFade (v14.25), so a tap on the
+    // already-active chip returns before arming and never melts,
+    // and rotations restore dlFilterMode by direct field
+    // assignment and never call setDlFilterMode, so they never
+    // melt either. The long-press cycle melts too: it is a
+    // deliberate user gesture, and the rows pour with it
+    // (v14.24) — the same rhythm as a chip tap. A reload landing
+    // inside the 250ms melt just stamps the final colour early
+    // via the tail's instant path; the end state is always
+    // right, the melt is only shortened.
+    private boolean dlFilterMelt = false;
     // v2.55: delete-change entrance flag — set only by a confirmed
     // single-row delete below (delete-all never sets it: an emptied
     // list has no rows to pour; its empty view fades via dlEmptyFade
@@ -6514,7 +6532,30 @@ public class DownloadedActivity extends Activity {
     // wires the chips, and the first loadList runs before them
     // too. No mode guard: a language change must repaint even
     // when the mode is unchanged, like the chooser's button.
+    // v14.40 (slice 1695): two rhythms, one painter — a chip tap
+    // (or the search long-press cycle, the same body) melts the
+    // colours (refreshDlFilterChipsAnimated, 250ms
+    // Fx.crossfadeTextColor, the v14.34 sleep-text rhythm, the
+    // chooser chips' v14.39 melt; the weight swaps at the tap,
+    // under the chip's Fx.press squash, because the weight IS the
+    // selection state and the melt carries the transition), while
+    // create / theme / language / rotation / clear-button reset
+    // still land instantly through Fx.setTextColorNow, which
+    // cancels any in-flight melt and records the target so the
+    // helper's map can never disagree with the view. The melt is
+    // armed by setDlFilterMode and consumed by the applyDlFilter
+    // tail (dlFilterMelt flag): the tail repaints the chips on
+    // every pass, so the animated entry can only run from there.
     private void refreshDlFilterChips() {
+        paintDlFilterChips(false);
+    }
+
+    // v14.40 (slice 1695): chip-tap entry — same painter, colours melt.
+    private void refreshDlFilterChipsAnimated() {
+        paintDlFilterChips(true);
+    }
+
+    private void paintDlFilterChips(boolean animate) {
         if (chipDlAll == null || chipDlStar == null || chipDlNew == null) return;
         int f = cachedDlFont;
         float sz = f == 0 ? 12 : (f == 1 ? 14 : 16);
@@ -6527,12 +6568,21 @@ public class DownloadedActivity extends Activity {
         chipDlAll.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);
         chipDlStar.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);
         chipDlNew.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);
-        chipDlAll.setTextColor(dlFilterMode == 0 ? gold : muted);
-        chipDlStar.setTextColor(dlFilterMode == 1 ? gold : muted);
-        chipDlNew.setTextColor(dlFilterMode == 2 ? gold : muted);
+        paintDlChipColor(chipDlAll, dlFilterMode == 0 ? gold : muted, animate);
+        paintDlChipColor(chipDlStar, dlFilterMode == 1 ? gold : muted, animate);
+        paintDlChipColor(chipDlNew, dlFilterMode == 2 ? gold : muted, animate);
         chipDlAll.setTypeface(null, dlFilterMode == 0 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
         chipDlStar.setTypeface(null, dlFilterMode == 1 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
         chipDlNew.setTypeface(null, dlFilterMode == 2 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+    }
+
+    // v14.40 (slice 1695): one writer for a library chip's colour,
+    // in both rhythms — melt on tap, instant elsewhere (see
+    // Fx.setTextColorNow for why the instant path must go through
+    // the helper too). Mirrors the chooser's paintChipColor (v14.39).
+    private void paintDlChipColor(android.widget.TextView chip, int color, boolean animate) {
+        if (animate) Fx.crossfadeTextColor(chip, color);
+        else Fx.setTextColorNow(chip, color);
     }
 
     // v13.75 (slice 1066): one direct-set path for the filter mode —
@@ -6556,6 +6606,9 @@ public class DownloadedActivity extends Activity {
         // applyDlFilter's empty-view block; harmless when rows
         // match, since the else branch ignores the flag).
         dlFilterEmptyFade = true;
+        // v14.40 (slice 1695): arm the chip-colour melt with it
+        // (consumed by the applyDlFilter tail below).
+        dlFilterMelt = true;
         // v4.58: the filter view redefines the shown list, so it
         // exits queue-only first.
         if (libQueueOnly) libQueueOnly = false;
@@ -6985,7 +7038,20 @@ public class DownloadedActivity extends Activity {
                 }
             }
         }
-        refreshDlFilterChips();
+        // v14.40 (slice 1695): consume the chip-melt flag here —
+        // the tail is the only repaint on the setDlFilterMode path
+        // (the mode change runs through applyDlFilter), so a melt
+        // armed by a chip tap or the long-press cycle must land
+        // here, after the rows pour. Consumed on every pass, so a
+        // later reload can never inherit it; every other caller
+        // (search keystroke, sort, loadList, rotation, theme)
+        // keeps the instant repaint.
+        if (dlFilterMelt) {
+            dlFilterMelt = false;
+            refreshDlFilterChipsAnimated();
+        } else {
+            refreshDlFilterChips();
+        }
     }
 
     // v1.19: footer total — count + combined size of the offline library
