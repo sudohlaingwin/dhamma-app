@@ -64,12 +64,18 @@ public final class DlLanded {
     // still excludes its mapped name (without it the file would read
     // as landed while the job is still live). The v8.40/v8.50 rules
     // are unchanged: a name claimed by a DIFFERENT talk's key still
-    // blocks the basename fallback. The enqueue-filename twins
-    // (AutoDownloadJob mappedFileName68 / fileClaimedByOther68, Fx
-    // stripDownloadFileName) and the three prune no-live-job legs
-    // (DownloadedActivity mapped1019, Main mapped1020, Settings
-    // mapped1021) keep their raw lookups for now — their slices
-    // follow.
+    // v14.91 (slice 1749): the enqueue-filename twins are fixed
+    // (v14.90) and the three prune no-live-job legs are fixed in this
+    // slice (DownloadedActivity mapped1019, Main mapped1020, Settings
+    // mapped1021 read DlLanded.mappedName now, and all five prunes'
+    // activeSources checks read the canonical form) — the downloaded
+    // class is closed on every prune surface. The job's own
+    // liveSources/queued contains checks (AutoDownloadJob
+    // isDownloadedOrQueued68 / isLandedFile68 /
+    // pruneStaleDlQueued68) are a separate follow-up: liveSources is
+    // already canonical (v13.62) but queued holds raw stored
+    // spellings, so its fix is three-form matching, not a canonical
+    // lookup.
     // The on-disk filename that makes this URL downloaded, or null.
     public static String downloadedFileName(android.content.Context ctx, String url,
             java.util.Set<String> inProgressNames, java.util.Set<String> liveSourceUrls) {

@@ -384,7 +384,20 @@ public class TalksActivity extends Activity {
                 // warms talkDlFileCache - the 30s scan below rebuilds
                 // it on the same gate.
                 if (DlLanded.isDownloaded(this, url, talkInProgressDlNames, activeSources)) { it.remove(); changed = true; continue; }
-                if (activeSources.contains(url)) continue;
+                // v14.91 (slice 1749): the prune's live-source leg reads
+                // the canonical form — activeSources holds identityUrl(src)
+                // (v13.59), but the lookup read the raw queued url, so an
+                // http-spelled queued talk missed its live job entirely:
+                // a Wi-Fi-waiting job (no destination name yet) then had
+                // its hourglass pruned while still live, and a re-tap
+                // could double-enqueue. Same provenance as the mapped
+                // twins (legacy http dlMap keys, v13.57 fallback, never migrated
+                // by v13.66; canonical https keys, v13.59;
+                // absolute-http hrefs kept as-is, 1737): one talk, two
+                // spellings. For an https queued url this is identical
+                // (identityUrl is the identity on https); for a non-site
+                // url it is unchanged too.
+                if (activeSources.contains(SiteHttp.identityUrl(url))) continue;
                 if (activeNames != null) {
                     String mapped = talkMappedFileName(url);
                     if (mapped != null && !activeNames.contains(mapped)) { it.remove(); changed = true; }

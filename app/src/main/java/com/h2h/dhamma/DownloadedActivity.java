@@ -505,8 +505,21 @@ public class DownloadedActivity extends Activity {
             java.util.Iterator<String> it1019 = queued1019.iterator();
             while (it1019.hasNext()) {
                 String url1019 = it1019.next();
-                String mapped1019 = map1019.has(url1019)
-                        ? map1019.optString(url1019, "") : null;
+                // v14.91 (slice 1749): the prune no-live-job leg
+                // reads the mapped name through the shared
+                // DlLanded.mappedName (raw, then canonical https, then
+                // downgraded http) — the last raw dlMap lookup in the
+                // downloaded class. A talk downloaded under one scheme
+                // and queued under the other missed its mapped name and
+                // fell into the map-less branch, which drops the entry
+                // when none of its filename candidates names a live
+                // job: a live job landing under a hash-suffixed mapped
+                // name (no candidate spells it) had its hourglass
+                // pruned while still downloading. The empty-entry
+                // passthrough is unchanged (mappedName returns "" as-is,
+                // and the line below still folds "" to null, exactly as
+                // the old raw read did).
+                String mapped1019 = DlLanded.mappedName(map1019, url1019);
                 if (mapped1019 != null && mapped1019.length() == 0) mapped1019 = null;
                 // v13.69 (audit-1369 F13): the landed leg is the shared
                 // DlLanded definition now - a non-empty file (length > 0)
@@ -521,7 +534,18 @@ public class DownloadedActivity extends Activity {
                 boolean landed1019 = DlLanded.isDownloaded(this, url1019,
                         activeNames1019, activeSources1019);
                 if (landed1019) { it1019.remove(); dropped1019.add(url1019); continue; }
-                if (activeSources1019.contains(url1019)) continue;
+                // v14.91 (slice 1749): the prune's live-source leg
+                // reads the canonical form — activeSources1019 holds
+                // identityUrl(src) (v13.59), but the lookup read the raw
+                // queued url, so an http-spelled queued talk missed its
+                // live job entirely: a Wi-Fi-waiting job (no destination
+                // name yet) then had its hourglass pruned while still
+                // live, and a re-tap could double-enqueue. Same
+                // provenance as the mapped twins (legacy http dlMap keys,
+                // v13.57 fallback, never migrated by v13.66; canonical
+                // https keys, v13.59; absolute-http hrefs kept as-is,
+                // 1737): one talk, two spellings.
+                if (activeSources1019.contains(SiteHttp.identityUrl(url1019))) continue;
                 if (activeNames1019 != null) {
                     if (mapped1019 != null) {
                         if (!activeNames1019.contains(mapped1019)) {

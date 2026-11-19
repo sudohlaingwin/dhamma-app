@@ -309,8 +309,34 @@ public class MainActivity extends Activity {
                 if (DlLanded.isDownloaded(this, url1020, activeNames1020, activeSources1020)) {
                     it1020.remove(); dropped1020.add(url1020); continue;
                 }
-                if (activeSources1020.contains(url1020)) continue;
-                String mapped1020 = map1020.optString(url1020, "");
+                // v14.91 (slice 1749): the prune's live-source leg
+                // reads the canonical form — activeSources1020 holds
+                // identityUrl(src) (v13.59), but the lookup read the raw
+                // queued url, so an http-spelled queued talk missed its
+                // live job entirely: a Wi-Fi-waiting job (no destination
+                // name yet) then had its hourglass pruned while still
+                // live, and a re-tap could double-enqueue. Same
+                // provenance as the mapped twins (legacy http dlMap keys,
+                // v13.57 fallback, never migrated by v13.66; canonical
+                // https keys, v13.59; absolute-http hrefs kept as-is,
+                // 1737): one talk, two spellings.
+                if (activeSources1020.contains(SiteHttp.identityUrl(url1020))) continue;
+                // v14.91 (slice 1749): the prune no-live-job leg reads
+                // the mapped name through the shared DlLanded.mappedName
+                // (raw, then canonical https, then downgraded http) —
+                // the Main twin of mapped1019. A talk downloaded under
+                // one scheme and queued under the other missed its mapped
+                // name and fell into the map-less branch, which drops the
+                // entry when none of its filename candidates names a live
+                // job: a live job landing under a hash-suffixed mapped
+                // name (no candidate spells it) had its hourglass pruned
+                // while still downloading. mappedName returns null when
+                // no form matches where optString returned "", so the
+                // null folds back to "" here — the length test below and
+                // the map-less branch see exactly what the old raw read
+                // gave them.
+                String mapped1020 = DlLanded.mappedName(map1020, url1020);
+                if (mapped1020 == null) mapped1020 = "";
                 if (mapped1020.length() > 0) {
                     if (!activeNames1020.contains(mapped1020)) {
                         it1020.remove();
