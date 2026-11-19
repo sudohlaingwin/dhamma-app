@@ -1306,7 +1306,6 @@ public class TalksActivity extends Activity {
                                 : android.graphics.Color.parseColor("#7A6A58"));
             }
             boolean show = visibleHits != null && visibleHits.isEmpty() && !talks.isEmpty();
-            empty.setVisibility(show ? View.VISIBLE : View.GONE);
             if (show && empty instanceof android.widget.TextView) {
                 ((android.widget.TextView) empty).setText(
                         searchQuery != null && searchQuery.length() > 0
@@ -1316,6 +1315,26 @@ public class TalksActivity extends Activity {
                                         : (filterMode == 3
                                                 ? Lang.t(TalksActivity.this, "empty_no_downloaded")
                                                 : Lang.t(TalksActivity.this, "all_listened"))));
+            }
+            // v14.44 (slice 1699): the empty line fades in/out instead
+            // of snapping — the chooser's last un-choreographed
+            // visibility edge (the library's empty line got its fade
+            // in v3.58, the shelf its fade-out in v14.38). Edge-only:
+            // a steady show across keystrokes/filter taps never
+            // re-animates, and a re-appear landing mid-fade-out
+            // glides back from its current alpha (Fx.fadeIn flows
+            // from it, v3.52) while the gen guard strands nothing
+            // hidden. The text swap stays instant (the v3.58
+            // footer-total rule) — only the visibility melts.
+            if (show) {
+                if (empty.getVisibility() != android.view.View.VISIBLE) {
+                    empty.setVisibility(android.view.View.VISIBLE);
+                    Fx.fadeIn(empty, 250);
+                } else if (empty.getAlpha() < 0.999f) {
+                    Fx.fadeIn(empty, 250);
+                }
+            } else if (empty.getVisibility() == android.view.View.VISIBLE) {
+                Fx.fadeOut(empty, 200);
             }
         }
     }
@@ -1510,8 +1529,26 @@ public class TalksActivity extends Activity {
         }
         rebuildVisible();
         android.view.View clear = findViewById(R.id.talkSearchClear);
-        if (clear != null) clear.setVisibility(
-                searchQuery != null && searchQuery.length() > 0 ? View.VISIBLE : View.GONE);
+        // v14.44 (slice 1699): the ✕ fades with the same edge-only
+        // rhythm as the empty line above — it used to pop in on the
+        // first keystroke and vanish on the last delete in one frame.
+        // rebuildSearch runs on every keystroke, so only a real
+        // visibility flip animates; a re-appear mid-fade-out glides
+        // back from its current alpha (Fx.fadeIn, v3.52) and the
+        // gen guard strands nothing hidden.
+        if (clear != null) {
+            boolean showClear = searchQuery != null && searchQuery.length() > 0;
+            if (showClear) {
+                if (clear.getVisibility() != android.view.View.VISIBLE) {
+                    clear.setVisibility(android.view.View.VISIBLE);
+                    Fx.fadeIn(clear, 250);
+                } else if (clear.getAlpha() < 0.999f) {
+                    Fx.fadeIn(clear, 250);
+                }
+            } else if (clear.getVisibility() == android.view.View.VISIBLE) {
+                Fx.fadeOut(clear, 200);
+            }
+        }
     }
     private void clearSearch() {
         // Scroll-to-talk paths (title long-press, return glide,
