@@ -3392,6 +3392,27 @@ public class DownloadedActivity extends Activity {
             if (box.getVisibility() != android.view.View.GONE) Fx.fadeOut(box, 200);
             return;
         }
+        // v15.12 (slice 1771): snapshot the live slot texts
+        // before the wholesale rebuild below, so the melt at the
+        // end of this method can fade only the changed child: the
+        // v15.10 melt faded EVERY fresh child on every content
+        // change, so a star landing on one preview row re-melted
+        // the gold header and the two untouched rows with it,
+        // while the shelf below already melts only the changed
+        // row (v14.49 sounding, v14.61 departing, v14.76
+        // menu-marked). Only when the box is VISIBLE: a GONE box
+        // holds the v15.11 stale rest, which must never gate a
+        // melt — a re-appear melts every child as an entrance,
+        // the v15.10 rule.
+        java.util.ArrayList<String> qpOldTexts71 = null;
+        if (box.getVisibility() == android.view.View.VISIBLE) {
+            qpOldTexts71 = new java.util.ArrayList<String>();
+            for (int i71 = 0; i71 < box.getChildCount(); i71++) {
+                android.view.View c71 = box.getChildAt(i71);
+                qpOldTexts71.add(c71 instanceof android.widget.TextView
+                        ? ((android.widget.TextView) c71).getText().toString() : "");
+            }
+        }
         box.removeAllViews();
         if (box.getVisibility() != android.view.View.VISIBLE) box.setVisibility(android.view.View.VISIBLE);
         // v15.11 (slice 1770): re-arm — a re-appear landing
@@ -3500,27 +3521,32 @@ public class DownloadedActivity extends Activity {
             Fx.press(row);
             box.addView(row);
         }
-        // v15.10 (slice 1769): melt the rebuilt box in — the
-        // wholesale rebuild above (removeAllViews + fresh header +
-        // rows) used to pop the whole "Up Next" box to its new
-        // content in one frame: on auto-advance the ▸/◈ marks and
-        // the gold header changed with no beat at all, while the
-        // shelf rows below already melt (v14.49 sounding, v14.61
-        // departing, v14.76 menu-marked). Every new child fades
-        // 250ms (the v14.48 rhythm) in build order, so a queue
-        // change reads as one soft refresh. The children are fresh
-        // views (just created above), so no in-flight press
-        // animator is cancelled by fadeIn's cancel() and press
-        // (scale-only) never fights the fade (alpha-only). Skipped
-        // while a search is active (dlQuery non-empty): a
-        // keystroke-driven rebuild would re-melt the box every tick
-        // while typing. A filter-chip tap is a single discrete
-        // gesture, so it melts like any other content change; a
-        // first appearance melts as an entrance, and an emptying
-        // still vanishes (no children to melt — open question).
+        // v15.12 (slice 1771): melt only the changed child — the
+        // wholesale rebuild above still rebuilds every child fresh
+        // (fresh listeners, so a same-text row keeps the right
+        // file), but the v15.10 (slice 1769) melt faded EVERY child
+        // on every content change: a star landing on one preview
+        // row re-melted the gold header and the two untouched rows
+        // with it, while the shelf below melts only the changed
+        // row (v14.49 sounding, v14.61 departing, v14.76
+        // menu-marked). Each slot's new text (header at 0, rows at
+        // 1..n) is compared against the snapshot taken before the
+        // rebuild: an unchanged slot stays at alpha 1 — visually
+        // identical, it was already there — a changed slot melts
+        // 250ms (the v14.48 rhythm), and a brand-new slot (no old
+        // text at that index) melts as an entrance. A GONE box
+        // snapshots nothing, so a first appearance / re-appear
+        // still melts every child. Skipped while a search is
+        // active (dlQuery non-empty), as before: a keystroke-driven
+        // rebuild never re-melts anything while typing. A removed
+        // row still vanishes with its slot (no fade-out — open
+        // question, the shelf's v15.00 shape for the box).
         if (dlQuery.length() == 0) {
             for (int i69 = 0; i69 < box.getChildCount(); i69++) {
-                Fx.fadeIn(box.getChildAt(i69), 250);
+                String newText71 = i69 == 0 ? headerText : texts.get(i69 - 1);
+                boolean same71 = qpOldTexts71 != null && i69 < qpOldTexts71.size()
+                        && newText71.equals(qpOldTexts71.get(i69));
+                if (!same71) Fx.fadeIn(box.getChildAt(i69), 250);
             }
         }
     }
