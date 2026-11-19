@@ -690,8 +690,8 @@ public class RoomActivity extends Activity {
             for (int i = 0; i < talks.size(); i++) {
                 String u = talks.get(i).url;
                 if (drawerFilterMode == 3) { if (isDownloadedFile(u)) out.add(i); }
-                else if (drawerFilterMode == 1) { if (s != null && s.contains(u)) out.add(i); }
-                else if (s == null || !s.contains(u)) out.add(i);
+                else if (drawerFilterMode == 1) { if (s != null && s.contains(SiteHttp.identityUrl(u))) out.add(i); }
+                else if (s == null || !s.contains(SiteHttp.identityUrl(u))) out.add(i);
             }
         } catch (Exception ignored) {}
         return out;
@@ -2708,6 +2708,21 @@ public class RoomActivity extends Activity {
     // getStringSet() twice for every row on every scroll bind.
     private java.util.Set<String> playedSet = new java.util.HashSet<String>();
     private java.util.Set<String> favSet = new java.util.HashSet<String>();
+    // v14.78 (slice 1736): READ the set in canonical form —
+    // every write funnel banks the https identity (togglePlayingFav
+    // v13.66, Fx.toggleFavTalk v13.65, the v13.66 lazy-once
+    // migration heals stored rows in place), so a raw contains()
+    // misses an http-spelled talk (foreign queue-line talk via
+    // the v11.32 mirror, or a list parsed over the v13.57 http
+    // retry) and its star never appears anywhere the set is
+    // read, even though the toast says it was favourited. All
+    // thirteen read sites below compare SiteHttp.identityUrl()
+    // of the talk URL — identity for https, so https talks read
+    // exactly as today. The cached set itself stays raw: the
+    // syncOpenDrawerMarks46 detector compares the stored set
+    // against this cache with .equals, and canonicalising the
+    // cache would false-diff every 500ms poll while the drawer
+    // is open. The L6680 toast already read this way.
     // v13.98 (slice 1093): per-talk total durations (url -> ms),
     // one parse per refreshMarkSets below, so the drawer binds
     // paint the hairline from a map lookup, never talkDurGet
@@ -2886,7 +2901,7 @@ public class RoomActivity extends Activity {
             } catch (Exception ignored) {}
         }
         String fav = "";
-        try { if (favSet != null && favSet.contains(t.url)) fav = "★ "; } catch (Exception ignored) {}
+        try { if (favSet != null && favSet.contains(SiteHttp.identityUrl(t.url))) fav = "★ "; } catch (Exception ignored) {}
         return q + fav + off;
     }
 
@@ -5422,7 +5437,7 @@ if (snd65 >= 0) currentIndex = snd65;
                     // (v4.19) shows here within one tick, and a
                     // clear-favs return clears it the same way.
                     String favMark = (currentIndex >= 0 && currentIndex < talks.size()
-                            && favSet.contains(talks.get(currentIndex).url)) ? "★ " : "";
+                            && favSet.contains(SiteHttp.identityUrl(talks.get(currentIndex).url))) ? "★ " : "";
                     // v4.27: the sounding talk's own download
                     // progress ("⏳ 42% ") — ⬇ already owns a
                     // saved talk, so this fires only while its
@@ -6529,7 +6544,7 @@ if (snd65 >= 0) currentIndex = snd65;
                                     QueueEntry fe68 = firstWaitingForeignEntry();
                                     if (tryForeignHandover() && fe68 != null) {
                                         String t68 = fe68.title != null && fe68.title.length() > 0 ? fe68.title : fe68.url;
-                                        Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "next_prefix") + (favSet != null && favSet.contains(fe68.url) ? "★ " : "") + t68 + (fe68.sayadaw != null && fe68.sayadaw.length() > 0 ? " · " + fe68.sayadaw : ""), Toast.LENGTH_SHORT).show();
+                                        Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "next_prefix") + (favSet != null && favSet.contains(SiteHttp.identityUrl(fe68.url)) ? "★ " : "") + t68 + (fe68.sayadaw != null && fe68.sayadaw.length() > 0 ? " · " + fe68.sayadaw : ""), Toast.LENGTH_SHORT).show();
                                     } else if (fe68 != null) {
                                         // v11.68: refused handover — the owner has no catalog page, so
                                         // this head can never play. Manual Next already falls through
@@ -6762,7 +6777,7 @@ if (snd65 >= 0) currentIndex = snd65;
                     // plain count, like the offline count does.
                     int favCount = 0;
                     for (int i = 0; i < talks.size(); i++)
-                        if (favSet.contains(talks.get(i).url)) favCount++;
+                        if (favSet.contains(SiteHttp.identityUrl(talks.get(i).url))) favCount++;
                     if (favCount > 0) want += " · ★ " + favCount;
                     // v4.27: the header also counts downloads
                     // still queued ("· ⏳ N") — the rows already
@@ -6930,7 +6945,7 @@ if (snd65 >= 0) currentIndex = snd65;
                             } catch (Exception ignored) {}
                             if (isDownloadedFile(fxUp.url)) fxMark += " ⬇";
                             else if (dlProgress.containsKey(fxUp.url)) fxMark += " ⏳" + dlProgress.get(fxUp.url) + "%";
-                            if (favSet.contains(fxUp.url)) fxMark += " ★";
+                            if (favSet.contains(SiteHttp.identityUrl(fxUp.url))) fxMark += " ★";
                             if (playedSet.contains(fxUp.url)) fxMark += " ✓";
                             int fxRp = Prefs.talkPosGet(RoomActivity.this, fxUp.url);
                             if (fxRp <= 5000 && isDownloadedFile(fxUp.url)) {
@@ -6991,7 +7006,7 @@ int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
                         // v4.17/v4.24 marks said saved/downloading
                         // but never favourited, while the row itself
                         // (v1.44) always had it.
-                        if (favSet.contains(nx.url)) nxMark += " ★";
+                        if (favSet.contains(SiteHttp.identityUrl(nx.url))) nxMark += " ★";
                         // v5.62: the Up Next line gains the ✓ finished
                         // and ↺ resume marks every other queue surface
                         // already carries — the drawer rows (v5.34
@@ -8739,7 +8754,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                         } catch (Exception ignored) {}
                         if (isDownloadedFile(fxPrev63.url)) fxMark63 += " ⬇";
                         else if (dlProgress.containsKey(fxPrev63.url)) fxMark63 += " ⏳" + dlProgress.get(fxPrev63.url) + "%";
-                        if (favSet.contains(fxPrev63.url)) fxMark63 += " ★";
+                        if (favSet.contains(SiteHttp.identityUrl(fxPrev63.url))) fxMark63 += " ★";
                         if (playedSet.contains(fxPrev63.url)) fxMark63 += " ✓";
                         int fxRp63 = Prefs.talkPosGet(RoomActivity.this, fxPrev63.url);
                         if (fxRp63 <= 5000 && isDownloadedFile(fxPrev63.url)) {
@@ -10452,7 +10467,7 @@ if (snd67p >= 0 && snd67p != currentIndex && currentIndex >= 0 && currentIndex <
 }
 if (snd67p >= 0) currentIndex = snd67p;
                     Talk cur = talks.get(currentIndex);
-                    Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "room_from_start_prefix") + (favSet.contains(cur.url) ? "★ " : "") + cur.title, Toast.LENGTH_SHORT).show();
+                    Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "room_from_start_prefix") + (favSet.contains(SiteHttp.identityUrl(cur.url)) ? "★ " : "") + cur.title, Toast.LENGTH_SHORT).show();
                 } else {
                     // v5.16: mirror handlePrev — the preview names
                     // the last valid history entry (scanned, never
@@ -10688,8 +10703,8 @@ if (snd67q >= 0) currentIndex = snd67q;
                             // set branch below would misread
                             // it as the unlistened view.
                             if (savedFilter == 3) { if (isDownloadedFile(u)) { filterOk = true; break; } }
-                            else if (savedFilter == 1) { if (ss != null && ss.contains(u)) { filterOk = true; break; } }
-                            else if (ss == null || !ss.contains(u)) { filterOk = true; break; }
+                            else if (savedFilter == 1) { if (ss != null && ss.contains(SiteHttp.identityUrl(u))) { filterOk = true; break; } }
+                            else if (ss == null || !ss.contains(SiteHttp.identityUrl(u))) { filterOk = true; break; }
                         }
                     } catch (Exception ignored) {}
                     if (filterOk) drawerFilterMode = savedFilter;
@@ -11426,7 +11441,7 @@ if (snd67q >= 0) currentIndex = snd67q;
         // endedHandledFor guard above, never
         // on the data-gate stop or autoplay-off
         // branches (this block is autoplay-only).
-        Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "next_prefix") + (favSet.contains(talks.get(nx).url) ? "★ " : "") + talks.get(nx).title, Toast.LENGTH_SHORT).show();
+        Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "next_prefix") + (favSet.contains(SiteHttp.identityUrl(talks.get(nx).url)) ? "★ " : "") + talks.get(nx).title, Toast.LENGTH_SHORT).show();
         // v3.04: premium auto-advance Next nudge —
         // extending the delivered manual Next
         // nudge (v2.34). A manual advance
@@ -13567,7 +13582,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                     if (playedSet == null || favSet == null) refreshMarkSets();
                     boolean fPlayed = playedSet.contains(fe.url);
                     boolean fDownloaded = isDownloadedFile(fe.url);
-                    boolean fFav = favSet.contains(fe.url);
+                    boolean fFav = favSet.contains(SiteHttp.identityUrl(fe.url));
                     String fQueueMark = "";
                     if (!fDownloaded && queuedDownloads.contains(fe.url)) {
                         Integer pct = dlProgress.get(fe.url);
@@ -13801,7 +13816,7 @@ if (snd67q >= 0) currentIndex = snd67q;
             // listener can spot them without going back to the chooser
             // (the Room has no favourite button by the v1.37 order —
             // this is a mark only, not a new control).
-            boolean fav = favSet.contains(t.url);
+            boolean fav = favSet.contains(SiteHttp.identityUrl(t.url));
             // v2.47: current-row mark follows the action rule (playing = ⏸)
             // v4.01: queued-download mark — a talk waiting for Wi-Fi
             // or mid-download reads ⏳ until the file lands and the
