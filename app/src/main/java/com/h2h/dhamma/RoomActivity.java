@@ -4766,7 +4766,8 @@ if (snd65 >= 0) currentIndex = snd65;
                 // "😴 ရပ်တော့မယ်" through the 3s sleep fade itself
                 // (the service's own fire toast still names the end).
                 // Under a minute left the digits turn gold, like a
-                // last-minute cue. The suspended read is guarded by
+                // last-minute cue, melting over 250ms (v14.34) instead
+                // of snapping. The suspended read is guarded by
                 // the Settings default, so a remainder orphaned by
                 // a turned-off setting never shows as live. Text is
                 // change-only (a steady minute never rewrites), and
@@ -4815,8 +4816,18 @@ if (snd65 >= 0) currentIndex = snd65;
                             int wantColor = sleepGold
                                     ? android.graphics.Color.parseColor("#C9A227")
                                     : android.graphics.Color.parseColor("#AAAAAA");
-                            if (sleepText.getCurrentTextColor() != wantColor)
-                                sleepText.setTextColor(wantColor);
+                            // v14.34 (slice 1689): the under-a-minute
+                            // gold flip melts instead of snapping —
+                            // Fx.crossfadeTextColor interpolates the
+                            // text colour over 250ms (same as the
+                            // ring/tile crossfades); the helper no-ops
+                            // on steady ticks, and a re-arm above a
+                            // minute melts back to grey the same way.
+                            // The text and the view alpha are
+                            // untouched, so the v14.16 settled
+                            // decision stands: no label is faded to
+                            // ease a mark.
+                            Fx.crossfadeTextColor(sleepText, wantColor);
                             // v14.33 (slice 1688): also re-fade when a
                             // re-arm lands mid-fade-out (alpha < 1) — the
                             // v3.52 continuity rule, so the line rides

@@ -676,6 +676,63 @@ public class Fx {
         td.startTransition(250);
     }
 
+    // v14.34 (slice 1689): the Room sleep countdown's under-a-minute
+    // gold flip used to snap — the 500ms poll swapped the text
+    // colour in one frame (setTextColor: grey #AAAAAA <-> gold
+    // #C9A227) the moment the remainder crossed 60s, while
+    // everything around the line already moves (its own fade-in/out,
+    // the ring/tile crossfades). The colour now melts over 250ms,
+    // the same duration as the ring/tile crossfades, via a
+    // ValueAnimator.ofArgb from the current colour to the target.
+    // The v14.16 settled decision does NOT bar this: its reason was
+    // that fading the whole label to ease a 2-char mark would flash
+    // the row — here no label is faded, only the text colour is
+    // interpolated (alpha stays 1, text unchanged), so the row
+    // cannot flash. Recorded target per view (a steady tick is a
+    // no-op, like the ring/tile maps); already-at-target records
+    // with no animator; a superseded animator is cancelled AFTER
+    // the new one is recorded, so the old one's end — cancel()
+    // fires it — sees it is superseded and never stamps its stale
+    // colour; the end stamps the exact target only while this
+    // animator is still current. The helper owns the colour: no
+    // other writer touches this view's text colour.
+    private static java.util.WeakHashMap<View, Integer> textColorTarget =
+            new java.util.WeakHashMap<View, Integer>();
+    private static java.util.WeakHashMap<View, android.animation.ValueAnimator> textColorAnim =
+            new java.util.WeakHashMap<View, android.animation.ValueAnimator>();
+    public static void crossfadeTextColor(final android.widget.TextView v, final int toColor) {
+        if (v == null) return;
+        Integer cur = textColorTarget.get(v);
+        if (cur != null && cur.intValue() == toColor) return;
+        int from = v.getCurrentTextColor();
+        if (from == toColor) { textColorTarget.put(v, toColor); return; }
+        textColorTarget.put(v, toColor);
+        android.animation.ValueAnimator old = textColorAnim.get(v);
+        final android.animation.ValueAnimator anim =
+                android.animation.ValueAnimator.ofArgb(from, toColor);
+        anim.setDuration(250);
+        textColorAnim.put(v, anim);
+        if (old != null) old.cancel();
+        anim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                v.setTextColor((Integer) a.getAnimatedValue());
+            }
+        });
+        anim.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                // cancel() fires onAnimationEnd too: only the
+                // still-current animator may stamp the exact target —
+                // a superseded one must never paint its stale colour
+                // over a newer melt.
+                if (textColorAnim.get(v) == anim) {
+                    v.setTextColor(toColor);
+                    textColorAnim.remove(v);
+                }
+            }
+        });
+        anim.start();
+    }
+
     // v2.23: premium theme transition — day/night used to swap
     // colours instantly (a hard flash) on the Main toggle and the
     // Settings day/night buttons, while every other screen change
