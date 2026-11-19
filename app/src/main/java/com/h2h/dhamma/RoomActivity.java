@@ -2723,6 +2723,28 @@ public class RoomActivity extends Activity {
     // against this cache with .equals, and canonicalising the
     // cache would false-diff every 500ms poll while the drawer
     // is open. The L6680 toast already read this way.
+    // v14.83 (slice 1741): the played twin of the v14.78 star
+    // fix — every playedTalks read in this Room compared the raw
+    // talk URL while the set holds canonical https (the v13.66
+    // migration heals stored rows in place; the v13.59 service
+    // stream leg and the v13.79 fallback below bank canonical),
+    // so a talk finishing while its list URL was http-spelled
+    // (absolute-http href, list parsed over the v13.57 http
+    // retry, foreign queue-line talk) lost its tick on every
+    // Room surface — drawer rows, header count, Up Next /
+    // Previous previews, long-press previews, foreign rows —
+    // while its star stayed right on the same row. The Room's
+    // own end block banked the same raw form, re-planting a
+    // legacy http row the migration had just healed. All seven
+    // read sites now compare SiteHttp.identityUrl(), and the end
+    // block banks it too — identity for https, so https talks
+    // read exactly as today. The cached set itself stays raw,
+    // same reason as the star note above (the .equals detector).
+    // Remaining raw planters live in other activities — the
+    // Downloaded end block + mark-shown verbs and the
+    // AudioService library-file leg bank dlMap keys, legacy http
+    // for pre-v13.67 downloads — their slices follow; a tick
+    // planted from the Library still misses here until then.
     // v13.98 (slice 1093): per-talk total durations (url -> ms),
     // one parse per refreshMarkSets below, so the drawer binds
     // paint the hairline from a map lookup, never talkDurGet
@@ -2832,7 +2854,7 @@ public class RoomActivity extends Activity {
         if (t == null || isPlayingTarget) return "";
         if (playedSet == null || favSet == null) refreshMarkSets();
         String m = "";
-        if (playedSet != null && playedSet.contains(t.url)) m += " ✓";
+        if (playedSet != null && playedSet.contains(SiteHttp.identityUrl(t.url))) m += " ✓";
         int rp = Prefs.talkPosGet(RoomActivity.this, t.url);
         if (rp <= 5000 && isDownloadedFile(t.url)) {
             String dlName = downloadedFileName(t.url);
@@ -6382,7 +6404,13 @@ if (snd65 >= 0) currentIndex = snd65;
                             java.util.Set<String> played = new java.util.HashSet<String>(
                                     getSharedPreferences("dhamma", MODE_PRIVATE)
                                             .getStringSet("playedTalks", new java.util.HashSet<String>()));
-                            if (played.add(talks.get(currentIndex).url)) {
+                            // v14.83 (slice 1741): bank the played
+                            // mark under the canonical (https) identity
+                            // — talks.get(...).url may be the http retry
+                            // form or an absolute-http href; the drawer
+                            // checks https, and a raw bank re-plants a
+                            // legacy http row the v13.66 migration healed.
+                            if (played.add(SiteHttp.identityUrl(talks.get(currentIndex).url))) {
                                 getSharedPreferences("dhamma", MODE_PRIVATE).edit()
                                         .putStringSet("playedTalks", played).apply();
                                 refreshMarkSets();
@@ -6856,7 +6884,7 @@ if (snd65 >= 0) currentIndex = snd65;
                     // while it plays.
                     int playedCount = 0;
                     for (int i = 0; i < talks.size(); i++)
-                        if (playedSet.contains(talks.get(i).url)) playedCount++;
+                        if (playedSet.contains(SiteHttp.identityUrl(talks.get(i).url))) playedCount++;
                     if (playedCount > 0) want += " · ✓ " + playedCount;
                     // v5.69: the header also counts half-heard talks
                     // ("· ↺ M") — the one share the count line never
@@ -6946,7 +6974,7 @@ if (snd65 >= 0) currentIndex = snd65;
                             if (isDownloadedFile(fxUp.url)) fxMark += " ⬇";
                             else if (dlProgress.containsKey(fxUp.url)) fxMark += " ⏳" + dlProgress.get(fxUp.url) + "%";
                             if (favSet.contains(SiteHttp.identityUrl(fxUp.url))) fxMark += " ★";
-                            if (playedSet.contains(fxUp.url)) fxMark += " ✓";
+                            if (playedSet.contains(SiteHttp.identityUrl(fxUp.url))) fxMark += " ✓";
                             int fxRp = Prefs.talkPosGet(RoomActivity.this, fxUp.url);
                             if (fxRp <= 5000 && isDownloadedFile(fxUp.url)) {
                                 String fxDlName = downloadedFileName(fxUp.url);
@@ -7022,7 +7050,7 @@ int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
                         // The change-only guard above still owns
                         // the write, so the marks appear within one
                         // 500ms tick of a finish or a spot landing.
-                        if (playedSet.contains(nx.url)) nxMark += " ✓";
+                        if (playedSet.contains(SiteHttp.identityUrl(nx.url))) nxMark += " ✓";
                         int nxRp = Prefs.talkPosGet(RoomActivity.this, nx.url);
                         if (nxRp <= 5000 && isDownloadedFile(nx.url)) {
                             String nxDlName = downloadedFileName(nx.url);
@@ -8755,7 +8783,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                         if (isDownloadedFile(fxPrev63.url)) fxMark63 += " ⬇";
                         else if (dlProgress.containsKey(fxPrev63.url)) fxMark63 += " ⏳" + dlProgress.get(fxPrev63.url) + "%";
                         if (favSet.contains(SiteHttp.identityUrl(fxPrev63.url))) fxMark63 += " ★";
-                        if (playedSet.contains(fxPrev63.url)) fxMark63 += " ✓";
+                        if (playedSet.contains(SiteHttp.identityUrl(fxPrev63.url))) fxMark63 += " ✓";
                         int fxRp63 = Prefs.talkPosGet(RoomActivity.this, fxPrev63.url);
                         if (fxRp63 <= 5000 && isDownloadedFile(fxPrev63.url)) {
                             String fxDlName63 = downloadedFileName(fxPrev63.url);
@@ -13580,7 +13608,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                     if (fTitle != null) fTitle.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,
                             tf == 0 ? 14 : (tf == 1 ? 16 : 20));
                     if (playedSet == null || favSet == null) refreshMarkSets();
-                    boolean fPlayed = playedSet.contains(fe.url);
+                    boolean fPlayed = playedSet.contains(SiteHttp.identityUrl(fe.url));
                     boolean fDownloaded = isDownloadedFile(fe.url);
                     boolean fFav = favSet.contains(SiteHttp.identityUrl(fe.url));
                     String fQueueMark = "";
@@ -13807,7 +13835,7 @@ if (snd67q >= 0) currentIndex = snd67q;
             // chooser but leave the Room list at 15sp.
             if (titleView != null) titleView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, tf == 0 ? 14 : (tf == 1 ? 16 : 20));
             if (playedSet == null || favSet == null) refreshMarkSets();
-            boolean played = playedSet.contains(t.url);
+            boolean played = playedSet.contains(SiteHttp.identityUrl(t.url));
             // v1.82: same candidate names as localPathFor — a ⬇ mark
             // used to need the raw basename to match, so a talk
             // downloaded under its clean name showed no mark at all.
