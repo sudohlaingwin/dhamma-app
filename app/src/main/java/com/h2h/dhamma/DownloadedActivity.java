@@ -2385,6 +2385,23 @@ public class DownloadedActivity extends Activity {
     private String dlSoundFadePath = null;
     private String dlSoundPrevPath = null;
     private boolean dlSoundPrimed = false;
+    // v14.61 (slice 1718): the just-finished (departing) shelf row's
+    // melt — the Talks chooser's v14.60 twin, restated for the
+    // library. dlPrevSoundFadePath is the armed path the helper
+    // below fades in. dlSoundPrimed (same first-tick adoption as
+    // the sounding arm) stays false until the first tick evaluation
+    // adopts the tracker, so a load or rotation restore never arms
+    // a fade on top of the list pour (v2.12); a change discovered
+    // on a back-stack return (primed, same instance) melts the row
+    // as the return beat, like the sounding arm. Consumed by
+    // fadePrevSoundDlRow, which nulls it — a second tick without a
+    // new departing change is a no-op — and the sounding
+    // (dlSoundFadePath), download-landing and delete arms are
+    // separate fields, so the melts never overwrite each other.
+    // The departing row is never the new sounding row in the same
+    // tick (the arm only fires when the fresh path differs from
+    // the old one), so the two fades never land on the same view.
+    private String dlPrevSoundFadePath = null;
     // v14.05 (slice 1100): failed state the rows were last bound
     // against — the v1.47 tick's playing/track/active change
     // detection never saw a failure: a first failure while playing
@@ -3379,6 +3396,53 @@ public class DownloadedActivity extends Activity {
         });
     }
 
+    // v14.61 (slice 1718): melt the just-finished (departing) shelf
+    // row in at its display position — the fadeSoundingDlRow shape
+    // above, restated for the DEPARTING file. The posted runnable
+    // runs after the branch's rebind, resolves the display position
+    // the v3.93 way (queue index in queue-only view, shelf index
+    // in shownDl otherwise), and fades 250ms (the v14.49 rhythm);
+    // a scrolled-out row (getChildAt null) is skipped, never
+    // scrolled to — the return glide (tryDlReturnGlide) only
+    // scrolls to an off-screen sounding row on its own, and only
+    // fires when the row is off-screen, so the two never fight.
+    // In queue-only view the departed file is usually already
+    // popped from the queue, so indexOf returns -1 and the melt is
+    // skipped — a missed melt, never a shimmer. Consume-once: a
+    // second run without a new departing change is a no-op.
+    // Guards: the activity may be finishing/destroyed by the time
+    // the post runs, and a rebind landing mid-fade is safe via the
+    // v14.49 getView hygiene, which restores row alpha 1 on any
+    // rebind, so a fade cut short can never strand the row
+    // half-transparent. Fx.fadeIn is restart-safe (v3.52), so a
+    // sounding/landing melt on the same row in the same tick just
+    // restarts the glide and still ends at alpha 1. The pulse lives
+    // on the state icon child, not the row, and the listened title
+    // dim lives on titleView, so neither reads the row alpha this
+    // fade moves.
+    private void fadePrevSoundDlRow() {
+        final String path = dlPrevSoundFadePath;
+        dlPrevSoundFadePath = null;
+        if (path == null || dlListView == null) return;
+        dlListView.post(new Runnable() {
+            @Override public void run() {
+                if (dlListView == null || isFinishing() || isDestroyed()) return;
+                int dispPos = -1;
+                if (libQueueOnly) {
+                    dispPos = libQueueCache.indexOf(path);
+                } else {
+                    for (int i = 0; i < shownDl.size(); i++)
+                        if (shownDl.get(i).file.getAbsolutePath().equals(path)) { dispPos = i; break; }
+                }
+                if (dispPos < 0) return;
+                int first = dlListView.getFirstVisiblePosition();
+                android.view.View row = dlListView.getChildAt(dispPos - first);
+                if (row == null) return;
+                Fx.fadeIn(row, 250);
+            }
+        });
+    }
+
     private void wireDlStrip() {
         android.view.View nowStrip = findViewById(R.id.nowStrip);
         if (nowStrip != null) {
@@ -4170,6 +4234,48 @@ public class DownloadedActivity extends Activity {
                 // the bind can confirm the flag is really gone.
                 dlEndedHandledFor = null;
             }
+            // v14.61 (slice 1718): arm the departing shelf row's melt
+            // BEFORE the tracker below adopts the fresh path — the
+            // v14.49 shape, restated for the row that just STOPPED
+            // sounding (the Talks chooser's v14.60 twin). Only a
+            // sounding-path change AWAY from a non-empty old path
+            // arms it: the old row loses its ▶ + gold title + gold
+            // card (v4.90/v13.84) and gains ✓ + the 0.6 listened
+            // title dim (v13.84, rowListened from libListenedFiles)
+            // on this same rebind, so it used to snap its marks in
+            // one frame while the new sounding row melted beside it
+            // (v14.49). The ✓ is already in place when the melt
+            // fires: the end block above writes playedTalks and adds
+            // the file to libListenedFiles before the arm, the v7.45
+            // block refreshes the mark cache on the tick path, and
+            // the arm fires on the tick AFTER the advance
+            // (refreshLibQueuePreview runs before the end block, so
+            // the advance tick still reads the old path) — no
+            // residual race like the chooser's v14.60 one. A stop
+            // arms too (fresh path null — the old row still loses
+            // ▶ + gold); a same-path replay (repeat-one) arms
+            // nothing (fresh == old); a marks-only change or an
+            // end/failure/buffering flip without a path change arms
+            // nothing (the v14.48 deliberate rule — the sounding
+            // row's own mark swap is a different class). Computed
+            // before the v14.49 block below because that block sets
+            // dlSoundPrimed true on first evaluation and adopts the
+            // tracker right after — this arm must read the
+            // pre-adoption primed value and the pre-adoption old
+            // path, the chooser's v14.60 arm order. Unprimed first
+            // evaluation adopts silently — the entrance pour (v2.12)
+            // already carries the row. The fire sits in the same
+            // v1.47 rebind block as the sounding fire, so whenever
+            // the sounding melt fires the departing melt fires
+            // beside it (the v14.49 guarantee: a sounding change
+            // implies a track change, and the armed tick carries
+            // the preparing→playing flip).
+            String prevSoundTarget61 = "";
+            if (dlSoundPrimed
+                    && dlSoundPrevPath != null && dlSoundPrevPath.length() > 0
+                    && !dlSoundPrevPath.equals(libRowPlayingPath)) {
+                prevSoundTarget61 = dlSoundPrevPath;
+            }
             // v14.49 (slice 1706): arm the newly-sounding shelf row's melt — the Talks chooser's v14.48 arm, restated for the library. libRowPlayingPath is fresh for this tick (refreshLibQueuePreview above set it from the live lib session, or the v13.17 Room-session mirror, before the end block), so a change to a NEW non-empty shelf path arms it: auto-advance while browsing, Next from the strip or the notification, a library advance. A play/pause flip (same path), a mark-only change (the v7.45 block above rebinds the same rows with no new sounding file), an end / failure / buffering flip (same path, the ▶ leaves with the rebind) and a path changing to empty (stopped — no row to melt) never arm. dlSoundPrimed stays false until the first tick evaluation adopts the tracker, so a load or rotation restore never melts on top of the list pour (v2.12); a change discovered on a back-stack return (primed, same instance) melts the row as the return beat. The tracker adopts every tick, so the arm can never go stale: a sounding change implies a track change, one of the v1.47 conditions below, so the rebind below always fires on an armed tick.
             String soundTarget49 = "";
             if (!dlSoundPrimed) {
@@ -4200,6 +4306,7 @@ public class DownloadedActivity extends Activity {
                 lastDlActive = curActive;
                 lastDlFailed = AudioService.liveTrackError;
                 if (soundTarget49.length() > 0) { dlSoundFadePath = soundTarget49; fadeSoundingDlRow(); }
+                if (prevSoundTarget61.length() > 0) { dlPrevSoundFadePath = prevSoundTarget61; fadePrevSoundDlRow(); }
             }
             // v4.66: a Next landing while the shelf sits open used
             // to leave the footer's Up Next line pointing at the
