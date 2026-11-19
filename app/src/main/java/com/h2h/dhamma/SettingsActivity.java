@@ -2513,7 +2513,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                 // resurrecting, Main's shape.
                 try {
                     syncSettingsStrip();
-                    refreshDownloadedButton53(); // v7.53: button counts follow the strip tick
+                    refreshDownloadedButton53(true); // v7.53: button counts follow the strip tick; v14.94: the tick owns the label melt
                     refreshDataSaverButton54(); // v7.54: network note follows the strip tick
                     refreshAutoDlNote79(); // v13.80: check-now result lands on the note live
                     refreshBlockedChannelMark88(); // v11.88: ⚠ mark follows the strip tick
@@ -2907,7 +2907,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
     // is NOT put on the tick). Same app-scoped rules as before:
     // .mp3 files in Downloads/Dhamma, in-progress = Dhamma/
     // destination or a dlMap source URL; other apps never count.
-    private void refreshDownloadedButton53() {
+    private void refreshDownloadedButton53(boolean melt94) {
         try {
             android.widget.TextView dlBtn = findViewById(R.id.btnDownloaded);
             if (dlBtn == null) return;
@@ -3000,7 +3000,39 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
             } catch (Exception ignored) {}
             if (progN88 > 0) label += " \u00b7 \u23f3 " + progN88;
             CharSequence cur = dlBtn.getText();
-            if (cur == null || !label.equals(cur.toString())) dlBtn.setText(label);
+            if (cur == null || !label.equals(cur.toString())) {
+                // v14.94 (slice 1752): the label melts on a structural
+                // change instead of snapping — a download landing (or
+                // a file deleted, a download starting/finishing) while
+                // Settings sits open used to jump "Downloaded" ->
+                // "Downloaded (12)" / "· ⏳ 1" in one frame, while the
+                // size note directly below it already melts the same
+                // landing (v14.66). The v14.66 note said this label
+                // "must never melt" because its "· ⏳ M" ticks — read
+                // first-hand, it does not tick: (N) counts finished
+                // .mp3s and ⏳ M counts in-progress downloads, so both
+                // legs change only on a download starting, finishing,
+                // landing or a file leaving; the 1s tick recomputes
+                // but the write is change-only, so any change IS the
+                // structure and melts, the v14.66 idiom: melt only
+                // when the view is VISIBLE and settled (alpha >=
+                // 0.999f) and already holds real text — the first
+                // fill from "" just appears, and steady tick passes
+                // never touch the view. Fx.fadeIn is restart-safe
+                // (v3.52), so a second landing inside 250ms restarts
+                // the fade instead of stranding it. The melt rides
+                // the tick only (melt94): refresh() adopts instantly.
+                // The row's tap target is the parent row
+                // (rowDownloaded), never this label, so no
+                // press/morph animator rides this view and fadeIn's
+                // cancel cannot kill a tap squash. Visual only; the
+                // label, counts and the DM/dir scans are untouched.
+                boolean melt = melt94 && cur != null && cur.length() > 0
+                        && dlBtn.getVisibility() == android.view.View.VISIBLE
+                        && dlBtn.getAlpha() >= 0.999f;
+                dlBtn.setText(label);
+                if (melt) Fx.fadeIn(dlBtn, 250);
+            }
             // v13.81 (slice 1073): the Downloaded row's live storage
             // note — "total X MB" under the row, from the same single
             // dir scan as the count above (same qualifying rule:
@@ -3244,7 +3276,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
     // is foreground, so the ⚠ mark + note drawn by refresh() described an abandoned
     // channel until the next refresh() (onResume or a choice tap). Re-read on the tick
     // and rewrite only the noti button + note when the value changes, mirroring the
-    // change-only write pattern of refreshDownloadedButton53(); the sleep countdown
+    // change-only write pattern of refreshDownloadedButton53(melt94); the sleep countdown
     // button is untouched, and refresh() keeps the cache in step (see its tail).
     // v12.27: the tick reads the combined notiBlockedState() (app-level "APP" wins
     // over a channel id), so a flip of the app-level switch in system Settings while
@@ -3564,7 +3596,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         // plain write that used to sit here would cut a melt in
         // flight short on a return refresh, so it is gone.
         setBtnText(R.id.btnDownloaded, "downloaded");
-        refreshDownloadedButton53();
+        refreshDownloadedButton53(false); // v14.94: refresh() adopts instantly — themeDip owns the motion on toggle taps (v14.65 rule)
         setBtnText(R.id.btnResetAll, "reset");
         setLabelText(R.id.aboutSrc, "footer_src");
         setBtnText(R.id.btnTeam, "team_btn");
