@@ -3038,6 +3038,38 @@ public class MainActivity extends Activity {
         else Fx.setTextColorNow(favFilterBtn, color);
     }
 
+    // v15.06 (slice 1764): the park delay for a chip whose home index
+    // is homeIdx — anchored to the departure's own end, not to this
+    // rebuild. A fresh departure's fade starts now, so 250 is its
+    // exact end; a carried departure leaves at its remaining time
+    // (250 * sqrt(alpha), the v15.05 remainder), so the longest
+    // remaining time among the carried departures displacing the chip
+    // is when its slot frees. -1 when no departure displaces the chip
+    // at all — the chip melts in at once. The park block (added chips)
+    // and the melt carry (re-parked chips) share it, so a wait started
+    // in one rebuild and re-posted in the next still ends at the same
+    // departure-leave moment.
+    private long shelfParkDelay64(int homeIdx,
+            java.util.List<Integer> freshIdx64,
+            java.util.List<Integer> carryIdx64,
+            java.util.List<Float> carryAlpha64) {
+        if (freshIdx64 != null) {
+            for (int d64 = 0; d64 < freshIdx64.size(); d64++) {
+                if (freshIdx64.get(d64) <= homeIdx) return 250;
+            }
+        }
+        long maxRemain64 = -1;
+        if (carryIdx64 != null && carryAlpha64 != null) {
+            for (int d64 = 0; d64 < carryIdx64.size(); d64++) {
+                if (carryIdx64.get(d64) <= homeIdx) {
+                    long r64 = (long) (250 * Math.sqrt(carryAlpha64.get(d64)));
+                    if (r64 > maxRemain64) maxRemain64 = r64;
+                }
+            }
+        }
+        return maxRemain64;
+    }
+
     // v13.74 (slice 1065): ★ favourites shelf — pours the starred
     // sayadaws (catalogue order) as photo + name chips above the grid.
     // Hidden while a query is typed or the favourites-only filter is
@@ -3444,7 +3476,12 @@ public class MainActivity extends Activity {
         // duration — so the rank-close has already moved it home
         // invisibly by the time it melts in: one 500ms handoff
         // (out 250 -> in 250), no visible teleport. Undisplaced
-        // added chips still melt in at once, as today.
+        // added chips still melt in at once, as today. v15.06
+        // (slice 1764): the 250ms is now anchored to the departure's
+        // own end (shelfParkDelay64) — a carried departure leaves
+        // sooner, so the wait ends when the slot frees, and the melt
+        // carry re-parks a still-parked chip with the same anchor
+        // instead of melting it in early.
         if (!shelfWasGone && prevShelfNames99 != null) {
             for (int i99 = 0; i99 < favList.size(); i99++) {
                 if (!prevShelfNames99.contains(favList.get(i99).name)) {
@@ -3491,6 +3528,23 @@ public class MainActivity extends Activity {
                         Fx.fadeIn(added99, 250);
                         continue;
                     }
+                    // v15.06 (slice 1764): anchor the wait to the
+                    // departure's own end, not to this rebuild — the
+                    // parked chip melts in when its slot frees. A
+                    // fresh departure's fade starts now, so 250 is its
+                    // exact end; a carried departure leaves at its
+                    // remaining time, so a fresh 250 here would hold
+                    // the chip invisible past the slot freeing (the
+                    // 1763 open question, traced first-hand: unstar B
+                    // at t=0, star D at t=100, D's wait stretched to
+                    // t=350 while B left at t=250). If the remainder
+                    // is already spent, melt in at once — the slot is
+                    // free.
+                    final long delay02 = shelfParkDelay64(i99, departingIdx00, carryDepIdx63, carryDepAlpha63);
+                    if (delay02 <= 0) {
+                        Fx.fadeIn(added99, 250);
+                        continue;
+                    }
                     final android.view.View addedFinal02 = added99;
                     added99.setAlpha(0f);
                     added99.postDelayed(new Runnable() {
@@ -3501,7 +3555,7 @@ public class MainActivity extends Activity {
                             if (addedFinal02.getParent() == null) return;
                             Fx.fadeIn(addedFinal02, 250);
                         }
-                    }, 250);
+                    }, delay02);
                 }
             }
         }
@@ -3519,12 +3573,52 @@ public class MainActivity extends Activity {
         // translationX — the two motions compose, like the v15.02
         // parked chip). Settled chips carry nothing (the snapshot
         // only stores alpha under 0.999).
+        // v15.06 (slice 1764): a chip still PARKED — displaced by a
+        // departure at-or-before its home AND never started melting
+        // (alpha under 0.001) — is re-parked below, not melted in:
+        // the carry used to start its fade at once, at its displaced
+        // slot, while the departure was still fading — the compound
+        // fade+slide the v15.02 park was built to prevent (traced
+        // first-hand this run: unstar B + star D at t=0, rebuild at
+        // t=100, D melted in from t=100 instead of waiting for B to
+        // leave at t=250). Its melt-in posts for the departure's own
+        // end (shelfParkDelay64), on this fresh view, and it is
+        // recorded again so a third rebuild carries it onward. A
+        // mid-melt chip (alpha above 0.001) keeps the carry exactly
+        // as today — it rides the v15.03 glide home while it melts.
         if (carryAlpha62 != null) {
             for (int i62 = 0; i62 < favList.size(); i62++) {
                 Float a62 = carryAlpha62.get(favList.get(i62).name);
                 if (a62 == null || a62 >= 0.999f) continue;
                 android.view.View chip62 = favShelf.getChildAt(i62);
                 if (chip62 == null) continue;
+                // v15.06 (slice 1764): still parked — keep it
+                // invisible and post its melt-in for the departure's
+                // own end (the anchored delay, never a fresh 250),
+                // so the wait ends when the slot frees no matter how
+                // many rebuilds land inside it. The old view's
+                // runnable no-ops once detached (parent check), so
+                // this fresh view owns the entrance now.
+                long parkDelay62 = shelfParkDelay64(i62, departingIdx00, carryDepIdx63, carryDepAlpha63);
+                if (a62 < 0.001f && parkDelay62 >= 0) {
+                    final android.view.View chipFinal62 = chip62;
+                    chip62.setAlpha(0f);
+                    if (parkDelay62 <= 0) {
+                        Fx.fadeIn(chip62, 250);
+                    } else {
+                        chip62.postDelayed(new Runnable() {
+                            @Override public void run() {
+                                // A superseding rebuild landing mid-wait
+                                // detached this view; its fresh chip owns
+                                // the entrance then, so stay a no-op.
+                                if (chipFinal62.getParent() == null) return;
+                                Fx.fadeIn(chipFinal62, 250);
+                            }
+                        }, parkDelay62);
+                    }
+                    shelfMeltViews62.put(favList.get(i62).name, chip62);
+                    continue;
+                }
                 chip62.setAlpha(a62);
                 Fx.fadeIn(chip62, 250);
                 shelfMeltViews62.put(favList.get(i62).name, chip62);
