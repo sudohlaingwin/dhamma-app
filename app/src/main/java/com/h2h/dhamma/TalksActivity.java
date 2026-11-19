@@ -1369,7 +1369,25 @@ public class TalksActivity extends Activity {
     // runs before onCreate wires the chips, and the first loadList
     // runs before them too. No mode guard: a language change must
     // repaint even when the mode is unchanged, like the old button.
+    // v14.39 (slice 1694): two rhythms, one painter — a chip tap
+    // melts the colours (refreshTalkFilterChipsAnimated, 250ms
+    // Fx.crossfadeTextColor, the v14.34 sleep-text rhythm; the
+    // weight swaps at the tap, under the chip's Fx.press squash,
+    // because the weight IS the selection state and the melt carries
+    // the transition), while create / theme / language / rotation /
+    // clearFilter still land instantly through Fx.setTextColorNow,
+    // which cancels any in-flight melt and records the target so
+    // the helper's map can never disagree with the view.
     private void refreshTalkFilterChips() {
+        paintTalkFilterChips(false);
+    }
+
+    // v14.39 (slice 1694): chip-tap entry — same painter, colours melt.
+    private void refreshTalkFilterChipsAnimated() {
+        paintTalkFilterChips(true);
+    }
+
+    private void paintTalkFilterChips(boolean animate) {
         if (chipTalkAll == null || chipTalkStar == null || chipTalkNew == null || chipTalkDl == null) return;
         int f = Prefs.fontSize(TalksActivity.this);
         float sz = f == 0 ? 12 : (f == 1 ? 14 : 16);
@@ -1389,14 +1407,22 @@ public class TalksActivity extends Activity {
         chipTalkStar.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);
         chipTalkNew.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);
         chipTalkDl.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);
-        chipTalkAll.setTextColor(filterMode == 0 ? gold : muted);
-        chipTalkStar.setTextColor(filterMode == 1 ? gold : muted);
-        chipTalkNew.setTextColor(filterMode == 2 ? gold : muted);
-        chipTalkDl.setTextColor(filterMode == 3 ? gold : muted);
+        paintChipColor(chipTalkAll, filterMode == 0 ? gold : muted, animate);
+        paintChipColor(chipTalkStar, filterMode == 1 ? gold : muted, animate);
+        paintChipColor(chipTalkNew, filterMode == 2 ? gold : muted, animate);
+        paintChipColor(chipTalkDl, filterMode == 3 ? gold : muted, animate);
         chipTalkAll.setTypeface(null, filterMode == 0 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
         chipTalkStar.setTypeface(null, filterMode == 1 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
         chipTalkNew.setTypeface(null, filterMode == 2 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
         chipTalkDl.setTypeface(null, filterMode == 3 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+    }
+
+    // v14.39 (slice 1694): one writer for a chip's colour, in both
+    // rhythms — melt on tap, instant elsewhere (see Fx.setTextColorNow
+    // for why the instant path must go through the helper too).
+    private void paintChipColor(android.widget.TextView chip, int color, boolean animate) {
+        if (animate) Fx.crossfadeTextColor(chip, color);
+        else Fx.setTextColorNow(chip, color);
     }
 
     // v14.23 (slice 1677): chooser list-change pour — the first
@@ -1449,7 +1475,7 @@ public class TalksActivity extends Activity {
     private void setTalkFilterMode(int mode) {
         if (mode == filterMode) return;
         filterMode = mode;
-        refreshTalkFilterChips();
+        refreshTalkFilterChipsAnimated(); // v14.39 (slice 1694): chip tap melts the colours — the rows pour below (v14.23) while the tapped chip warms to gold; the instant painter stays for create/theme/restore/clearFilter.
         rebuildFilter();
         maybePourOnListChange();
         if (adapter != null) adapter.notifyDataSetChanged();

@@ -733,6 +733,27 @@ public class Fx {
         anim.start();
     }
 
+    // v14.39 (slice 1694): the instant writer for a view whose
+    // colour crossfadeTextColor owns — the Talks chooser chips melt
+    // on tap through the helper, but create / theme / language /
+    // rotation / clearFilter repaints must land instantly, and a
+    // bare setTextColor there would desync the helper's recorded
+    // target (map says gold while the view is muted, so a later
+    // melt to gold no-ops and the chip strands muted). This stamps
+    // the colour at once AND records it as the target, cancelling
+    // any in-flight melt first: the map entry is removed BEFORE
+    // the cancel, so the cancelled animator's end listener — which
+    // stamps only while still current — skips its stale colour.
+    // Same WeakHashMap discipline as the melt.
+    public static void setTextColorNow(final android.widget.TextView v, final int color) {
+        if (v == null) return;
+        textColorTarget.put(v, color);
+        android.animation.ValueAnimator old = textColorAnim.get(v);
+        textColorAnim.remove(v);
+        if (old != null) old.cancel();
+        v.setTextColor(color);
+    }
+
     // v2.23: premium theme transition — day/night used to swap
     // colours instantly (a hard flash) on the Main toggle and the
     // Settings day/night buttons, while every other screen change
