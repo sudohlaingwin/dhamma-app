@@ -3201,6 +3201,9 @@ if (snd65 >= 0) currentIndex = snd65;
             } catch (Exception ignored) {}
         }
         if (adapter != null) adapter.notifyDataSetChanged();
+        // v14.35 (slice 1690): seed the sleep line from the live
+        // statics before the poll restarts — see seedSleepLineFromLive.
+        seedSleepLineFromLive();
         // v1.71: restart the poll (see onPause) — remove first so the
         // onCreate post plus this one never double up the 500ms loop.
         handler.removeCallbacks(pollRunnable);
@@ -6686,6 +6689,51 @@ int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
             handler.postDelayed(this, 500);
         }
     };
+
+    // v14.35 (slice 1690): seed the Room sleep line from the no-bind
+    // live statics at resume, so a strip -> Room entry with a timer
+    // armed arrives complete — the strip the user just tapped already
+    // showed "😴 mm:ss", but the Room's own line started GONE in the
+    // layout and only appeared on a 500ms poll tick once the async
+    // bind landed (the whole poll body sits inside `if (service !=
+    // null)`, and the poll posted at onCreate end almost always runs
+    // before onServiceConnected), so it faded in a beat AFTER the
+    // 300ms nav_in entrance had finished — a detached second
+    // entrance. The statics need no bind (the strips already read
+    // them on their 1s tick), so the seed runs synchronously in
+    // onResume before the poll restarts: the line is VISIBLE with
+    // the strip's own reading while the window is still entering,
+    // and rides nav_in with the rest of the Room. Strictly additive
+    // and change-only: no timer (or no countdown to carry) leaves
+    // the view exactly as-is for the poll to own; an already-correct
+    // line is untouched, so a steady resume re-seeds nothing; the
+    // colour melts through the same Fx.crossfadeTextColor the poll
+    // uses (a no-op at target), so a 60s boundary crossed while
+    // away never snaps; alpha is never touched — fadeOut restores it
+    // to 1 when it sets GONE, so a GONE line is always seed-ready,
+    // and a VISIBLE line left half-faded at pause is left for the
+    // poll's appear gate. The poll stays authoritative and corrects
+    // any drift within a tick.
+    private void seedSleepLineFromLive() {
+        if (sleepText == null) return;
+        if (!AudioService.liveSleepActive) return;
+        String want;
+        boolean gold = false;
+        if (AudioService.liveSleepEndOfTalk) {
+            want = "😴 " + Lang.t(RoomActivity.this, "sleep_end");
+        } else {
+            long rem = AudioService.liveSleepRemainingMs;
+            if (rem <= 0) return;
+            want = "😴 " + (AudioService.livePlaying ? "" : "⏸ ") + formatTime((int) rem);
+            gold = rem < 60000;
+        }
+        boolean wasGone = sleepText.getVisibility() == android.view.View.GONE;
+        if (wasGone) sleepText.setVisibility(android.view.View.VISIBLE);
+        if (!want.equals(sleepText.getText().toString())) sleepText.setText(want);
+        Fx.crossfadeTextColor(sleepText, gold
+                ? android.graphics.Color.parseColor("#C9A227")
+                : android.graphics.Color.parseColor("#AAAAAA"));
+    }
 
     // v1.47: hour-long talks used to show "65:23" — over an hour now
     // reads "1:05:23" like a clock, so a long talk's length is clear.
