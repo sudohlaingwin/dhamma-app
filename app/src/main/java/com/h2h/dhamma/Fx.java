@@ -540,6 +540,21 @@ public class Fx {
     // the layout shift lands only at the end, when the chip is
     // already invisible. Visual only.
     public static void fadeOutAndRemove(final View v, long durationMs) {
+        fadeOutAndRemove(v, durationMs, null);
+    }
+
+    // v15.03 (slice 1761): fade-out-then-remove with a removal
+    // callback — the same gen-guarded fade as the 2-arg form, plus
+    // afterRemove, run only when the end action really removed the
+    // view from a parent. A superseding rebuild landing mid-fade
+    // detaches the view first, so its parent is null at end time
+    // and the callback is skipped (the fresh layout owns its own
+    // entrance then); a superseded fade's gen mismatch skips it
+    // too. Used by the Main favourites shelf: the rank-close glide
+    // must start at the removal, not at the fade, so it rides the
+    // end action. Visual only.
+    public static void fadeOutAndRemove(final View v, long durationMs,
+            final Runnable afterRemove) {
         if (v == null) return;
         final int gen = bumpFadeGen(v);
         v.animate().cancel();
@@ -550,11 +565,44 @@ public class Fx {
                         Integer now = fadeGens.get(v);
                         if (now == null || now != gen) return;
                         android.view.ViewParent parent = v.getParent();
-                        if (parent instanceof android.view.ViewGroup)
+                        boolean removed03 = false;
+                        if (parent instanceof android.view.ViewGroup) {
                             ((android.view.ViewGroup) parent).removeView(v);
+                            removed03 = true;
+                        }
                         v.setAlpha(1f);
+                        if (removed03 && afterRemove != null) afterRemove.run();
                     }
                 }).start();
+    }
+
+    // v15.03 (slice 1761): premium rank-close glide — the trailing
+    // sibling of a removed view used to jump one slot in a single
+    // frame when the removal landed. Park it one slot right of its
+    // new layout position (translationX += shiftPx, so its visual
+    // position never moves) and animate translationX to 0 over
+    // durationMs (DecelerateInterpolator, the fade rhythm), so it
+    // glides home instead of jumping. A second removal landing
+    // while a glide is still in flight cancels ONLY the recorded
+    // glide animator and re-parks from the sibling's current
+    // position, so the sibling keeps gliding from where it
+    // visually is — and an alpha fade on the same view (the
+    // v15.02 parked chip's delayed melt-in) is never touched,
+    // because this helper never calls animate().cancel().
+    // Visual only.
+    private static java.util.WeakHashMap<View, android.animation.ObjectAnimator> glideAnims =
+            new java.util.WeakHashMap<View, android.animation.ObjectAnimator>();
+    public static void glideHome(final View v, float shiftPx, long durationMs) {
+        if (v == null) return;
+        android.animation.ObjectAnimator prev = glideAnims.get(v);
+        if (prev != null) prev.cancel();
+        v.setTranslationX(v.getTranslationX() + shiftPx);
+        android.animation.ObjectAnimator glide =
+                android.animation.ObjectAnimator.ofFloat(v, "translationX", 0f);
+        glide.setDuration(durationMs);
+        glide.setInterpolator(new DecelerateInterpolator());
+        glideAnims.put(v, glide);
+        glide.start();
     }
 
     // v14.14 (slice 1668): mini-player strip slide — the strip on Main /

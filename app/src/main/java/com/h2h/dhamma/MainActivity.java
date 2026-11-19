@@ -3371,8 +3371,12 @@ public class MainActivity extends Activity {
         // Fx.fadeOutAndRemove, which removes it from the shelf at
         // the end and restores its alpha. The shelf shows N+1 chips
         // for the 250ms — the fading chip beside the rebuilt ones —
-        // then the siblings close ranks once it is already
-        // invisible, so no frame ever pops. A displaced added chip
+        // then the siblings glide home (v15.03, slice 1761) instead
+        // of jumping one slot left in a single frame: the removal
+        // end action parks each trailing sibling one slot right of
+        // its new layout position and animates it to 0 over 250ms,
+        // so the rank-close reads as one motion with the fade-out.
+        // A displaced added chip
         // (v15.02, slice 1760) rides that same rank-close home
         // invisibly and melts in after it, so the removal also frees
         // the added chip's slot. Inserting in ascending
@@ -3387,7 +3391,49 @@ public class MainActivity extends Activity {
                 int at00 = departingIdx00.get(i00);
                 if (at00 > favShelf.getChildCount()) at00 = favShelf.getChildCount();
                 favShelf.addView(dv00, at00);
-                Fx.fadeOutAndRemove(dv00, 250);
+                // v15.03 (slice 1761): the departing chip's slot
+                // width — its measured width plus its right margin
+                // (72dp + 10dp as built above) — is the distance
+                // every trailing sibling travels when the rank
+                // closes; measured, so a density rounding quirk
+                // can never leave a 1px step at the end of the
+                // glide. The 82dp fallback covers a chip that has
+                // not been laid out yet.
+                final int atFinal03 = at00;
+                final float shift03;
+                {
+                    float s03 = 0f;
+                    if (dv00.getWidth() > 0) {
+                        s03 = dv00.getWidth();
+                        android.view.ViewGroup.LayoutParams lp03 =
+                                dv00.getLayoutParams();
+                        if (lp03 instanceof android.widget.LinearLayout.LayoutParams)
+                            s03 += ((android.widget.LinearLayout.LayoutParams) lp03).rightMargin;
+                    }
+                    if (s03 <= 0f) s03 = 82 * d;
+                    shift03 = s03;
+                }
+                Fx.fadeOutAndRemove(dv00, 250, new Runnable() {
+                    @Override public void run() {
+                        // v15.03 (slice 1761): glide the trailing
+                        // siblings home — each child at-or-after the
+                        // departed slot (the first trailing sibling
+                        // now sits AT that index) is parked one slot
+                        // right of its new layout position and
+                        // animated to 0 over 250ms, so the rank-close
+                        // reads as one motion with the fade-out
+                        // instead of a single-frame jump. A second
+                        // departure's removal adds its own slot to a
+                        // sibling already gliding (glideHome cancels
+                        // only the recorded glide, never an alpha
+                        // fade — the v15.02 parked chip melts in
+                        // untouched). No trailing sibling (the
+                        // removed last chip) glides nothing.
+                        for (int i03 = atFinal03; i03 < favShelf.getChildCount(); i03++) {
+                            Fx.glideHome(favShelf.getChildAt(i03), shift03, 250);
+                        }
+                    }
+                });
             }
         }
     }
