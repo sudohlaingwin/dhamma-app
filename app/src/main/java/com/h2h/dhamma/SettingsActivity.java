@@ -2129,7 +2129,16 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                             String u = keys.next();
                             if (fn.equals(map.optString(u, ""))) { nClaim49++; onlyClaim49 = u; }
                         }
-                        if (nClaim49 == 1 && onlyClaim49 != null && ft.contains(onlyClaim49)) lFav = true;
+                        // v14.82 (slice 1740): the Settings twin of the
+                        // Room v14.78 / Talks v14.79 / Downloaded v14.80 /
+                        // AudioService v14.81 fix — the dlMap key may still
+                        // be a legacy http URL (a pre-v13.67 download; the
+                        // v13.66 migration does NOT migrate dlMap keys)
+                        // while favTalks holds canonical https, so the raw
+                        // read dropped the resume strip's ★ for a
+                        // favourited offline talk. Compare the canonical
+                        // form.
+                        if (nClaim49 == 1 && onlyClaim49 != null && ft.contains(SiteHttp.identityUrl(onlyClaim49))) lFav = true;
                     }
                 } catch (Exception ignored) {}
                 int lSec = rPos / 1000;
@@ -2285,7 +2294,16 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                             String u = keys.next();
                             if (fn.equals(map.optString(u, ""))) { nClaim49++; onlyClaim49 = u; }
                         }
-                        if (nClaim49 == 1 && onlyClaim49 != null && ft.contains(onlyClaim49)) stripFav = true;
+                        // v14.82 (slice 1740): the Settings twin of the
+                        // Room v14.78 / Talks v14.79 / Downloaded v14.80 /
+                        // AudioService v14.81 fix — the dlMap key may still
+                        // be a legacy http URL (a pre-v13.67 download; the
+                        // v13.66 migration does NOT migrate dlMap keys)
+                        // while favTalks holds canonical https, so the raw
+                        // read dropped the live strip's ★ for a
+                        // favourited offline talk. Compare the canonical
+                        // form.
+                        if (nClaim49 == 1 && onlyClaim49 != null && ft.contains(SiteHttp.identityUrl(onlyClaim49))) stripFav = true;
                     }
                 }
                 if (stripFav) text += " ★";
