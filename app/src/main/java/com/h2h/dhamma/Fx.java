@@ -625,6 +625,16 @@ public class Fx {
         td.startTransition(250);
     }
 
+    // v14.50 (slice 1707): record a frame's current ring drawable
+    // without touching the view — the favourites-shelf build sets
+    // its ring with setBackgroundResource (fresh views, no fade),
+    // and the in-place sounding update crossfades from the recorded
+    // target, so the seed keeps the two in agreement.
+    public static void seedRing(final View frame, int res) {
+        if (frame == null) return;
+        ringRes.put(frame, res);
+    }
+
     // v14.31 (slice 1686): the sounding card's gold tile used to snap
     // on/off — the 1s tick rebinds the grid exactly when the sounding
     // name / ended / failed / buffering flips (v11.15/v12.38/v14.05/

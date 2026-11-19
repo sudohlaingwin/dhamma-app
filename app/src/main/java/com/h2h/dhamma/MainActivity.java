@@ -80,6 +80,16 @@ public class MainActivity extends Activity {
     private android.widget.LinearLayout favShelfWrap;
     private android.widget.LinearLayout favShelf;
     private String lastFavShelfKey = null;
+    // v14.50 (slice 1707): sounding-only shelf trackers — the ordered
+    // favourite names + night flag + sounding name of the last built
+    // shelf, so a sounding change under a visible shelf with the same
+    // set can update the chips in place (below) instead of rebuilding
+    // them. Null until the first build, so a load / rotation restore
+    // always takes the rebuild path and never melts on top of the
+    // first-appearance pour (v14.15).
+    private java.util.List<String> lastFavShelfNames = null;
+    private boolean lastFavShelfNight = false;
+    private String lastShelfSounding = null;
     // v14.15 (slice 1669): ★ favourites shelf first-appearance
     // cascade — the shelf's chips used to pop in instantly while
     // the header (v2.17) and the grid (v2.07) pour in around them,
@@ -2949,6 +2959,74 @@ public class MainActivity extends Activity {
         if (key.equals(lastFavShelfKey)
                 && favShelfWrap.getVisibility() == android.view.View.VISIBLE) return;
         lastFavShelfKey = key;
+        // v14.50 (slice 1707): sounding-only change under a visible
+        // shelf — the key changed only in its sounding / failed /
+        // buffering bits (same ordered names, same night), so the
+        // chips below are the same views in the same order: update
+        // them in place instead of removeAllViews + rebuilding every
+        // chip. The rebuild used to snap the new gold ring + ▶ +
+        // gold name in one frame (and reload every photo) on every
+        // auto-advance / Next while Main sat on top, while the grid
+        // card crossfades (v14.31) and the chooser / library rows
+        // melt (v14.48/v14.49). The ring now crossfades through
+        // Fx.crossfadeRing (v14.16, seeded at build time below so a
+        // chip that already wears gold melts out instead of sticking),
+        // the ▶/⚠ mark + gold name stay instant text swaps by the
+        // v14.16 settled decision, and the newly-sounding chip melts
+        // in 250ms (the v14.48 rhythm). A fail / buffering flip on
+        // the same sayadaw crossfades gold <-> red with no chip fade
+        // (no new sounding chip); a stop (sounding -> null) melts
+        // nothing out, the old ring just crossfades away. A star /
+        // unstar, a theme flip, a search narrowing or a rotation
+        // restore all miss the same-names / same-night / visible
+        // gate and take the rebuild path below, exactly as before.
+        boolean sameShelfNames = lastFavShelfNames != null
+                && lastFavShelfNames.size() == favList.size();
+        if (sameShelfNames) {
+            for (int i = 0; i < favList.size(); i++) {
+                if (!lastFavShelfNames.get(i).equals(favList.get(i).name)) {
+                    sameShelfNames = false;
+                    break;
+                }
+            }
+        }
+        boolean sameShelfNight = (lastFavShelfNight == cachedNight);
+        String prevShelfSounding = lastShelfSounding;
+        java.util.List<String> names50 = new java.util.ArrayList<String>();
+        for (Sayadaw s : favList) names50.add(s.name);
+        lastFavShelfNames = names50;
+        lastFavShelfNight = cachedNight;
+        lastShelfSounding = soundingShelf;
+        if (favShelfWrap.getVisibility() == android.view.View.VISIBLE
+                && sameShelfNames && sameShelfNight) {
+            for (int i = 0; i < favList.size(); i++) {
+                Sayadaw s = favList.get(i);
+                android.view.View chip = favShelf.getChildAt(i);
+                if (chip == null || !(chip instanceof android.view.ViewGroup)) continue;
+                boolean shelfPlaying = !AudioService.liveEnded
+                        && soundingShelf != null
+                        && soundingShelf.equals(s.name);
+                android.view.View ring = ((android.view.ViewGroup) chip).getChildAt(0);
+                Fx.crossfadeRing(ring, shelfPlaying && AudioService.liveTrackError
+                        ? R.drawable.shelf_ring_failed
+                        : shelfPlaying ? R.drawable.shelf_ring_playing : 0);
+                android.view.View nameV = ((android.view.ViewGroup) chip).getChildAt(1);
+                if (nameV instanceof TextView) {
+                    TextView name = (TextView) nameV;
+                    name.setText(Fx.soundingRowMark(shelfPlaying, AudioService.liveTrackError, AudioService.liveBuffering ? Lang.t(MainActivity.this, "notif_state_buffering") : "", "\u25B6") + s.name);
+                    name.setTextColor(shelfPlaying ? android.graphics.Color.parseColor("#C9A227")
+                            : (cachedNight ? android.graphics.Color.WHITE
+                            : android.graphics.Color.parseColor("#3B2314")));
+                }
+                if (shelfPlaying && (prevShelfSounding == null
+                        || !prevShelfSounding.equals(s.name))) Fx.fadeIn(chip, 250);
+            }
+            // v14.38 re-arm, same as the rebuild path: a re-appear
+            // landing mid-fade-out rides back to full instead of
+            // letting a stale fadeOut end action GONE the wrap.
+            if (favShelfWrap.getAlpha() < 0.999f) Fx.fadeIn(favShelfWrap, 250);
+            return;
+        }
         // v14.15 (slice 1669): remember whether the shelf was
         // hidden — only a GONE -> VISIBLE appearance pours (below).
         boolean shelfWasGone = favShelfWrap.getVisibility() != android.view.View.VISIBLE;
@@ -2982,8 +3060,16 @@ public class MainActivity extends Activity {
             // soundingRowMark the grid card uses, so mark and ring can
             // never disagree; loading keeps the gold ring (v14.06:
             // the ring says sounding, the name carries the word).
-            if (shelfPlaying && AudioService.liveTrackError) ring.setBackgroundResource(R.drawable.shelf_ring_failed);
-            else if (shelfPlaying) ring.setBackgroundResource(R.drawable.shelf_ring_playing);
+            int ringRes50 = shelfPlaying && AudioService.liveTrackError
+                    ? R.drawable.shelf_ring_failed
+                    : shelfPlaying ? R.drawable.shelf_ring_playing : 0;
+            if (ringRes50 != 0) ring.setBackgroundResource(ringRes50);
+            // v14.50 (slice 1707): seed Fx's recorded ring target so
+            // the in-place sounding update above crossfades from the
+            // ring actually showing — without it a chip that already
+            // wears gold would read as "no ring" and the crossfade
+            // would no-op, leaving the gold ring stuck after a stop.
+            Fx.seedRing(ring, ringRes50);
             CircleImageView photo = new CircleImageView(this);
             int px = (int) (52 * d);
             android.widget.FrameLayout.LayoutParams flp =
