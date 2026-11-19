@@ -88,6 +88,12 @@ public class SettingsActivity extends Activity {
     // compares against these so it rewrites only on a real change (see below).
     private String lastBlockedChan88 = null;
     private boolean blockedChanKnown88 = false;
+    // v14.67 (slice 1724): whether refreshAutoDlNote79() has drawn
+    // the auto-download note once yet — the first fill on create /
+    // rotation just appears, never melts on top of the entrance
+    // (the blockedChanKnown88 first-read adoption above); a check
+    // landing after that melts, 250ms via Fx.fadeIn.
+    private boolean autoDlNoteKnown67 = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -2974,7 +2980,44 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
             if (adn == null) return;
             String line = autoDlStatusLine();
             CharSequence cur = adn.getText();
-            if (cur == null || !line.equals(cur.toString())) adn.setText(line);
+            if (cur == null || !line.equals(cur.toString())) {
+                // v14.67 (slice 1724): the note melts on a structural
+                // change instead of snapping — a completed auto-download
+                // check landing while Settings sits open used to jump
+                // the "not yet checked" / old "last check ..." line to
+                // the new stamp + count in one frame. The note has no
+                // live-ticking part (the stamp moves only when a check
+                // completes; the in-progress state lives on the "check
+                // now" row, untouched), so any change IS the structure
+                // and melts 250ms via Fx.fadeIn, the settled idiom of
+                // the downloaded-size note (v14.66) and the sleep value
+                // (v14.65): melt only when the view is VISIBLE and
+                // settled (alpha >= 0.999f) and already holds real text,
+                // and only after the first write has recorded the
+                // baseline (autoDlNoteKnown67 — the layout default is
+                // real text, so without it the first fill on create
+                // would melt on top of the entrance; the same first-read
+                // adoption as refreshBlockedChannelMark88's
+                // blockedChanKnown88). A second check landing inside
+                // 250ms restarts the fade instead of stranding it
+                // (Fx.fadeIn is restart-safe (v3.52)); the 1s tick's
+                // steady passes never touch the view (change-only
+                // guard). refresh()'s call runs inside
+                // Fx.themeDip when a choice changes the theme — the dip
+                // animates the ROOT's alpha, so the note's own alpha
+                // stays 1.0 and the settled gate does not block a melt
+                // there; a language change / return with a landed check
+                // may melt the note while the root rises back, which is
+                // harmless (no end-action, no strand) and the same
+                // exposure the v14.66 size note already carries from
+                // refresh()'s own call.
+                boolean melt67 = autoDlNoteKnown67 && cur != null && cur.length() > 0
+                        && adn.getVisibility() == android.view.View.VISIBLE
+                        && adn.getAlpha() >= 0.999f;
+                adn.setText(line);
+                if (melt67) Fx.fadeIn(adn, 250);
+            }
+            autoDlNoteKnown67 = true;
         } catch (Exception ignored) {}
     }
 
