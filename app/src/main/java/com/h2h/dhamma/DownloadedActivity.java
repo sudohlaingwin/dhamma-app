@@ -3719,6 +3719,40 @@ public class DownloadedActivity extends Activity {
                 });
             }
         }
+        // v15.15 (slice 1774): park the promoted stack (scout
+        // 1773-NEW-1) — when the first row departed (a departure
+        // re-seated at old child index 1), the fresh first row took
+        // its new k (0, no top margin) while the departed row still
+        // occupies its slot, so the whole fresh stack sits one gap
+        // above its settled tops for the 250ms fade. Every
+        // persisting fresh
+        // row (its path was in the old build) is parked down by the
+        // gap at rebuild time, so it holds its old top through the
+        // fade; the v15.14 glide parks from the current visual
+        // position (translationY += shift), so the handoff at the
+        // removal is continuous and the row glides the full
+        // old-to-new distance. A brand-new row has no old top and
+        // stays unparked — it melts in at its layout slot. A
+        // middle/last departure changes no margin anywhere, so
+        // nothing is parked. The park is a translationY, never a
+        // layout change, so the LinearLayout stack and the v15.14
+        // getTop() comparison are untouched, and the melt (alpha
+        // only) never fights it. qpPrevPaths72 still holds the OLD
+        // build's paths here (the update follows below).
+        if (qpDepartingIdx72 != null && qpDepartingIdx72.contains(Integer.valueOf(1))) {
+            int fresh74 = 0;
+            for (int c74 = 0; c74 < box.getChildCount(); c74++) {
+                android.view.View ch74 = box.getChildAt(c74);
+                if (ch74 == null || dep73.contains(ch74)) continue;
+                if (c74 == 0) continue; // the header has no row path
+                if (!qpPrevPaths72.contains(rows.get(fresh74).file.getAbsolutePath())) {
+                    fresh74++;
+                    continue;
+                }
+                ch74.setTranslationY(gap);
+                fresh74++;
+            }
+        }
         // v15.13 (slice 1772): record this build's row paths for
         // the next rebuild's departure capture above — the rows
         // the box was just built with, in slot order.
