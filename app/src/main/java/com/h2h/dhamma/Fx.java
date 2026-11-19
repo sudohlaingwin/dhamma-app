@@ -690,12 +690,17 @@ public class Fx {
     // interpolated (alpha stays 1, text unchanged), so the row
     // cannot flash. Recorded target per view (a steady tick is a
     // no-op, like the ring/tile maps); already-at-target records
-    // with no animator; a superseded animator is cancelled AFTER
-    // the new one is recorded, so the old one's end — cancel()
-    // fires it — sees it is superseded and never stamps its stale
-    // colour; the end stamps the exact target only while this
-    // animator is still current. The helper owns the colour: no
-    // other writer touches this view's text colour.
+    // with no animator; a superseded animator is cancelled BEFORE
+    // the new one is recorded — the map entry is removed first, so
+    // the old one's end (cancel() fires it) sees it is superseded
+    // and never stamps its stale colour — and the same cancel runs
+    // before the from==to fast path below (v14.42: the 1694 caveat —
+    // a call landing on an already-correct colour used to return
+    // without cancelling, so the superseded melt's end could stamp
+    // its stale colour; crossfadeImageTint closes the same hole by
+    // construction, v14.41). The end stamps the exact target only
+    // while this animator is still current. The helper owns the
+    // colour: no other writer touches this view's text colour.
     private static java.util.WeakHashMap<View, Integer> textColorTarget =
             new java.util.WeakHashMap<View, Integer>();
     private static java.util.WeakHashMap<View, android.animation.ValueAnimator> textColorAnim =
@@ -704,15 +709,24 @@ public class Fx {
         if (v == null) return;
         Integer cur = textColorTarget.get(v);
         if (cur != null && cur.intValue() == toColor) return;
-        int from = v.getCurrentTextColor();
-        if (from == toColor) { textColorTarget.put(v, toColor); return; }
+        // v14.42 (slice 1697): close the 1694 from==to fast-path
+        // caveat — record the target and cancel any in-flight melt
+        // (map entry removed BEFORE the cancel, so the cancelled
+        // animator's end listener skips its stale stamp) BEFORE
+        // reading the painted colour, mirroring crossfadeImageTint
+        // (v14.41): a call landing on an already-correct colour now
+        // cancels the superseded melt first instead of returning
+        // with it still running behind it.
         textColorTarget.put(v, toColor);
         android.animation.ValueAnimator old = textColorAnim.get(v);
+        textColorAnim.remove(v);
+        if (old != null) old.cancel();
+        int from = v.getCurrentTextColor();
+        if (from == toColor) return;
         final android.animation.ValueAnimator anim =
                 android.animation.ValueAnimator.ofArgb(from, toColor);
         anim.setDuration(250);
         textColorAnim.put(v, anim);
-        if (old != null) old.cancel();
         anim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
             @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
                 v.setTextColor((Integer) a.getAnimatedValue());

@@ -2826,10 +2826,33 @@ public class MainActivity extends Activity {
         // untouched.
         if (favOnly != wasFavOnly) mainFavToggleChange = true;
         applyFilter();
-        refreshFavHint();
+        refreshFavHintAnimated();
     }
 
     private void refreshFavHint() {
+        paintFavHint(false);
+    }
+
+    // v14.42 (slice 1697): the ★ filter button melts gold<->muted on
+    // toggle instead of snapping — refreshFavHint painted the
+    // button's state colour in one frame while the grid below pours
+    // (v14.26) and the hint gains its ★ prefix, so the tap's own
+    // control was the one un-choreographed part of the toggle. One
+    // painter, two rhythms (the chooser/library chip pattern,
+    // v14.39/v14.40): the animated painter melts the colour via
+    // Fx.crossfadeTextColor (250ms, v14.34 sleep-text rhythm); the
+    // instant painter routes it through Fx.setTextColorNow, which
+    // records the target and cancels any in-flight melt so the
+    // helper's map can never desync. Only toggleFavOnly melts — the
+    // search-field long-press shares its body, so it melts too
+    // (same deliberate gesture, the grid pours with it); theme /
+    // language / rotation / stale / reset / unfavourite / first
+    // paint keep the instant painter.
+    private void refreshFavHintAnimated() {
+        paintFavHint(true);
+    }
+
+    private void paintFavHint(boolean animate) {
         if (searchField != null)
             searchField.setHint(favOnly ? "★ " + Lang.t(this, "search_hint") : Lang.t(this, "search_hint"));
         // v13.82 (slice 1074): the ★ filter button wears the same
@@ -2841,10 +2864,16 @@ public class MainActivity extends Activity {
         // reuses the shipped fav_only_on/off strings (12 languages),
         // so no new Lang key and no hand-typed Burmese.
         if (favFilterBtn != null) {
-            favFilterBtn.setTextColor(favOnly ? android.graphics.Color.parseColor("#C9A227")
-                    : (cachedNight ? android.graphics.Color.parseColor("#AAAAAA") : android.graphics.Color.parseColor("#7A6A58")));
+            paintFavBtnColor(animate);
             favFilterBtn.setContentDescription(Lang.t(this, favOnly ? "fav_only_on" : "fav_only_off"));
         }
+    }
+
+    private void paintFavBtnColor(boolean animate) {
+        int color = favOnly ? android.graphics.Color.parseColor("#C9A227")
+                : (cachedNight ? android.graphics.Color.parseColor("#AAAAAA") : android.graphics.Color.parseColor("#7A6A58"));
+        if (animate) Fx.crossfadeTextColor(favFilterBtn, color);
+        else Fx.setTextColorNow(favFilterBtn, color);
     }
 
     // v13.74 (slice 1065): ★ favourites shelf — pours the starred
