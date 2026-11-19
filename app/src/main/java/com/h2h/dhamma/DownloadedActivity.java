@@ -1314,7 +1314,7 @@ public class DownloadedActivity extends Activity {
     // v2.94: exception — a PARTIAL delete-all (some files deleted,
     // some remaining) now arms it too, so the surviving rows pour.
     private boolean dlDeleteChange = false;
-    // v15.16 (slice 1779): the single-row delete's rank-close glide — the old display positions of the visible rows at the moment a confirmed delete rebinds the list (see doDelete below). getView's pour branch skips the pour for a row whose old position sits above its new one, and the posted glide below parks that row at its old top and glides it home. Identity-keyed by file path, never by view: the ListView recycles views by position, so the view showing a path after the rebind is not necessarily the one that showed it before. Armed by doDelete, cleared by the posted glide runnable; a row above the deleted one keeps oldPos == pos and pours as today.
+    // v15.16 (slice 1779): the single-row delete's rank-close glide — the old display positions of the visible rows at the moment a confirmed delete rebinds the list (see doDelete below). getView's pour branch skips the pour for a row whose old position sits above its new one, and the posted glide below parks that row at its old top and glides it home. Identity-keyed by file path, never by view: the ListView recycles views by position, so the view showing a path after the rebind is not necessarily the one that showed it before. Armed by doDelete and doDeleteAll, cleared by the posted glide runnable; a row above the deleted one keeps oldPos == pos and pours as today.
     private java.util.HashMap<String, Integer> dlDelGlidePos = null;
     // v2.57: return-change entrance flag — armed only by onResume
     // after a real pause (see onPause/onResume below), never by a
@@ -5570,6 +5570,22 @@ public class DownloadedActivity extends Activity {
                                 final Runnable doDeleteAll = new Runnable() {
                                     @Override public void run() {
                                 int count = entries.size();
+                                // v15.17 (slice 1780): rank-close glide for the partial delete-all — the v2.94 survivor pour below goes through loadList + applyDlFilter, never through doDelete's capture, so a survivor used to teleport up by (rows deleted above it x rowHeight - 24dp) at the first frame after the v2.93 whole-list fade and only drift the last 24dp of the pour. Capture the visible rows' old tops + display positions here, before the deletion loop + loadList below rebind the list (the same shape as the v15.16 single-delete capture: identity-keyed by file path via libEntryAtDisplay while shownDl / libQueueCache still hold the OLD list — the loop only deletes files and prunes the map, and loadList rescans after). The posted runnable after loadList parks each trailing survivor at its old top and glides it home; getView's v15.16 pour-skip already covers a row whose old position sits above its new one, so no getView change is needed. A full success leaves no rows to glide and an all-failed delete leaves every shift at 0, so arming the map unconditionally here is harmless in both edge cases; the v2.93 whole-list fade runs before this runnable, so the tops read here are the layout tops the fade never moved.
+                                final java.util.HashMap<String, Integer> tops81 = new java.util.HashMap<String, Integer>();
+                                dlDelGlidePos = new java.util.HashMap<String, Integer>();
+                                if (dlListView != null) {
+                                    int first81 = dlListView.getFirstVisiblePosition();
+                                    for (int i81 = 0; i81 < dlListView.getChildCount(); i81++) {
+                                        android.view.View ch81 = dlListView.getChildAt(i81);
+                                        if (ch81 == null) continue;
+                                        Entry e81 = libEntryAtDisplay(first81 + i81);
+                                        if (e81 == null) continue;
+                                        String p81 = e81.file.getAbsolutePath();
+                                        tops81.put(p81, Integer.valueOf(ch81.getTop()));
+                                        dlDelGlidePos.put(p81, Integer.valueOf(first81 + i81));
+                                    }
+                                }
+                                final java.util.HashMap<String, Integer> pos81 = dlDelGlidePos;
                                 // v7.87: delete-all used to delete only landed
                                 // files, leaving live DownloadManager jobs
                                 // running — a Wi-Fi-waiting or mid-download
@@ -5694,10 +5710,37 @@ public class DownloadedActivity extends Activity {
                                 // full success keeps the empty-fade path
                                 // untouched, and an all-failed delete
                                 // arms nothing, so its unchanged rows
-                                // never replay. Visual only.
+                                // never replay. v15.17: the survivors
+                                // glide home from their old tops
+                                // instead of pouring (the capture at
+                                // the top of this runnable + the posted
+                                // glide after loadList; getView's v15.16
+                                // pour-skip keeps the pour off a
+                                // gliding row). Visual only.
                                 if (deletedNames.size() > 0 && deletedNames.size() < count)
                                     dlDeleteChange = true;
                                 loadList();
+                                // v15.17 (slice 1780): rank-close glide — the posted runnable runs after the layout the loadList above scheduled, so each visible child sits at its NEW top; a surviving row whose old top sits above its new top is parked at its old top and glides home over 250ms via Fx.glideHomeY (the v15.16 shape, identity-keyed by path so recycling is irrelevant). Rows above every deleted file have shift 0 and are untouched; a row entering from below has no old top and pours via the v2.55 guard. The glide is an ObjectAnimator, so the getView hygiene's animate().cancel() (ViewPropertyAnimator only) can never kill it, and a tick rebind landing mid-glide just rebinds content under the running glide; the glide always ends at translationY 0, so no reset is needed. The field is cleared only if it still holds this delete-all's map (a later delete arming its own map first must not be cleared by this post).
+                                if (dlListView != null) dlListView.post(new Runnable() {
+                                    @Override public void run() {
+                                        if (dlListView == null) {
+                                            if (dlDelGlidePos == pos81) dlDelGlidePos = null;
+                                            return;
+                                        }
+                                        int first81 = dlListView.getFirstVisiblePosition();
+                                        for (int i81 = 0; i81 < dlListView.getChildCount(); i81++) {
+                                            android.view.View ch81 = dlListView.getChildAt(i81);
+                                            if (ch81 == null) continue;
+                                            Entry e81 = libEntryAtDisplay(first81 + i81);
+                                            if (e81 == null) continue;
+                                            Integer old81 = tops81.get(e81.file.getAbsolutePath());
+                                            if (old81 == null) continue;
+                                            float shift81 = old81.intValue() - ch81.getTop();
+                                            if (shift81 > 0) Fx.glideHomeY(ch81, shift81, 250);
+                                        }
+                                        if (dlDelGlidePos == pos81) dlDelGlidePos = null;
+                                    }
+                                });
                                 // v8.72: delete-all used to toast the ATTEMPTED count
                                 // (entries.size()), so a partial failure — some files
                                 // undeletable, their rows still listed — still claimed
