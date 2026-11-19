@@ -94,6 +94,13 @@ public class SettingsActivity extends Activity {
     // (the blockedChanKnown88 first-read adoption above); a check
     // landing after that melts, 250ms via Fx.fadeIn.
     private boolean autoDlNoteKnown67 = false;
+    // v14.68 (slice 1725): whether refreshDataSaverButton54() has
+    // drawn the data-saver network note once yet — the first fill
+    // on create / rotation just appears, never melts on top of the
+    // entrance (the autoDlNoteKnown67 first-read adoption above);
+    // a network flip after that melts, 250ms via Fx.fadeIn, and a
+    // connection loss fades the note out 200ms via Fx.fadeOut.
+    private boolean dataSaverNoteKnown68 = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -3057,8 +3064,76 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
             android.widget.TextView dn = findViewById(R.id.dataSaverNote);
             if (dn != null) {
                 CharSequence cur = dn.getText();
-                if (cur == null || !note.equals(cur.toString())) dn.setText(note);
-                dn.setVisibility(note.length() == 0 ? android.view.View.GONE : android.view.View.VISIBLE);
+                if (cur == null || !note.equals(cur.toString())) {
+                    // v14.68 (slice 1725): the note melts on a
+                    // structural change instead of snapping — walking
+                    // out of Wi-Fi range (or back in) while Settings
+                    // sits open used to jump " · Wi-Fi" <-> " · မိုဘိုင်း"
+                    // in one frame, a lost connection snapped the
+                    // note away, and a regained connection snapped
+                    // it back in. The structural-vs-live split
+                    // (slice 1724's open question) resolves cleanly:
+                    // the note has NO live-ticking part —
+                    // dataSaverNetworkNote() re-reads the live
+                    // network type on every 1s tick, but the text
+                    // only changes when the network actually flips
+                    // (Wi-Fi/mobile/loss/regain), at most a few
+                    // times per session, and the change-only guard
+                    // means steady ticks never touch the view — so
+                    // every change IS the structure, the same class
+                    // as the auto-dl note (v14.67), the size note
+                    // (v14.66) and the sleep value (v14.65). Three
+                    // edges, the settled idiom throughout: a flip
+                    // (non-empty -> non-empty, VISIBLE + settled)
+                    // melts 250ms via Fx.fadeIn; an appear ("" ->
+                    // non-empty, GONE -> VISIBLE) fades in 250ms
+                    // via Fx.fadeIn — including a regain landing
+                    // mid-fadeOut, where the view is still VISIBLE
+                    // but half-transparent: fadeIn cancels the
+                    // fadeOut animator and bumps the fade gen, so
+                    // the stale fadeOut end-action can never GONE
+                    // the re-shown view (the v14.14 strip-slide
+                    // family guarantee; a flip landing mid-fade
+                    // flows back up from its current alpha the same
+                    // way); a vanish (non-empty -> "", VISIBLE)
+                    // fades out 200ms via Fx.fadeOut, whose
+                    // gen-guarded end-action sets GONE and restores
+                    // alpha to 1, so a later appear starts clean.
+                    // The baseline flag's real job is the appear
+                    // edge: the layout default is "" + GONE, so
+                    // without it the first fill on create would
+                    // fade the note in on top of the entrance (the
+                    // autoDlNoteKnown67 first-read adoption; the
+                    // empty-current-text check alone already blocks
+                    // a flip melt on the first fill). refresh()'s
+                    // call runs inside Fx.themeDip when a choice
+                    // changes the theme — the dip animates the
+                    // ROOT's alpha, so the note's own alpha stays
+                    // 1.0 and the settled gate does not block a
+                    // melt there; a network flip landing inside a
+                    // dip may melt the note while the root rises
+                    // back, which is harmless (no end-action, no
+                    // strand) and the same exposure the v14.66 /
+                    // v14.67 notes already carry from refresh()'s
+                    // own call.
+                    boolean wasVisible68 = dn.getVisibility() == android.view.View.VISIBLE;
+                    boolean settled68 = dn.getAlpha() >= 0.999f;
+                    boolean melt68 = dataSaverNoteKnown68 && cur != null && cur.length() > 0
+                            && note.length() > 0 && wasVisible68 && settled68;
+                    boolean appear68 = dataSaverNoteKnown68 && note.length() > 0
+                            && (!wasVisible68 || !settled68);
+                    boolean vanish68 = dataSaverNoteKnown68 && note.length() == 0 && wasVisible68;
+                    dn.setText(note);
+                    if (melt68 || appear68) {
+                        if (!wasVisible68) dn.setVisibility(android.view.View.VISIBLE);
+                        Fx.fadeIn(dn, 250);
+                    } else if (vanish68) {
+                        Fx.fadeOut(dn, 200);
+                    } else {
+                        dn.setVisibility(note.length() == 0 ? android.view.View.GONE : android.view.View.VISIBLE);
+                    }
+                }
+                dataSaverNoteKnown68 = true;
             }
         } catch (Exception ignored) {}
     }
