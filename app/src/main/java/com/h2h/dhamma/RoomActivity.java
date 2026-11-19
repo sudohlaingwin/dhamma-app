@@ -9676,6 +9676,29 @@ if (snd65s >= 0) currentIndex = snd65s;
                     if (drawerQueueOnly) {
                         drawerQueueOnly = false;
                         if (adapter != null) adapter.notifyDataSetChanged();
+                        // v14.27 (slice 1682): premium queue-only exit
+                        // pour — entering the queue-only view pours
+                        // (openQueueDrawer -> setPlayListPanel's
+                        // mid-close cascade, v2.10/v3.39), but leaving
+                        // it through this toggle only flipped the flag
+                        // and re-bound, so the full list snapped back
+                        // in one frame. The re-bound rows now cascade
+                        // with the same Fx.staggerChildren the open
+                        // and v3.06 load-into-open paths use (45ms
+                        // steps, fade + rise, posted after the
+                        // rebind's layout pass). Guarded exactly like
+                        // v3.06: a drawer mid-slide (translationX != 0)
+                        // is left alone so this never fights the open
+                        // cascade or the close dissolve — the close
+                        // end-action still resets rows, and a later
+                        // open re-cascades. Visual only; the flag, the
+                        // rebind, the bar labels and the scroll
+                        // position are untouched (no glide to the
+                        // playing row — the v4.55 long-press paths own
+                        // that gesture).
+                        android.view.View qPanel27 = findViewById(R.id.roomPlayListPanel);
+                        if (isPlayListPanelOpen() && qPanel27 != null && qPanel27.getTranslationX() == 0f && roomList != null)
+                            Fx.staggerChildren(roomList);
                     } else {
                         openQueueDrawer();
                     }
