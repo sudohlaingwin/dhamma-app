@@ -3353,16 +3353,55 @@ public class DownloadedActivity extends Activity {
         if (sigStr.equals(libQueuePreviewSig == null ? "" : libQueuePreviewSig)
                 && box.getChildCount() == rows.size() + 1) {
             int wantVis = rows.isEmpty() ? android.view.View.GONE : android.view.View.VISIBLE;
-            if (box.getVisibility() != wantVis) box.setVisibility(wantVis);
+            // v15.11 (slice 1770): the empty-box early return used
+            // to snap the box to GONE in one frame — the v14.38
+            // empty-shelf shape restated for the box (see the
+            // rebuild-path branch below): fade out 200ms instead,
+            // so a box emptying on this path melts away with its
+            // children instead of vanishing. This site is the
+            // steady-state guard and only fires when the box still
+            // holds exactly the empty content; the live emptying
+            // lands in the branch below.
+            if (wantVis == android.view.View.GONE) {
+                if (box.getVisibility() != android.view.View.GONE) Fx.fadeOut(box, 200);
+            } else if (box.getVisibility() != wantVis) box.setVisibility(wantVis);
             return;
         }
         libQueuePreviewSig = sigStr;
-        box.removeAllViews();
         if (rows.isEmpty()) {
-            if (box.getVisibility() != android.view.View.GONE) box.setVisibility(android.view.View.GONE);
+            // v15.11 (slice 1770): the box fades out instead of
+            // vanishing — the v14.38 empty-shelf shape (Main
+            // refreshFavShelf) restated for the preview box: the
+            // session stopping / the queue draining (rows -> empty)
+            // used to removeAllViews + GONE the whole gold "Up
+            // Next" box in one frame, while its appearance melts
+            // in (v15.10) and the shelf rows below melt (v14.49 /
+            // v14.61 / v14.76). Fx.fadeOut (200ms, the v14.33
+            // sleep-line rhythm), GONE at the end, gen-guarded
+            // (v3.62) so a re-appear landing mid-fade never
+            // strands it hidden. The children stay attached
+            // during the fade — the box itself carries no
+            // background (activity_downloaded.xml), so fading an
+            // emptied box would fade nothing; the gold header +
+            // rows melt away together. The stale children stay
+            // attached to the GONE box meanwhile (invisible, no
+            // space taken) and the next non-empty rebuild's
+            // removeAllViews clears them before fresh children
+            // are built. The steady-empty case is unchanged
+            // (already GONE skips the fade).
+            if (box.getVisibility() != android.view.View.GONE) Fx.fadeOut(box, 200);
             return;
         }
+        box.removeAllViews();
         if (box.getVisibility() != android.view.View.VISIBLE) box.setVisibility(android.view.View.VISIBLE);
+        // v15.11 (slice 1770): re-arm — a re-appear landing
+        // mid-fade-out rides back to full instead of letting a
+        // stale fadeOut end action GONE the box: Fx.fadeIn bumps
+        // the fade gen (v3.62), so the stale end action is
+        // suppressed and the box rides back to full over 250ms
+        // (the v14.38 re-arm shape, Main refreshFavShelf). A
+        // steady VISIBLE box (alpha 1) never re-fades.
+        if (box.getAlpha() < 0.999f) Fx.fadeIn(box, 250);
         float dens = getResources().getDisplayMetrics().density;
         int pad = (int) (10 * dens + 0.5f);
         int gap = (int) (4 * dens + 0.5f);
