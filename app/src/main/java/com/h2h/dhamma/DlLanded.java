@@ -38,6 +38,38 @@ package com.h2h.dhamma;
 public final class DlLanded {
     private DlLanded() {}
 
+    // v14.89 (slice 1747): the shared prune leg is the LAST raw dlMap
+    // lookup pair in the downloaded-mark class — the Room (v14.87) and
+    // Talks chooser (v14.88) twins already fixed theirs. Same
+    // provenance, same three-form rule: dlMap keys are written under
+    // the URL form current at download time, and the same talk is
+    // spelled both ways in the wild: a file downloaded by the
+    // delivered v13.57 build over the http fallback keeps its legacy
+    // http key forever (the v13.66 migration does NOT migrate dlMap keys),
+    // while newer downloads record the canonical https key (v13.59),
+    // and one catalog page carries absolute-http mp3 hrefs the parser
+    // keeps as-is (Dr Nandamalabhivamsa, 15 hrefs, 1737) —
+    // so a talk downloaded under one scheme and listed under the other
+    // missed its mapped name here AND had its basename blocked by the
+    // twin's own claim below: all five prunes (Room, Talks, Library,
+    // Main, Settings) kept the queue hourglass for a file already on
+    // disk, and every batch verb skipped the talk as "already queued".
+    // The mapped lookup now tries the raw URL, then its canonical
+    // https form, then its downgraded http form (raw first, so a talk
+    // downloaded twice under both schemes keeps the file its current
+    // spelling recorded); the claim guard below treats the scheme-twin
+    // as the same talk, not another talk. The live-source exclusion
+    // leg reads through the same helper, so a Wi-Fi-waiting job whose
+    // source is spelled under the other scheme from its dlMap key
+    // still excludes its mapped name (without it the file would read
+    // as landed while the job is still live). The v8.40/v8.50 rules
+    // are unchanged: a name claimed by a DIFFERENT talk's key still
+    // blocks the basename fallback. The enqueue-filename twins
+    // (AutoDownloadJob mappedFileName68 / fileClaimedByOther68, Fx
+    // stripDownloadFileName) and the three prune no-live-job legs
+    // (DownloadedActivity mapped1019, Main mapped1020, Settings
+    // mapped1021) keep their raw lookups for now — their slices
+    // follow.
     // The on-disk filename that makes this URL downloaded, or null.
     public static String downloadedFileName(android.content.Context ctx, String url,
             java.util.Set<String> inProgressNames, java.util.Set<String> liveSourceUrls) {
@@ -53,11 +85,11 @@ public final class DlLanded {
             if (inProgressNames != null) excluded.addAll(inProgressNames);
             if (liveSourceUrls != null) {
                 for (String s : liveSourceUrls) {
-                    String m = map.has(s) ? map.optString(s, "") : null;
+                    String m = mappedName(map, s);
                     if (m != null && m.length() > 0) excluded.add(m);
                 }
             }
-            String mapped = map.has(url) ? map.optString(url, "") : null;
+            String mapped = mappedName(map, url);
             if (mapped != null && mapped.length() == 0) mapped = null;
             if (mapped != null && !excluded.contains(mapped)) {
                 java.io.File f = new java.io.File(dir, mapped);
@@ -80,13 +112,29 @@ public final class DlLanded {
         return downloadedFileName(ctx, url, inProgressNames, liveSourceUrls) != null;
     }
 
+    // The dlMap name for a URL under any of its spellings: raw first,
+    // then its canonical https form, then its downgraded http form —
+    // the Room v14.87 / Talks v14.88 three-form rule in shared form.
+    // Returns null when no form has an entry; an empty entry is
+    // returned as-is (callers treat "" as absent).
+    private static String mappedName(org.json.JSONObject map, String url) {
+        if (map == null || url == null) return null;
+        if (map.has(url)) return map.optString(url, "");
+        String canon = SiteHttp.identityUrl(url);
+        if (canon != null && !canon.equals(url) && map.has(canon)) return map.optString(canon, "");
+        String down = SiteHttp.downgrade(url);
+        if (down != null && !down.equals(url) && map.has(down)) return map.optString(down, "");
+        return null;
+    }
+
     // Room fileClaimedByOther shape, over the already-read map.
     private static boolean isClaimedByOther(org.json.JSONObject map, String filename, String url) {
         try {
+            String self = SiteHttp.identityUrl(url);
             java.util.Iterator<String> keys = map.keys();
             while (keys.hasNext()) {
                 String k = keys.next();
-                if (!k.equals(url) && filename.equals(map.optString(k, ""))) return true;
+                if (!SiteHttp.identityUrl(k).equals(self) && filename.equals(map.optString(k, ""))) return true;
             }
         } catch (Exception ignored) {}
         return false;
