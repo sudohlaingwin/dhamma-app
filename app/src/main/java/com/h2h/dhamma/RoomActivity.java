@@ -5521,6 +5521,41 @@ if (snd65 >= 0) currentIndex = snd65;
                             }
                             if (elapsedText != null) elapsedText.setText("0:00");
                             if (totalText != null) totalText.setText("0:00");
+                            // v14.74 (slice 1732): premium resync seek-row pour — the
+                            // wave/clocks above used to snap to 0:00 / empty bar in the
+                            // same frame on a poll-resync auto-advance (v7.59) while the
+                            // Room sat open and visible, while the title pours on the
+                            // next tick (v2.22 poll branch) and the shrine photo
+                            // crossfades with it (requestThemeForTalk above) — the same
+                            // snap v2.30 fixed on playIndex and v2.82 fixed on stop,
+                            // in the one reset path neither of them covers. The row now
+                            // fades + rises in with them (same 320ms, same 12dp rise,
+                            // same v3.49 pour-restart continuity as the stop block:
+                            // a settled row pours visibly from 0/12dp, a mid-pour row
+                            // flows on from its current alpha/offset instead of snapping
+                            // back, so a rapid second advance never restarts the pour).
+                            // Runs once per advance: the resync guard only fires while
+                            // the index is still stale, so the next tick never re-pours;
+                            // the poll only sets text on the row's children and the glide
+                            // is cancelled above, so nothing rewrites the row's
+                            // alpha/translation mid-pour; the v2.30 onPause/onDestroy
+                            // reset already cancels this row's animator if the Room is
+                            // left mid-pour. The onResume adopt needs no pour — its
+                            // reset lands before the first frame on return, so no snap
+                            // is ever seen; the drag-handler resets need none either —
+                            // the drag's own swell/readout owns that motion. Visual
+                            // only; reset values, title timing (next tick) and the
+                            // resync itself are untouched.
+                            android.view.View seekRowResync = findViewById(R.id.roomSeekRow);
+                            if (seekRowResync != null) {
+                                seekRowResync.animate().cancel();
+                                if (seekRowResync.getAlpha() >= 0.999f && seekRowResync.getTranslationY() <= 0.5f) {
+                                    seekRowResync.setAlpha(0f);
+                                    seekRowResync.setTranslationY(12f * getResources().getDisplayMetrics().density);
+                                }
+                                seekRowResync.animate().alpha(1f).translationY(0f).setDuration(320)
+                                        .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+                            }
                         }
                         reconcileForwardAfterBackground27(); // v8.27: background-played forward step consumed
                         // v7.64: same branch, queue side — a v7.63
