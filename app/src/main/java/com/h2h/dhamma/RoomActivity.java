@@ -4674,9 +4674,10 @@ if (snd65 >= 0) currentIndex = snd65;
                     lastHeaderRing = headerRinging;
                     lastHeaderRingFailed = headerRingFailed;
                     if (headerPhotoRing != null) {
-                        if (headerRingFailed) headerPhotoRing.setBackgroundResource(R.drawable.shelf_ring_failed);
-                        else if (headerRinging) headerPhotoRing.setBackgroundResource(R.drawable.shelf_ring_playing);
-                        else headerPhotoRing.setBackground(null);
+                        // v14.16 (slice 1670): gold/red/none crossfades
+                        // instead of snapping — see Fx.crossfadeRing.
+                        Fx.crossfadeRing(headerPhotoRing, headerRingFailed ? R.drawable.shelf_ring_failed
+                                : headerRinging ? R.drawable.shelf_ring_playing : 0);
                     }
                 }
                 // v1.81: the shrine flames follow the same active

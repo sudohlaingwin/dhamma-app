@@ -3450,9 +3450,10 @@ public class TalksActivity extends Activity {
             lastChooserHeaderRing = ringing;
             lastChooserHeaderRingFailed = ringFailed;
             if (talksHeaderPhotoRing != null) {
-                if (ringFailed) talksHeaderPhotoRing.setBackgroundResource(R.drawable.shelf_ring_failed);
-                else if (ringing) talksHeaderPhotoRing.setBackgroundResource(R.drawable.shelf_ring_playing);
-                else talksHeaderPhotoRing.setBackground(null);
+                // v14.16 (slice 1670): gold/red/none crossfades
+                // instead of snapping — see Fx.crossfadeRing.
+                Fx.crossfadeRing(talksHeaderPhotoRing, ringFailed ? R.drawable.shelf_ring_failed
+                        : ringing ? R.drawable.shelf_ring_playing : 0);
             }
         }
     }
@@ -4069,8 +4070,9 @@ public class TalksActivity extends Activity {
         if (ringing != lastTalksStripPhotoRing) {
             lastTalksStripPhotoRing = ringing;
             if (ring != null) {
-                if (ringing) ring.setBackgroundResource(R.drawable.shelf_ring_playing);
-                else ring.setBackground(null);
+                // v14.16 (slice 1670): the ring crossfades in/out
+                // instead of snapping — see Fx.crossfadeRing.
+                Fx.crossfadeRing(ring, ringing ? R.drawable.shelf_ring_playing : 0);
             }
         }
         if (name == null || name.length() == 0) {

@@ -580,6 +580,51 @@ public class Fx {
                 }).start();
     }
 
+    // v14.16 (slice 1670): the sounding rings used to snap on/off —
+    // every ring site swapped its background instantly
+    // (setBackgroundResource / setBackground(null)), so a tap, a
+    // natural end or a failed stream flashed the gold (or red) ring
+    // in or out in one frame while everything around it moves
+    // (v14.14 strip slide, v14.15 shelf pour). The ring now
+    // crossfades instead: a TransitionDrawable blends the old ring
+    // out and the new one in over 250ms (crossFade on, so gold ->
+    // red melts instead of double-painting). The recorded target
+    // lives in a WeakHashMap (same model as fadeGens/morphGens),
+    // so a repeated call for the state already showing — the 1s
+    // tick re-entering a settled ring — is a no-op and never
+    // restarts the fade; a mid-fade re-target starts from the
+    // recorded state. 0 means "no ring" (transparent layer). The
+    // photo inside the frame is untouched — only the frame's
+    // background crossfades, so the portrait never blinks. The
+    // ▶/⚠ marks stay instant text swaps by design: they are a
+    // 2-char prefix inside the row label, and fading the whole
+    // label to ease them would flash the row; the ring carries
+    // the motion. Widget (RemoteViews) and shelf chips (fresh
+    // views each pour) have no previous state to fade from and
+    // keep their instant set.
+    private static java.util.WeakHashMap<View, Integer> ringRes =
+            new java.util.WeakHashMap<View, Integer>();
+    public static void crossfadeRing(final View frame, int newRes) {
+        if (frame == null) return;
+        Integer cur = ringRes.get(frame);
+        int curRes = cur == null ? 0 : cur.intValue();
+        if (curRes == newRes) return;
+        ringRes.put(frame, newRes);
+        android.content.res.Resources res = frame.getResources();
+        android.graphics.drawable.Drawable from = curRes == 0
+                ? new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
+                : res.getDrawable(curRes, null);
+        android.graphics.drawable.Drawable to = newRes == 0
+                ? new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
+                : res.getDrawable(newRes, null);
+        android.graphics.drawable.TransitionDrawable td =
+                new android.graphics.drawable.TransitionDrawable(
+                        new android.graphics.drawable.Drawable[]{from, to});
+        td.setCrossFadeEnabled(true);
+        frame.setBackground(td);
+        td.startTransition(250);
+    }
+
     // v2.23: premium theme transition — day/night used to swap
     // colours instantly (a hard flash) on the Main toggle and the
     // Settings day/night buttons, while every other screen change

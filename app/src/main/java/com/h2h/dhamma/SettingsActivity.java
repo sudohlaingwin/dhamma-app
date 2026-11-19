@@ -1923,8 +1923,9 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         if (ringing != lastSettingsStripPhotoRing) {
             lastSettingsStripPhotoRing = ringing;
             if (ring != null) {
-                if (ringing) ring.setBackgroundResource(R.drawable.shelf_ring_playing);
-                else ring.setBackground(null);
+                // v14.16 (slice 1670): the ring crossfades in/out
+                // instead of snapping — see Fx.crossfadeRing.
+                Fx.crossfadeRing(ring, ringing ? R.drawable.shelf_ring_playing : 0);
             }
         }
         if (name == null || name.length() == 0) {
