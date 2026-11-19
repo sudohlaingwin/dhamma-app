@@ -3154,14 +3154,82 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
             String blocked = notiBlockedState();
             if (blockedChanKnown88
                     && (blocked == null ? lastBlockedChan88 == null : blocked.equals(lastBlockedChan88))) return;
+            // v14.69 (slice 1726): the note melts on a structural
+            // change instead of snapping — a block landing (or
+            // healing) while Settings sits open used to jump the
+            // note under the notification switch in one frame:
+            // the tick's change-only write set VISIBLE/GONE +
+            // text with a bare setVisibility, so blocking the app
+            // in system Settings snapped the fix-naming line in,
+            // unblocking snapped it away, and an APP -> channel
+            // flip swapped the text in one frame. The note has NO
+            // live-ticking part — notiBlockedState() is re-read on
+            // every 1s tick, but the value only changes when the
+            // app-level switch or the channel importance actually
+            // flips, at most a few times per session, and the
+            // change-only guard above means steady ticks never
+            // touch the view — so every change IS the structure,
+            // the same class as the data-saver note (v14.68), the
+            // auto-dl note (v14.67), the size note (v14.66) and
+            // the sleep value (v14.65). Three edges, the settled
+            // idiom throughout: a flip (APP <-> channel id,
+            // VISIBLE + settled) melts 250ms via Fx.fadeIn; an
+            // appear (no block -> block, GONE -> VISIBLE) fades
+            // in 250ms via Fx.fadeIn — including a block landing
+            // mid-fadeOut, where the view is still VISIBLE but
+            // half-transparent: fadeIn cancels the fadeOut
+            // animator and bumps the fade gen, so the stale
+            // fadeOut end-action can never GONE the re-shown view
+            // (the v14.14 strip-slide family guarantee; a flip
+            // landing mid-fade flows back up from its current
+            // alpha the same way); a vanish (block -> no block,
+            // VISIBLE) fades out 200ms via Fx.fadeOut, whose
+            // gen-guarded end-action sets GONE and restores alpha
+            // to 1, so a later appear starts clean. The switch's
+            // ⚠ mark stays instant — fading the whole switch
+            // would fade its thumb, and marks stay instant per
+            // the v14.16 settled decision. The baseline flag is
+            // the existing blockedChanKnown88: the layout default
+            // is "" + GONE, so without the first-read adoption
+            // the first fill on create would fade the note in on
+            // top of the entrance (the dataSaverNoteKnown68
+            // first-read adoption). This method is now the single
+            // writer of the mark + note (see refresh()): refresh()
+            // used to plain-write both itself, so a block landing
+            // while Settings sat in the back stack snapped in on
+            // the return refresh — now that return routes through
+            // this method and melts. refresh()'s call runs inside
+            // Fx.themeDip when a choice changes the theme — the
+            // dip animates the ROOT's alpha, so the note's own
+            // alpha stays 1.0 and the settled gate does not block
+            // a melt there; a block flip landing inside a dip may
+            // melt the note while the root rises back, which is
+            // harmless (no end-action, no strand) and the same
+            // exposure the v14.66/v14.67/v14.68 notes already
+            // carry from refresh()'s own call.
+            String prev88 = lastBlockedChan88;
+            boolean first88 = !blockedChanKnown88;
             lastBlockedChan88 = blocked;
             blockedChanKnown88 = true;
             if (btnNoti != null) { btnNoti.setText(Lang.t(this, "noti") + (blocked != null ? " ⚠" : "")); btnNoti.setChecked(Prefs.notiEnabled(this)); }
             android.widget.TextView nn = findViewById(R.id.notiNote);
             if (nn != null) {
                 // v12.94: the note exists only while a block is live.
-                if (blocked == null) nn.setVisibility(android.view.View.GONE);
-                else { nn.setVisibility(android.view.View.VISIBLE); nn.setText(Lang.t(this, "APP".equals(blocked) ? "noti_app_blocked" : "noti_channel_blocked")); }
+                String want88 = blocked == null ? "" : Lang.t(this, "APP".equals(blocked) ? "noti_app_blocked" : "noti_channel_blocked");
+                boolean wasVisible88 = nn.getVisibility() == android.view.View.VISIBLE;
+                boolean settled88 = nn.getAlpha() >= 0.999f;
+                boolean melt88 = !first88 && prev88 != null && blocked != null && wasVisible88 && settled88;
+                boolean appear88 = !first88 && blocked != null && (!wasVisible88 || !settled88);
+                boolean vanish88 = !first88 && blocked == null && wasVisible88;
+                nn.setText(want88);
+                if (melt88 || appear88) {
+                    if (!wasVisible88) nn.setVisibility(android.view.View.VISIBLE);
+                    Fx.fadeIn(nn, 250);
+                } else if (vanish88) {
+                    Fx.fadeOut(nn, 200);
+                } else {
+                    nn.setVisibility(blocked == null ? android.view.View.GONE : android.view.View.VISIBLE);
+                }
             }
         } catch (Exception ignored) {}
     }
@@ -3287,21 +3355,23 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         for (int id : new int[]{R.id.secAppearance, R.id.secPlayback, R.id.secNoti, R.id.secData, R.id.secAbout}) { TextView hv = findViewById(id); if (hv != null) { hv.setTextColor(muted); hv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, note); } }
         for (int id : new int[]{R.id.notiNote, R.id.autoDlNote, R.id.dataSaverNote, R.id.downloadedSizeNote, R.id.aboutSrc}) { TextView nv = findViewById(id); if (nv != null) { nv.setTextColor(muted); nv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, note); } }
         // v13.35: no second Prefs.fontSize read here — fs above is reused below (was int f).
-        // v10.86: one live blocked-channel read for the whole
-        // refresh — the note override below reuses it, so the
-        // label mark and the note can never disagree mid-refresh.
-        // v12.27: the combined notiBlockedState() ("APP" for the
-        // app-level switch, else the blocked channel id), so the
-        // mark + note + long-press target all name the same block.
-        String blockedChan = notiBlockedState();
-        // v11.88: keep the tick's change-only cache in step, so the 1s tick never
-        // rewrites what this refresh just drew.
-        lastBlockedChan88 = blockedChan;
-        blockedChanKnown88 = true;
+        // v14.69 (slice 1726): refreshBlockedChannelMark88() is now
+        // the single writer of the ⚠ mark + note — refresh() used
+        // to plain-write both itself (the cache sync above + the
+        // btnNoti write + the nn0 block in the tail), so a block
+        // landing while Settings sat in the back stack snapped the
+        // note in on the return refresh; the return now routes
+        // through the method and melts (see there). The combined
+        // notiBlockedState() ("APP" for the app-level switch, else
+        // the blocked channel id) is read inside the method, so the
+        // mark + note + long-press target still name the same block
+        // (v10.86/v12.27), and the method owns the change-only
+        // cache, so the 1s tick never rewrites what this refresh
+        // just drew (v11.88).
+        refreshBlockedChannelMark88();
         // v12.94: switches show the label only — the thumb IS the on/off
         // state now (no more "label: ဖွင့်/ပိတ်" text). Value rows show
         // the value only; their labels live in lblRepeat/lblSleep below.
-        if (btnNoti != null) { btnNoti.setText(Lang.t(this, "noti") + (blockedChan != null ? " ⚠" : "")); btnNoti.setChecked(Prefs.notiEnabled(this)); }
         if (btnAutoplay != null) { btnAutoplay.setText(Lang.t(this, "autoplay")); btnAutoplay.setChecked(Prefs.autoplay(this)); }
         int rm = Prefs.repeatMode(this);
         if (btnRepeat != null) btnRepeat.setText(rm == 0 ? Lang.t(this, "off") : rm == 1 ? Lang.t(this, "repeat_all") : Lang.t(this, "repeat_one"));
@@ -3388,11 +3458,10 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         // under the notification row appears ONLY while a block is live
         // (v10.86/v12.27), naming the fix; healthy phones see no note
         // at all, like Spotify. The ⚠ mark on the switch stays either way.
-        TextView nn0 = findViewById(R.id.notiNote);
-        if (nn0 != null) {
-            if (blockedChan != null) { nn0.setVisibility(android.view.View.VISIBLE); nn0.setText(Lang.t(this, "APP".equals(blockedChan) ? "noti_app_blocked" : "noti_channel_blocked")); }
-            else nn0.setVisibility(android.view.View.GONE);
-        }
+        // v14.69 (slice 1726): the note is written by
+        // refreshBlockedChannelMark88() above (single writer) — the
+        // plain write that used to sit here would cut a melt in
+        // flight short on a return refresh, so it is gone.
         setBtnText(R.id.btnDownloaded, "downloaded");
         refreshDownloadedButton53();
         setBtnText(R.id.btnResetAll, "reset");
