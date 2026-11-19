@@ -2475,22 +2475,38 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         sleepWatchConn = null;
     }
 
+    // v14.65 (slice 1722): the sleep value's structural skeleton —
+    // the live countdown clock is stripped, the armed / suspended
+    // marker kept, so a pure seconds tick reads equal and only a
+    // real state change arms the melt: timer armed, fired, paused
+    // (suspended), resumed, end-of-talk armed, minutes re-picked.
+    // Same idiom as the drawer header (v14.58) and the library
+    // footer (v14.59): the clock itself (" · −M:SS" / " · −⏸ M:SS")
+    // is live text and never melts, the marker is the structure.
+    // Null-safe, returns "".
+    private static String stripSleepValueLive65(String s) {
+        if (s == null) return "";
+        String t = s.replaceAll(" · −⏸ [0-9:]+$", " · −⏸");
+        return t.replaceAll(" · −[0-9:]+$", " · −");
+    }
+
     private void updateSleepCountdown() {
         try {
             if (btnSleep == null) return;
             long susp = sleepWatchService != null ? sleepWatchService.getSleepSuspendedMs() : 0;
             long rem = sleepWatchService != null ? sleepWatchService.getSleepRemainingMs() : 0;
             int sl = Prefs.sleepMinutes(this);
+            String want;
             // v4.82: the one-shot has no countdown to show — the
             // button names it instead of the minute pref.
             if (sleepWatchService != null && sleepWatchService.isSleepEndOfTalk()) {
-                btnSleep.setText(Lang.t(this, "sleep_end"));
+                want = Lang.t(this, "sleep_end");
             } else if (rem > 0 && sl > 0) {
                 // v11.88: same clock as the strip (AudioService.sleepClock) — the manual
                 // M:SS format read "60:00" at the instant a 60-minute timer was armed
                 // while the strip read "1:00:00" for the same timer (H:MM:SS at ≥3600s).
-                btnSleep.setText(sl + Lang.t(this, "sleep_min")
-                        + " · −" + AudioService.sleepClock(rem));
+                want = sl + Lang.t(this, "sleep_min")
+                        + " · −" + AudioService.sleepClock(rem);
             } else if (susp > 0 && sl > 0) {
                 // v13.49 (F1): while the talk is paused the timer is suspended,
                 // not running — getSleepRemainingMs() reads 0 and the button used
@@ -2499,11 +2515,34 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                 // the Room (susp > 0 && sl > 0) so a remainder orphaned by a
                 // turned-off setting never shows as live; same clock shape, with
                 // the strip's pause prefix marking it paused.
-                btnSleep.setText(sl + Lang.t(this, "sleep_min")
-                        + " · −⏸ " + AudioService.sleepClock(susp));
+                want = sl + Lang.t(this, "sleep_min")
+                        + " · −⏸ " + AudioService.sleepClock(susp);
             } else {
-                btnSleep.setText(sl == 0 ? Lang.t(this, "off") : sl + Lang.t(this, "sleep_min"));
+                want = sl == 0 ? Lang.t(this, "off") : sl + Lang.t(this, "sleep_min");
             }
+            // v14.65 (slice 1722): melt the value on a structural
+            // change only — the 5s tick rewrites the countdown every
+            // pass, so a raw setText snapped "−24:59" -> "−24:54"
+            // in plain sight; the stripped skeletons compare equal
+            // across a pure tick, so the text still swaps instantly
+            // there (the Room line's v14.34 rhythm, the v14.58 /
+            // v14.59 missed-melt rule), and only an armed / fired /
+            // suspended / end-of-talk / re-picked change melts, 250ms
+            // via Fx.fadeIn. Gated on visible + settled: a melt in
+            // flight from the previous tick is never restarted from 0
+            // (Fx.fadeIn flows from the current alpha, v3.52, but a
+            // second structural change inside 250ms is near-impossible
+            // on a 5s tick — a skipped melt is a missed melt, never a
+            // shimmer). The pick path's refresh() (~line 3125) stays
+            // untouched: it runs inside Fx.themeDip, which owns that
+            // moment's motion. Visual only; branches, guards and the
+            // clock shape are untouched.
+            String cur = btnSleep.getText() == null ? "" : btnSleep.getText().toString();
+            boolean settled = btnSleep.getAlpha() >= 0.999f;
+            btnSleep.setText(want);
+            if (!want.equals(cur) && btnSleep.getVisibility() == android.view.View.VISIBLE
+                    && settled && !stripSleepValueLive65(want).equals(stripSleepValueLive65(cur)))
+                Fx.fadeIn(btnSleep, 250);
         } catch (Exception ignored) {}
     }
 
