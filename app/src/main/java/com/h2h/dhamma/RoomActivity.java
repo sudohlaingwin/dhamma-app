@@ -632,6 +632,14 @@ public class RoomActivity extends Activity {
     private String drawerUpNextUrl57 = null;
     private boolean drawerUpNextPrimed57 = false;
     private String drawerUpNextFadeUrl57 = null;
+    // v14.77 (slice 1735): URL of the drawer row a long-press
+    // dialog just marked (favourite toggle in any of the four
+    // dialogs, queue add/remove in the full-list dialog),
+    // waiting for its mark melt (fadeMenuMarkedDrawerRow77
+    // below). Set only at a real mark flip, consumed by the
+    // helper, so a cancel / stale-dialog / sounding-guard path
+    // — or any other rebind — never inherits a fade.
+    private String menuMarkFadeUrl77 = null;
     // v14.58 (slice 1715): the drawer header's melt state — the
     // chooser header's v14.56 arm restated for the Room drawer.
     // The header (roomPlayListTitle: "Play List (N) · ⬇ M · ★ M ·
@@ -886,6 +894,70 @@ public class RoomActivity extends Activity {
                 int ti = talkIndexForUrl(url);
                 if (ti < 0) return;
                 int dp = drawerPosOfTalk(ti);
+                int first = roomList.getFirstVisiblePosition();
+                android.view.View row = dp >= 0 ? roomList.getChildAt(dp - first) : null;
+                if (row != null) Fx.fadeIn(row, 250);
+            }
+        });
+    }
+    // v14.77 (slice 1735): melt the drawer row a long-press
+    // dialog just marked — the Talks v14.75 / library v14.76
+    // member of the row-melt family, on this surface. The four
+    // drawer dialogs (foreign queue row, in-list queue row,
+    // sounding row, full-list row) all ended their favourite
+    // toggle — and the full-list dialog its queue add/remove —
+    // in a bare notifyDataSetChanged, so the ★/◈ mark snapped
+    // onto the row in one frame while every other drawer
+    // arrival already has a beat (open pour v2.10, sounding
+    // tile crossfade v14.32, drop-landing melt v14.46, Up Next
+    // melt v14.57, single-remove pour v14.51, header melt
+    // v14.58). The fadeDroppedQueueRow shape verbatim: posted
+    // after the rebind so the position->child mapping is read
+    // fresh, resolved at fade time through drawerPosOfQueueUrl
+    // (queue-only counts display lines, foreign rows included;
+    // any other view maps the talk index through
+    // drawerPosOfTalk, so a filter/search view narrows it the
+    // same way), only while the drawer is open, a scrolled-out
+    // row skipped (getChildAt null) rather than scrolled to,
+    // fade 250ms via Fx.fadeIn. The v3.45 rebind hygiene
+    // restores row alpha 1 on any rebind, so a fade cut short
+    // by a later rebind can never strand the row
+    // half-transparent; Fx.fadeIn is restart-safe (v3.52), so
+    // a sounding-tile crossfade or a drop-landing melt on the
+    // same row in the same tick just restarts the glide and
+    // still ends at alpha 1. Consume-once: the field is nulled
+    // here. A ★-only filter unstar drops the row via the
+    // filter rebuild before the posted resolve, so it reads -1
+    // and fades nothing — the row just leaves, as it does
+    // today (same as the Talks star-only case). A foreign row
+    // outside the queue-only view has no row and reads -1 the
+    // same way. The sounding row's melt is on the whole row
+    // view; its gold tile crossfade (v14.32) lives on the card
+    // background and its title pulse (v2.27) on the title view,
+    // so neither fights the row fade. The 1s tick cannot
+    // double-melt: the poll resync rebinds only on an index
+    // change and arms the ▸ melt only on a new non-empty Up
+    // Next URL (v14.57), and the dialog branches reload the
+    // mark caches synchronously (refreshMarkSets), so a later
+    // resync snapshot reads the new state; drawerUpNextUrl57
+    // is adopted in getView, so a menu rebind can never arm a
+    // stale ▸ melt later. Not armed: the f/q queue-remove
+    // (the row departs the queue-only view; the v14.51 pour
+    // owns the cascade), play-next in any dialog (shifts every
+    // queued row's ◈ number; the ▸ melt owns the head change),
+    // the move/arm verbs (the drop fade owns the moved row),
+    // queue-from-here (many rows), the download verb (the tick
+    // owns the mark; the landing arm covers it), share/copy
+    // (mutate nothing). Visual only; the mutation, the toast
+    // and the rebind are untouched.
+    private void fadeMenuMarkedDrawerRow77() {
+        if (menuMarkFadeUrl77 == null || roomList == null || adapter == null) { menuMarkFadeUrl77 = null; return; }
+        final String url = menuMarkFadeUrl77;
+        menuMarkFadeUrl77 = null;
+        roomList.post(new Runnable() {
+            @Override public void run() {
+                if (roomList == null || !isPlayListPanelOpen()) return;
+                int dp = drawerPosOfQueueUrl(url);
                 int first = roomList.getFirstVisiblePosition();
                 android.view.View row = dp >= 0 ? roomList.getChildAt(dp - first) : null;
                 if (row != null) Fx.fadeIn(row, 250);
@@ -9141,6 +9213,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                                             refreshCardIfFlipped1025(ffe.url);
                                             refreshMarkSets();
                                             if (adapter != null) adapter.notifyDataSetChanged();
+                                            menuMarkFadeUrl77 = ffe.url; fadeMenuMarkedDrawerRow77();
                                             Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, added89f ? "fav_added" : "fav_removed"), Toast.LENGTH_SHORT).show();
                                         } else if ("menu_queue_remove".equals(fKeyArr[which])) {
                                             // v7.89: was `which == 1` — the new
@@ -9423,6 +9496,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         refreshCardIfFlipped1025(qt.url);
                                         refreshMarkSets();
                                         if (adapter != null) adapter.notifyDataSetChanged();
+                                        menuMarkFadeUrl77 = qt.url; fadeMenuMarkedDrawerRow77();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, added91 ? "fav_added" : "fav_removed"), Toast.LENGTH_SHORT).show();
                                     } else if ("menu_queue_remove".equals(qKeyArr[which])) {
                                         int qi = queueLineIndexForUrl(qt.url);
@@ -9637,6 +9711,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         refreshCardIfFlipped1025(st.url);
                                         refreshMarkSets();
                                         if (adapter != null) adapter.notifyDataSetChanged();
+                                        menuMarkFadeUrl77 = st.url; fadeMenuMarkedDrawerRow77();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, added71 ? "fav_added" : "fav_removed"), Toast.LENGTH_SHORT).show();
                                     } else if ("dl_btn_download".equals(sKeyArr[which])) {
                                         enqueueRoomDownload(st);
@@ -9728,6 +9803,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         refreshCardIfFlipped1025(dt.url);
                                         refreshMarkSets();
                                         if (adapter != null) adapter.notifyDataSetChanged();
+                                        menuMarkFadeUrl77 = dt.url; fadeMenuMarkedDrawerRow77();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, added89 ? "fav_added" : "fav_removed"), Toast.LENGTH_SHORT).show();
                                     } else if ("menu_queue_remove".equals(dKeyArr[which])) {
                                         int qi = queueLineIndexForUrl(dt.url);
@@ -9740,6 +9816,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         if (queueUrls.isEmpty()) drawerQueueOnly = false;
                                         saveQueue(null, true);
                                         if (adapter != null) adapter.notifyDataSetChanged();
+                                        menuMarkFadeUrl77 = dt.url; fadeMenuMarkedDrawerRow77();
                                         // v14.53 (slice 1710): the bar follows this dialog
                                         // at once — the foreign-row / in-list dialogs and
                                         // the clear-confirm all call refreshQueueBar72()
@@ -9775,6 +9852,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         queueUrls.add(dt.url);
                                         saveQueue(java.util.Collections.singleton(dt.url), true);
                                         if (adapter != null) adapter.notifyDataSetChanged();
+                                        menuMarkFadeUrl77 = dt.url; fadeMenuMarkedDrawerRow77();
                                         // v14.53 (slice 1710): the bar follows this dialog
                                         // at once — the foreign-row / in-list dialogs and
                                         // the clear-confirm all call refreshQueueBar72()
