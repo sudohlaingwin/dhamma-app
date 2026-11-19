@@ -625,6 +625,57 @@ public class Fx {
         td.startTransition(250);
     }
 
+    // v14.31 (slice 1686): the sounding card's gold tile used to snap
+    // on/off — the 1s tick rebinds the grid exactly when the sounding
+    // name / ended / failed / buffering flips (v11.15/v12.38/v14.05/
+    // v14.06), and getView swapped the card background in one frame
+    // (setBackgroundResource: card_bg <-> main_card_playing), so a
+    // talk ending, stopping or switching sayadaw while Main sat on
+    // top flashed the gold tile in or out while everything around it
+    // moves (name breath, strip crossfades, shelf re-pour). The tile
+    // now crossfades the same way crossfadeRing does above: a
+    // TransitionDrawable blends the old tile out and the new one in
+    // over 250ms (crossFade on, so gold -> plain melts instead of
+    // double-painting), with the recorded target in a WeakHashMap, so
+    // a repeated call for the state already showing is a no-op and
+    // never restarts the fade, and a mid-fade re-target starts from
+    // the recorded state. One difference from the ring: a card has
+    // NO "no tile" state — a view with no recorded res is seeded
+    // instantly (setBackgroundResource, no fade), so a fresh inflate
+    // and a scroll recycle never melt in from transparent; only a
+    // real change of a known tile crossfades. The ▶ prefix + gold
+    // name stay instant text swaps by the v14.16 settled decision:
+    // they are a 2-char prefix inside the label, and fading the
+    // whole label to ease them would flash the row; the tile carries
+    // the motion. The press squash (scale), entrance pour (alpha +
+    // scale view Animation) and breath (name view) all live on other
+    // views/channels — the tile is the card root's background alone,
+    // and a TransitionDrawable is not a ViewPropertyAnimator, so
+    // getView's animate().cancel() never kills a tile fade in flight.
+    private static java.util.WeakHashMap<View, Integer> tileRes =
+            new java.util.WeakHashMap<View, Integer>();
+    public static void crossfadeCardTile(final View card, int newRes) {
+        if (card == null) return;
+        Integer cur = tileRes.get(card);
+        if (cur == null) {
+            tileRes.put(card, newRes);
+            card.setBackgroundResource(newRes);
+            return;
+        }
+        int curRes = cur.intValue();
+        if (curRes == newRes) return;
+        tileRes.put(card, newRes);
+        android.content.res.Resources res = card.getResources();
+        android.graphics.drawable.Drawable from = res.getDrawable(curRes, null);
+        android.graphics.drawable.Drawable to = res.getDrawable(newRes, null);
+        android.graphics.drawable.TransitionDrawable td =
+                new android.graphics.drawable.TransitionDrawable(
+                        new android.graphics.drawable.Drawable[]{from, to});
+        td.setCrossFadeEnabled(true);
+        card.setBackground(td);
+        td.startTransition(250);
+    }
+
     // v2.23: premium theme transition — day/night used to swap
     // colours instantly (a hard flash) on the Main toggle and the
     // Settings day/night buttons, while every other screen change
