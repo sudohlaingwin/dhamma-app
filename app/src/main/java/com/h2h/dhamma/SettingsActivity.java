@@ -2904,7 +2904,38 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                     String sizeLine = Lang.t(this, "dl_total_prefix")
                             + String.format(java.util.Locale.US, "%.1f MB", totalBytes81 / 1048576.0);
                     CharSequence curSize = sizeNote.getText();
-                    if (curSize == null || !sizeLine.equals(curSize.toString())) sizeNote.setText(sizeLine);
+                    if (curSize == null || !sizeLine.equals(curSize.toString())) {
+                        // v14.66 (slice 1723): the size note melts on a
+                        // structural change instead of snapping — a
+                        // download landing (or a file deleted) while
+                        // Settings sits open used to jump "total 12.3 MB"
+                        // -> "total 24.6 MB" in one frame. The note has
+                        // no live-ticking part (the in-progress "· ⏳ M"
+                        // count lives on the button label above, not
+                        // here; the size moves only when a finished
+                        // file lands or leaves), so any change IS the
+                        // structure and melts, with the settled idiom
+                        // of the sleep value (v14.65) and the drawer
+                        // header (v14.58): melt only when the view is
+                        // VISIBLE and settled (alpha >= 0.999f) and
+                        // already holds real text — the first fill from
+                        // "" while GONE (first download, rotation,
+                        // create) just appears, and the 1s tick's
+                        // steady passes never touch the view.
+                        // Fx.fadeIn is restart-safe (v3.52), so a
+                        // second landing inside 250ms restarts the
+                        // fade instead of stranding it; the visibility
+                        // flip below still owns show/hide, and
+                        // refresh()'s colour/size repaint never writes
+                        // text, so no channel fight. The button label
+                        // above is untouched — its "· ⏳ M" ticks while
+                        // a download runs, so it must never melt.
+                        boolean melt66 = curSize != null && curSize.length() > 0
+                                && sizeNote.getVisibility() == android.view.View.VISIBLE
+                                && sizeNote.getAlpha() >= 0.999f;
+                        sizeNote.setText(sizeLine);
+                        if (melt66) Fx.fadeIn(sizeNote, 250);
+                    }
                     if (sizeNote.getVisibility() != android.view.View.VISIBLE) sizeNote.setVisibility(android.view.View.VISIBLE);
                 } else if (sizeNote.getVisibility() != android.view.View.GONE) {
                     sizeNote.setVisibility(android.view.View.GONE);
