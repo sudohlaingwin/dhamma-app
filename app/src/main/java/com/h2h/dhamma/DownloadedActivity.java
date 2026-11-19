@@ -3461,6 +3461,29 @@ public class DownloadedActivity extends Activity {
             Fx.press(row);
             box.addView(row);
         }
+        // v15.10 (slice 1769): melt the rebuilt box in — the
+        // wholesale rebuild above (removeAllViews + fresh header +
+        // rows) used to pop the whole "Up Next" box to its new
+        // content in one frame: on auto-advance the ▸/◈ marks and
+        // the gold header changed with no beat at all, while the
+        // shelf rows below already melt (v14.49 sounding, v14.61
+        // departing, v14.76 menu-marked). Every new child fades
+        // 250ms (the v14.48 rhythm) in build order, so a queue
+        // change reads as one soft refresh. The children are fresh
+        // views (just created above), so no in-flight press
+        // animator is cancelled by fadeIn's cancel() and press
+        // (scale-only) never fights the fade (alpha-only). Skipped
+        // while a search is active (dlQuery non-empty): a
+        // keystroke-driven rebuild would re-melt the box every tick
+        // while typing. A filter-chip tap is a single discrete
+        // gesture, so it melts like any other content change; a
+        // first appearance melts as an entrance, and an emptying
+        // still vanishes (no children to melt — open question).
+        if (dlQuery.length() == 0) {
+            for (int i69 = 0; i69 < box.getChildCount(); i69++) {
+                Fx.fadeIn(box.getChildAt(i69), 250);
+            }
+        }
     }
 
     // v14.49 (slice 1706): melt the newly-sounding shelf row in at
