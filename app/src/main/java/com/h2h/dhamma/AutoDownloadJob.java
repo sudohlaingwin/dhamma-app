@@ -626,6 +626,35 @@ public class AutoDownloadJob extends JobService {
         }
     }
 
+    // v14.92 (slice 1750): three-form set membership — a URL
+    // matches a set entry under any of its spellings (raw, canonical
+    // https, downgraded http). The job's own liveSources/queued
+    // contains checks read it now: liveSources is canonical from
+    // the DM query (v13.62) BUT gains a raw entry when a fresh
+    // enqueue lands (liveSources.add(u) below, u the raw catalog
+    // spelling), and queued holds raw stored spellings
+    // (readDlQueued68 returns the stored JSON verbatim; a legacy
+    // http entry from the delivered v13.57 fallback sits next to
+    // https keys the v13.59 build recorded — the v13.66 migration
+    // does NOT migrate dlMap keys — and one catalog page carries
+    // absolute-http hrefs the parser keeps as-is (Dr Nandamalabhivamsa,
+    // 15 hrefs, 1737)), so a canonical lookup
+    // alone would still miss one side. Same provenance as the
+    // mapped twins (v14.87–v14.91). For an https URL this is
+    // identical (identityUrl is the identity on https, downgrade
+    // never matches a canonical set); for a non-site URL all three
+    // forms are the URL itself. Null-safe: identityUrl/downgrade
+    // return null for null.
+    private static boolean containsUrlForm68(java.util.Set<String> set, String url) {
+        if (set == null || url == null) return false;
+        if (set.contains(url)) return true;
+        String canon = SiteHttp.identityUrl(url);
+        if (canon != null && !canon.equals(url) && set.contains(canon)) return true;
+        String down = SiteHttp.downgrade(url);
+        if (down != null && !down.equals(url) && set.contains(down)) return true;
+        return false;
+    }
+
     // Is this talk already on the phone (file exists) or already
     // on its way (a live DownloadManager job, or a dlQueued mark)?
     // Mirrors TalksActivity.isTalkDownloaded + talkIsDlQueued: the
@@ -638,8 +667,16 @@ public class AutoDownloadJob extends JobService {
             java.util.Map<String, Long> expected68) {
         if (url == null) return false;
         try {
-            if (liveSources != null && liveSources.contains(url)) return true;
-            if (queued != null && queued.contains(url)) return true;
+            // v14.92 (slice 1750): the live/queued legs read the
+            // three-form rule — a queued talk spelled http missed its
+            // live job (canonical https set) and its queue mark
+            // (legacy http entry vs https query, or the reverse), so
+            // the job re-enqueued a talk already downloading or
+            // already queued, and a re-tap could double-enqueue.
+            // For an https URL this is identical; for a non-site URL
+            // all three forms are the URL itself.
+            if (liveSources != null && containsUrlForm68(liveSources, url)) return true;
+            if (queued != null && containsUrlForm68(queued, url)) return true;
             java.io.File dir = new java.io.File(
                     android.os.Environment.getExternalStoragePublicDirectory(
                             android.os.Environment.DIRECTORY_DOWNLOADS),
@@ -683,8 +720,15 @@ public class AutoDownloadJob extends JobService {
             java.util.Map<String, Long> expected68) {
         if (url == null) return false;
         try {
-            if (liveSources != null && liveSources.contains(url)) return false;
-            if (queued != null && queued.contains(url)) return false;
+            // v14.92 (slice 1750): the live/queued exclusion reads
+            // the three-form rule — the twin of the
+            // isDownloadedOrQueued68 leg above. A scheme-mismatched
+            // live job or queue mark missed the exclusion, so a
+            // partial file still downloading (already non-zero) read
+            // as landed and the talk was marked known while its
+            // download was still live.
+            if (liveSources != null && containsUrlForm68(liveSources, url)) return false;
+            if (queued != null && containsUrlForm68(queued, url)) return false;
             java.io.File dir = new java.io.File(
                     android.os.Environment.getExternalStoragePublicDirectory(
                             android.os.Environment.DIRECTORY_DOWNLOADS),
@@ -970,6 +1014,15 @@ public class AutoDownloadJob extends JobService {
         if (f == null || !f.isFile() || f.length() <= 0) return false;
         if (expected == null) return true;
         Long total = expected.get(url);
+        // v14.92 (slice 1750): expectedSizes68 keys the map by the
+        // canonical https identity (v13.62 F-963-A-02), but the lookup
+        // read the raw URL — an http-spelled talk (absolute-http
+        // hrefs, 1737) missed its total and failed open to
+        // length-only, so a truncated partial read as complete and
+        // the talk was skipped (or marked known) forever. The
+        // canonical form is the second leg; the raw form stays first
+        // so a map keyed any other way still hits exactly as before.
+        if (total == null) total = expected.get(SiteHttp.identityUrl(url));
         if (total == null || total.longValue() <= 0) return true;
         return f.length() >= total.longValue();
     }
@@ -1010,7 +1063,16 @@ public class AutoDownloadJob extends JobService {
                 // the Talks/Main/Settings prune (a finished file is
                 // still skipped by the file-exists leg, never by a
                 // lingering queue mark).
-                if (liveSources != null && liveSources.contains(u)) continue;
+                // v14.92 (slice 1750): the live-source guard reads
+                // the three-form rule — a queued entry spelled http
+                // missed its live job (canonical https set), so the
+                // mark was pruned while the job was still live and
+                // the talk was re-enqueued on the next run; a queued
+                // https entry likewise missed a job the line-465 raw
+                // add recorded under http (the downgrade leg covers
+                // that one). Dead entries still prune exactly as
+                // before.
+                if (liveSources != null && containsUrlForm68(liveSources, u)) continue;
                 it.remove();
                 changed = true;
             }
