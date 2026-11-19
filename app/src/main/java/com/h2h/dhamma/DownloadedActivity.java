@@ -3498,6 +3498,64 @@ public class DownloadedActivity extends Activity {
         });
     }
 
+    // v14.76 (slice 1734): melt the shelf row you just marked in the
+    // row menu — the Talks chooser's v14.75 twin, restated for the
+    // library. The row-menu favourite toggle (★) and the single-file
+    // queue add/remove verbs (◈ on/off) used to end in the shared
+    // saveLibQueue tail's bare notifyDataSetChanged, so the mark
+    // snapped onto the row in one frame while every other library
+    // arrival already has a beat (list pour v2.12, sounding row
+    // v14.49, departing row v14.61, the download-landing and delete
+    // arms). menuMarkFadePath76 holds the marked file's path until
+    // fadeMenuMarkedDlRow consumes it; a second menu action without
+    // a new mark is a no-op. The display position resolves the
+    // v3.93 way (queue index in queue-only view, shelf index in
+    // shownDl otherwise — the fadeSoundingDlRow shape verbatim), so
+    // a star-only unstar drops the row via applyDlFilter before the
+    // rebind and reads -1 (the row just leaves, as it does today),
+    // and a queue-only removal reads -1 the same way. A
+    // scrolled-out row is skipped, never scrolled to. The footer
+    // is untouched: updateTotal owns its ★ count and Up Next line,
+    // and this helper fades only the row. Not play-next (shifts
+    // every queued row's ◈ number — the head row is the queue's own
+    // beat), not queue-from-here / bulk verbs (many rows), not move
+    // up/down/top/end (reorders several rows), not the download verb
+    // (the tick owns the mark and the landing arm covers it), not
+    // share/copy (mutate nothing). The v14.49 getView
+    // hygiene restores row alpha 1 on any rebind, so a fade cut
+    // short by a tick rebind can never strand the row
+    // half-transparent; Fx.fadeIn is restart-safe (v3.52), so a
+    // sounding/landing melt on the same row in the same tick just
+    // restarts the glide. The 1s tick cannot double-melt: the fav
+    // branch adopts the v7.45 snapshots synchronously (the Talks
+    // v10.88 rule), so the tick sees no fav change; queue flips
+    // have no tick snapshot (libQueueCache IS the live cache, and
+    // the tick arms no melt for a pure mark change anyway, v14.49).
+    // Consume-once: the field is nulled here.
+    private String menuMarkFadePath76 = null;
+    private void fadeMenuMarkedDlRow() {
+        final String path = menuMarkFadePath76;
+        menuMarkFadePath76 = null;
+        if (path == null || dlListView == null) return;
+        dlListView.post(new Runnable() {
+            @Override public void run() {
+                if (dlListView == null || isFinishing() || isDestroyed()) return;
+                int dispPos = -1;
+                if (libQueueOnly) {
+                    dispPos = libQueueCache.indexOf(path);
+                } else {
+                    for (int i = 0; i < shownDl.size(); i++)
+                        if (shownDl.get(i).file.getAbsolutePath().equals(path)) { dispPos = i; break; }
+                }
+                if (dispPos < 0) return;
+                int first = dlListView.getFirstVisiblePosition();
+                android.view.View row = dlListView.getChildAt(dispPos - first);
+                if (row == null) return;
+                Fx.fadeIn(row, 250);
+            }
+        });
+    }
+
     private void wireDlStrip() {
         android.view.View nowStrip = findViewById(R.id.nowStrip);
         if (nowStrip != null) {
@@ -9627,6 +9685,7 @@ public class DownloadedActivity extends Activity {
                                 return;
                             }
                             if (!q.contains(path)) q.add(path);
+                            if (path != null) menuMarkFadePath76 = path;
                             Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "added_to_queue") + ": " + t.title + qSdSuffix70, Toast.LENGTH_SHORT).show();
                         } else if ("menu_queue_from_here".equals(choiceKey)) {
                             int added = 0;
@@ -11720,6 +11779,7 @@ public class DownloadedActivity extends Activity {
                                 moveHeldPath = null;
                                 if (adapter != null) adapter.notifyDataSetChanged();
                             }
+                            if (path != null) menuMarkFadePath76 = path;
                             Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "removed_from_queue"), Toast.LENGTH_SHORT).show();
                         } else if ("menu_move_up".equals(choiceKey) || "menu_move_down".equals(choiceKey)) {
                             // v11.22: tap-time sounding re-check (v11.12
@@ -11938,6 +11998,30 @@ public class DownloadedActivity extends Activity {
                             if (added90) libFavFiles.add(t.file.getName());
                             else libFavFiles.remove(t.file.getName());
                             if (!added90 && dlFilterMode == 1) applyDlFilter();
+                            if (path != null) menuMarkFadePath76 = path;
+                            // v14.76 (slice 1734): adopt the v7.45 tick
+                            // snapshots synchronously — the Talks v10.88
+                            // rule, restated for the library (see the
+                            // loadList adoption): the toggle just
+                            // rewrote favTalks in prefs, so the next
+                            // tick would read a changed set and rebind
+                            // the rows once more, up to a second after
+                            // the melt. Adopting here means the tick
+                            // snapshots the new state and sees no
+                            // change; the played set is adopted too,
+                            // unchanged, exactly like loadList.
+                            try {
+                                android.content.SharedPreferences pp76 =
+                                        getSharedPreferences("dhamma", MODE_PRIVATE);
+                                java.util.Set<String> fav76 = pp76.getStringSet("favTalks", null);
+                                java.util.Set<String> played76 = pp76.getStringSet("playedTalks", null);
+                                dlMarkFav45 = fav76 == null
+                                        ? new java.util.HashSet<String>()
+                                        : new java.util.HashSet<String>(fav76);
+                                dlMarkPlayed45 = played76 == null
+                                        ? new java.util.HashSet<String>()
+                                        : new java.util.HashSet<String>(played76);
+                            } catch (Exception ignored) {}
                             android.widget.Toast.makeText(DownloadedActivity.this,
                                     Lang.t(DownloadedActivity.this, added90 ? "fav_added" : "fav_removed"),
                                     android.widget.Toast.LENGTH_SHORT).show();
@@ -11979,6 +12063,14 @@ public class DownloadedActivity extends Activity {
                         // the chooser header — so the footer rebinds
                         // here, with the fresh cache, at once.
                         updateTotal();
+                        // v14.76 (slice 1734): melt the row this menu
+                        // just marked — the field is set only by the
+                        // favourite-toggle and single-file queue
+                        // add/remove branches above, and the helper
+                        // consumes it once, so every other verb is a
+                        // no-op here. The posted fade runs after the
+                        // shared tail's rebind, on the row's new mark.
+                        fadeMenuMarkedDlRow();
                     }
                 }).show();
     }
