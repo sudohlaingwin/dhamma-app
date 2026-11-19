@@ -2877,6 +2877,18 @@ if (snd65 >= 0) currentIndex = snd65;
         applyShuffleGlyph(roomShuffleBtn);
     }
 
+    // v14.41 (slice 1696): the instant twin of
+    // refreshRoomRepeatShuffle, for the onCreate first paint only —
+    // the poll and onResume keep the animated refresh, so a shuffle
+    // change made in Settings melts in when the Room returns, but
+    // the first paint never melts from an unpainted tint.
+    private void refreshRoomRepeatShuffleNow() {
+        repeatMode = Prefs.repeatMode(this);
+        shuffleOn = Prefs.shuffleOn(this);
+        applyRepeatGlyph(roomRepeatBtn);
+        applyShuffleGlyphNow(roomShuffleBtn);
+    }
+
     private void syncLiveSettings() {
         // v5.12: repeat/shuffle were only read in onCreate, so a change
         // made in Settings while the Room sat in the back stack did
@@ -10126,7 +10138,7 @@ if (snd67q >= 0) currentIndex = snd67q;
             });
             Fx.press(roomShuffleBtn);
         }
-        refreshRoomRepeatShuffle();
+        refreshRoomRepeatShuffleNow();
 
         // v1.51: restore the pre-rotation panel open/closed state.
         if (savedInstanceState != null && savedInstanceState.getBoolean("listVisible", false)) {
@@ -10679,9 +10691,26 @@ if (snd67q >= 0) currentIndex = snd67q;
     private void applyShuffleGlyph(android.widget.ImageButton b) {
         if (b == null) return;
         b.setImageResource(R.drawable.ic_shuffle);
-        b.setColorFilter(android.graphics.Color.parseColor(
-                shuffleOn ? "#C9A227" : "#AAAAAA"),
-                android.graphics.PorterDuff.Mode.SRC_IN);
+        // v14.41 (slice 1696): the tint melts gold<->grey over
+        // 250ms instead of snapping — the button morphs + presses
+        // under the finger, so the state colour now moves with it.
+        // Edge-only: the 500ms poll re-applies the settled target
+        // every tick, and the helper no-ops on it.
+        Fx.crossfadeImageTint(b, android.graphics.Color.parseColor(
+                shuffleOn ? "#C9A227" : "#AAAAAA"));
+    }
+
+    // v14.41 (slice 1696): the instant writer for the shuffle
+    // glyph — the onCreate first paint has no previous tint to
+    // melt from and must land at once, like the chooser/library
+    // chips' first paint (v14.39/v14.40). Records the tint as the
+    // helper's target + current, so the poll's first re-apply
+    // no-ops and a later tap melts from the true colour.
+    private void applyShuffleGlyphNow(android.widget.ImageButton b) {
+        if (b == null) return;
+        b.setImageResource(R.drawable.ic_shuffle);
+        Fx.setImageTintNow(b, android.graphics.Color.parseColor(
+                shuffleOn ? "#C9A227" : "#AAAAAA"));
     }
 
     private int peekNextIndex() {

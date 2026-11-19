@@ -754,6 +754,92 @@ public class Fx {
         v.setTextColor(color);
     }
 
+    // v14.41 (slice 1696): the Room shuffle glyph melts gold<->grey
+    // on tap instead of snapping — applyShuffleGlyph set the
+    // ImageButton's colour filter in one frame, so the shuffle icon
+    // jumped gold/grey while the button itself morphs (Fx.morph)
+    // and presses (Fx.press) under the finger: the state change
+    // was the one un-choreographed part of the tap. Same 250ms
+    // melt rhythm as the chips (v14.39/v14.40) and the sleep text
+    // (v14.34), same WeakHashMap discipline as crossfadeTextColor:
+    // a recorded target per view makes the 500ms poll's re-apply a
+    // no-op (the poll repaints the same target every tick), a
+    // mid-melt re-target cancels the in-flight animator and melts
+    // from the last painted frame, and the end stamps the exact
+    // target only while its animator is still current. One
+    // difference from crossfadeTextColor, closing its 1694 caveat
+    // by construction: the from==to fast path cancels the in-flight
+    // animator BEFORE returning, so a tap landing on an already-
+    // correct colour can never let a superseded melt's end stamp
+    // a stale tint. A view reads its tint only through these two
+    // helpers — the current painted tint lives in tintCurrent,
+    // updated on every animation frame, because ImageView exposes
+    // no getColorFilter to read the "from" back. Visual only.
+    private static java.util.WeakHashMap<View, Integer> tintTarget =
+            new java.util.WeakHashMap<View, Integer>();
+    private static java.util.WeakHashMap<View, android.animation.ValueAnimator> tintAnim =
+            new java.util.WeakHashMap<View, android.animation.ValueAnimator>();
+    private static java.util.WeakHashMap<View, Integer> tintCurrent =
+            new java.util.WeakHashMap<View, Integer>();
+    public static void crossfadeImageTint(final android.widget.ImageView v, final int toColor) {
+        if (v == null) return;
+        Integer cur = tintTarget.get(v);
+        if (cur != null && cur.intValue() == toColor) return;
+        tintTarget.put(v, toColor);
+        android.animation.ValueAnimator old = tintAnim.get(v);
+        tintAnim.remove(v);
+        if (old != null) old.cancel();
+        Integer fromBox = tintCurrent.get(v);
+        if (fromBox == null) { setImageTintNow(v, toColor); return; }
+        final int from = fromBox.intValue();
+        if (from == toColor) { tintCurrent.put(v, toColor); return; }
+        final android.animation.ValueAnimator anim =
+                android.animation.ValueAnimator.ofArgb(from, toColor);
+        anim.setDuration(250);
+        anim.setInterpolator(new DecelerateInterpolator());
+        tintAnim.put(v, anim);
+        anim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                int c = ((Integer) a.getAnimatedValue()).intValue();
+                v.setColorFilter(c, android.graphics.PorterDuff.Mode.SRC_IN);
+                tintCurrent.put(v, c);
+            }
+        });
+        anim.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                // cancel() fires onAnimationEnd too: only the
+                // still-current animator may stamp the exact target —
+                // a superseded one must never paint its stale tint
+                // over a newer melt.
+                if (tintAnim.get(v) == anim) {
+                    v.setColorFilter(toColor, android.graphics.PorterDuff.Mode.SRC_IN);
+                    tintCurrent.put(v, toColor);
+                    tintAnim.remove(v);
+                }
+            }
+        });
+        anim.start();
+    }
+
+    // v14.41 (slice 1696): the instant writer for a view whose
+    // tint crossfadeImageTint owns — the Room shuffle glyph melts
+    // on tap, but the onCreate first paint has no previous tint to
+    // melt from and must land instantly. Stamps the filter at once
+    // AND records it as target + current, cancelling any in-flight
+    // melt first: the map entry is removed BEFORE the cancel, so
+    // the cancelled animator's end listener — which stamps only
+    // while still current — skips its stale tint. Same discipline
+    // as setTextColorNow (v14.39).
+    public static void setImageTintNow(final android.widget.ImageView v, final int color) {
+        if (v == null) return;
+        tintTarget.put(v, color);
+        tintCurrent.put(v, color);
+        android.animation.ValueAnimator old = tintAnim.get(v);
+        tintAnim.remove(v);
+        if (old != null) old.cancel();
+        v.setColorFilter(color, android.graphics.PorterDuff.Mode.SRC_IN);
+    }
+
     // v2.23: premium theme transition — day/night used to swap
     // colours instantly (a hard flash) on the Main toggle and the
     // Settings day/night buttons, while every other screen change
