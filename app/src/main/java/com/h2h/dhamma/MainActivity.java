@@ -3104,7 +3104,9 @@ public class MainActivity extends Activity {
         // nothing out, the old ring just crossfades away. A star /
         // unstar, a theme flip, a search narrowing or a rotation
         // restore all miss the same-names / same-night / visible
-        // gate and take the rebuild path below, exactly as before.
+        // gate and take the rebuild path below — and on that path
+        // the added chip melts in (v14.99 (slice 1757)) while a
+        // removed chip just leaves, as it does today.
         boolean sameShelfNames = lastFavShelfNames != null
                 && lastFavShelfNames.size() == favList.size();
         if (sameShelfNames) {
@@ -3117,6 +3119,13 @@ public class MainActivity extends Activity {
         }
         boolean sameShelfNight = (lastFavShelfNight == cachedNight);
         String prevShelfSounding = lastShelfSounding;
+        // v14.99 (slice 1757): the pre-rebuild member names — the
+        // added-chip melt below diffs the rebuilt chips against
+        // these, so only a genuinely new chip melts in. Captured
+        // beside prevShelfSounding (same pattern): null until the
+        // first build, so a first build / rotation restore melts
+        // nothing (its pour owns the entrance).
+        java.util.List<String> prevShelfNames99 = lastFavShelfNames;
         java.util.List<String> names50 = new java.util.ArrayList<String>();
         for (Sayadaw s : favList) names50.add(s.name);
         lastFavShelfNames = names50;
@@ -3250,6 +3259,28 @@ public class MainActivity extends Activity {
         // visible never pours, and a rotation's first build is
         // skipped by shelfSkipFirstPour above.
         if (shelfWasGone && !shelfSkipFirstPour) Fx.staggerChildren(favShelf);
+        // v14.99 (slice 1757): melt a newly-starred chip in — a
+        // rebuild while the shelf is already visible (star/unstar
+        // via the card long-press) never pours (v14.15 above), so
+        // the added chip used to pop in in one frame while the
+        // sounding chip melts (v14.50) and the first appearance
+        // pours (v14.15) beside it. The added chip now fades in
+        // 250ms (the v14.48 rhythm) once the rebuild has bound it
+        // — the fade lands in the same frame as the rebuild (the
+        // chips are new views, never drawn yet, so the first drawn
+        // frame already shows the chip fading in, never a flash).
+        // A removal just leaves, as it does today (the v14.75
+        // case: a departing row fades nothing); a theme flip or a
+        // rotation restore adds no name, so it melts nothing; a
+        // first appearance pours instead (shelfWasGone above).
+        if (!shelfWasGone && prevShelfNames99 != null) {
+            for (int i99 = 0; i99 < favList.size(); i99++) {
+                if (!prevShelfNames99.contains(favList.get(i99).name)) {
+                    android.view.View added99 = favShelf.getChildAt(i99);
+                    if (added99 != null) Fx.fadeIn(added99, 250);
+                }
+            }
+        }
     }
 
     // v4.22: hide the search keyboard — the only keyboard-hide
