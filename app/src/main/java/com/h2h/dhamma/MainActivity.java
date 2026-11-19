@@ -90,6 +90,20 @@ public class MainActivity extends Activity {
     private java.util.List<String> lastFavShelfNames = null;
     private boolean lastFavShelfNight = false;
     private String lastShelfSounding = null;
+    // v15.04 (slice 1762): cross-rebuild melt continuity — the chips
+    // this shelf is currently melting in, by name. The v14.99 added-chip
+    // melt, the v15.02 parked melt and the v14.50 sounding melt all fade
+    // a chip in over 250ms, but a rebuild landing inside that window
+    // detaches the chip (removeAllViews) and rebuilds it at full alpha —
+    // the v3.52 restart continuity covers a fade landing on the SAME view,
+    // not a view replacement, so the half-faded chip jumped to opaque in
+    // one frame. Each melt records its (name, view) here; the rebuild
+    // snapshots the still-attached views' alpha before destroying them
+    // and the fresh chip for the same name starts there and fades on.
+    // Cleared at every rebuild after the snapshot, so a stale entry can
+    // never outlive one cycle.
+    private java.util.Map<String, android.view.View> shelfMeltViews62 =
+            new java.util.HashMap<String, android.view.View>();
     // v14.15 (slice 1669): ★ favourites shelf first-appearance
     // cascade — the shelf's chips used to pop in instantly while
     // the header (v2.17) and the grid (v2.07) pour in around them,
@@ -3154,7 +3168,13 @@ public class MainActivity extends Activity {
                             : android.graphics.Color.parseColor("#3B2314")));
                 }
                 if (shelfPlaying && (prevShelfSounding == null
-                        || !prevShelfSounding.equals(s.name))) Fx.fadeIn(chip, 250);
+                        || !prevShelfSounding.equals(s.name))) {
+                    Fx.fadeIn(chip, 250);
+                    // v15.04 (slice 1762): record the melt — a rebuild
+                    // landing inside this 250ms window carries the
+                    // chip's alpha to its fresh view (below).
+                    shelfMeltViews62.put(s.name, chip);
+                }
             }
             // v14.38 re-arm, same as the rebuild path: a re-appear
             // landing mid-fade-out rides back to full instead of
@@ -3197,6 +3217,34 @@ public class MainActivity extends Activity {
                 departing00.add(dv00);
                 departingIdx00.add(i00);
             }
+        }
+        // v15.04 (slice 1762): snapshot the alpha of every chip still
+        // melting in, before the rebuild below destroys the views — the
+        // fresh chip for the same name starts there and fades on (the
+        // v3.52 rule, moved across the view replacement). Only views
+        // still attached to the shelf count (a superseding rebuild's
+        // leftovers are already detached), only names that survive into
+        // the new list (a departing chip's name leaves, so its fade is
+        // not carried — the cut departure is the next piece), and only
+        // alpha under 0.999 (a settled chip stores nothing and rebuilds
+        // at full alpha exactly as today). The record map is cleared
+        // here, so a stale entry never outlives one cycle.
+        java.util.Map<String, Float> carryAlpha62 = null;
+        if (!shelfMeltViews62.isEmpty()) {
+            for (java.util.Map.Entry<String, android.view.View> e62 : shelfMeltViews62.entrySet()) {
+                android.view.View v62 = e62.getValue();
+                if (v62 == null || v62.getParent() != favShelf) continue;
+                boolean survives62 = false;
+                for (Sayadaw s62 : favList) {
+                    if (s62.name.equals(e62.getKey())) { survives62 = true; break; }
+                }
+                if (!survives62) continue;
+                if (v62.getAlpha() < 0.999f) {
+                    if (carryAlpha62 == null) carryAlpha62 = new java.util.HashMap<String, Float>();
+                    carryAlpha62.put(e62.getKey(), v62.getAlpha());
+                }
+            }
+            shelfMeltViews62.clear();
         }
         favShelf.removeAllViews();
         float d = getResources().getDisplayMetrics().density;
@@ -3331,6 +3379,12 @@ public class MainActivity extends Activity {
                 if (!prevShelfNames99.contains(favList.get(i99).name)) {
                     android.view.View added99 = favShelf.getChildAt(i99);
                     if (added99 == null) continue;
+                    // v15.04 (slice 1762): record the melt — the
+                    // undisplaced chip below and the parked chip
+                    // (v15.02) alike; a rebuild landing inside the
+                    // 250ms window carries this chip's alpha to its
+                    // fresh view (snapshot below).
+                    shelfMeltViews62.put(favList.get(i99).name, added99);
                     // v15.02 (slice 1760): displaced by a departing
                     // chip re-seated at-or-before this home index —
                     // park it invisible and melt it in after the
@@ -3360,6 +3414,31 @@ public class MainActivity extends Activity {
                         }
                     }, 250);
                 }
+            }
+        }
+        // v15.04 (slice 1762): carry a mid-melt chip's alpha across
+        // the rebuild — for each name the snapshot caught mid-fade,
+        // the fresh chip starts at the captured alpha and fades in
+        // 250ms (the v14.48 rhythm), so a rebuild landing inside the
+        // melt window reads as one continuous fade instead of a pop
+        // to opaque. Recorded again, so a third rebuild landing
+        // inside THIS fade carries it onward the same way. Runs
+        // before the v15.00 re-seat below, so the favList indices
+        // are still exact; a carried chip beside a re-seated
+        // departure rides the v15.03 rank-close glide home while it
+        // melts (glideHome never touches alpha, fadeIn never touches
+        // translationX — the two motions compose, like the v15.02
+        // parked chip). Settled chips carry nothing (the snapshot
+        // only stores alpha under 0.999).
+        if (carryAlpha62 != null) {
+            for (int i62 = 0; i62 < favList.size(); i62++) {
+                Float a62 = carryAlpha62.get(favList.get(i62).name);
+                if (a62 == null || a62 >= 0.999f) continue;
+                android.view.View chip62 = favShelf.getChildAt(i62);
+                if (chip62 == null) continue;
+                chip62.setAlpha(a62);
+                Fx.fadeIn(chip62, 250);
+                shelfMeltViews62.put(favList.get(i62).name, chip62);
             }
         }
         // v15.00 (slice 1758): melt a removed chip out — the
