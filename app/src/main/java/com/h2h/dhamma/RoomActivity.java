@@ -597,6 +597,15 @@ public class RoomActivity extends Activity {
     // site below maps through drawerScrollPos so a talk change
     // never scrolls a queue-only list to a full-list index.
     private boolean drawerQueueOnly = false;
+    // v14.30 (slice 1685): queue-bar flip state — see refreshQueueBar72.
+    // lastQueueOnly30 remembers the mode the bar last drew, so only a
+    // real mode flip fades the bar (a count-only change never does);
+    // queueBarGen30 guards the Clear fade-out end action the v3.19 way;
+    // queueBarClearFading30 marks a fade-out in flight so a poll tick
+    // never hides Clear out from under it.
+    private boolean lastQueueOnly30 = false;
+    private int queueBarGen30 = 0;
+    private boolean queueBarClearFading30 = false;
     // v4.96: filter views on the Room drawer — the chooser gained
     // ★-only / unlistened-only views (v4.94) and the library
     // gained them (v4.95), but the Room drawer, where the queue
@@ -8718,6 +8727,12 @@ if (snd67n >= 0) currentIndex = snd67n;
                                             android.view.View qPanel29 = findViewById(R.id.roomPlayListPanel);
                                             if (wasQueueOnlyF && !drawerQueueOnly && isPlayListPanelOpen() && qPanel29 != null && qPanel29.getTranslationX() == 0f && roomList != null)
                                                 Fx.staggerChildren(roomList);
+                                            // v14.30 (slice 1685): the bar flips with the rows —
+                                            // on the last-waiting remove the toggle label + Clear
+                                            // button lagged the pour by up to 1s (poll tick); a
+                                            // still-waiting remove only re-reads the count, and
+                                            // the refresh is change-only, so it stays still.
+                                            refreshQueueBar72();
                                             Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "removed_from_queue"), Toast.LENGTH_SHORT).show();
                                         } else if ("menu_move".equals(fKeyArr[which])) {
                                             // v7.15: arm the foreign row
@@ -8984,6 +8999,11 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         android.view.View qPanel29 = findViewById(R.id.roomPlayListPanel);
                                         if (wasQueueOnlyQ && !drawerQueueOnly && isPlayListPanelOpen() && qPanel29 != null && qPanel29.getTranslationX() == 0f && roomList != null)
                                             Fx.staggerChildren(roomList);
+                                        // v14.30 (slice 1685): same bar-flip sync as the
+                                        // foreign-row remove above — the bar flips with
+                                        // the rows on the last-waiting remove, and a
+                                        // still-waiting remove only re-reads the count.
+                                        refreshQueueBar72();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "removed_from_queue"), Toast.LENGTH_SHORT).show();
                                     } else if ("menu_move".equals(qKeyArr[which])) {
                                         // v11.22: tap-time sounding re-check (v11.12
@@ -9609,6 +9629,12 @@ if (snd65h >= 0) currentIndex = snd65h;
                                     android.view.View qPanel28 = findViewById(R.id.roomPlayListPanel);
                                     if (wasQueueOnly83 && isPlayListPanelOpen() && qPanel28 != null && qPanel28.getTranslationX() == 0f && roomList != null)
                                         Fx.staggerChildren(roomList);
+                                    // v14.30 (slice 1685): the bar flips with the rows —
+                                    // this confirm used to leave the toggle label + Clear
+                                    // button to the next poll tick (up to 1s late) while
+                                    // the full list poured at once; the refresh is
+                                    // change-only, so it only fires the mode-flip fade.
+                                    refreshQueueBar72();
                                     Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_cleared"), Toast.LENGTH_SHORT).show();
                                 }
                             })
@@ -10941,12 +10967,76 @@ if (snd67q >= 0) currentIndex = snd67q;
             android.widget.Button cl = (android.widget.Button) findViewById(R.id.roomQueueClear);
             if (tg == null || cl == null) return;
             int n = waitingQueueCount72();
+            // v14.30 (slice 1685): queue-bar mode-flip fade — the
+            // rows have poured on every queue-only entry/exit since
+            // v14.27-v14.29, but the bar above them still swapped in
+            // one frame: the toggle label jumped between "◈ view
+            // queue only · N" and "show the full list again" and the
+            // Clear button popped VISIBLE/GONE with no motion, the
+            // same snap class one row up. The flip detector below
+            // fires only when the MODE changes (drawerQueueOnly vs
+            // lastQueueOnly30); a count-only change (N dropping as
+            // talks play) still swaps instantly, so the label never
+            // flickers on the 1s poll tick. On a flip the toggle
+            // label fades in (200ms) and Clear fades in behind it
+            // (220ms, 40ms delay, the header stagger rhythm) or
+            // fades out (150ms, GONE at the end, gen-guarded the
+            // v3.19 way so a re-enter mid-fade never hides it).
+            // No animator cancel anywhere here: the toggle's morph
+            // (scale) runs on the same ViewPropertyAnimator as the
+            // label fade (alpha), so cancelling would kill the tap
+            // squash — the settled-vs-in-flight rule from v3.39
+            // covers the restart instead (a settled label starts
+            // from alpha 0, a mid-fade one rides on from current).
+            // A fade-out in flight is never killed by a poll tick:
+            // the GONE branch skips setVisibility while
+            // queueBarClearFading30 is true and the end action owns
+            // the hide. Visual only; labels, counts, visibility
+            // targets and the poll-tick refresh are untouched.
+            boolean flip30 = (drawerQueueOnly != lastQueueOnly30);
+            lastQueueOnly30 = drawerQueueOnly;
             String wantTg = drawerQueueOnly
                     ? Lang.t(RoomActivity.this, "dl_menu_show_all_again")
                     : "\u25C8 " + Lang.t(RoomActivity.this, "queue_clear_only") + (n > 0 ? " \u00B7 " + n : "");
-            if (!wantTg.equals(tg.getText().toString())) tg.setText(wantTg);
+            if (!wantTg.equals(tg.getText().toString())) {
+                tg.setText(wantTg);
+                if (flip30) {
+                    if (tg.getAlpha() >= 0.999f) tg.setAlpha(0f);
+                    tg.animate().alpha(1f).setDuration(200)
+                            .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+                }
+            }
             int wantVis = (drawerQueueOnly && n > 0) ? android.view.View.VISIBLE : android.view.View.GONE;
-            if (cl.getVisibility() != wantVis) cl.setVisibility(wantVis);
+            if (wantVis == android.view.View.VISIBLE) {
+                if (cl.getVisibility() != android.view.View.VISIBLE) {
+                    cl.setVisibility(android.view.View.VISIBLE);
+                    if (flip30) {
+                        if (cl.getAlpha() >= 0.999f) cl.setAlpha(0f);
+                        cl.animate().setListener(null);
+                        queueBarClearFading30 = false;
+                        cl.animate().alpha(1f).setDuration(220).setStartDelay(40)
+                                .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+                    } else if (cl.getAlpha() < 1f) cl.setAlpha(1f);
+                }
+            } else if (cl.getVisibility() == android.view.View.VISIBLE) {
+                if (flip30) {
+                    queueBarGen30++;
+                    final int gen30 = queueBarGen30;
+                    final android.widget.Button cl30 = cl;
+                    queueBarClearFading30 = true;
+                    cl.animate().alpha(0f).setDuration(150)
+                            .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                            .setListener(new android.animation.AnimatorListenerAdapter() {
+                                @Override public void onAnimationEnd(android.animation.Animator a) {
+                                    if (queueBarGen30 != gen30 || !queueBarClearFading30) return;
+                                    queueBarClearFading30 = false;
+                                    cl30.setVisibility(android.view.View.GONE);
+                                    cl30.setAlpha(1f);
+                                    cl30.animate().setListener(null);
+                                }
+                            }).start();
+                } else if (!queueBarClearFading30) cl.setVisibility(android.view.View.GONE);
+            }
             if (cl.getVisibility() == android.view.View.VISIBLE
                     && !Lang.t(RoomActivity.this, "queue_clear_yes").equals(cl.getText().toString()))
                 cl.setText(Lang.t(RoomActivity.this, "queue_clear_yes"));
@@ -11055,6 +11145,15 @@ if (snd67q >= 0) currentIndex = snd67q;
         drawerFilterMode = 0; // v4.96: queue view replaces any filter view
         if (adapter != null) adapter.notifyDataSetChanged();
         setPlayListPanel(true);
+        // v14.30 (slice 1685): refresh the bar at the entry gesture —
+        // the toggle entry already called this after openQueueDrawer,
+        // but the header long-press neutral "view queue only" and the
+        // pendingQueue opens never did, so their bar labels swapped up
+        // to 1s late on the poll tick while the rows poured at once.
+        // The refresh is change-only, so the double call on the toggle
+        // entry is a no-op; the mode flip inside fades the bar in
+        // sync with the pour.
+        refreshQueueBar72();
     }
 
     private void handleNext() {
