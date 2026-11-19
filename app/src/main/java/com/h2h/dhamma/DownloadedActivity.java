@@ -1259,6 +1259,22 @@ public class DownloadedActivity extends Activity {
     // fresh open or a rotation (both are new instances, so the
     // pause marker is false there).
     private boolean dlReturnChange = false;
+    // v14.59 (slice 1716): library-footer melt arm — set ONLY by
+    // the 1s tick's track-change branch below (the v4.66 footer
+    // rebind), consumed at the top of updateTotal. A track change
+    // while the library sits open (auto-advance, or a Next tap on
+    // the strip / notification / Room) rewrites the footer's Up
+    // Next line with neither dlDeleteChange nor dlReturnChange
+    // armed, so the line used to snap to the next talk's title in
+    // one frame while the sounding row melted beside it (v14.49).
+    // Scoped to this call site on purpose: a search keystroke
+    // (v12.37, updateTotal per keystroke), a chip tap, a sort
+    // change, a queue-menu move or a mark change never arms it,
+    // so typing or tapping can never re-fire the melt — a missed
+    // melt, never a shimmer. Consume-once: a track change landing
+    // while the shelf is empty (the fade-out branch) consumes the
+    // arm harmlessly.
+    private boolean dlFooterTrackChange59 = false;
     private boolean dlWasPaused = false;
     // v8.55: share-chooser suppress, mirroring Room suppressBgPause /
     // Talks suppressSharePause — the library's four share choosers
@@ -4192,6 +4208,11 @@ public class DownloadedActivity extends Activity {
             // rebinds on that signal alone (one DownloadManager
             // query per track change, never per tick).
             if (trackChanged) {
+                // v14.59 (slice 1716): arm the footer melt — the
+                // Up Next line below is about to move to the next
+                // talk (see updateTotal's else branch); the
+                // sounding row melts on this same signal (v14.49).
+                dlFooterTrackChange59 = true;
                 try { updateTotal(); } catch (Exception ignored) {}
             }
             // v3.93: library playing-row live position — the playing
@@ -7176,6 +7197,23 @@ public class DownloadedActivity extends Activity {
         } catch (Exception ignored) {}
     }
 
+    // v14.59 (slice 1716): strip the footer's live download
+    // percent before comparing old/new text — the percent rides
+    // the first job's title in dlProgSuffix (" · ⏳ N · Title
+    // 42%") and ticks per second while a download runs, so a raw
+    // compare would fire the melt on a track change that only
+    // coincided with a percent tick (shuffle-on: no Up Next line
+    // at all, counts + percent only). The "⏳ N" count has no
+    // percent and survives the strip, so a download starting or
+    // finishing still arms through the count; the total's "%.1f
+    // MB", the "· ★ N / ◈ N / ✓ N / ↺ N" counts and the Up Next
+    // line's " ↺ mm:ss" resume mark contain no "%", so the strip
+    // never eats a structural part. Null-safe, returns "".
+    private static String stripDlFooterLive59(String s) {
+        if (s == null) return "";
+        return s.replaceAll(" [0-9]+%", "");
+    }
+
     private void updateTotal() {
         scanDlProgress();
         long total = 0;
@@ -7183,6 +7221,12 @@ public class DownloadedActivity extends Activity {
         TextView tv = findViewById(R.id.totalText);
         if (tv != null) {
             String oldText = tv.getText() == null ? "" : tv.getText().toString();
+            // v14.59 (slice 1716): consume the track-change arm
+            // once, up front — the emptying (fade-out) branch
+            // below never melts, so an arm landing there must not
+            // survive to fire on the next non-empty write.
+            boolean footerTrackChange59 = dlFooterTrackChange59;
+            dlFooterTrackChange59 = false;
             // v4.24: the footer also counts favourites ("· ★ M"),
             // so the shelf's total reads like the Room's queue
             // counts do. Shown only when at least one file is a
@@ -7513,18 +7557,55 @@ public class DownloadedActivity extends Activity {
                     tv.animate().cancel();
                     wasFadingOut = true;
                 }
+                // v14.59 (slice 1716): snapshot the footer BEFORE
+                // the write — the stripped text (live percent
+                // removed, see stripDlFooterLive59), the pre-write
+                // visibility (the GONE footer reappearing is owned
+                // by the v3.59 glide-back, never by this melt) and
+                // the pre-write settled alpha (read BEFORE the
+                // fade branch below, whose final else resets alpha
+                // to 1 — a melt in flight from a previous
+                // updateTotal, e.g. a delete-fade inside its 250ms,
+                // must read unsettled here and skip: the branch
+                // cancels it and pins alpha 1, so a skipped melt
+                // is a cut-short melt, never a fight).
+                boolean footerWasVisible59 = tv.getVisibility() == android.view.View.VISIBLE;
+                String footerBefore59 = stripDlFooterLive59(oldText);
                 if (!newText.isEmpty() && tv.getVisibility() != android.view.View.VISIBLE)
                     tv.setVisibility(android.view.View.VISIBLE);
                 tv.setText(newText);
-                if ((dlDeleteChange || dlReturnChange) && !newText.isEmpty() && !newText.equals(oldText))
+                boolean footerSettled59 = tv.getAlpha() >= 0.999f;
+                boolean footerFadeFired59 = false;
+                if ((dlDeleteChange || dlReturnChange) && !newText.isEmpty() && !newText.equals(oldText)) {
                     Fx.fadeIn(tv, 250);
-                else if (wasFadingOut && !newText.isEmpty() && tv.getAlpha() < 0.999f) {
+                    footerFadeFired59 = true;
+                } else if (wasFadingOut && !newText.isEmpty() && tv.getAlpha() < 0.999f) {
                     tv.animate().alpha(1f).setDuration(250)
                             .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
                 } else {
                     tv.animate().cancel();
                     tv.setAlpha(1f);
                 }
+                // v14.59 (slice 1716): melt the footer on a
+                // track-change structural change — the Up Next
+                // line moving to the next talk, a count stepping,
+                // a download landing — 250ms via Fx.fadeIn, the
+                // v14.58 rhythm, beside the sounding row's melt
+                // (v14.49). Gated on the arm (track change only),
+                // a stripped-text change (a pure percent tick
+                // reads equal), footer visible + settled, no
+                // fade-out in flight, and the delete/return fade
+                // not already firing this pass (one fade per
+                // write; Fx.fadeIn restarts safely, but a second
+                // call here would only re-cut the same 250ms).
+                // A skipped melt is a missed melt, never a
+                // shimmer: a second structural change 250ms later
+                // just restarts the glide and still ends at
+                // alpha 1.
+                if (!footerFadeFired59 && footerTrackChange59 && footerWasVisible59
+                        && !wasFadingOut && footerSettled59 && !newText.isEmpty()
+                        && !stripDlFooterLive59(newText).equals(footerBefore59))
+                    Fx.fadeIn(tv, 250);
             }
             // v1.96: the footer total never followed the font size
             // either (no layout size, so it sat at the default) —
