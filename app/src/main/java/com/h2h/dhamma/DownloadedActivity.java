@@ -1204,6 +1204,15 @@ public class DownloadedActivity extends Activity {
     private boolean dlSearchJumpTop = false; // v4.21: set below, consumed after notify
     // v2.54: sort-change entrance flag — set only by the sort tap below.
     private boolean dlSortChange = false;
+    // v14.24 (slice 1678): filter-change entrance flag — armed by
+    // setDlFilterMode (chip tap + search long-press cycle) and by
+    // the clear-button long-press reset below; consumed by the
+    // v14.24 block in applyDlFilter. A tap on the already-active
+    // chip returns in setDlFilterMode before arming, so it never
+    // pours; rotations restore dlFilterMode by direct field
+    // assignment and never call setDlFilterMode, so they never
+    // pour either.
+    private boolean dlFilterChange = false;
     // v2.55: delete-change entrance flag — set only by a confirmed
     // single-row delete below (delete-all never sets it: an emptied
     // list has no rows to pour; its empty view fades via dlEmptyFade
@@ -5163,7 +5172,12 @@ public class DownloadedActivity extends Activity {
                 // v12.37: the footer follows the filter reset too (see the
                 // filter-cycle note above) — without this the Up Next
                 // line kept naming the filtered next after the reset.
-                if (filterWas) { applyDlFilter(); updateTotal(); }
+                // v14.24 (slice 1678): the reset also changes the
+                // filter view (filtered -> all) — arm the same
+                // pour. When a sort change already re-filtered
+                // through loadList above, the shared key stands
+                // the second pass down, so it never double-pours.
+                if (filterWas) { dlFilterChange = true; applyDlFilter(); updateTotal(); }
                 if (viewChanged && dlListView != null)
                     dlListView.post(new Runnable() { @Override public void run() { dlListView.setSelection(0); } });
                 return true;
@@ -6518,6 +6532,9 @@ public class DownloadedActivity extends Activity {
     private void setDlFilterMode(int mode, android.view.View v) {
         if (mode == dlFilterMode) return;
         dlFilterMode = mode;
+        // v14.24 (slice 1678): a real mode change re-filters below —
+        // arm the filter-change pour (consumed in applyDlFilter).
+        dlFilterChange = true;
         // v4.58: the filter view redefines the shown list, so it
         // exits queue-only first.
         if (libQueueOnly) libQueueOnly = false;
@@ -6720,6 +6737,44 @@ public class DownloadedActivity extends Activity {
         // bind. Visual only.
         if (dlLiveArrival) {
             dlLiveArrival = false;
+            if (dlListLoaded && adapter != null && !shownDl.isEmpty()) {
+                StringBuilder kb = new StringBuilder();
+                kb.append(shownDl.size());
+                for (int i = 0; i < shownDl.size() && i < 3; i++) kb.append('|').append(shownDl.get(i).title);
+                String key = kb.toString();
+                if (!key.equals(lastDlShownKey)) {
+                    lastDlAnimPos = -1;
+                    lastDlShownKey = key;
+                }
+            }
+        }
+        // v14.24 (slice 1678): premium filter-change entrance —
+        // search (v2.49), sort (v2.54), delete (v2.55), return
+        // (v2.57) and live-arrival (v4.00) pours closed their
+        // gaps, but a filter-chip tap (or the search long-press
+        // cycle, or the clear-button long-press reset — all three
+        // change dlFilterMode and re-filter through applyDlFilter)
+        // still snapped the new rows in in one frame: none of
+        // the five pour blocks arms on a mode change
+        // (dlSearchKeystroke is set only by the search watcher).
+        // A mode change that actually changes the shown set now
+        // resets the same per-bind guard, so the new rows pour
+        // in with the library cascade's own fade + rise (45ms
+        // steps, 300ms, decelerate, via the getView guard below).
+        // The key is size + first 3 titles, the same shape as
+        // the four sibling blocks, so a mode change that leaves
+        // the shown set alone (every file already starred) never
+        // replays; the flag is consumed on this pass either way,
+        // so a later reload can never inherit it, and an emptied
+        // list never leaves the guard armed for a later bind.
+        // Known narrow limit, shared with the siblings: a
+        // tail-only swap between the star and new views with
+        // identical size and first 3 titles still snaps —
+        // upgrading all five blocks to the chooser's full key
+        // (v14.23) is a separate sweep, not this piece.
+        // Visual only.
+        if (dlFilterChange) {
+            dlFilterChange = false;
             if (dlListLoaded && adapter != null && !shownDl.isEmpty()) {
                 StringBuilder kb = new StringBuilder();
                 kb.append(shownDl.size());
@@ -12038,10 +12093,11 @@ public class DownloadedActivity extends Activity {
             // own language (v2.12). The guard starts at MAX so the
             // first load is untouched, and only a set-changing search
             // keystroke (v2.49), an order-changing sort tap (v2.54),
-            // a confirmed single delete (v2.55) or a set-changing
-            // real return (v2.57) resets it (see applyDlFilter), so
-            // scrolling, rotations, delete-all and unchanged
-            // onResume reloads never re-pour.
+            // a confirmed single delete (v2.55), a set-changing
+            // real return (v2.57) or a set-changing filter tap
+            // (v14.24) resets it (see applyDlFilter), so scrolling,
+            // rotations, delete-all and unchanged onResume reloads
+            // never re-pour.
             if (pos > lastDlAnimPos) {
                 lastDlAnimPos = pos;
                 float dy = 24f * v.getResources().getDisplayMetrics().density;
