@@ -605,6 +605,41 @@ public class Fx {
         glide.start();
     }
 
+    // v15.14 (slice 1773): premium rank-close glide, vertical —
+    // the v15.03 (slice 1761) shelf shape transposed to the
+    // Library queue-preview box. A preview row leaving the box
+    // used to make every trailing row jump one slot up in a
+    // single frame when the removal landed; park each trailing
+    // row one slot down (translationY += shiftPx, so its visual
+    // position never moves) and animate translationY to 0 over
+    // durationMs (DecelerateInterpolator, the fade rhythm), so it
+    // glides home instead of jumping. Recorded in its own
+    // WeakHashMap (glideAnimsY), never the shelf's glideAnims:
+    // a second removal landing while a glide is still in flight
+    // cancels ONLY the recorded Y glide and re-parks from the
+    // sibling's current position, so the sibling keeps gliding
+    // from where it visually is — and an alpha fade on the same
+    // view (the v15.12 diff-melt) is never touched, because this
+    // helper never calls animate().cancel(). No glideHomeYFrom /
+    // cancelGlideY: the box rebuilds on the 1s tick and a 250ms
+    // glide always completes between ticks, so no carry case can
+    // land (the shelf's v15.05/v15.08 cases cannot land here).
+    // Visual only.
+    private static java.util.WeakHashMap<View, android.animation.ObjectAnimator> glideAnimsY =
+            new java.util.WeakHashMap<View, android.animation.ObjectAnimator>();
+    public static void glideHomeY(final View v, float shiftPx, long durationMs) {
+        if (v == null) return;
+        android.animation.ObjectAnimator prev = glideAnimsY.get(v);
+        if (prev != null) prev.cancel();
+        v.setTranslationY(v.getTranslationY() + shiftPx);
+        android.animation.ObjectAnimator glide =
+                android.animation.ObjectAnimator.ofFloat(v, "translationY", 0f);
+        glide.setDuration(durationMs);
+        glide.setInterpolator(new DecelerateInterpolator());
+        glideAnimsY.put(v, glide);
+        glide.start();
+    }
+
     // v15.08 (slice 1767): premium rank-close glide from an explicit
     // start — the carry half of glideHome above. A rebuild landing
     // mid-glide replaces the gliding view with a fresh one at home,

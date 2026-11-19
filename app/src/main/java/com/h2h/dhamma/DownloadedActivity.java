@@ -3623,24 +3623,100 @@ public class DownloadedActivity extends Activity {
         // removes it from the box at the end and restores its
         // alpha. The box shows N+1 children for the 250ms — the
         // fading row beside the rebuilt ones — then the siblings
-        // jump one slot up when it leaves (no rank-close glide
-        // yet — the shelf's v15.03 shape for the box is the next
-        // scout). Inserting in ascending old-index order keeps
-        // several departures in their old relative order; the
-        // clamp covers a departure past the new end (the removed
-        // last row). The fade is gen-guarded (v3.62): a rebuild
-        // landing mid-fade detaches the row first and the stale
-        // end action is a no-op — unreachable on the 1s tick, but
-        // the guard holds anyway. No translation reset: preview
-        // rows never glide (Fx.press/morph are scale-only), unlike
-        // the shelf's v15.08 chips.
-        if (qpDeparting72 != null) {
-            for (int i72 = 0; i72 < qpDeparting72.size(); i72++) {
-                android.view.View dv72 = qpDeparting72.get(i72);
+        // glide up one slot when it leaves (v15.14, slice 1773:
+        // the shelf's v15.03 rank-close shape for the box, below).
+        // Inserting in ascending old-index order keeps several
+        // departures in their old relative order; the clamp covers
+        // a departure past the new end (the removed last row). The
+        // fade is gen-guarded (v3.62): a rebuild landing mid-fade
+        // detaches the row first and the stale end action is a
+        // no-op — unreachable on the 1s tick, but the guard holds
+        // anyway. No translation reset on re-seat: a departing row
+        // can never be mid-glide — a glide starts only at a
+        // departure's own end action, and a departure is captured
+        // from the settled previous build, 1s after the last
+        // rebuild, so every glide finished >=750ms before capture
+        // (and a still-fading departure is never glided, v15.09
+        // below) — its translationY is 0 when it is re-seated.
+        final java.util.ArrayList<android.view.View> dep73 = qpDeparting72;
+        if (dep73 != null) {
+            for (int i72 = 0; i72 < dep73.size(); i72++) {
+                android.view.View dv72 = dep73.get(i72);
                 int at72 = qpDepartingIdx72.get(i72);
                 if (at72 > box.getChildCount()) at72 = box.getChildCount();
                 box.addView(dv72, at72);
-                Fx.fadeOutAndRemove(dv72, 250);
+                // v15.14 (slice 1773): rank-close glide — the
+                // shelf's v15.03 (slice 1761) shape transposed to
+                // vertical. The shift is the distance every
+                // trailing row travels when the rank closes: this
+                // row's height plus its own top margin (the gap
+                // the next row carries — a first row carries none,
+                // so its shift is the height alone), measured, so
+                // a density rounding quirk can never leave a 1px
+                // step at the end of the glide. The design-value
+                // fallback covers a row that has not been laid out
+                // yet (one text line + 20dp padding + 4dp gap). The top is
+                // the row's old-layout top, read here at re-seat:
+                // it equals the settled top, because every row is
+                // one line at the same text size with the same
+                // padding and the header never changes height, so
+                // the prefix above this slot totals the same in
+                // the old and the new layout.
+                final float shift73;
+                {
+                    float s73 = 0f;
+                    if (dv72.getHeight() > 0) {
+                        s73 = dv72.getHeight();
+                        android.view.ViewGroup.LayoutParams lp73 =
+                                dv72.getLayoutParams();
+                        if (lp73 instanceof android.widget.LinearLayout.LayoutParams)
+                            s73 += ((android.widget.LinearLayout.LayoutParams) lp73).topMargin;
+                    }
+                    if (s73 <= 0f) s73 = (int) ((sz * 1.2f + 24) * dens + 0.5f);
+                    shift73 = s73;
+                }
+                final int top73 = dv72.getTop();
+                Fx.fadeOutAndRemove(dv72, 250, new Runnable() {
+                    @Override public void run() {
+                        // v15.14 (slice 1773): glide the trailing
+                        // rows home — each child still sitting
+                        // BELOW the departed row (its layout top
+                        // is greater than the departed top — the
+                        // layout pass for this removal has not run
+                        // yet, so the tops are the pre-removal
+                        // ones) is parked one slot down of its new
+                        // layout position and animated to 0 over
+                        // 250ms, so the rank-close reads as one
+                        // motion with the fade-out instead of a
+                        // single-frame jump. The top comparison —
+                        // not the shelf's captured slot index —
+                        // keeps this correct when two departures
+                        // share one rebuild: the second departure's
+                        // end action still finds the trailing row
+                        // below its top even though the first
+                        // departure already left, and the glide
+                        // accumulates from the row's current visual
+                        // position (glideHomeY cancels only the
+                        // recorded Y glide). No trailing row (the
+                        // removed last row) glides nothing; the
+                        // header (top 0) never qualifies.
+                        for (int c73 = 0; c73 < box.getChildCount(); c73++) {
+                            android.view.View ch73 = box.getChildAt(c73);
+                            if (ch73 == null || ch73.getTop() <= top73) continue;
+                            // v15.09 (slice 1768) for the box:
+                            // never glide a still-fading departure
+                            // — a second departure re-seated below
+                            // this one is still fading out in its
+                            // own slot, and this loop used to park
+                            // it one slot down and slide it home
+                            // while it faded. A departure's own end
+                            // action closes its rank when it leaves,
+                            // so skipping it here loses nothing.
+                            if (dep73.contains(ch73)) continue;
+                            Fx.glideHomeY(ch73, shift73, 250);
+                        }
+                    }
+                });
             }
         }
         // v15.13 (slice 1772): record this build's row paths for
