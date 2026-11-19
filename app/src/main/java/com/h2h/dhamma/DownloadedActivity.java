@@ -3149,6 +3149,15 @@ public class DownloadedActivity extends Activity {
     // never write prefs — and a signature owns rebuilds, so
     // steady rows are never rewritten on the tick.
     private String libQueuePreviewSig = null;
+    // v15.13 (slice 1772): the file paths the preview box was last
+    // built with (rows only, in slot order) — the departure capture
+    // below identifies a removed row by path, not by slot text, so
+    // a mark change on the same file never departs it. Cleared
+    // when the box empties, so the v15.11 stale rest still attached
+    // to the GONE box can never gate a departure; a re-appear
+    // melts every child as an entrance, the v15.10 rule. Set at the
+    // end of every non-empty rebuild below.
+    private java.util.ArrayList<String> qpPrevPaths72 = null;
     // v4.90: the library row's now-playing path, set by the queue
     // preview refresh below (same tick, same gate) so getView
     // never reads prefs per row (the v2.03 cost class).
@@ -3369,6 +3378,12 @@ public class DownloadedActivity extends Activity {
         }
         libQueuePreviewSig = sigStr;
         if (rows.isEmpty()) {
+            // v15.13 (slice 1772): the box is emptying — clear the
+            // last build's row paths, so a re-appear never treats
+            // the v15.11 stale rest still attached to the GONE box
+            // as departures (a re-appear melts every child as an
+            // entrance, the v15.10 rule).
+            qpPrevPaths72 = null;
             // v15.11 (slice 1770): the box fades out instead of
             // vanishing — the v14.38 empty-shelf shape (Main
             // refreshFavShelf) restated for the preview box: the
@@ -3411,6 +3426,55 @@ public class DownloadedActivity extends Activity {
                 android.view.View c71 = box.getChildAt(i71);
                 qpOldTexts71.add(c71 instanceof android.widget.TextView
                         ? ((android.widget.TextView) c71).getText().toString() : "");
+            }
+        }
+        // v15.13 (slice 1772): capture the departing rows' views
+        // before the wholesale rebuild below destroys them — the
+        // v15.00 (slice 1758) shelf shape restated for the box: a
+        // row leaving the preview used to vanish in one frame with
+        // removeAllViews, while the surviving rows re-melt (v15.12)
+        // and the shelf fades a removed chip out in its old slot.
+        // A row departs only when it is visibly gone: its path is
+        // not among the new rows' paths AND its text is not among
+        // the new rows' texts — the path half keeps a mark change
+        // on the same file from departing (the file is still there,
+        // it melts in place per v15.12), and the text half keeps a
+        // same-text different-file swap from fading out a visually
+        // identical row beside its identical fresh twin (v15.12
+        // B8: nothing visibly changed). Only on a VISIBLE box (a
+        // GONE box holds the v15.11 stale rest) and only while no
+        // search is active — a keystroke-driven rebuild never fades
+        // anything while typing, the v15.12 guard. The rebuild
+        // rides the 1s tick, the sole call site, so a 250ms fade
+        // always completes between ticks: no carry is needed (the
+        // shelf's v15.05 case cannot land here) and the record is
+        // local to this rebuild. The old slot texts come from the
+        // v15.12 snapshot above (header at 0, rows at 1..n); the
+        // paths come from qpPrevPaths72, and the two must align
+        // with the live children or no departure is captured.
+        java.util.ArrayList<android.view.View> qpDeparting72 = null;
+        java.util.ArrayList<Integer> qpDepartingIdx72 = null;
+        if (box.getVisibility() == android.view.View.VISIBLE
+                && dlQuery.length() == 0 && qpPrevPaths72 != null
+                && qpOldTexts71 != null
+                && qpPrevPaths72.size() == box.getChildCount() - 1
+                && qpOldTexts71.size() == box.getChildCount()) {
+            java.util.HashSet<String> newPaths72 = new java.util.HashSet<String>();
+            java.util.HashSet<String> newTexts72 = new java.util.HashSet<String>(texts);
+            for (int k72 = 0; k72 < rows.size(); k72++)
+                newPaths72.add(rows.get(k72).file.getAbsolutePath());
+            for (int j72 = 0; j72 < qpPrevPaths72.size(); j72++) {
+                String p72 = qpPrevPaths72.get(j72);
+                String t72 = qpOldTexts71.get(j72 + 1);
+                if (newPaths72.contains(p72) || newTexts72.contains(t72)) continue;
+                android.view.View dv72 = box.getChildAt(j72 + 1);
+                if (dv72 == null) continue;
+                if (qpDeparting72 == null) {
+                    qpDeparting72 = new java.util.ArrayList<android.view.View>();
+                    qpDepartingIdx72 = new java.util.ArrayList<Integer>();
+                }
+                qpDeparting72.add(dv72);
+                qpDepartingIdx72.add(j72 + 1);
             }
         }
         box.removeAllViews();
@@ -3539,8 +3603,9 @@ public class DownloadedActivity extends Activity {
         // still melts every child. Skipped while a search is
         // active (dlQuery non-empty), as before: a keystroke-driven
         // rebuild never re-melts anything while typing. A removed
-        // row still vanishes with its slot (no fade-out — open
-        // question, the shelf's v15.00 shape for the box).
+        // row no longer vanishes with its slot — the v15.13
+        // (slice 1772) departure block below fades it out in its
+        // old slot, the shelf's v15.00 shape for the box.
         if (dlQuery.length() == 0) {
             for (int i69 = 0; i69 < box.getChildCount(); i69++) {
                 String newText71 = i69 == 0 ? headerText : texts.get(i69 - 1);
@@ -3549,6 +3614,41 @@ public class DownloadedActivity extends Activity {
                 if (!same71) Fx.fadeIn(box.getChildAt(i69), 250);
             }
         }
+        // v15.13 (slice 1772): melt a removed row out — the
+        // mirror of the v15.12 melt-in above. Each departing row
+        // captured before the rebuild is re-seated here in its old
+        // slot AFTER the melt loop (so the melt indices above
+        // still resolve the fresh children) and fades out 250ms
+        // (the v14.48 rhythm) through Fx.fadeOutAndRemove, which
+        // removes it from the box at the end and restores its
+        // alpha. The box shows N+1 children for the 250ms — the
+        // fading row beside the rebuilt ones — then the siblings
+        // jump one slot up when it leaves (no rank-close glide
+        // yet — the shelf's v15.03 shape for the box is the next
+        // scout). Inserting in ascending old-index order keeps
+        // several departures in their old relative order; the
+        // clamp covers a departure past the new end (the removed
+        // last row). The fade is gen-guarded (v3.62): a rebuild
+        // landing mid-fade detaches the row first and the stale
+        // end action is a no-op — unreachable on the 1s tick, but
+        // the guard holds anyway. No translation reset: preview
+        // rows never glide (Fx.press/morph are scale-only), unlike
+        // the shelf's v15.08 chips.
+        if (qpDeparting72 != null) {
+            for (int i72 = 0; i72 < qpDeparting72.size(); i72++) {
+                android.view.View dv72 = qpDeparting72.get(i72);
+                int at72 = qpDepartingIdx72.get(i72);
+                if (at72 > box.getChildCount()) at72 = box.getChildCount();
+                box.addView(dv72, at72);
+                Fx.fadeOutAndRemove(dv72, 250);
+            }
+        }
+        // v15.13 (slice 1772): record this build's row paths for
+        // the next rebuild's departure capture above — the rows
+        // the box was just built with, in slot order.
+        qpPrevPaths72 = new java.util.ArrayList<String>();
+        for (int k72 = 0; k72 < rows.size(); k72++)
+            qpPrevPaths72.add(rows.get(k72).file.getAbsolutePath());
     }
 
     // v14.49 (slice 1706): melt the newly-sounding shelf row in at
