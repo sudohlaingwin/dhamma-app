@@ -81,6 +81,8 @@ public class RoomActivity extends Activity {
     // every tick, mirroring the speed/download/fav/share buttons.
     private Button roomRepeatBtn;
     private android.widget.ImageButton roomShuffleBtn; // v7.28: vector icon, not a text glyph
+    // v14.64 (slice 1721): Room sleep button, cached like roomShuffleBtn above so the 500ms poll can melt its tint change-only without a findViewById every tick. Same vector-icon class (ic_sleep, white moon+Z).
+    private android.widget.ImageButton roomSleepBtn;
     // v2.07: premium play motion — gold glow ring + morph bounce.
     private View playGlow;
     private android.animation.ObjectAnimator glowPulse;
@@ -5046,6 +5048,8 @@ if (snd65 >= 0) currentIndex = snd65;
                             // half-transparent. A steady tick (alpha 1)
                             // still never re-fades.
                             if (wasGone || sleepText.getAlpha() < 0.999f) Fx.fadeIn(sleepText, 250);
+                            // v14.64 (slice 1721): the moon carries the armed state too — gold while a timer is armed, white when off, melting over 250ms like the shuffle tint (v14.41). Same armed predicate as the line above (sleepWant != null), so the button and the line can never disagree: countdown, end-of-talk, fading and pause-suspended all count as armed, exactly the states that keep the line visible. The v4.25 "button needs no state" note predates the v14.41 tint-melt idiom; the line still names the countdown, the button now names it at a glance. First poll tick stamps instantly (crossfadeImageTint's no-recorded-tint path), steady ticks no-op, morph/press are scale-only so no channel fight.
+                            applySleepTint(roomSleepBtn, sleepWant != null);
                         }
                     } catch (Exception ignored) {}
                 }
@@ -7059,6 +7063,8 @@ int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
         Fx.crossfadeTextColor(sleepText, gold
                 ? android.graphics.Color.parseColor("#C9A227")
                 : android.graphics.Color.parseColor("#AAAAAA"));
+        // v14.64 (slice 1721): seed the moon with the line — a strip -> Room entry with a timer armed must not show a gold countdown line beside a white moon for a beat (the v14.35 detached-entrance class); the poll stays authoritative and corrects any drift within a tick, and a no-timer resume leaves the button for the poll exactly like the line.
+        applySleepTint(roomSleepBtn, true);
     }
 
     // v1.47: hour-long talks used to show "65:23" — over an hour now
@@ -10413,6 +10419,7 @@ if (snd67q >= 0) currentIndex = snd67q;
         // already shows the armed state, and the button's own
         // state needs none. Morph only, like Previous.
         android.view.View sleepBtn = findViewById(R.id.roomSleepBtn);
+        roomSleepBtn = findViewById(R.id.roomSleepBtn); // v14.64 (slice 1721): cache for the poll tint melt
         if (sleepBtn != null) sleepBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 Fx.tap(RoomActivity.this);
@@ -11036,6 +11043,13 @@ if (snd67q >= 0) currentIndex = snd67q;
         b.setImageResource(R.drawable.ic_shuffle);
         Fx.setImageTintNow(b, android.graphics.Color.parseColor(
                 shuffleOn ? "#C9A227" : "#AAAAAA"));
+    }
+
+    // v14.64 (slice 1721): the sleep button's tint IS its armed state — gold moon+Z while a sleep timer is armed, white when off, the shuffle button's melt (v14.41) restated for the sleep control. Off is white, not the shuffle's grey: the vector is white, the row's other icons (play/next/prev) are white, and white keeps the resting row byte-identical to today — only the armed state is new. Fx.crossfadeImageTint (250ms, change-only): the first call stamps instantly (no recorded tint yet), so a Room opened with a timer already running paints gold at once and a rotation restores still; a steady 500ms tick no-ops; a rapid arm-then-cancel inside one melt cancels and melts from the current painted colour. Morph + press live on scale, the tint on the colour filter — no channel fight; applyLangLabels' setImageResource never clears the filter, so a language change keeps the tint. No new view, no new button.
+    private void applySleepTint(android.widget.ImageButton b, boolean armed) {
+        if (b == null) return;
+        Fx.crossfadeImageTint(b, android.graphics.Color.parseColor(
+                armed ? "#C9A227" : "#FFFFFF"));
     }
 
     private int peekNextIndex() {
