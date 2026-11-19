@@ -473,7 +473,8 @@ public class MainActivity extends Activity {
         TextView mainLabel = findViewById(R.id.navMainLabel);
         if (mainIcon != null) mainIcon.setTextColor(gold);
         if (mainLabel != null) mainLabel.setTextColor(gold);
-        syncNavPlayerLiveTint(navText, gold); // v4.12, below
+        syncNavPlayerLiveTintNow(navText, gold); // v14.62: instant stamp on first paint / dip / return —
+        // the melt lives on the 1s tick only (syncNavPlayerLiveTint below)
         if (adapter != null) adapter.notifyDataSetChanged();
         // v12.38: the grid was just rebound with the current
         // marks — seed all three tick trackers here (onResume and
@@ -1053,14 +1054,59 @@ public class MainActivity extends Activity {
     // the plain nav colour; the 1s tick re-syncs it, so a stop or a
     // switch landing while Main sits on top is corrected within a
     // second instead of waiting for a theme application.
+    // v14.62 (slice 1719): the glow used to snap — the 1s tick
+    // swapped both text colours in one frame (bare setTextColor)
+    // the moment a session started or ended, while everything
+    // around the nav already moves on that same beat (the strip
+    // slides in v14.14, the shelf pours v14.15, the ring
+    // crossfades v14.16, the tile crossfades v14.31, the strip
+    // glyph flips v14.20, the strip text fades v14.21, the strip
+    // photo crossfades v14.22) — the nav tint was the one
+    // un-choreographed element of the arrival. The icon and the
+    // label now melt gold<->navText through Fx.crossfadeTextColor
+    // (v14.34, 250ms, same rhythm as the sleep line and the
+    // shuffle tint): change-only via the helper's recorded target,
+    // so the steady 1s tick is a no-op and never restarts the
+    // melt, and a rapid start-then-stop inside one melt cancels
+    // and melts from the current painted colour. The v14.16
+    // settled decision does NOT bar this: no label is faded, only
+    // the text colour is interpolated (alpha stays 1, text
+    // unchanged), so the nav cannot flash. The icon and the label
+    // melt together — one call, one target, same duration — so
+    // they never disagree mid-flight. The tick path owns the melt;
+    // first paint / theme-dip swap / return stamps instantly
+    // through syncNavPlayerLiveTintNow below (the v14.39
+    // setTextColorNow pattern), so a rotation restores still and
+    // the dip owns the motion. Visual only; the live predicate,
+    // the colours and both call sites are untouched.
     private void syncNavPlayerLiveTint(int navText, int gold) {
         // v11.94: visual helper — the nav glows gold for a
         // library session too (see soundingSayadawNameVisual).
         boolean live = soundingSayadawNameVisual() != null;
         TextView ic = findViewById(R.id.navPlayerIcon);
         TextView lb = findViewById(R.id.navPlayerLabel);
-        if (ic != null) ic.setTextColor(live ? gold : navText);
-        if (lb != null) lb.setTextColor(live ? gold : navText);
+        if (ic != null) Fx.crossfadeTextColor(ic, live ? gold : navText);
+        if (lb != null) Fx.crossfadeTextColor(lb, live ? gold : navText);
+    }
+
+    // v14.62 (slice 1719): the instant writer for the nav Player
+    // tint — applyThemeAndFont (create / theme-dip swap / return)
+    // must land the glow at once, never melt it: a rotation
+    // restores still, the dip owns the motion, and a language
+    // change repaints without a colour sweep. Stamps both views
+    // at once AND records the target, cancelling any in-flight
+    // tick melt first (setTextColorNow removes the map entry
+    // BEFORE the cancel, so the cancelled animator's end skips
+    // its stale stamp — the v14.42 discipline). The bare
+    // setTextColor loop just above still paints navText first;
+    // this call is the last writer in applyThemeAndFont, so the
+    // recorded target always agrees with the painted colour.
+    private void syncNavPlayerLiveTintNow(int navText, int gold) {
+        boolean live = soundingSayadawNameVisual() != null;
+        TextView ic = findViewById(R.id.navPlayerIcon);
+        TextView lb = findViewById(R.id.navPlayerLabel);
+        if (ic != null) Fx.setTextColorNow(ic, live ? gold : navText);
+        if (lb != null) Fx.setTextColorNow(lb, live ? gold : navText);
     }
 
     // v6.00: sayadaw portrait on the mini strip — the strip was the
