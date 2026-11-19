@@ -2091,6 +2091,30 @@ public class RoomActivity extends Activity {
         if (header != null) header.setText(sayadawName
                 + (sayadawGroup == null || sayadawGroup.length() == 0
                         ? "" : " · " + sayadawGroup));
+        // v14.37 (slice 1692): premium handover header pour — a
+        // handover to another sayadaw's talk (queue drawer / strip /
+        // notification tap while this Room is open) used to swap this
+        // header instantly, while the sibling sayadaw switch (v2.65)
+        // and the talk title (v3.49) already pour — the new name now
+        // fades + rises in with the same rhythm (320ms, 12dp rise,
+        // decelerate, ending at exactly alpha 1 / offset 0), so the
+        // switch reads as one choreographed change, not a text snap
+        // above the pouring rows. The fresh-open path is untouched —
+        // it already pours via v2.15, and this handover path only
+        // runs on an existing activity, so the two never
+        // double-animate. Visual only.
+        if (header != null) {
+            // v3.49: pour-restart continuity (v3.37 rule, extended) — a settled
+            // view still pours visibly from 0/12dp; a mid-pour view flows on
+            // from its current alpha/offset instead of snapping back.
+            header.animate().cancel();
+            if (header.getAlpha() >= 0.999f && header.getTranslationY() <= 0.5f) {
+                header.setAlpha(0f);
+                header.setTranslationY(12f * getResources().getDisplayMetrics().density);
+            }
+            header.animate().alpha(1f).translationY(0f).setDuration(320)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+        }
         refreshSayadawPhoto();
         // v8.59: the queue MOVED with this handover — the old
         // sayadaw's saved key must be cleared (the carried copy is
