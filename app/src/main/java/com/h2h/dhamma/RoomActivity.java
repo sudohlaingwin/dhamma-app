@@ -4772,7 +4772,10 @@ if (snd65 >= 0) currentIndex = snd65;
                 // change-only (a steady minute never rewrites), and
                 // the view fades in once on its GONE -> VISIBLE
                 // transition instead of popping (Fx.fadeIn, 250ms);
-                // later ticks never re-fade. The control row is
+                // later ticks never re-fade. The VISIBLE -> GONE
+                // transition fades out the same way (v14.33, slice
+                // 1688: Fx.fadeOut, 200ms) instead of vanishing.
+                // The control row is
                 // untouched — Forward | Play/Pause | Next + drawer
                 // toggle, no new button anywhere.
                 if (sleepText != null) {
@@ -4792,8 +4795,18 @@ if (snd65 >= 0) currentIndex = snd65;
                             sleepWant = "😴 ⏸ " + formatTime((int) sleepSusp);
                         }
                         if (sleepWant == null) {
+                            // v14.33 (slice 1688): the countdown fades out
+                            // instead of vanishing — Fx.fadeOut (200ms,
+                            // GONE at the end, gen-guarded v3.62), the
+                            // mirror of the v4.25 fade-in. 200ms is inside
+                            // the 500ms poll gap, so the fade always
+                            // finishes between ticks and a tick never
+                            // restarts it in the poll's own cadence; a
+                            // re-arm landing mid-fade rides the widened
+                            // appear gate below instead of stranding the
+                            // line half-transparent.
                             if (sleepText.getVisibility() != android.view.View.GONE)
-                                sleepText.setVisibility(android.view.View.GONE);
+                                Fx.fadeOut(sleepText, 200);
                         } else {
                             boolean wasGone = sleepText.getVisibility() == android.view.View.GONE;
                             if (wasGone) sleepText.setVisibility(android.view.View.VISIBLE);
@@ -4804,7 +4817,13 @@ if (snd65 >= 0) currentIndex = snd65;
                                     : android.graphics.Color.parseColor("#AAAAAA");
                             if (sleepText.getCurrentTextColor() != wantColor)
                                 sleepText.setTextColor(wantColor);
-                            if (wasGone) Fx.fadeIn(sleepText, 250);
+                            // v14.33 (slice 1688): also re-fade when a
+                            // re-arm lands mid-fade-out (alpha < 1) — the
+                            // v3.52 continuity rule, so the line rides
+                            // back to full instead of stranding
+                            // half-transparent. A steady tick (alpha 1)
+                            // still never re-fades.
+                            if (wasGone || sleepText.getAlpha() < 0.999f) Fx.fadeIn(sleepText, 250);
                         }
                     } catch (Exception ignored) {}
                 }
@@ -7547,7 +7566,10 @@ if (snd68 >= 0) currentIndex = snd68;
         // The cancel also zeroes the Settings default, or the
         // Room's live sync would re-arm the timer on re-entry
         // (mins > 0, remaining == 0). The view hides at once
-        // instead of waiting for the next poll tick, and the toast
+        // instead of waiting for the next poll tick (v14.33, slice
+        // 1688: with a 200ms fade-out, not a cut — the fade starts
+        // at the gesture, a tick landing mid-fade restarts it once
+        // and still ends GONE), and the toast
         // names what happened; a cancelled timer never reaches
         // the fade, so no fade label can follow it.
         if (sleepText != null) {
@@ -7562,7 +7584,9 @@ if (snd68 >= 0) currentIndex = snd68;
                     Fx.tap(RoomActivity.this);
                     Prefs.setSleepMinutes(RoomActivity.this, 0);
                     try { if (service != null) service.setSleepMinutes(0); } catch (Exception ignored) {}
-                    sleepText.setVisibility(android.view.View.GONE);
+                    // v14.33 (slice 1688): same dissolve as the poll's
+                    // fade-out — see the poll sleep block.
+                    Fx.fadeOut(sleepText, 200);
                     android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "sleep_off"), android.widget.Toast.LENGTH_SHORT).show();
                     return true;
                 }
