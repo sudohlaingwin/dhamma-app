@@ -2370,8 +2370,38 @@ public class RoomActivity extends Activity {
         if (pv == null) return;
         String key = (photoUrl == null ? "" : photoUrl) + "|" + (sayadawName == null ? "" : sayadawName);
         if (key.equals(loadedSayadawPhotoKey)) return;
+        // v14.52 (slice 1709): premium header-portrait pour — a
+        // sayadaw switch (handover / notification Next) used to swap
+        // this face instantly while the name beside it already poured
+        // (v2.65 switch, v14.37 handover), so the header read as one
+        // choreographed change on the text side and a snap on the face
+        // side: a cached portrait landed in a single frame, an
+        // uncached one vanished to the gold initial and only then
+        // faded in (ImageLoader.fadeTo, 250ms). The new face now
+        // fades in with the name's own rhythm (320ms, decelerate,
+        // ending at exactly alpha 1), so the switch reads as one
+        // change. Alpha only — no rise: the photo sits centred inside
+        // the 52dp ring frame, and a 12dp rise would slide it out of
+        // its ring mid-pour; the ring itself stays put. First bind
+        // is excluded (changed false — the field is null until a key
+        // is loaded, and a recreation restores it null, so the
+        // fresh-open entrance v2.15 still owns the first face).
+        // Mid-pour restart follows the v3.49 rule: a settled view
+        // pours from 0, a mid-pour view flows on from its current
+        // alpha instead of snapping back. An uncached landing still
+        // restarts through ImageLoader.fadeTo (it cancels this pour
+        // and re-fades 0->1, ending at alpha 1), so no state can
+        // strand the photo half-transparent. Visual only; the key
+        // guard, the load call and the load timing are untouched.
+        boolean changed = loadedSayadawPhotoKey != null;
         loadedSayadawPhotoKey = key;
         ImageLoader.load(this, photoUrl, sayadawName, pv);
+        if (changed) {
+            pv.animate().cancel();
+            if (pv.getAlpha() >= 0.999f) pv.setAlpha(0f);
+            pv.animate().alpha(1f).setDuration(320)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+        }
     }
     private Handler handler = new Handler();
     private boolean seeking = false;
