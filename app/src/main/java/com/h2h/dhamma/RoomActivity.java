@@ -9542,11 +9542,29 @@ if (snd65h >= 0) currentIndex = snd65h;
                             .setMessage(clearMsg83)
                             .setPositiveButton(Lang.t(RoomActivity.this, "queue_clear_yes"), new android.content.DialogInterface.OnClickListener() {
                                 @Override public void onClick(android.content.DialogInterface d, int w) {
+                                    boolean wasQueueOnly83 = drawerQueueOnly;
                                     queueUrls.clear();
                                     moveHeldUrl = null; // v7.86: an emptied queue leaves no held row, like the library clear-all since v7.85
                                     drawerQueueOnly = false; // v4.55: an emptied queue leaves queue-only view
                                     saveQueue(null, true);
                                     if (adapter != null) adapter.notifyDataSetChanged();
+                                    // v14.28 (slice 1683): premium clear-confirm exit
+                                    // pour — confirming the clear from the queue-only
+                                    // view only flipped the flag and re-bound, so the
+                                    // full list snapped back in one frame behind the
+                                    // dismissing dialog. The re-bound rows now cascade
+                                    // with the same Fx.staggerChildren the v14.27
+                                    // toggle exit uses, guarded exactly like v3.06
+                                    // (panel open + translationX == 0f) so a confirm
+                                    // tapped mid-slide never fights the open cascade
+                                    // or the close dissolve; a confirm from the
+                                    // full-list view (wasQueueOnly83 false) only
+                                    // re-binds the queue marks and stays still.
+                                    // Visual only; the clear, the flag, the bar
+                                    // labels and the scroll position are untouched.
+                                    android.view.View qPanel28 = findViewById(R.id.roomPlayListPanel);
+                                    if (wasQueueOnly83 && isPlayListPanelOpen() && qPanel28 != null && qPanel28.getTranslationX() == 0f && roomList != null)
+                                        Fx.staggerChildren(roomList);
                                     Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_cleared"), Toast.LENGTH_SHORT).show();
                                 }
                             })
@@ -10913,11 +10931,26 @@ if (snd67q >= 0) currentIndex = snd67q;
                 .setMessage(msg)
                 .setPositiveButton(Lang.t(RoomActivity.this, "queue_clear_yes"), new android.content.DialogInterface.OnClickListener() {
                     @Override public void onClick(android.content.DialogInterface d, int w) {
+                        boolean wasQueueOnly72 = drawerQueueOnly;
                         queueUrls.clear();
                         moveHeldUrl = null;
                         drawerQueueOnly = false;
                         saveQueue(null, true);
                         if (adapter != null) adapter.notifyDataSetChanged();
+                        // v14.28 (slice 1683): same clear-confirm exit pour
+                        // as the header long-press dialog — this dialog is
+                        // only reachable from the bar Clear button, visible
+                        // only in the queue-only view, so the confirm always
+                        // exits to the full list; the wasQueueOnly72 guard
+                        // keeps both confirms on one rule, and the v3.06
+                        // guard (panel open + translationX == 0f) keeps a
+                        // confirm tapped mid-slide from fighting the open
+                        // cascade or the close dissolve. Visual only; the
+                        // clear, the flag, the bar refresh below and the
+                        // scroll position are untouched.
+                        android.view.View qPanel28 = findViewById(R.id.roomPlayListPanel);
+                        if (wasQueueOnly72 && isPlayListPanelOpen() && qPanel28 != null && qPanel28.getTranslationX() == 0f && roomList != null)
+                            Fx.staggerChildren(roomList);
                         refreshQueueBar72();
                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_cleared"), Toast.LENGTH_SHORT).show();
                     }
