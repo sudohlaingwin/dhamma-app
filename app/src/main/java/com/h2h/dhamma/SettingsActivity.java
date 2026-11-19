@@ -2036,7 +2036,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                 }
                 if (lTitle.length() == 0 || !lMatch) {
                     syncSettingsStripPhoto(null);
-                    strip.setVisibility(android.view.View.GONE);
+                    Fx.hideStrip(strip);
                     return;
                 }
                 boolean lFav = false;
@@ -2089,7 +2089,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                 if (lPb != null) Fx.stripResumeProgress(lPb, rPos, lDur);
                 settingsResumeStripMode = true;
                 syncSettingsStripPhoto(libSd);
-                strip.setVisibility(android.view.View.VISIBLE);
+                Fx.showStrip(strip);
                 return;
             }
             String rName = sp.getString("lastName", "");
@@ -2113,7 +2113,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
             if (!"room".equals(rKind) || rName.length() == 0 || rTitle.length() == 0
                     || rPage.length() == 0 || rPos <= 5000 || !rMatch) {
                 syncSettingsStripPhoto(null);
-                strip.setVisibility(android.view.View.GONE);
+                Fx.hideStrip(strip);
                 return;
             }
             boolean rFav = false;
@@ -2143,7 +2143,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
             if (rPb != null) Fx.stripResumeProgress(rPb, rPos, rDur);
             settingsResumeStripMode = true;
             syncSettingsStripPhoto(rName);
-            strip.setVisibility(android.view.View.VISIBLE);
+            Fx.showStrip(strip);
             return;
         }
         settingsResumeStripMode = false;
@@ -2184,7 +2184,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                 subText = libSd != null ? libSd : Lang.t(SettingsActivity.this, "downloaded_talk");
             }
         }
-        if (text == null) { syncSettingsStripPhoto(null); strip.setVisibility(android.view.View.GONE); return; }
+        if (text == null) { syncSettingsStripPhoto(null); Fx.hideStrip(strip); return; }
         try {
             java.util.Set<String> ft = sp.getStringSet("favTalks", null);
             if (ft != null) {
@@ -2365,7 +2365,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         // catalog-map lookup, never a guessed face.
         syncSettingsStripPhoto("room".equals(kind) ? sp.getString("lastName", "")
                 : ("lib".equals(kind) ? Fx.stripLibSayadaw(SettingsActivity.this, sp) : null));
-        strip.setVisibility(android.view.View.VISIBLE);
+        Fx.showStrip(strip);
     }
 
     private void startSettingsStripTick() {

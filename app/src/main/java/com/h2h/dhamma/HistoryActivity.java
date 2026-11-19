@@ -1092,7 +1092,7 @@ public class HistoryActivity extends Activity {
                 }
                 if (lTitle.length() == 0 || !lMatch) {
                     syncHistoryStripPhoto(null);
-                    strip.setVisibility(android.view.View.GONE);
+                    Fx.hideStrip(strip);
                     return;
                 }
                 boolean lFav = false;
@@ -1139,13 +1139,13 @@ public class HistoryActivity extends Activity {
                 if (lPb != null) lPb.setProgress(0);
                 hsResumeStripMode = true;
                 syncHistoryStripPhoto(libSd);
-                strip.setVisibility(android.view.View.VISIBLE);
+                Fx.showStrip(strip);
                 return;
             }
             if (!"room".equals(rKind) || rName.length() == 0 || rTitle.length() == 0
                     || rPage.length() == 0 || rPos <= 5000 || !rMatch) {
                 syncHistoryStripPhoto(null);
-                strip.setVisibility(android.view.View.GONE);
+                Fx.hideStrip(strip);
                 return;
             }
             boolean rFav = false;
@@ -1168,7 +1168,7 @@ public class HistoryActivity extends Activity {
             if (rPb != null) rPb.setProgress(0);
             hsResumeStripMode = true;
             syncHistoryStripPhoto(rName);
-            strip.setVisibility(android.view.View.VISIBLE);
+            Fx.showStrip(strip);
             return;
         }
         hsResumeStripMode = false;
@@ -1200,7 +1200,7 @@ public class HistoryActivity extends Activity {
                 subText = libSd != null ? libSd : Lang.t(HistoryActivity.this, "downloaded_talk");
             }
         }
-        if (text == null) { syncHistoryStripPhoto(null); strip.setVisibility(android.view.View.GONE); return; }
+        if (text == null) { syncHistoryStripPhoto(null); Fx.hideStrip(strip); return; }
         boolean stripFav = false;
         try {
             java.util.Set<String> ft = sp.getStringSet("favTalks", null);
@@ -1348,7 +1348,7 @@ public class HistoryActivity extends Activity {
         // exact-name catalog match, never a guessed face.
         syncHistoryStripPhoto("room".equals(kind) ? sp.getString("lastName", "")
                 : ("lib".equals(kind) ? Fx.stripLibSayadaw(HistoryActivity.this, sp) : null));
-        strip.setVisibility(android.view.View.VISIBLE);
+        Fx.showStrip(strip);
     }
 
     private void startHistoryStripTick() {

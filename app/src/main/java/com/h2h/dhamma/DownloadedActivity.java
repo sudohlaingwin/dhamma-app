@@ -2570,7 +2570,7 @@ public class DownloadedActivity extends Activity {
                 }
                 if (lTitle.length() == 0 || !lMatch) {
                     syncDlStripPhoto(null);
-                    strip.setVisibility(android.view.View.GONE);
+                    Fx.hideStrip(strip);
                     return;
                 }
                 // v8.45: the dead-library strip's star no longer takes
@@ -2637,13 +2637,13 @@ public class DownloadedActivity extends Activity {
                 if (lPb != null) Fx.stripResumeProgress(lPb, rPos, lDur);
                 dlResumeStripMode = true;
                 syncDlStripPhoto(libSd);
-                strip.setVisibility(android.view.View.VISIBLE);
+                Fx.showStrip(strip);
                 return;
             }
             if (!"room".equals(rKind) || rName.length() == 0 || rTitle.length() == 0
                     || rPage.length() == 0 || rPos <= 5000 || !rMatch) {
                 syncDlStripPhoto(null);
-                strip.setVisibility(android.view.View.GONE);
+                Fx.hideStrip(strip);
                 return;
             }
             boolean rFav = false;
@@ -2672,7 +2672,7 @@ public class DownloadedActivity extends Activity {
             if (rPb != null) Fx.stripResumeProgress(rPb, rPos, rDur);
             dlResumeStripMode = true;
             syncDlStripPhoto(rName);
-            strip.setVisibility(android.view.View.VISIBLE);
+            Fx.showStrip(strip);
             return;
         }
         dlResumeStripMode = false;
@@ -2715,7 +2715,7 @@ public class DownloadedActivity extends Activity {
                 subText = libSd != null ? libSd : Lang.t(DownloadedActivity.this, "downloaded_talk");
             }
         }
-        if (text == null) { syncDlStripPhoto(null); strip.setVisibility(android.view.View.GONE); return; }
+        if (text == null) { syncDlStripPhoto(null); Fx.hideStrip(strip); return; }
         boolean stripFav = false;
         try {
             java.util.Set<String> ft = sp.getStringSet("favTalks", null);
@@ -2910,7 +2910,7 @@ public class DownloadedActivity extends Activity {
         // catalog-map lookup, never a guessed face.
         syncDlStripPhoto("room".equals(kind) ? sp.getString("lastName", "")
                 : ("lib".equals(kind) ? Fx.stripLibSayadaw(DownloadedActivity.this, sp) : null));
-        strip.setVisibility(android.view.View.VISIBLE);
+        Fx.showStrip(strip);
     }
 
     // v4.86: queue preview above the library strip — the mirror of

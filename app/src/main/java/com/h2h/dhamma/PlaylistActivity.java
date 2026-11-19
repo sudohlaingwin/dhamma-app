@@ -749,7 +749,7 @@ public class PlaylistActivity extends Activity {
                 }
                 if (lTitle.length() == 0 || !lMatch) {
                     syncPlaylistStripPhoto(null);
-                    strip.setVisibility(android.view.View.GONE);
+                    Fx.hideStrip(strip);
                     return;
                 }
                 boolean lFav = false;
@@ -796,13 +796,13 @@ public class PlaylistActivity extends Activity {
                 if (lPb != null) lPb.setProgress(0);
                 plResumeStripMode = true;
                 syncPlaylistStripPhoto(libSd);
-                strip.setVisibility(android.view.View.VISIBLE);
+                Fx.showStrip(strip);
                 return;
             }
             if (!"room".equals(rKind) || rName.length() == 0 || rTitle.length() == 0
                     || rPage.length() == 0 || rPos <= 5000 || !rMatch) {
                 syncPlaylistStripPhoto(null);
-                strip.setVisibility(android.view.View.GONE);
+                Fx.hideStrip(strip);
                 return;
             }
             boolean rFav = false;
@@ -825,7 +825,7 @@ public class PlaylistActivity extends Activity {
             if (rPb != null) rPb.setProgress(0);
             plResumeStripMode = true;
             syncPlaylistStripPhoto(rName);
-            strip.setVisibility(android.view.View.VISIBLE);
+            Fx.showStrip(strip);
             return;
         }
         plResumeStripMode = false;
@@ -857,7 +857,7 @@ public class PlaylistActivity extends Activity {
                 subText = libSd != null ? libSd : Lang.t(PlaylistActivity.this, "downloaded_talk");
             }
         }
-        if (text == null) { syncPlaylistStripPhoto(null); strip.setVisibility(android.view.View.GONE); return; }
+        if (text == null) { syncPlaylistStripPhoto(null); Fx.hideStrip(strip); return; }
         boolean stripFav = false;
         try {
             java.util.Set<String> ft = sp.getStringSet("favTalks", null);
@@ -1005,7 +1005,7 @@ public class PlaylistActivity extends Activity {
         // exact-name catalog match, never a guessed face.
         syncPlaylistStripPhoto("room".equals(kind) ? sp.getString("lastName", "")
                 : ("lib".equals(kind) ? Fx.stripLibSayadaw(PlaylistActivity.this, sp) : null));
-        strip.setVisibility(android.view.View.VISIBLE);
+        Fx.showStrip(strip);
     }
 
     private void startPlaylistStripTick() {

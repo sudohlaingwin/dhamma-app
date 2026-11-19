@@ -528,6 +528,58 @@ public class Fx {
                 }).start();
     }
 
+    // v14.14 (slice 1668): mini-player strip slide — the strip on Main /
+    // Talks / Settings / Downloaded / History / Playlist used to pop in
+    // and out instantly on every sync-tick visibility edge. It now
+    // slides up from below + fades in on show, and slides down + fades
+    // out on hide. Edge-only: a call matching the current settled
+    // visibility is a no-op, so the 1s sync tick never re-animates a
+    // settled strip. A direction flip cancels the in-flight animation
+    // and bumps the fade gen, so a stale hide end-action can never GONE
+    // a strip a show just brought back (same gen-guard family as
+    // fadeOut). Visual only; conditions at every call site untouched.
+    public static void showStrip(final View strip) {
+        if (strip == null) return;
+        if (strip.getVisibility() == View.VISIBLE && strip.getAlpha() >= 0.999f
+                && Math.abs(strip.getTranslationY()) <= 0.5f) return;
+        final boolean wasGone = strip.getVisibility() != View.VISIBLE;
+        bumpFadeGen(strip);
+        strip.animate().cancel();
+        strip.setVisibility(View.VISIBLE);
+        strip.post(new Runnable() {
+            @Override public void run() {
+                float h = strip.getHeight() > 0 ? strip.getHeight()
+                        : 72f * strip.getResources().getDisplayMetrics().density;
+                if (wasGone) {
+                    strip.setAlpha(0f);
+                    strip.setTranslationY(h);
+                }
+                strip.animate().alpha(1f).translationY(0f).setDuration(280)
+                        .setInterpolator(new DecelerateInterpolator()).start();
+            }
+        });
+    }
+
+    public static void hideStrip(final View strip) {
+        if (strip == null) return;
+        if (strip.getVisibility() != View.VISIBLE) return;
+        final int gen = bumpFadeGen(strip);
+        strip.animate().cancel();
+        float h = strip.getHeight() > 0 ? strip.getHeight()
+                : 72f * strip.getResources().getDisplayMetrics().density;
+        strip.animate().alpha(0f).translationY(h).setDuration(240)
+                .setInterpolator(new DecelerateInterpolator())
+                .withEndAction(new Runnable() {
+                    @Override public void run() {
+                        Integer now = fadeGens.get(strip);
+                        if (now == null || now != gen) return;
+                        strip.setVisibility(View.GONE);
+                        strip.setAlpha(1f);
+                        strip.setTranslationY(0f);
+                    }
+                }).start();
+    }
+
     // v2.23: premium theme transition — day/night used to swap
     // colours instantly (a hard flash) on the Main toggle and the
     // Settings day/night buttons, while every other screen change

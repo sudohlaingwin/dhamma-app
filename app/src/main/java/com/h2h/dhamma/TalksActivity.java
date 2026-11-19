@@ -4325,7 +4325,7 @@ public class TalksActivity extends Activity {
                 }
                 if (lTitle.length() == 0 || !lMatch) {
                     syncTalksStripPhoto(null);
-                    strip.setVisibility(android.view.View.GONE);
+                    Fx.hideStrip(strip);
                     return;
                 }
                 boolean lFav = false;
@@ -4379,13 +4379,13 @@ public class TalksActivity extends Activity {
                 if (lPb != null) Fx.stripResumeProgress(lPb, rPos, lDur);
                 talksResumeStripMode = true;
                 syncTalksStripPhoto(libSd);
-                strip.setVisibility(android.view.View.VISIBLE);
+                Fx.showStrip(strip);
                 return;
             }
             if (!"room".equals(rKind) || rName.length() == 0 || rTitle.length() == 0
                     || rPage.length() == 0 || rPos <= 5000 || !rMatch) {
                 syncTalksStripPhoto(null);
-                strip.setVisibility(android.view.View.GONE);
+                Fx.hideStrip(strip);
                 return;
             }
             boolean rFav = false;
@@ -4415,7 +4415,7 @@ public class TalksActivity extends Activity {
             if (rPb != null) Fx.stripResumeProgress(rPb, rPos, rDur);
             talksResumeStripMode = true;
             syncTalksStripPhoto(rName);
-            strip.setVisibility(android.view.View.VISIBLE);
+            Fx.showStrip(strip);
             return;
         }
         talksResumeStripMode = false;
@@ -4457,7 +4457,7 @@ public class TalksActivity extends Activity {
                 subText = libSd != null ? libSd : Lang.t(TalksActivity.this, "downloaded_talk");
             }
         }
-        if (text == null) { syncTalksStripPhoto(null); strip.setVisibility(android.view.View.GONE); return; }
+        if (text == null) { syncTalksStripPhoto(null); Fx.hideStrip(strip); return; }
         boolean stripFav = false;
         try {
             java.util.Set<String> ft = sp.getStringSet("favTalks", null);
@@ -4637,7 +4637,7 @@ public class TalksActivity extends Activity {
         // exact-name catalog match, never a guessed face.
         syncTalksStripPhoto("room".equals(kind) ? sp.getString("lastName", "")
                 : ("lib".equals(kind) ? Fx.stripLibSayadaw(TalksActivity.this, sp) : null));
-        strip.setVisibility(android.view.View.VISIBLE);
+        Fx.showStrip(strip);
     }
 
     private void startTalksStripTick() {

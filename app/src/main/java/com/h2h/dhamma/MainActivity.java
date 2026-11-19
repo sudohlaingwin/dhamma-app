@@ -1242,7 +1242,7 @@ public class MainActivity extends Activity {
                 }
                 if (lTitle.length() == 0 || !lMatch) {
                     syncStripPhoto(null);
-                    strip.setVisibility(android.view.View.GONE);
+                    Fx.hideStrip(strip);
                     return;
                 }
                 boolean lFav = false;
@@ -1295,13 +1295,13 @@ public class MainActivity extends Activity {
                 if (lPb != null) Fx.stripResumeProgress(lPb, rPos, lDur);
                 resumeStripMode = true;
                 syncStripPhoto(libSd);
-                strip.setVisibility(android.view.View.VISIBLE);
+                Fx.showStrip(strip);
                 return;
             }
             if (!"room".equals(rKind) || rName.length() == 0 || rTitle.length() == 0
                     || rPage.length() == 0 || rPos <= 5000 || !rMatch) {
                 syncStripPhoto(null);
-                strip.setVisibility(android.view.View.GONE);
+                Fx.hideStrip(strip);
                 return;
             }
             boolean rFav = false;
@@ -1330,7 +1330,7 @@ public class MainActivity extends Activity {
             if (rPb != null) Fx.stripResumeProgress(rPb, rPos, rDur);
             resumeStripMode = true;
             syncStripPhoto(rName);
-            strip.setVisibility(android.view.View.VISIBLE);
+            Fx.showStrip(strip);
             return;
         }
         resumeStripMode = false;
@@ -1377,7 +1377,7 @@ public class MainActivity extends Activity {
                 subText = libSd != null ? libSd : Lang.t(MainActivity.this, "downloaded_talk");
             }
         }
-        if (text == null) { syncStripPhoto(null); strip.setVisibility(android.view.View.GONE); return; }
+        if (text == null) { syncStripPhoto(null); Fx.hideStrip(strip); return; }
         // v4.26: the mini strip names a favourite sounding talk -
         // every other now-playing surface (Room line, drawer rows,
         // library rows) carries its star, but the strip back on
@@ -1591,7 +1591,7 @@ public class MainActivity extends Activity {
         // exact-name catalog match, never a guessed face.
         syncStripPhoto("room".equals(kind) ? sp.getString("lastName", "")
                 : ("lib".equals(kind) ? Fx.stripLibSayadaw(MainActivity.this, sp) : null));
-        strip.setVisibility(android.view.View.VISIBLE);
+        Fx.showStrip(strip);
     }
 
     private void startMainPulseTick() {
