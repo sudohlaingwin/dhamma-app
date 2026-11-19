@@ -612,6 +612,24 @@ public class RoomActivity extends Activity {
     private boolean lastQueueOnly30 = false;
     private int queueBarGen30 = 0;
     private boolean queueBarClearFading30 = false;
+    // v14.57 (slice 1714): the drawer Up Next (▸) row's melt state —
+    // the chooser's v14.55 arm restated for the Room drawer. The
+    // sounding row's tile already crossfades (v14.32) when the poll
+    // resync moves the sounding talk, but the ▸ mark beside it used
+    // to march to its new row in one frame on the resync's bare
+    // rebind — auto-advance / strip Next / notification Next while
+    // the drawer sits open. drawerUpNextUrl57 is the ▸ URL the
+    // drawer rows were last bound against (written in getView when
+    // the ▸ row binds, so menu/queue-dialog rebinds adopt it at
+    // once and can never arm a stale melt later); the poll resync
+    // branch snapshots it before its rebind and arms only a change
+    // to a NEW non-empty URL, primed only (drawerUpNextPrimed57 —
+    // the first resync adopts silently, never melting on top of
+    // the drawer-open pour, v2.10). drawerUpNextFadeUrl57 is the
+    // consume-once arm, nulled by fadeDrawerUpNextRow57.
+    private String drawerUpNextUrl57 = null;
+    private boolean drawerUpNextPrimed57 = false;
+    private String drawerUpNextFadeUrl57 = null;
     // v4.96: filter views on the Room drawer — the chooser gained
     // ★-only / unlistened-only views (v4.94) and the library
     // gained them (v4.95), but the Room drawer, where the queue
@@ -798,6 +816,39 @@ public class RoomActivity extends Activity {
                 if (roomList == null || !isPlayListPanelOpen()) return;
                 int first = roomList.getFirstVisiblePosition();
                 int dp = drawerPosOfQueueUrl(url);
+                android.view.View row = dp >= 0 ? roomList.getChildAt(dp - first) : null;
+                if (row != null) Fx.fadeIn(row, 250);
+            }
+        });
+    }
+    // v14.57 (slice 1714): melt the new Up Next row in at its display
+    // position — the fadeDroppedQueueRow shape above, restated for
+    // the ▸ row (the chooser's fadeUpNextTalkRow, v14.55, on this
+    // surface). Posted after the resync's rebind so the
+    // position->child mapping is read fresh; the talk index is
+    // resolved by URL at fade time (talkIndexForUrl, sameTalk), so
+    // a list reload between arm and fade resolves nothing and
+    // fades nothing; drawerPosOfTalk maps the index through the
+    // current view (queue-only / filter / search), so a filtered-out
+    // ▸ talk has no row and a scrolled-out row is skipped, never
+    // scrolled to. Only while the drawer is open. The v3.45 rebind
+    // hygiene restores row alpha 1 on any rebind, so a fade cut
+    // short by a later rebind can never strand the row
+    // half-transparent; Fx.fadeIn is restart-safe (v3.52), so a
+    // sounding-tile crossfade or a download-landing melt on the
+    // same row in the same tick just restarts the glide and still
+    // ends at alpha 1. Consume-once: the field is nulled here.
+    private void fadeDrawerUpNextRow57() {
+        if (drawerUpNextFadeUrl57 == null || roomList == null || adapter == null) { drawerUpNextFadeUrl57 = null; return; }
+        final String url = drawerUpNextFadeUrl57;
+        drawerUpNextFadeUrl57 = null;
+        roomList.post(new Runnable() {
+            @Override public void run() {
+                if (roomList == null || !isPlayListPanelOpen()) return;
+                int ti = talkIndexForUrl(url);
+                if (ti < 0) return;
+                int dp = drawerPosOfTalk(ti);
+                int first = roomList.getFirstVisiblePosition();
                 android.view.View row = dp >= 0 ? roomList.getChildAt(dp - first) : null;
                 if (row != null) Fx.fadeIn(row, 250);
             }
@@ -5395,6 +5446,15 @@ if (snd65 >= 0) currentIndex = snd65;
                             // (see requestThemeForTalk).
                             requestThemeForTalk(talks.get(resync59).url);
                         }
+                        // v14.57 (slice 1714): snapshot the ▸ URL the
+                        // drawer rows are currently bound against —
+                        // BEFORE the re-point + rebind below rewrites
+                        // it. peekNextIndex is scan-based, so it
+                        // already names the NEW ▸ here and can never
+                        // be the baseline; the field is the only
+                        // last-bound value (written in getView when
+                        // the ▸ row binds).
+                        String upNextBefore57 = drawerUpNextUrl57;
                         currentIndex = resync59;
                         // v10.38: same wave reset as the v7.73 onResume
                         // adopt above, for the foreground-race case
@@ -5443,7 +5503,42 @@ if (snd65 >= 0) currentIndex = snd65;
                         // so the empty-list guard cannot wipe a
                         // queue whose list is still loading.
                         syncSavedQueueOnReturn();
+                        // v14.57 (slice 1714): the fresh ▸ per the
+                        // bind's exact rule (v4.13/v11.60) — no ▸
+                        // while a foreign queue head waits (it has
+                        // no in-list row), size > 1, sounding index
+                        // valid; peekNextIndex names the queued head
+                        // first, else the list-next. Computed after
+                        // the queue sync above, so it reads the queue
+                        // the rows are about to bind against.
+                        String upNextTarget57 = null;
+                        int snd57 = soundingIndexForBind();
+                        int pk57 = peekNextIndex();
+                        if (snd57 >= 0 && snd57 < talks.size() && talks.size() > 1
+                                && firstWaitingForeignEntry() == null
+                                && pk57 >= 0 && pk57 < talks.size())
+                            upNextTarget57 = talks.get(pk57).url;
                         if (adapter != null) adapter.notifyDataSetChanged();
+                        // v14.57 (slice 1714): arm the new ▸ row's melt
+                        // — only a change to a NEW non-empty URL,
+                        // primed only. A marks-only change rebinds
+                        // the same rows with no new imminent talk;
+                        // a fresh null (foreign head waits, nothing
+                        // resolves) has no row to melt — neither
+                        // arms. The snapshot above is the last-bound
+                        // value, so a ▸ move a menu action already
+                        // bound reads equal here and never re-melts.
+                        if (drawerUpNextPrimed57 && upNextTarget57 != null
+                                && !upNextTarget57.equals(upNextBefore57)) {
+                            drawerUpNextFadeUrl57 = upNextTarget57;
+                            fadeDrawerUpNextRow57();
+                        }
+                        // v14.57 (slice 1714): first resync evaluation
+                        // adopts silently — the arm above only ever
+                        // reads the OLD primed value, so a load /
+                        // rotation restore never melts the ▸ row on
+                        // top of the drawer-open pour (v2.10).
+                        drawerUpNextPrimed57 = true;
                         // The title line itself is left for the
                         // next tick's title branch (same 500ms
                         // rhythm as every other poll sync); the
@@ -13651,6 +13746,16 @@ if (snd67q >= 0) currentIndex = snd67q;
                     && talkIdx == peekNextIndex()) { // v4.32: ▸ follows the queued head, not the list-next
                 titleView.setText("▸ " + titleView.getText().toString());
                 titleView.setAlpha(1f);
+                // v14.57 (slice 1714): record the ▸ URL the rows are
+                // bound against — the resync branch snapshots this
+                // field before its rebind, so a ▸ move it discovers
+                // arms the melt; a menu/queue rebind writes it at
+                // once, so its own ▸ move can never arm a stale
+                // melt on a later tick. Written only when the ▸
+                // row actually binds (a scrolled-out or filtered-out
+                // ▸ talk leaves the last-bound value, which can
+                // only ever arm the fresh row or miss the melt).
+                drawerUpNextUrl57 = t.url;
             }
             // v13.98 (slice 1093): paint the hairline — reset on
             // every bind, like the alpha/card/wash above, so a
