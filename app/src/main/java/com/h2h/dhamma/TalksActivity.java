@@ -625,6 +625,40 @@ public class TalksActivity extends Activity {
             }
         });
     }
+    // v14.55 (slice 1712): melt the new Up Next row in at its display
+    // position — the fadeSoundingTalkRow shape above, restated for the
+    // ▸ row (v13.85). The posted runnable runs after the branch's
+    // rebind, resolves the talk index with sameTalk and the display
+    // position through visibleHits (a search/filter narrows it, a
+    // filtered-out ▸ talk has no row), and fades 250ms (the v14.48
+    // rhythm); a scrolled-out row is skipped, never scrolled to. The
+    // v14.47 getView hygiene restores row alpha 1 on any rebind, so a
+    // fade cut short by a tick percent rebind, a return theme-dip swap
+    // or a filter/search change can never strand the row
+    // half-transparent; Fx.fadeIn is restart-safe (v3.52), so a
+    // sounding/landing melt on the same row in the same tick just
+    // restarts the glide. Consume-once: the field is nulled here.
+    private void fadeUpNextTalkRow() {
+        final String url = upNextFadeUrl;
+        upNextFadeUrl = null;
+        if (url == null || talkList == null) return;
+        talkList.post(new Runnable() {
+            @Override public void run() {
+                if (talkList == null || isFinishing() || isDestroyed()) return;
+                int ti = -1;
+                if (talks != null) for (int i = 0; i < talks.size(); i++) {
+                    if (talks.get(i) != null && SiteHttp.sameTalk(talks.get(i).url, url)) { ti = i; break; }
+                }
+                if (ti < 0) return;
+                int disp = (visibleHits != null) ? visibleHits.indexOf(Integer.valueOf(ti)) : ti;
+                if (disp < 0) return;
+                int first = talkList.getFirstVisiblePosition();
+                android.view.View row = talkList.getChildAt(disp - first);
+                if (row == null) return;
+                Fx.fadeIn(row, 250);
+            }
+        });
+    }
     // v4.89: last playing URL the rows were bound against — the
     // tick detects a change here and rebinds once (below).
     private String talkRowPlayingUrl = null;
@@ -645,6 +679,35 @@ public class TalksActivity extends Activity {
     // separate field, so the two melts never overwrite each other.
     private String soundingFadeUrl = null;
     private boolean talkSoundPrimed = false;
+    // v14.55 (slice 1712): the Up Next talk's URL the melt below fades
+    // in — the chooser's ▸ row (v13.85), the v14.48 sounding-row melt's
+    // twin, restated for the imminent talk. The ▸ used to march to its
+    // new row in one frame on the tick's bare rebind — auto-advance /
+    // strip Next / notification Next while browsing, or a queue change
+    // from another screen — while the sounding row beside it already
+    // melts (v14.48) and the header line above already names it, so
+    // the row and the line moved a beat apart. upNextPrimed stays
+    // false until the first tick evaluation, so a load or rotation
+    // restore never arms a fade on top of the list pour (v14.23); a
+    // change discovered on a back-stack return melts the row as the
+    // return beat, like the sounding arm. Consumed by
+    // fadeUpNextTalkRow, which nulls it — a second tick without a new
+    // Up Next change is a no-op — and the sounding (soundingFadeUrl)
+    // and download-landing (dlLandFadeUrl) arms are separate fields,
+    // so the three melts never overwrite each other. No separate
+    // tracker field: the arm compares the fresh value against the
+    // snapshot taken in the branch just before refreshFavHeader
+    // rewrites it — the field always holds the last value a rebind
+    // could have bound (menu actions rebind with it at once), so a
+    // menu-driven ▸ move can never arm a stale melt on a later tick.
+    // The two refresh-without-rebind paths (list landing and mode-0
+    // return) only ever leave the field AHEAD of the rows, so a later
+    // branch run corrects the rows with no melt — a missed melt,
+    // never a shimmer. A removal (fresh value empty — foreign head
+    // waits, nothing resolves) arms nothing, like the sounding arm's
+    // stopped case.
+    private String upNextFadeUrl = null;
+    private boolean upNextPrimed = false;
     // v11.15: ended state the rows were last bound against —
     // the v4.89 tick detects playing-URL changes only, so a
     // natural end (same URL, liveEnded flipped) would otherwise
@@ -4520,16 +4583,43 @@ public class TalksActivity extends Activity {
             // (refreshTalksQueuePreview above, reads only), and
             // refreshFavHeader only sets the title text, rebuilt
             // from the name every time, so counts never stack.
+            // v14.55 (slice 1712): snapshot the Up Next URL the rows
+            // are currently bound against — BEFORE the refresh below
+            // rewrites it. This is the arm's baseline: the field
+            // always holds the last value a rebind could have bound
+            // (menu actions rebind with it at once), so the compare
+            // below can never mistake an already-▸ row for a new one.
+            String upNextBefore55 = upNextRowUrl;
             // v13.85 (slice 1077): the refresh runs BEFORE the notify below — refreshFavHeader also refreshes upNextRowUrl, and the rebind reads it, so a notify-first order would bind every row against the previous next talk until the next change tick.
             try { refreshFavHeader(); } catch (Exception ignored) {}
+            // v14.55 (slice 1712): arm the new Up Next row's melt —
+            // only a change to a NEW non-empty URL, primed only. A
+            // marks-only change rebinds the same rows with no new
+            // imminent talk, an end / failure / buffering flip only
+            // strips or swaps the mark on the row already sounding,
+            // and a fresh value of "" (foreign head waits, nothing
+            // resolves) has no row to melt — none of them arms.
+            // The snapshot above is the last-bound value, so a ▸
+            // move that a menu action already bound (queue ⋮, move
+            // drop) reads equal here and never re-melts.
+            String upNextTarget55 = "";
+            if (upNextPrimed && upNextRowUrl != null && upNextRowUrl.length() > 0
+                    && !upNextRowUrl.equals(upNextBefore55 == null ? "" : upNextBefore55)) {
+                upNextTarget55 = upNextRowUrl;
+            }
             adapter.notifyDataSetChanged();
             if (soundTarget48.length() > 0) { soundingFadeUrl = soundTarget48; fadeSoundingTalkRow(); }
+            if (upNextTarget55.length() > 0) { upNextFadeUrl = upNextTarget55; fadeUpNextTalkRow(); }
         }
         // v14.48 (slice 1705): first tick evaluation adopts the
         // trackers silently — the arm above only ever reads the
         // OLD primed value, so a load / rotation restore never
         // melts on top of the entrance pour (v14.23).
         talkSoundPrimed = true;
+        // v14.55 (slice 1712): same first-tick adoption for the Up
+        // Next arm — a load / rotation restore never melts the ▸
+        // row on top of the entrance pour (v14.23).
+        upNextPrimed = true;
         android.view.View strip = findViewById(R.id.nowStrip);
         if (strip == null) return;
         boolean night = cachedNight;
