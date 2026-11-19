@@ -630,6 +630,19 @@ public class RoomActivity extends Activity {
     private String drawerUpNextUrl57 = null;
     private boolean drawerUpNextPrimed57 = false;
     private String drawerUpNextFadeUrl57 = null;
+    // v14.58 (slice 1715): the drawer header's melt state — the
+    // chooser header's v14.56 arm restated for the Room drawer.
+    // The header (roomPlayListTitle: "Play List (N) · ⬇ M · ★ M ·
+    // ⏳ N · ◈ N · ✓ M · ↺ M" + the Up Next line + the sleep
+    // suffix) is rewritten by the 500ms poll's header block behind
+    // a change-only guard, so an auto-advance / strip Next /
+    // notification Next while the drawer sits open snapped the Up
+    // Next line to the next talk's title in one frame while the
+    // ▸ row (v14.57) and the sounding tile (v14.32) melt beside
+    // it. drawerHeaderFadePrimed58 is the first-evaluation adopt
+    // (v14.56 shape): the first poll evaluation adopts silently,
+    // never melting on top of the drawer-open pour (v2.10).
+    private boolean drawerHeaderFadePrimed58 = false;
     // v4.96: filter views on the Room drawer — the chooser gained
     // ★-only / unlistened-only views (v4.94) and the library
     // gained them (v4.95), but the Room drawer, where the queue
@@ -820,6 +833,29 @@ public class RoomActivity extends Activity {
                 if (row != null) Fx.fadeIn(row, 250);
             }
         });
+    }
+    // v14.58 (slice 1715): the drawer header's live-part strip —
+    // the chooser's stripHeaderLivePct (v14.56) plus the sleep
+    // suffix this header also carries. The arm compares with the
+    // live parts removed, so only a structural change arms: a new
+    // Up Next title, a count change (★/⬇/✓/↺/◈/⏳-count), a ⬇
+    // landing. A pure percent tick (42% -> 43%) reads equal, and
+    // a pure sleep-countdown tick (M:SS -> M:SS-1s) reads equal —
+    // both are missed melts, never a shimmer. The "· ⏳ M" count
+    // has no percent and survives the strip, so a download
+    // starting or finishing still arms through the count; arming
+    // or firing the sleep timer adds/removes only the stripped
+    // suffix, so it never arms either. The sleep suffix is
+    // always trailing (appended last in the header block, after
+    // the Up Next line) and the 😴 marker appears nowhere else
+    // in the header, so cutting from its first occurrence is
+    // exact.
+    private static String stripDrawerHeaderLive58(String s) {
+        if (s == null) return "";
+        String t = s.replaceAll("⏳[0-9]+%", "");
+        int si = t.indexOf(" · 😴 ");
+        if (si >= 0) t = t.substring(0, si);
+        return t;
     }
     // v14.57 (slice 1714): melt the new Up Next row in at its display
     // position — the fadeDroppedQueueRow shape above, restated for
@@ -6874,8 +6910,42 @@ int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
                                 want += " · 😴 ⏸ " + formatTime((int) hSusp);
                         }
                     } catch (Exception ignored) {}
+                    // v14.58 (slice 1715): snapshot the header text
+                    // the rows are currently bound under — BEFORE
+                    // the write below rewrites it, with the live
+                    // parts stripped (see stripDrawerHeaderLive58):
+                    // the same baseline shape as the v14.56 chooser
+                    // header snapshot. A missing title view reads
+                    // "" on both sides, so it can never arm.
+                    String headerBefore58 = stripDrawerHeaderLive58(plT.getText().toString());
                     if (!want.equals(plT.getText().toString())) plT.setText(want);
+                    // v14.58 (slice 1715): arm the header's melt —
+                    // only a structural change (see
+                    // stripDrawerHeaderLive58), primed only, drawer
+                    // open only, and only while the header sits
+                    // settled — the open pour (280ms) and the close
+                    // dissolve (220ms) both animate this view's
+                    // alpha/translation, and Fx.fadeIn cancels the
+                    // view's animator, so a melt landing mid-pour
+                    // would cut the header's own rise/fall short
+                    // (a missed melt, never a fight). A pure ⏳
+                    // percent tick and a pure sleep-countdown tick
+                    // read equal after the strip and never re-fire.
+                    boolean headerChanged58 = false;
+                    if (drawerHeaderFadePrimed58 && isPlayListPanelOpen()
+                            && plT.getAlpha() >= 0.999f
+                            && Math.abs(plT.getTranslationX()) <= 0.5f
+                            && Math.abs(plT.getTranslationY()) <= 0.5f) {
+                        String headerAfter58 = stripDrawerHeaderLive58(plT.getText().toString());
+                        headerChanged58 = !headerAfter58.equals(headerBefore58);
+                    }
+                    if (headerChanged58) Fx.fadeIn(plT, 250);
                     refreshQueueBar72();
+                    // v14.58 (slice 1715): first-evaluation adopt
+                    // for the header arm — a load / rotation restore
+                    // never melts the header on top of the entrance
+                    // pour (v14.56 shape).
+                    drawerHeaderFadePrimed58 = true;
                 }
             } catch (Exception ignored) {}
             // v11.46: resume-mode data gate, asked here — a resume
