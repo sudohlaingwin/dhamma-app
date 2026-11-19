@@ -9,4 +9,10 @@
          so they die with the view and can never strand across activities. -->
     <item name="stripGlideAnim" type="id"/>
     <item name="stripGlideTarget" type="id"/>
+    <!-- v14.20: tag keys for the strip-glyph flip (Fx.flipStripGlyph).
+         The running flip animator + the last shown glyph ride on the
+         toggle itself, so they die with the view and a steady 1s tick
+         never re-animates a settled glyph. -->
+    <item name="stripGlyphAnim" type="id"/>
+    <item name="stripGlyphLast" type="id"/>
 </resources>

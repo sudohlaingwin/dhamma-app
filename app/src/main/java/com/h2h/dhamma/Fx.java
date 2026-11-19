@@ -1139,6 +1139,81 @@ public class Fx {
         stripGlideUrl = url;
     }
 
+    // v14.20 (slice 1674): the strip glyph used to swap instantly —
+    // all six strips set the toggle with a bare setText(livePlaying
+    // ? ⏸ : ▶) on the 1s tick, while the Room's own play button
+    // already fades its icon on every flip (playGlyphFade) and the
+    // tap already morphs (Fx.morph in every toggle click handler).
+    // Now the strip glyph flips the Room's way: dip the glyph's
+    // alpha to 0 over 90ms, swap the text at the dip, fade the new
+    // glyph back over 180ms. Change-only (the last glyph rides on
+    // the view's own tag, so a steady 1s tick never re-animates);
+    // first sighting sets instantly (no dip on first paint, the
+    // v14.19 glide rule); alpha-only, so it never fights the
+    // tap-time morph that owns scale on this same view; a rapid
+    // double-tap cancels the in-flight flip first, restores alpha
+    // 1, and the next tick retries from the still-recorded old
+    // glyph (the record moves only at the swap, never upfront).
+    // The animator rides on the view's own tags (see ids.xml), so
+    // it dies with the view. The 12 resume-strip ▶ writes stay
+    // instant one-shots — the live tick takes over the moment a
+    // session is live.
+    public static void flipStripGlyph(android.widget.TextView tg, boolean playing) {
+        if (tg == null) return;
+        String glyph = playing ? "\u23F8\uFE0E" : "▶";
+        Object lastObj = tg.getTag(R.id.stripGlyphLast);
+        String last = lastObj instanceof String ? (String) lastObj : null;
+        if (glyph.equals(last)) return;
+        Object aObj = tg.getTag(R.id.stripGlyphAnim);
+        if (aObj instanceof android.animation.Animator) ((android.animation.Animator) aObj).cancel();
+        if (last == null) {
+            tg.setText(glyph);
+            tg.setTag(R.id.stripGlyphLast, glyph);
+            return;
+        }
+        final android.widget.TextView v = tg;
+        final String next = glyph;
+        android.animation.ObjectAnimator dip =
+                android.animation.ObjectAnimator.ofFloat(v, "alpha", v.getAlpha(), 0f);
+        dip.setDuration(90);
+        dip.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        dip.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                if (v.getTag(R.id.stripGlyphAnim) != a) return;
+                v.setText(next);
+                v.setTag(R.id.stripGlyphLast, next);
+                android.animation.ObjectAnimator rise =
+                        android.animation.ObjectAnimator.ofFloat(v, "alpha", 0f, 1f);
+                rise.setDuration(180);
+                rise.setInterpolator(new android.view.animation.DecelerateInterpolator());
+                rise.addListener(new android.animation.AnimatorListenerAdapter() {
+                    @Override public void onAnimationEnd(android.animation.Animator a2) {
+                        if (v.getTag(R.id.stripGlyphAnim) == a2) {
+                            v.setTag(R.id.stripGlyphAnim, null);
+                            v.setAlpha(1f);
+                        }
+                    }
+                    @Override public void onAnimationCancel(android.animation.Animator a2) {
+                        if (v.getTag(R.id.stripGlyphAnim) == a2) {
+                            v.setTag(R.id.stripGlyphAnim, null);
+                            v.setAlpha(1f);
+                        }
+                    }
+                });
+                v.setTag(R.id.stripGlyphAnim, rise);
+                rise.start();
+            }
+            @Override public void onAnimationCancel(android.animation.Animator a) {
+                if (v.getTag(R.id.stripGlyphAnim) == a) {
+                    v.setTag(R.id.stripGlyphAnim, null);
+                    v.setAlpha(1f);
+                }
+            }
+        });
+        tg.setTag(R.id.stripGlyphAnim, dip);
+        dip.start();
+    }
+
     // v5.32: the mini-player's live clock — every now-playing strip
     // (Main, Talks, library, Settings) shows a progress bar but no
     // times, so a listener could never tell how far into a talk

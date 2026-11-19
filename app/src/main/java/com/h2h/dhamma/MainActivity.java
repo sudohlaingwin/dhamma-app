@@ -1598,7 +1598,7 @@ public class MainActivity extends Activity {
         // sat paused, so it lied half the time. It now follows
         // AudioService.livePlaying (1s tick, no bind, same live
         // rule as the strip itself): ⏸ while sounding, ▶ paused.
-        if (tg != null) tg.setText(AudioService.livePlaying ? "\u23F8\uFE0E" : "▶");
+        if (tg != null) Fx.flipStripGlyph(tg, AudioService.livePlaying);
         // v6.00: live strip's portrait — Room names lastName, library
         // names its recorded sayadaw (Fx.stripLibSayadaw, null when
         // unrecorded); both resolve through syncStripPhoto's

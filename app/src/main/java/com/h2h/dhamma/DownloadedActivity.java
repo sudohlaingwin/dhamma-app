@@ -2904,7 +2904,7 @@ public class DownloadedActivity extends Activity {
         if (subText != null) subText += Fx.stripClockSuffixForStrip(pb, AudioService.livePositionMs, AudioService.liveDurationMs, Prefs.stripClockRemaining(DownloadedActivity.this));
         if (sb != null && subText != null) sb.setText(subText);
         Fx.syncStripProgress(pb); // v7.93: skips while a mini-seek drag is in flight
-        if (tg != null) tg.setText(AudioService.livePlaying ? "\u23F8\uFE0E" : "▶");
+        if (tg != null) Fx.flipStripGlyph(tg, AudioService.livePlaying);
         // v6.02: live strip's portrait — Room names lastName, library
         // names its recorded sayadaw (Fx.stripLibSayadaw, null when
         // unrecorded); both resolve through syncDlStripPhoto's
