@@ -4857,7 +4857,19 @@ if (snd65 >= 0) currentIndex = snd65;
                 // whatever alpha the dip had reached. While a dip
                 // runs, its own end action owns the label; every
                 // other tick writes the same label anyway.
-                if (playGlyphFade == null && btnPlayPause != null) btnPlayPause.setImageResource(active ? R.drawable.ic_pause : R.drawable.ic_play); // v7.28: vector icon, play/pause rule unchanged (playing=pause icon)
+                // v14.36 (slice 1691): the write also skipped the
+                // flip tick itself — on a flip tick lastPollActive
+                // still holds the old value (the flip block below
+                // updates it), so this write swapped the glyph at
+                // the TOP of the tick, before the dip started, and
+                // the dip then faded the already-new icon out and
+                // back: a blink on every play/pause tap, and on a
+                // fresh open over a playing talk. The write now
+                // skips while active != lastPollActive, so the old
+                // icon dips out and the dip's end action swaps in
+                // the new one at the bottom, as v3.20 intends.
+                // Steady ticks write exactly as before.
+                if (playGlyphFade == null && active == lastPollActive && btnPlayPause != null) btnPlayPause.setImageResource(active ? R.drawable.ic_pause : R.drawable.ic_play); // v7.28: vector icon, play/pause rule unchanged (playing=pause icon)
                 // v2.07: the button morphs on every play/pause flip
                 // (quick squash + overshoot back) and a gold ring
                 // glows around it while playing. The glow is
@@ -5401,7 +5413,17 @@ if (snd65 >= 0) currentIndex = snd65;
                         }
                         nowPlaying.animate().alpha(1f).translationY(0f).setDuration(320)
                                 .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
-                        if (btnPlayPause != null) btnPlayPause.setImageResource(R.drawable.ic_play); // v7.28: vector icon
+                        // v14.36 (slice 1691): the direct set also
+                        // skipped a running dip — on a notification
+                        // stop the flip block above already started
+                        // the dip (active true->false, newIcon
+                        // ic_play), and this set swapped the glyph
+                        // mid-dip at whatever alpha it had reached,
+                        // the clobber v3.20 forbids. It now writes
+                        // only when no dip runs; the dip's end
+                        // action sets ic_play. A stop with no flip
+                        // in flight keeps the direct safety set.
+                        if (playGlyphFade == null && btnPlayPause != null) btnPlayPause.setImageResource(R.drawable.ic_play); // v7.28: vector icon
                         if (roomView != null) roomView.setPlaying(false);
                         if (seekBar != null) seekBar.setPlaying(false); // v2.52: stopped talk = still wave
                         // v1.62: the stopped talk's row kept its gold ▶
