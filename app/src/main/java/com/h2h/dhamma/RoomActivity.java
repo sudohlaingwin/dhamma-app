@@ -9516,6 +9516,19 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         if (queueUrls.isEmpty()) drawerQueueOnly = false;
                                         saveQueue(null, true);
                                         if (adapter != null) adapter.notifyDataSetChanged();
+                                        // v14.53 (slice 1710): the bar follows this dialog
+                                        // at once — the foreign-row / in-list dialogs and
+                                        // the clear-confirm all call refreshQueueBar72()
+                                        // right after their queue mutation, but this
+                                        // full-list (dt) dialog never did, so the toggle's
+                                        // "· N" sat stale until the next poll tick (up to
+                                        // ~1s late, the v14.30 class) while the rows below
+                                        // had already re-bound. The refresh is change-only,
+                                        // so a mutation that leaves the count alone is a
+                                        // no-op and the count melts (v14.43) when it does
+                                        // change. Visual only; the queue, the flags and
+                                        // the scroll position are untouched.
+                                        refreshQueueBar72();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "removed_from_queue"), Toast.LENGTH_SHORT).show();
                                     } else if ("menu_queue_add".equals(dKeyArr[which])) {
                                         // v11.14: tap-time sounding re-check — the mirror of the v11.12
@@ -9538,6 +9551,19 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         queueUrls.add(dt.url);
                                         saveQueue(java.util.Collections.singleton(dt.url), true);
                                         if (adapter != null) adapter.notifyDataSetChanged();
+                                        // v14.53 (slice 1710): the bar follows this dialog
+                                        // at once — the foreign-row / in-list dialogs and
+                                        // the clear-confirm all call refreshQueueBar72()
+                                        // right after their queue mutation, but this
+                                        // full-list (dt) dialog never did, so the toggle's
+                                        // "· N" sat stale until the next poll tick (up to
+                                        // ~1s late, the v14.30 class) while the rows below
+                                        // had already re-bound. The refresh is change-only,
+                                        // so a mutation that leaves the count alone is a
+                                        // no-op and the count melts (v14.43) when it does
+                                        // change. Visual only; the queue, the flags and
+                                        // the scroll position are untouched.
+                                        refreshQueueBar72();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "added_to_queue"), Toast.LENGTH_SHORT).show();
                                     } else if ("menu_queue_from_here".equals(dKeyArr[which])) {
                                         // v13.04: queue this talk and every shown talk
@@ -9588,6 +9614,19 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         }
                                         saveQueue(keep04, true);
                                         if (adapter != null) adapter.notifyDataSetChanged();
+                                        // v14.53 (slice 1710): the bar follows this dialog
+                                        // at once — the foreign-row / in-list dialogs and
+                                        // the clear-confirm all call refreshQueueBar72()
+                                        // right after their queue mutation, but this
+                                        // full-list (dt) dialog never did, so the toggle's
+                                        // "· N" sat stale until the next poll tick (up to
+                                        // ~1s late, the v14.30 class) while the rows below
+                                        // had already re-bound. The refresh is change-only,
+                                        // so a mutation that leaves the count alone is a
+                                        // no-op and the count melts (v14.43) when it does
+                                        // change. Visual only; the queue, the flags and
+                                        // the scroll position are untouched.
+                                        refreshQueueBar72();
                                         Toast.makeText(RoomActivity.this, added04 > 0
                                                 ? Lang.t(RoomActivity.this, "queue_plain_prefix") + added04 + Lang.t(RoomActivity.this, "queue_added_suffix")
                                                 : Lang.t(RoomActivity.this, "already_in_queue"), Toast.LENGTH_SHORT).show();
@@ -9631,6 +9670,19 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         // adds nothing, so null is correct there.
                                         saveQueue(qi < 0 ? java.util.Collections.singleton(dt.url) : null, true);
                                         if (adapter != null) adapter.notifyDataSetChanged();
+                                        // v14.53 (slice 1710): the bar follows this dialog
+                                        // at once — the foreign-row / in-list dialogs and
+                                        // the clear-confirm all call refreshQueueBar72()
+                                        // right after their queue mutation, but this
+                                        // full-list (dt) dialog never did, so the toggle's
+                                        // "· N" sat stale until the next poll tick (up to
+                                        // ~1s late, the v14.30 class) while the rows below
+                                        // had already re-bound. The refresh is change-only,
+                                        // so a mutation that leaves the count alone is a
+                                        // no-op and the count melts (v14.43) when it does
+                                        // change. Visual only; the queue, the flags and
+                                        // the scroll position are untouched.
+                                        refreshQueueBar72();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "set_as_next"), Toast.LENGTH_SHORT).show();
                                     }
                                 }
