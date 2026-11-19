@@ -910,6 +910,7 @@ public class Fx {
                         if (e.getActionMasked() == MotionEvent.ACTION_DOWN)
                             pb.setTag(R.id.stripDragUrl, AudioService.liveUrl);
                         pb.setTag(R.id.nowStripProgress, Boolean.TRUE);
+                        cancelStripGlide(pb); // v14.19: the finger owns the bar 1:1 — a glide left over from the last tick must not fight the preview
                         pb.setProgress((int) (f * 1000));
                         return true;
                     case MotionEvent.ACTION_UP: {
@@ -1028,18 +1029,114 @@ public class Fx {
     // prepares — instead of honouring a preview for a talk that
     // no longer exists. A live drag (session up, duration
     // known) is untouched: the mark still suppresses the tick.
+    // v14.19: the strip bar used to jump once a second — the 1s tick
+    // wrote the live fraction in one frame, so on a short talk the
+    // gold edge ticked ~3dp every second while everything around it
+    // moves (v14.14 strip slide, v14.15 shelf pour, v14.16 ring
+    // crossfade, v14.18 wave ease). The bar now glides between
+    // ticks instead: a linear 1000ms ValueAnimator from the bar's
+    // current displayed value to the live target, so it moves at
+    // the same constant speed as the talk itself. Linear, not the
+    // framework's decelerate — a clock-driven bar must not slow
+    // down and catch up every second. Change-only like the Room
+    // wave's dim ease (v14.18): a tick whose target matches the
+    // running glide's target is a no-op, so a paused or settled
+    // bar never re-animates; a retarget cancels and restarts from
+    // the displayed value, so the bar can never jump or lag.
+    // The animator + its target ride on the bar's own tags (see
+    // ids.xml), so they die with the view. The drag cancels the
+    // glide first (miniSeekBar) — the finger owns the bar 1:1 —
+    // and a talk change snaps (syncStripProgress), never sweeps.
+    private static String stripGlideUrl = null;
+
+    private static void cancelStripGlide(android.widget.ProgressBar pb) {
+        if (pb == null) return;
+        Object aObj = pb.getTag(R.id.stripGlideAnim);
+        if (aObj instanceof android.animation.ValueAnimator) {
+            ((android.animation.ValueAnimator) aObj).cancel();
+        }
+        pb.setTag(R.id.stripGlideAnim, null);
+        pb.setTag(R.id.stripGlideTarget, null);
+    }
+
+    private static void glideStripProgress(android.widget.ProgressBar pb, int target) {
+        if (pb == null) return;
+        Object aObj = pb.getTag(R.id.stripGlideAnim);
+        android.animation.ValueAnimator anim = (aObj instanceof android.animation.ValueAnimator)
+                ? (android.animation.ValueAnimator) aObj : null;
+        Object tObj = pb.getTag(R.id.stripGlideTarget);
+        if (anim != null && anim.isRunning() && tObj instanceof Integer
+                && ((Integer) tObj).intValue() == target) return;
+        if (anim != null) anim.cancel();
+        int from = pb.getProgress();
+        if (from == target) {
+            pb.setTag(R.id.stripGlideAnim, null);
+            pb.setTag(R.id.stripGlideTarget, null);
+            return;
+        }
+        final android.widget.ProgressBar bar = pb;
+        android.animation.ValueAnimator g =
+                android.animation.ValueAnimator.ofFloat(from, target);
+        g.setDuration(1000);
+        g.setInterpolator(new android.view.animation.LinearInterpolator());
+        g.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                bar.setProgress(((Float) a.getAnimatedValue()).intValue());
+            }
+        });
+        g.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                if (bar.getTag(R.id.stripGlideAnim) == a) {
+                    bar.setTag(R.id.stripGlideAnim, null);
+                    bar.setTag(R.id.stripGlideTarget, null);
+                }
+            }
+            @Override public void onAnimationCancel(android.animation.Animator a) {
+                if (bar.getTag(R.id.stripGlideAnim) == a) {
+                    bar.setTag(R.id.stripGlideAnim, null);
+                    bar.setTag(R.id.stripGlideTarget, null);
+                }
+            }
+        });
+        pb.setTag(R.id.stripGlideAnim, g);
+        pb.setTag(R.id.stripGlideTarget, Integer.valueOf(target));
+        g.start();
+    }
+
     public static void syncStripProgress(android.widget.ProgressBar pb) {
         if (pb == null) return;
         if (Boolean.TRUE.equals(pb.getTag(R.id.nowStripProgress))) {
             if (!AudioService.liveSession || AudioService.liveDurationMs <= 0) {
                 pb.setTag(R.id.nowStripProgress, null);
                 pb.setTag(R.id.stripDragUrl, null); // v8.01: identity dies with the dead mark
+                cancelStripGlide(pb); // v14.19: a dead drag strands the glide too
             }
             else return;
         }
         int dur = AudioService.liveDurationMs;
         int pos = AudioService.livePositionMs;
-        pb.setProgress(dur > 0 && pos >= 0 ? (int) ((long) pos * 1000 / dur) : 0);
+        if (dur <= 0 || pos < 0) {
+            cancelStripGlide(pb); // v14.19: no live fraction to glide toward
+            pb.setProgress(0);
+            stripGlideUrl = null;
+            return;
+        }
+        int target = (int) ((long) pos * 1000 / dur);
+        String url = AudioService.liveUrl;
+        // v14.19: a new talk SNAPS — gliding from the old talk's
+        // fraction would sweep the bar backwards across the strip
+        // on every auto-advance or skip. Identity by the v13.59
+        // rule (SiteHttp.sameTalk: the http retry twin is the same
+        // talk, never a change). A first sighting (null last) still
+        // glides in from 0 — the bar sweeps to where the talk is,
+        // the strip's entrance, not a jump.
+        if (stripGlideUrl != null && url != null && !SiteHttp.sameTalk(stripGlideUrl, url)) {
+            cancelStripGlide(pb);
+            pb.setProgress(target);
+        } else {
+            glideStripProgress(pb, target);
+        }
+        stripGlideUrl = url;
     }
 
     // v5.32: the mini-player's live clock — every now-playing strip

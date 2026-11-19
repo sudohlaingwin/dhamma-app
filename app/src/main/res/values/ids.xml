@@ -4,4 +4,9 @@
          Not a view: a View tag key only, so a scrub that outlives its
          talk can be recognised at lift and discarded. -->
     <item name="stripDragUrl" type="id"/>
+    <!-- v14.19: tag keys for the strip-bar glide (Fx.syncStripProgress).
+         The running glide animator + its target ride on the bar itself,
+         so they die with the view and can never strand across activities. -->
+    <item name="stripGlideAnim" type="id"/>
+    <item name="stripGlideTarget" type="id"/>
 </resources>
