@@ -7508,8 +7508,52 @@ int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
             // the smooth reversal animation is untouched; the
             // rebind touches row views, never the panel transform.
             // Prefs reads only — no layout, duration, or ban touch.
+            // v15.01 (slice 1759): the "reversal untouched" claim
+            // above was wrong — the notify below rebinds every
+            // visible row through getView, whose v3.45 hygiene
+            // cancels the row's close-dissolve animator and resets
+            // it to alpha 1 / X 0 / Y 0 in the layout frame, so
+            // staggerChildrenFromCurrent below always saw settled
+            // rows and poured them from 0/24dp again instead of
+            // riding the dissolve back: the v3.39 reversal never
+            // fired on this path (slice 1757 scouted it and left
+            // it as "reads as the normal entrance"). The rebind
+            // exists only so a mark toggled elsewhere during the
+            // close window opens current (v7.43/v10.34), so on a
+            // mid-close reopen the cached mark inputs are diffed
+            // first and the notify is skipped when nothing changed
+            // — the rows are already current, and skipping it
+            // leaves their mid-dissolve values intact for the
+            // freeze below and the from-current stagger. A real
+            // change still notifies exactly as today; a fresh
+            // open always notifies, since its rows were already
+            // reset to settled by the completed-close end-action
+            // and the pour is the designed entrance. Only the
+            // four cached inputs refreshMarkSets rewrites are
+            // diffed (fav/played/queued/durations); dlProgress
+            // is not rewritten by it, and isDownloadedFile is a
+            // live filesystem read, so neither can go stale here.
+            java.util.Set<String> preFav01 = null;
+            java.util.Set<String> prePlayed01 = null;
+            java.util.Set<String> preQueued01 = null;
+            java.util.Map<String, Integer> preDur01 = null;
+            if (midClose) {
+                preFav01 = favSet == null ? null
+                        : new java.util.HashSet<String>(favSet);
+                prePlayed01 = playedSet == null ? null
+                        : new java.util.HashSet<String>(playedSet);
+                preQueued01 = queuedDownloads == null ? null
+                        : new java.util.HashSet<String>(queuedDownloads);
+                preDur01 = drawerDurCache == null ? null
+                        : new java.util.HashMap<String, Integer>(drawerDurCache);
+            }
             refreshMarkSets();
-            if (adapter != null) adapter.notifyDataSetChanged();
+            boolean sameMarks01 = midClose
+                    && java.util.Objects.equals(preFav01, favSet)
+                    && java.util.Objects.equals(prePlayed01, playedSet)
+                    && java.util.Objects.equals(preQueued01, queuedDownloads)
+                    && java.util.Objects.equals(preDur01, drawerDurCache);
+            if (adapter != null && !sameMarks01) adapter.notifyDataSetChanged();
             if (!midClose) {
                 panel.setTranslationX(off);
                 panel.setAlpha(0f);
@@ -7654,6 +7698,11 @@ if (snd68 >= 0) currentIndex = snd68;
             }
             // v3.39: mid-close reopen flows on from current row
             // values (see the freeze above); fresh open pours.
+            // v15.01 (slice 1759): the from-current branch above
+            // only sees mid-dissolve rows because the v10.34
+            // notify is now diff-guarded when the marks are
+            // unchanged — a real mark change still rebinds first
+            // and pours, as it did before.
             if (midClose) Fx.staggerChildrenFromCurrent(roomList);
             else Fx.staggerChildren(roomList); // v2.10: rows cascade in
         } else {
