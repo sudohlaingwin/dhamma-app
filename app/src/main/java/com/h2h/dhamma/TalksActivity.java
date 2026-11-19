@@ -1268,6 +1268,13 @@ public class TalksActivity extends Activity {
     // debounce clock (Play All's lastPlayAllMs stays untouched).
     private android.widget.Button btnTalkShuffle = null;
     private android.view.View talkPlayRow = null;
+    // v14.45 (slice 1700): skip-first-fade flag — a rotation
+    // restore must snap the Play All row back (the v1.53 rule,
+    // same shape as Main's shelfSkipFirstPour): the restore
+    // branch sets this before its refreshTalkPlayAllRow() call
+    // and the function below consumes it. A fresh open / retry
+    // never sets it, so the list landing fades.
+    private boolean talkPlayRowSkipFirstFade = false;
     private long lastShuffleMs = 0;
     private void rebuildVisible() {
         if (searchHits != null && filterHits != null) {
@@ -2652,6 +2659,11 @@ public class TalksActivity extends Activity {
                 // (same rule as the fresh-load site above) instead
                 // of dropping back to the plain name.
                 if (sayadawName != null) refreshFavHeader();
+                // v14.45 (slice 1700): a rotation restore snaps
+                // the Play All row back (the v1.53 rule) — set the
+                // skip flag for this call only; a fresh open /
+                // retry never sets it, so the list landing fades.
+                talkPlayRowSkipFirstFade = true;
                 refreshTalkPlayAllRow(); // v13.76: row follows the restored list
                 if (progress != null) progress.setVisibility(View.GONE);
                 if (retryBtn != null) retryBtn.setVisibility(View.GONE);
@@ -2832,17 +2844,50 @@ public class TalksActivity extends Activity {
         // v13.93 (slice 1088): the row owns the gate, so Play
         // All and Shuffle appear together; a missing row id
         // (old layout) falls back to the button alone.
+        // v14.45 (slice 1700): the row fades in/out with the
+        // list instead of snapping — the search + filter rows
+        // do the same at the load callback, so all three
+        // landing rows melt in together while the rows pour
+        // below (v14.23). Edge-only, the v14.44 rhythm: a
+        // steady landed list never re-animates (applyTheme
+        // calls this on create + every return), a re-appear
+        // landing mid-fade-out glides back from its current
+        // alpha (Fx.fadeIn, v3.52) and the gen guard strands
+        // nothing hidden. The gate formula is untouched.
+        boolean show93 = (talks != null && !talks.isEmpty());
+        boolean skipFade93 = talkPlayRowSkipFirstFade;
+        talkPlayRowSkipFirstFade = false;
         android.view.View row93 = talkPlayRow;
         if (row93 != null) {
-            row93.setVisibility(
-                    (talks != null && !talks.isEmpty())
-                            ? android.view.View.VISIBLE : android.view.View.GONE);
+            if (skipFade93) {
+                row93.setVisibility(show93 ? android.view.View.VISIBLE : android.view.View.GONE);
+                row93.setAlpha(1f);
+            } else if (show93) {
+                if (row93.getVisibility() != android.view.View.VISIBLE) {
+                    row93.setVisibility(android.view.View.VISIBLE);
+                    Fx.fadeIn(row93, 250);
+                } else if (row93.getAlpha() < 0.999f) {
+                    Fx.fadeIn(row93, 250);
+                }
+            } else if (row93.getVisibility() == android.view.View.VISIBLE) {
+                Fx.fadeOut(row93, 200);
+            }
             return;
         }
         if (btnTalkPlayAll == null) return;
-        btnTalkPlayAll.setVisibility(
-                (talks != null && !talks.isEmpty())
-                        ? android.view.View.VISIBLE : android.view.View.GONE);
+        if (skipFade93) {
+            btnTalkPlayAll.setVisibility(show93 ? android.view.View.VISIBLE : android.view.View.GONE);
+            btnTalkPlayAll.setAlpha(1f);
+        } else if (show93) {
+            if (btnTalkPlayAll.getVisibility() != android.view.View.VISIBLE) {
+                btnTalkPlayAll.setVisibility(android.view.View.VISIBLE);
+                Fx.fadeIn(btnTalkPlayAll, 250);
+            } else if (btnTalkPlayAll.getAlpha() < 0.999f) {
+                Fx.fadeIn(btnTalkPlayAll, 250);
+            }
+        } else if (btnTalkPlayAll.getVisibility() == android.view.View.VISIBLE) {
+            Fx.fadeOut(btnTalkPlayAll, 200);
+        }
     }
 
     // v13.76 (slice 1068): play the shown list from the top. Queues
@@ -6171,10 +6216,51 @@ public class TalksActivity extends Activity {
                         refreshTalkRowMarks(true); // v5.49: row marks ready before the rebind below
                         // v4.93: a landed list reveals the search box
                         // (empty loads keep it hidden, like the rows).
+                        // v14.45 (slice 1700): the search + filter rows
+                        // fade in/out with the list instead of snapping
+                        // — the chooser's landing rows (Play All below
+                        // does the same in refreshTalkPlayAllRow), so
+                        // the search box, the chips and the Play All /
+                        // Shuffle row all melt in together while the
+                        // rows pour below (v14.23). Edge-only, the
+                        // v14.44 empty-line/✕ rhythm: a steady landed
+                        // list never re-animates, a re-appear landing
+                        // mid-fade-out glides back from its current
+                        // alpha (Fx.fadeIn, v3.52) and the gen guard
+                        // strands nothing hidden. The callback fires
+                        // only on a fresh open / retry (a rotation
+                        // restores instead, `if (!restored)
+                        // loadTalks()`), so no skip flag is needed
+                        // here — rotation restores keep snapping, the
+                        // v1.53 rule. The show formula is untouched.
                         android.view.View sRow = findViewById(R.id.talkSearchRow);
-                        if (sRow != null) sRow.setVisibility(found.isEmpty() ? View.GONE : View.VISIBLE);
+                        if (sRow != null) {
+                            boolean showRow = !found.isEmpty();
+                            if (showRow) {
+                                if (sRow.getVisibility() != android.view.View.VISIBLE) {
+                                    sRow.setVisibility(android.view.View.VISIBLE);
+                                    Fx.fadeIn(sRow, 250);
+                                } else if (sRow.getAlpha() < 0.999f) {
+                                    Fx.fadeIn(sRow, 250);
+                                }
+                            } else if (sRow.getVisibility() == android.view.View.VISIBLE) {
+                                Fx.fadeOut(sRow, 200);
+                            }
+                        }
                         android.view.View fRow = findViewById(R.id.talkFilterRow);
-                        if (fRow != null) fRow.setVisibility(found.isEmpty() ? View.GONE : View.VISIBLE);
+                        if (fRow != null) {
+                            boolean showRow = !found.isEmpty();
+                            if (showRow) {
+                                if (fRow.getVisibility() != android.view.View.VISIBLE) {
+                                    fRow.setVisibility(android.view.View.VISIBLE);
+                                    Fx.fadeIn(fRow, 250);
+                                } else if (fRow.getAlpha() < 0.999f) {
+                                    Fx.fadeIn(fRow, 250);
+                                }
+                            } else if (fRow.getVisibility() == android.view.View.VISIBLE) {
+                                Fx.fadeOut(fRow, 200);
+                            }
+                        }
                         refreshTalkPlayAllRow(); // v13.76: Play All lands with the list
                         rebuildSearch();
                         // v4.94: a fresh list re-indexes the filter
