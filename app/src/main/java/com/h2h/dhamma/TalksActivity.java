@@ -584,6 +584,47 @@ public class TalksActivity extends Activity {
             }
         });
     }
+    // v14.48 (slice 1705): melt the newly-sounding talk's row in at
+    // its display position — the v14.47 download-landing shape
+    // (post after the rebind, resolve fresh, fade 250ms). The
+    // display position resolves through visibleHits, so a search
+    // or filter narrows it and a sounding talk filtered out of the
+    // shown list has no row (-1); a scrolled-out row (getChildAt
+    // null) is skipped, never scrolled to — the return glide
+    // (scrollToPlayingOnReturn) already scrolls to an off-screen
+    // sounding row on its own, and only fires when the row is
+    // off-screen, so the two never fight: a row the glide moves
+    // was skipped here, a row on screen never glides. Consume-once:
+    // a second run without a new sounding change is a no-op.
+    // Guards: the activity may be finishing/destroyed by the time
+    // the post runs, and a return theme-dip swap (v2.99) rebinds
+    // after this post — the v14.47 getView hygiene restores row
+    // alpha 1 on any rebind, so a fade cut short by it can never
+    // strand the row half-transparent. Fx.fadeIn is restart-safe
+    // (v3.52: a second fade flows from the current alpha), so a
+    // download-landing melt landing on the same row in the same
+    // tick just restarts the glide and still ends at alpha 1.
+    private void fadeSoundingTalkRow() {
+        final String url = soundingFadeUrl;
+        soundingFadeUrl = null;
+        if (url == null || talkList == null) return;
+        talkList.post(new Runnable() {
+            @Override public void run() {
+                if (talkList == null || isFinishing() || isDestroyed()) return;
+                int ti = -1;
+                if (talks != null) for (int i = 0; i < talks.size(); i++) {
+                    if (talks.get(i) != null && SiteHttp.sameTalk(talks.get(i).url, url)) { ti = i; break; }
+                }
+                if (ti < 0) return;
+                int disp = (visibleHits != null) ? visibleHits.indexOf(Integer.valueOf(ti)) : ti;
+                if (disp < 0) return;
+                int first = talkList.getFirstVisiblePosition();
+                android.view.View row = talkList.getChildAt(disp - first);
+                if (row == null) return;
+                Fx.fadeIn(row, 250);
+            }
+        });
+    }
     // v4.89: last playing URL the rows were bound against — the
     // tick detects a change here and rebinds once (below).
     private String talkRowPlayingUrl = null;
@@ -591,6 +632,19 @@ public class TalksActivity extends Activity {
     // sounding URL, so a library advance while browsing rebinds
     // the rows and moves the ↺ suppression with it.
     private String talkRowPlayingLibUrl = null;
+    // v14.48 (slice 1705): the newly-sounding talk's URL the melt
+    // below fades in — the Room drawer's v3.24 twin, restated for
+    // the chooser. talkSoundPrimed stays false until the first tick
+    // evaluation adopts the trackers, so a load or rotation restore
+    // never arms a fade on top of the list pour (v14.23); a sounding
+    // change discovered on a back-stack return (primed, same
+    // instance) melts the row as the return beat, like the v14.47
+    // download landing. Consumed by fadeSoundingTalkRow, which
+    // nulls it — a second tick without a new sounding change is a
+    // no-op — and the download-landing arm (dlLandFadeUrl) is a
+    // separate field, so the two melts never overwrite each other.
+    private String soundingFadeUrl = null;
+    private boolean talkSoundPrimed = false;
     // v11.15: ended state the rows were last bound against —
     // the v4.89 tick detects playing-URL changes only, so a
     // natural end (same URL, liveEnded flipped) would otherwise
@@ -4387,6 +4441,34 @@ public class TalksActivity extends Activity {
         // the mark at once; steady ticks never touch the
         // adapter, so scrolling and the pour are undisturbed,
         // and the list needs no special case here.
+        // v14.48 (slice 1705): arm the newly-sounding row's melt
+        // BEFORE the trackers below adopt the fresh URLs — the
+        // v3.24 drawer shape, restated for the chooser. Only a
+        // sounding-URL change to a NEW non-empty URL arms it: a
+        // favourite / played / download / queue mark change
+        // (marksChanged44) rebinds the same rows with no new
+        // sounding talk, and an end / failure / buffering flip
+        // only strips or swaps the mark on the row already
+        // sounding, so neither melts anything; a URL changing
+        // to empty (stopped) has no row to melt. Room wins over
+        // library when both changed in one tick (the two URLs
+        // are mutually exclusive by refreshQueueMarks — lastKind
+        // room vs lib, both reset to "" each refresh — so this
+        // only ever picks the one live session). Unprimed first
+        // evaluation (load / rotation restore) adopts silently
+        // — the entrance pour (v14.23) already carries the
+        // sounding row — and primed is set after the branch, so
+        // a change found on the very next tick melts.
+        String soundTarget48 = "";
+        if (talkSoundPrimed
+                && !talkPlayingUrl.equals(talkRowPlayingUrl == null ? "" : talkRowPlayingUrl)
+                && talkPlayingUrl.length() > 0) {
+            soundTarget48 = talkPlayingUrl;
+        } else if (talkSoundPrimed
+                && !talkPlayingLibUrl.equals(talkRowPlayingLibUrl == null ? "" : talkRowPlayingLibUrl)
+                && talkPlayingLibUrl.length() > 0) {
+            soundTarget48 = talkPlayingLibUrl;
+        }
         if (adapter != null && (marksChanged44 || !talkPlayingUrl.equals(talkRowPlayingUrl == null ? "" : talkRowPlayingUrl)
                 || !talkPlayingLibUrl.equals(talkRowPlayingLibUrl == null ? "" : talkRowPlayingLibUrl)
                 || AudioService.liveEnded != talkRowEnded
@@ -4441,7 +4523,13 @@ public class TalksActivity extends Activity {
             // v13.85 (slice 1077): the refresh runs BEFORE the notify below — refreshFavHeader also refreshes upNextRowUrl, and the rebind reads it, so a notify-first order would bind every row against the previous next talk until the next change tick.
             try { refreshFavHeader(); } catch (Exception ignored) {}
             adapter.notifyDataSetChanged();
+            if (soundTarget48.length() > 0) { soundingFadeUrl = soundTarget48; fadeSoundingTalkRow(); }
         }
+        // v14.48 (slice 1705): first tick evaluation adopts the
+        // trackers silently — the arm above only ever reads the
+        // OLD primed value, so a load / rotation restore never
+        // melts on top of the entrance pour (v14.23).
+        talkSoundPrimed = true;
         android.view.View strip = findViewById(R.id.nowStrip);
         if (strip == null) return;
         boolean night = cachedNight;
