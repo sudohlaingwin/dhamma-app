@@ -528,6 +528,35 @@ public class Fx {
                 }).start();
     }
 
+    // v15.00 (slice 1758): premium fade-out-then-remove — the mirror
+    // of fadeOut for a view that LEAVES its parent instead of being
+    // hidden. Fades to 0 over durationMs, then removes the view from
+    // its parent and restores alpha to 1, so a re-add starts from a
+    // clean state. Gen-guarded exactly like fadeOut (v3.62): a
+    // superseded fade never removes a live view, and a view already
+    // detached at end time is a no-op (its parent is null). Used by
+    // the Main favourites shelf: the removed chip fades out in its
+    // old slot while the rebuilt chips sit beside it, then leaves —
+    // the layout shift lands only at the end, when the chip is
+    // already invisible. Visual only.
+    public static void fadeOutAndRemove(final View v, long durationMs) {
+        if (v == null) return;
+        final int gen = bumpFadeGen(v);
+        v.animate().cancel();
+        v.animate().alpha(0f).setDuration(durationMs)
+                .setInterpolator(new DecelerateInterpolator())
+                .withEndAction(new Runnable() {
+                    @Override public void run() {
+                        Integer now = fadeGens.get(v);
+                        if (now == null || now != gen) return;
+                        android.view.ViewParent parent = v.getParent();
+                        if (parent instanceof android.view.ViewGroup)
+                            ((android.view.ViewGroup) parent).removeView(v);
+                        v.setAlpha(1f);
+                    }
+                }).start();
+    }
+
     // v14.14 (slice 1668): mini-player strip slide — the strip on Main /
     // Talks / Settings / Downloaded / History / Playlist used to pop in
     // and out instantly on every sync-tick visibility edge. It now

@@ -3106,7 +3106,7 @@ public class MainActivity extends Activity {
         // restore all miss the same-names / same-night / visible
         // gate and take the rebuild path below — and on that path
         // the added chip melts in (v14.99 (slice 1757)) while a
-        // removed chip just leaves, as it does today.
+        // removed chip melts out (v15.00 (slice 1758)).
         boolean sameShelfNames = lastFavShelfNames != null
                 && lastFavShelfNames.size() == favList.size();
         if (sameShelfNames) {
@@ -3164,6 +3164,39 @@ public class MainActivity extends Activity {
         // v14.15 (slice 1669): remember whether the shelf was
         // hidden — only a GONE -> VISIBLE appearance pours (below).
         boolean shelfWasGone = favShelfWrap.getVisibility() != android.view.View.VISIBLE;
+        // v15.00 (slice 1758): capture the departing chips' views
+        // BEFORE the rebuild below destroys them — the old child
+        // order is the prevShelfNames99 order (chips are always
+        // built in favList order and lastFavShelfNames is set in
+        // that order), so the chip for a removed name is the child
+        // at that name's index. Only a visible shelf can show a
+        // departure: a first appearance pours instead (shelfWasGone)
+        // and a first build / rotation restore has a null previous
+        // list. A removal under the in-place path above is
+        // impossible (same ordered names), so capturing here covers
+        // every case that reaches the rebuild.
+        java.util.List<android.view.View> departing00 = null;
+        java.util.List<Integer> departingIdx00 = null;
+        if (!shelfWasGone && prevShelfNames99 != null) {
+            for (int i00 = 0; i00 < prevShelfNames99.size(); i00++) {
+                boolean stillThere00 = false;
+                for (Sayadaw s00 : favList) {
+                    if (s00.name.equals(prevShelfNames99.get(i00))) {
+                        stillThere00 = true;
+                        break;
+                    }
+                }
+                if (stillThere00) continue;
+                android.view.View dv00 = favShelf.getChildAt(i00);
+                if (dv00 == null) continue;
+                if (departing00 == null) {
+                    departing00 = new java.util.ArrayList<android.view.View>();
+                    departingIdx00 = new java.util.ArrayList<Integer>();
+                }
+                departing00.add(dv00);
+                departingIdx00.add(i00);
+            }
+        }
         favShelf.removeAllViews();
         float d = getResources().getDisplayMetrics().density;
         for (final Sayadaw s : favList) {
@@ -3269,16 +3302,46 @@ public class MainActivity extends Activity {
         // — the fade lands in the same frame as the rebuild (the
         // chips are new views, never drawn yet, so the first drawn
         // frame already shows the chip fading in, never a flash).
-        // A removal just leaves, as it does today (the v14.75
-        // case: a departing row fades nothing); a theme flip or a
-        // rotation restore adds no name, so it melts nothing; a
-        // first appearance pours instead (shelfWasGone above).
+        // A removal is handled below (v15.00 (slice 1758)): the
+        // departing chip is re-seated in its old slot and fades
+        // out instead of just leaving — the v14.75 case (a
+        // departing row fades nothing) stays the rule elsewhere,
+        // but unstarring is the user's own gesture and the chip
+        // leaving IS its feedback, the mirror of the melt-in. A
+        // theme flip or a rotation restore removes no name, so it
+        // fades nothing; a first appearance pours instead
+        // (shelfWasGone above).
         if (!shelfWasGone && prevShelfNames99 != null) {
             for (int i99 = 0; i99 < favList.size(); i99++) {
                 if (!prevShelfNames99.contains(favList.get(i99).name)) {
                     android.view.View added99 = favShelf.getChildAt(i99);
                     if (added99 != null) Fx.fadeIn(added99, 250);
                 }
+            }
+        }
+        // v15.00 (slice 1758): melt a removed chip out — the
+        // mirror of the v14.99 melt-in. The departing chip was
+        // captured above before the rebuild destroyed it; it is
+        // re-seated here in its old slot AFTER the melt loop (so
+        // the melt indices above still resolve the new chips) and
+        // fades out 250ms (the v14.48 rhythm) through the new
+        // Fx.fadeOutAndRemove, which removes it from the shelf at
+        // the end and restores its alpha. The shelf shows N+1 chips
+        // for the 250ms — the fading chip beside the rebuilt ones —
+        // then the siblings close ranks once it is already
+        // invisible, so no frame ever pops. Inserting in ascending
+        // old-index order keeps several departures in their old
+        // relative order; the clamp covers a departure past the
+        // new end (the removed last chip). The fade is gen-guarded
+        // (v3.62): a rebuild landing mid-fade detaches the chip
+        // first and the stale end action is a no-op.
+        if (departing00 != null) {
+            for (int i00 = 0; i00 < departing00.size(); i00++) {
+                android.view.View dv00 = departing00.get(i00);
+                int at00 = departingIdx00.get(i00);
+                if (at00 > favShelf.getChildCount()) at00 = favShelf.getChildCount();
+                favShelf.addView(dv00, at00);
+                Fx.fadeOutAndRemove(dv00, 250);
             }
         }
     }
