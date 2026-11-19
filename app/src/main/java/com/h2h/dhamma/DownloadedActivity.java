@@ -1314,6 +1314,8 @@ public class DownloadedActivity extends Activity {
     // v2.94: exception — a PARTIAL delete-all (some files deleted,
     // some remaining) now arms it too, so the surviving rows pour.
     private boolean dlDeleteChange = false;
+    // v15.16 (slice 1779): the single-row delete's rank-close glide — the old display positions of the visible rows at the moment a confirmed delete rebinds the list (see doDelete below). getView's pour branch skips the pour for a row whose old position sits above its new one, and the posted glide below parks that row at its old top and glides it home. Identity-keyed by file path, never by view: the ListView recycles views by position, so the view showing a path after the rebind is not necessarily the one that showed it before. Armed by doDelete, cleared by the posted glide runnable; a row above the deleted one keeps oldPos == pos and pours as today.
+    private java.util.HashMap<String, Integer> dlDelGlidePos = null;
     // v2.57: return-change entrance flag — armed only by onResume
     // after a real pause (see onPause/onResume below), never by a
     // fresh open or a rotation (both are new instances, so the
@@ -12994,16 +12996,22 @@ public class DownloadedActivity extends Activity {
             // never re-pour.
             if (pos > lastDlAnimPos) {
                 lastDlAnimPos = pos;
-                float dy = 24f * v.getResources().getDisplayMetrics().density;
-                android.view.animation.AnimationSet set = new android.view.animation.AnimationSet(true);
-                android.view.animation.AlphaAnimation fa = new android.view.animation.AlphaAnimation(0f, 1f);
-                fa.setDuration(300);
-                android.view.animation.TranslateAnimation ta = new android.view.animation.TranslateAnimation(0f, 0f, dy, 0f);
-                ta.setDuration(300);
-                set.addAnimation(fa); set.addAnimation(ta);
-                set.setStartOffset(Math.min(pos, 10) * 45);
-                set.setInterpolator(new android.view.animation.DecelerateInterpolator());
-                v.startAnimation(set);
+                // v15.16 (slice 1779): skip the pour for a row the delete is about to glide — its old display position sits above its new one (identity by path: the ListView recycles views by position). The pour's +24dp rise would start the row 24dp BELOW its old top and fight the glide's park-at-old-top, so the glide owns the motion alone; alpha stays 1 (the row was fully visible before, no fade). Rows above the deleted row (oldPos == pos) and brand-new rows (no old position) pour exactly as before.
+                boolean delGlide79 = dlDelGlidePos != null
+                        && dlDelGlidePos.containsKey(e.file.getAbsolutePath())
+                        && dlDelGlidePos.get(e.file.getAbsolutePath()).intValue() > pos;
+                if (!delGlide79) {
+                    float dy = 24f * v.getResources().getDisplayMetrics().density;
+                    android.view.animation.AnimationSet set = new android.view.animation.AnimationSet(true);
+                    android.view.animation.AlphaAnimation fa = new android.view.animation.AlphaAnimation(0f, 1f);
+                    fa.setDuration(300);
+                    android.view.animation.TranslateAnimation ta = new android.view.animation.TranslateAnimation(0f, 0f, dy, 0f);
+                    ta.setDuration(300);
+                    set.addAnimation(fa); set.addAnimation(ta);
+                    set.setStartOffset(Math.min(pos, 10) * 45);
+                    set.setInterpolator(new android.view.animation.DecelerateInterpolator());
+                    v.startAnimation(set);
+                }
             } else {
                 // v3.40: same recycled-row pour hygiene as the Main
                 // grid and Talks list — a view recycled mid-pour
@@ -13082,6 +13090,22 @@ public class DownloadedActivity extends Activity {
                                         pendingDlRestart = false;
                                     }
                                     if (e.file.delete()) {
+                                        // v15.16 (slice 1779): capture the old tops + display positions of the visible rows BEFORE the prune + applyDlFilter below rebind the list — the rank-close glide parks each trailing row at its old top and glides it home, and getView skips the pour for a row the delete is about to glide. Identity-keyed by file path (the ListView recycles views by position, so the view showing a path after the rebind is not necessarily the one that showed it before). Captured here, while shownDl / libQueueCache still hold the OLD list (the entries prune + refreshLibQueueCache below run after), so libEntryAtDisplay maps each visible child exactly as laid out. A row above the deleted one keeps oldPos == pos (shift 0, pours as today); a trailing row has oldPos > pos (glides); a row entering from below was never visible (no old top, pours as today).
+                                        final java.util.HashMap<String, Integer> tops79 = new java.util.HashMap<String, Integer>();
+                                        dlDelGlidePos = new java.util.HashMap<String, Integer>();
+                                        if (dlListView != null) {
+                                            int first79 = dlListView.getFirstVisiblePosition();
+                                            for (int i79 = 0; i79 < dlListView.getChildCount(); i79++) {
+                                                android.view.View ch79 = dlListView.getChildAt(i79);
+                                                if (ch79 == null) continue;
+                                                Entry e79 = libEntryAtDisplay(first79 + i79);
+                                                if (e79 == null) continue;
+                                                String p79 = e79.file.getAbsolutePath();
+                                                tops79.put(p79, Integer.valueOf(ch79.getTop()));
+                                                dlDelGlidePos.put(p79, Integer.valueOf(first79 + i79));
+                                            }
+                                        }
+                                        final java.util.HashMap<String, Integer> pos79 = dlDelGlidePos;
                                         // v1.98: drop this file's map
                                         // entry with it (see prune).
                                         java.util.Set<String> one = new java.util.HashSet<String>();
@@ -13147,6 +13171,27 @@ public class DownloadedActivity extends Activity {
                                         // cleared, like loadList above.
                                         dlDeleteChange = true; // v2.55: delete-change entrance (see applyDlFilter)
                                         applyDlFilter();
+                                        // v15.16 (slice 1779): rank-close glide — the posted runnable runs after the layout the notify above scheduled, so each visible child sits at its NEW top; a trailing row (old top above its new top) is parked at its old top and glides home over 250ms via Fx.glideHomeY (the v15.14 box shape, identity-keyed by path so recycling is irrelevant). Rows above the deleted row have shift 0 and are untouched; a row entering from below has no old top and is untouched (it pours via the v2.55 guard). The glide is an ObjectAnimator, so the getView hygiene's animate().cancel() (ViewPropertyAnimator only) can never kill it, and a tick rebind landing mid-glide just rebinds content under the running glide; the glide always ends at translationY 0, so no reset is needed. The field is cleared only if it still holds this delete's map (a later delete arming its own map first must not be cleared by this post).
+                                        if (dlListView != null) dlListView.post(new Runnable() {
+                                            @Override public void run() {
+                                                if (dlListView == null) {
+                                                    if (dlDelGlidePos == pos79) dlDelGlidePos = null;
+                                                    return;
+                                                }
+                                                int first79 = dlListView.getFirstVisiblePosition();
+                                                for (int i79 = 0; i79 < dlListView.getChildCount(); i79++) {
+                                                    android.view.View ch79 = dlListView.getChildAt(i79);
+                                                    if (ch79 == null) continue;
+                                                    Entry e79 = libEntryAtDisplay(first79 + i79);
+                                                    if (e79 == null) continue;
+                                                    Integer old79 = tops79.get(e79.file.getAbsolutePath());
+                                                    if (old79 == null) continue;
+                                                    float shift79 = old79.intValue() - ch79.getTop();
+                                                    if (shift79 > 0) Fx.glideHomeY(ch79, shift79, 250);
+                                                }
+                                                if (dlDelGlidePos == pos79) dlDelGlidePos = null;
+                                            }
+                                        });
                                         dlDeleteChange = true;
                                         updateTotal();
                                         dlDeleteChange = false;
