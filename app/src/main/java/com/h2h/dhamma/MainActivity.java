@@ -3106,7 +3106,8 @@ public class MainActivity extends Activity {
         // restore all miss the same-names / same-night / visible
         // gate and take the rebuild path below — and on that path
         // the added chip melts in (v14.99 (slice 1757)) while a
-        // removed chip melts out (v15.00 (slice 1758)).
+        // removed chip melts out (v15.00 (slice 1758)) — sequenced
+        // into one handoff when they share a slot (v15.02).
         boolean sameShelfNames = lastFavShelfNames != null
                 && lastFavShelfNames.size() == favList.size();
         if (sameShelfNames) {
@@ -3311,11 +3312,53 @@ public class MainActivity extends Activity {
         // theme flip or a rotation restore removes no name, so it
         // fades nothing; a first appearance pours instead
         // (shelfWasGone above).
+        // v15.02 (slice 1760): a rebuild that BOTH adds and removes
+        // used to let the melt-in and the fade-out collide on one
+        // slot — the departing chip re-seats at its old index, so an
+        // added chip whose home is at-or-after that index melts in
+        // one slot right of home, then jumps home in a single frame
+        // at t=250 when the departure is removed, at the exact frame
+        // it reaches full opacity (its entrance read as two motions,
+        // slice 1758's open question (b), traced first-hand this
+        // run). A displaced added chip is now parked at alpha 0 and
+        // its fadeIn is posted 250ms later — the v15.00 fade's own
+        // duration — so the rank-close has already moved it home
+        // invisibly by the time it melts in: one 500ms handoff
+        // (out 250 -> in 250), no visible teleport. Undisplaced
+        // added chips still melt in at once, as today.
         if (!shelfWasGone && prevShelfNames99 != null) {
             for (int i99 = 0; i99 < favList.size(); i99++) {
                 if (!prevShelfNames99.contains(favList.get(i99).name)) {
                     android.view.View added99 = favShelf.getChildAt(i99);
-                    if (added99 != null) Fx.fadeIn(added99, 250);
+                    if (added99 == null) continue;
+                    // v15.02 (slice 1760): displaced by a departing
+                    // chip re-seated at-or-before this home index —
+                    // park it invisible and melt it in after the
+                    // departure leaves, at its home slot.
+                    boolean displaced02 = false;
+                    if (departingIdx00 != null) {
+                        for (int d02 = 0; d02 < departingIdx00.size(); d02++) {
+                            if (departingIdx00.get(d02) <= i99) {
+                                displaced02 = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!displaced02) {
+                        Fx.fadeIn(added99, 250);
+                        continue;
+                    }
+                    final android.view.View addedFinal02 = added99;
+                    added99.setAlpha(0f);
+                    added99.postDelayed(new Runnable() {
+                        @Override public void run() {
+                            // A superseding rebuild landing mid-wait
+                            // detached this view; its fresh chip owns
+                            // the entrance then, so stay a no-op.
+                            if (addedFinal02.getParent() == null) return;
+                            Fx.fadeIn(addedFinal02, 250);
+                        }
+                    }, 250);
                 }
             }
         }
@@ -3329,7 +3372,10 @@ public class MainActivity extends Activity {
         // the end and restores its alpha. The shelf shows N+1 chips
         // for the 250ms — the fading chip beside the rebuilt ones —
         // then the siblings close ranks once it is already
-        // invisible, so no frame ever pops. Inserting in ascending
+        // invisible, so no frame ever pops. A displaced added chip
+        // (v15.02, slice 1760) rides that same rank-close home
+        // invisibly and melts in after it, so the removal also frees
+        // the added chip's slot. Inserting in ascending
         // old-index order keeps several departures in their old
         // relative order; the clamp covers a departure past the
         // new end (the removed last chip). The fade is gen-guarded
