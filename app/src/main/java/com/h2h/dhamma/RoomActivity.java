@@ -867,6 +867,17 @@ public class RoomActivity extends Activity {
         if (si >= 0) t = t.substring(0, si);
         return t;
     }
+    // v14.95 (slice 1753): strip the now-playing line's live leg before
+    // deciding whether a change pours — the ⏳ percent form first, then
+    // the bare form (no total known yet); first occurrence each, the line
+    // carries at most one. A title never contains ⏳, so the strip is
+    // exact on this line's own legs.
+    private static String stripNowPlayingLive95(String s) {
+        if (s == null) return "";
+        String t = s.replaceFirst("⏳ [0-9]+% ", "");
+        t = t.replaceFirst("⏳ ", "");
+        return t;
+    }
     // v14.57 (slice 1714): melt the new Up Next row in at its display
     // position — the fadeDroppedQueueRow shape above, restated for
     // the ▸ row (the chooser's fadeUpNextTalkRow, v14.55, on this
@@ -5563,17 +5574,36 @@ if (snd65 >= 0) currentIndex = snd65;
                     // sites v13.39 missed (btnRetry long-click + Fx.press,
                     // btnPlayPause Fx.press).
                     if (nowPlaying != null && !pollLine.equals(nowPlaying.getText().toString())) {
+                        // v14.95 (slice 1753): a pure download-percent tick writes
+                        // instantly, never re-pours — pollLine carries the sounding
+                        // talk's live percent (progMark, v4.27), recomputed by the
+                        // 30s download rescan, so while the sounding talk itself
+                        // downloads every rescan that moved its percent re-poured
+                        // this line for no reason. The ⏳ leg is the download's
+                        // live progress readout: appearance, total-known, value ticks
+                        // are all live, never structural — the pour fires only when the
+                        // STRIPPED lines differ (track / icon / ⬇ landing / ★ / ended /
+                        // queue position). A ⬇ landing still pours
+                        // (dlMark survives the strip); a percent tick mid-pour
+                        // just lands the new text under the running pour. Same
+                        // idiom as the drawer header's stripDrawerHeaderLive58
+                        // (v14.58) and the strips' same-talk instant write
+                        // (v14.21).
+                        boolean structural95 = !stripNowPlayingLive95(pollLine)
+                                .equals(stripNowPlayingLive95(nowPlaying.getText().toString()));
                         nowPlaying.setText(pollLine);
-                        // v3.49: pour-restart continuity (v3.37 rule, extended) — a settled
-                        // view still pours visibly from 0/12dp; a mid-pour view flows on
-                        // from its current alpha/offset instead of snapping back.
-                        nowPlaying.animate().cancel();
-                        if (nowPlaying.getAlpha() >= 0.999f && nowPlaying.getTranslationY() <= 0.5f) {
-                            nowPlaying.setAlpha(0f);
-                            nowPlaying.setTranslationY(12f * getResources().getDisplayMetrics().density);
+                        if (structural95) {
+                            // v3.49: pour-restart continuity (v3.37 rule, extended) — a settled
+                            // view still pours visibly from 0/12dp; a mid-pour view flows on
+                            // from its current alpha/offset instead of snapping back.
+                            nowPlaying.animate().cancel();
+                            if (nowPlaying.getAlpha() >= 0.999f && nowPlaying.getTranslationY() <= 0.5f) {
+                                nowPlaying.setAlpha(0f);
+                                nowPlaying.setTranslationY(12f * getResources().getDisplayMetrics().density);
+                            }
+                            nowPlaying.animate().alpha(1f).translationY(0f).setDuration(320)
+                                    .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
                         }
-                        nowPlaying.animate().alpha(1f).translationY(0f).setDuration(320)
-                                .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
                     }
                 }
                 // v1.75: stale row — the service track changed
