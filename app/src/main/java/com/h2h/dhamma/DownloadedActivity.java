@@ -2898,11 +2898,17 @@ public class DownloadedActivity extends Activity {
             if (qN > 0) text += " · ◈ " + qN;
         } catch (Exception ignored) {}
         if (AudioService.liveEnded) text += " · " + Lang.t(DownloadedActivity.this, "notif_state_ended");
-        if (tx != null) tx.setText(text);
+        // v14.21 (slice 1675): the strip title/sub fade on a talk
+        // change, keyed on the talk itself (Room URL / library
+        // path) — the composed strings tick every second (sleep
+        // countdown on the title, live clock on the sub), so the
+        // text can never be the key.
+        String stripTalkId = "room".equals(kind) ? sp.getString("lastUrl", "") : sp.getString("lastLibPath", "");
+        if (tx != null) Fx.fadeStripText(tx, text, stripTalkId);
         // v5.32: live clock on the strip — source line + elapsed/total.
         android.widget.ProgressBar pb = findViewById(R.id.nowStripProgress);
         if (subText != null) subText += Fx.stripClockSuffixForStrip(pb, AudioService.livePositionMs, AudioService.liveDurationMs, Prefs.stripClockRemaining(DownloadedActivity.this));
-        if (sb != null && subText != null) sb.setText(subText);
+        if (sb != null && subText != null) Fx.fadeStripText(sb, subText, stripTalkId);
         Fx.syncStripProgress(pb); // v7.93: skips while a mini-seek drag is in flight
         if (tg != null) Fx.flipStripGlyph(tg, AudioService.livePlaying);
         // v6.02: live strip's portrait — Room names lastName, library

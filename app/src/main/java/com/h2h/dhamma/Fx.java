@@ -1214,6 +1214,95 @@ public class Fx {
         dip.start();
     }
 
+    // v14.21 (slice 1675): the strip title/sub used to swap instantly —
+    // all six strips set them with bare setText on the 1s tick, while
+    // the Room's own title already pours on a talk change (v2.22/
+    // v2.70 fade + rise) and the strip's own glyph now flips (v14.20)
+    // and its bar glides (v14.19). Now the title and the sub fade the
+    // glyph's way: dip the alpha to 0 over 90ms, swap the text at the
+    // dip, fade the new text back over 180ms. Keyed on TALK IDENTITY
+    // (the Room URL, or the library path), not on the text: both
+    // composed strings change every second while the talk is the
+    // same — the title's sleep countdown (M:SS) and in-progress
+    // count, the sub's live clock (mm:ss / mm:ss) — so a text-keyed
+    // fade would re-animate on every tick. Same-identity ticks write
+    // instantly (clock and suffixes land at once, never a stale
+    // second); an identity change dips + swaps + rises. First
+    // sighting sets instantly (no dip on first paint, the v14.19/
+    // v14.20 rule); alpha-only, so it never fights the strip
+    // slide-in/out (v14.14), which owns the strip container while
+    // this owns the two text views inside it; a rapid double-tap
+    // cancels the in-flight fade first, restores alpha 1, and the
+    // next tick retries from the still-recorded old identity (the
+    // record moves only at the swap, never upfront). A steady tick
+    // landing mid-fade returns without writing, so a clock update
+    // can never flicker the text under the dip — the next tick
+    // refreshes it. The animator + last identity ride on the
+    // view's own tags (see ids.xml), so they die with the view.
+    // The resume-strip one-shot writes stay instant — static setup
+    // while the strip itself slides in; the live tick takes over
+    // the moment a session is live.
+    public static void fadeStripText(android.widget.TextView v, String text, String identity) {
+        if (v == null) return;
+        Object lastObj = v.getTag(R.id.stripTextLast);
+        String last = lastObj instanceof String ? (String) lastObj : null;
+        if (identity == last || (identity != null && identity.equals(last))) {
+            Object aObj0 = v.getTag(R.id.stripTextAnim);
+            if (aObj0 instanceof android.animation.Animator) return;
+            v.setText(text);
+            return;
+        }
+        Object aObj = v.getTag(R.id.stripTextAnim);
+        if (aObj instanceof android.animation.Animator) ((android.animation.Animator) aObj).cancel();
+        if (last == null) {
+            v.setText(text);
+            v.setTag(R.id.stripTextLast, identity);
+            return;
+        }
+        final android.widget.TextView tv = v;
+        final String next = text;
+        final String nextId = identity;
+        android.animation.ObjectAnimator dip =
+                android.animation.ObjectAnimator.ofFloat(tv, "alpha", tv.getAlpha(), 0f);
+        dip.setDuration(90);
+        dip.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        dip.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                if (tv.getTag(R.id.stripTextAnim) != a) return;
+                tv.setText(next);
+                tv.setTag(R.id.stripTextLast, nextId);
+                android.animation.ObjectAnimator rise =
+                        android.animation.ObjectAnimator.ofFloat(tv, "alpha", 0f, 1f);
+                rise.setDuration(180);
+                rise.setInterpolator(new android.view.animation.DecelerateInterpolator());
+                rise.addListener(new android.animation.AnimatorListenerAdapter() {
+                    @Override public void onAnimationEnd(android.animation.Animator a2) {
+                        if (tv.getTag(R.id.stripTextAnim) == a2) {
+                            tv.setTag(R.id.stripTextAnim, null);
+                            tv.setAlpha(1f);
+                        }
+                    }
+                    @Override public void onAnimationCancel(android.animation.Animator a2) {
+                        if (tv.getTag(R.id.stripTextAnim) == a2) {
+                            tv.setTag(R.id.stripTextAnim, null);
+                            tv.setAlpha(1f);
+                        }
+                    }
+                });
+                tv.setTag(R.id.stripTextAnim, rise);
+                rise.start();
+            }
+            @Override public void onAnimationCancel(android.animation.Animator a) {
+                if (tv.getTag(R.id.stripTextAnim) == a) {
+                    tv.setTag(R.id.stripTextAnim, null);
+                    tv.setAlpha(1f);
+                }
+            }
+        });
+        v.setTag(R.id.stripTextAnim, dip);
+        dip.start();
+    }
+
     // v5.32: the mini-player's live clock — every now-playing strip
     // (Main, Talks, library, Settings) shows a progress bar but no
     // times, so a listener could never tell how far into a talk

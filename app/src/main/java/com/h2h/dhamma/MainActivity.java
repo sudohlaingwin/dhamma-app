@@ -1582,11 +1582,17 @@ public class MainActivity extends Activity {
         // service's liveEnded flag on its own 1s tick. A replay
         // or auto-advance clears the flag before the next tick.
         if (AudioService.liveEnded) text += " · " + Lang.t(MainActivity.this, "notif_state_ended");
-        if (tx != null) tx.setText(text);
+        // v14.21 (slice 1675): the strip title/sub fade on a talk
+        // change, keyed on the talk itself (Room URL / library
+        // path) — the composed strings tick every second (sleep
+        // countdown on the title, live clock on the sub), so the
+        // text can never be the key.
+        String stripTalkId = "room".equals(kind) ? sp.getString("lastUrl", "") : sp.getString("lastLibPath", "");
+        if (tx != null) Fx.fadeStripText(tx, text, stripTalkId);
         // v5.32: live clock on the strip — sayadaw name + elapsed/total.
         android.widget.ProgressBar pb = findViewById(R.id.nowStripProgress);
         if (subText != null) subText += Fx.stripClockSuffixForStrip(pb, AudioService.livePositionMs, AudioService.liveDurationMs, Prefs.stripClockRemaining(MainActivity.this));
-        if (sb != null && subText != null) sb.setText(subText);
+        if (sb != null && subText != null) Fx.fadeStripText(sb, subText, stripTalkId);
         // v4.30: the progress bar itself — the service's own 1s
         // tick (livePositionMs/liveDurationMs) feeds it, so the
         // strip shows where the talk is without ever binding.

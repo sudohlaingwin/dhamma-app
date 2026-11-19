@@ -15,4 +15,10 @@
          never re-animates a settled glyph. -->
     <item name="stripGlyphAnim" type="id"/>
     <item name="stripGlyphLast" type="id"/>
+    <!-- v14.21: tag keys for the strip-text fade (Fx.fadeStripText).
+         The running fade animator + the last shown talk identity ride
+         on each text view itself, so they die with the view and a
+         steady 1s tick never re-animates a settled title/sub. -->
+    <item name="stripTextAnim" type="id"/>
+    <item name="stripTextLast" type="id"/>
 </resources>
