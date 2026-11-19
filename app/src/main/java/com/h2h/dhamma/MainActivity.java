@@ -104,6 +104,19 @@ public class MainActivity extends Activity {
     // never outlive one cycle.
     private java.util.Map<String, android.view.View> shelfMeltViews62 =
             new java.util.HashMap<String, android.view.View>();
+    // v15.05 (slice 1763): the departures still fading out — the
+    // mirror of shelfMeltViews62 above, for the fade-OUT side. A
+    // rebuild landing inside a departure's 250ms fade-out (the
+    // v15.00 re-seat) used to detach the chip mid-fade at alpha
+    // ~0.36 and it vanished in one frame (sim1762 B6). Each re-seat
+    // records its departing view here; the next rebuild snapshots
+    // the still-attached ones' alpha + slot before removeAllViews
+    // and re-seats them to finish the fade. Cleared at every
+    // rebuild after the snapshot, so a stale entry can never
+    // outlive one cycle; a view already detached is skipped by the
+    // parent check there.
+    private java.util.List<android.view.View> shelfDepartingViews63 =
+            new java.util.ArrayList<android.view.View>();
     // v14.15 (slice 1669): ★ favourites shelf first-appearance
     // cascade — the shelf's chips used to pop in instantly while
     // the header (v2.17) and the grid (v2.07) pour in around them,
@@ -3199,6 +3212,23 @@ public class MainActivity extends Activity {
         java.util.List<android.view.View> departing00 = null;
         java.util.List<Integer> departingIdx00 = null;
         if (!shelfWasGone && prevShelfNames99 != null) {
+            // v15.05 (slice 1763): the child order is NOT the
+            // prev-list order while a departure from an earlier
+            // rebuild is still re-seated in the shelf — getChildAt
+            // (i00) would grab the fading departure instead of the
+            // member chip for the removed name (a second unstar
+            // landing inside the 250ms window used to re-fade the
+            // OLD departure and let the NEWLY unstarred chip pop
+            // out with no fade at all). Filter the recorded
+            // departures out first; the survivors are the member
+            // chips in prev-list order, so the index below resolves
+            // the right view. A stale record (already detached)
+            // never matches a child, so it filters nothing.
+            java.util.List<android.view.View> members00 = new java.util.ArrayList<android.view.View>();
+            for (int m00 = 0; m00 < favShelf.getChildCount(); m00++) {
+                android.view.View c00 = favShelf.getChildAt(m00);
+                if (c00 != null && !shelfDepartingViews63.contains(c00)) members00.add(c00);
+            }
             for (int i00 = 0; i00 < prevShelfNames99.size(); i00++) {
                 boolean stillThere00 = false;
                 for (Sayadaw s00 : favList) {
@@ -3208,7 +3238,7 @@ public class MainActivity extends Activity {
                     }
                 }
                 if (stillThere00) continue;
-                android.view.View dv00 = favShelf.getChildAt(i00);
+                android.view.View dv00 = i00 < members00.size() ? members00.get(i00) : null;
                 if (dv00 == null) continue;
                 if (departing00 == null) {
                     departing00 = new java.util.ArrayList<android.view.View>();
@@ -3245,6 +3275,47 @@ public class MainActivity extends Activity {
                 }
             }
             shelfMeltViews62.clear();
+        }
+        // v15.05 (slice 1763): snapshot the departures still fading
+        // out — the mirror of the v15.04 melt carry above. A rebuild
+        // landing inside a departure's 250ms fade-out (removeAllViews
+        // below) used to detach the re-seated chip mid-fade at alpha
+        // ~0.36 and it vanished in one frame (sim1762 B6, pre and post
+        // identical). Each recorded departure still attached to the
+        // shelf is carried below: re-seated at its old slot and its
+        // fade continued from the captured alpha over the remaining
+        // time (250 * sqrt(alpha) — the DecelerateInterpolator curve
+        // is quadratic, so the restarted fade reproduces the original
+        // curve exactly and the departure still leaves at t=250, when
+        // the v15.02 parked chip expects its slot free). Only alpha
+        // above 0.001 carries — an already-invisible chip has nothing
+        // left to show — and unlike the melt carry above there is no
+        // 0.999 ceiling: a fade that only just started sits near 1.0
+        // and detaching it would pop a fully-visible chip. The record
+        // list is cleared here, so a stale entry never outlives one
+        // cycle; the re-seat below records the carried chip again, so
+        // a third rebuild landing inside the continued fade carries it
+        // onward the same way.
+        java.util.List<android.view.View> carryDep63 = null;
+        java.util.List<Float> carryDepAlpha63 = null;
+        java.util.List<Integer> carryDepIdx63 = null;
+        if (!shelfDepartingViews63.isEmpty()) {
+            for (android.view.View v63 : shelfDepartingViews63) {
+                if (v63 == null || v63.getParent() != favShelf) continue;
+                float a63 = v63.getAlpha();
+                if (a63 <= 0.001f) continue;
+                int idx63 = favShelf.indexOfChild(v63);
+                if (idx63 < 0) continue;
+                if (carryDep63 == null) {
+                    carryDep63 = new java.util.ArrayList<android.view.View>();
+                    carryDepAlpha63 = new java.util.ArrayList<Float>();
+                    carryDepIdx63 = new java.util.ArrayList<Integer>();
+                }
+                carryDep63.add(v63);
+                carryDepAlpha63.add(a63);
+                carryDepIdx63.add(idx63);
+            }
+            shelfDepartingViews63.clear();
         }
         favShelf.removeAllViews();
         float d = getResources().getDisplayMetrics().density;
@@ -3398,6 +3469,24 @@ public class MainActivity extends Activity {
                             }
                         }
                     }
+                    // v15.05 (slice 1763): a carried departure
+                    // re-seated at-or-before this chip's home index
+                    // displaces it exactly like a fresh one —
+                    // without this the chip would melt in at once,
+                    // then jump home when the carried departure
+                    // leaves (the v15.02 teleport, reintroduced by
+                    // the carry). Only reached when no fresh
+                    // departure already displaced it, so the
+                    // captured index compares exactly against the
+                    // home index.
+                    if (!displaced02 && carryDepIdx63 != null) {
+                        for (int d63 = 0; d63 < carryDepIdx63.size(); d63++) {
+                            if (carryDepIdx63.get(d63) <= i99) {
+                                displaced02 = true;
+                                break;
+                            }
+                        }
+                    }
                     if (!displaced02) {
                         Fx.fadeIn(added99, 250);
                         continue;
@@ -3470,6 +3559,10 @@ public class MainActivity extends Activity {
                 int at00 = departingIdx00.get(i00);
                 if (at00 > favShelf.getChildCount()) at00 = favShelf.getChildCount();
                 favShelf.addView(dv00, at00);
+                // v15.05 (slice 1763): record the departure — a
+                // rebuild landing inside this fade-out re-seats it
+                // and continues the fade (snapshot above).
+                shelfDepartingViews63.add(dv00);
                 // v15.03 (slice 1761): the departing chip's slot
                 // width — its measured width plus its right margin
                 // (72dp + 10dp as built above) — is the distance
@@ -3513,6 +3606,67 @@ public class MainActivity extends Activity {
                         }
                     }
                 });
+            }
+        }
+        // v15.05 (slice 1763): re-seat the carried departures — the
+        // mirror of the v15.00 re-seat above. Each departure the
+        // snapshot caught mid-fade goes back into its old slot at its
+        // captured alpha and its fade-out continues over the remaining
+        // time (250 * sqrt(alpha), the exact remainder of the
+        // DecelerateInterpolator curve), so a rebuild landing inside
+        // the 250ms window reads as one continuous fade instead of a
+        // one-frame cut at alpha ~0.36. The v15.03 rank-close glide
+        // rides the removal end action exactly as in the v15.00
+        // block, and the chip is recorded again, so a third rebuild
+        // landing inside the continued fade carries it onward. Runs
+        // after the v15.00 re-seat, in ascending captured-index
+        // order, so a fresh departure and a carried one keep their
+        // old relative order; the clamp covers a departure past the
+        // new end. A carried departure beside a carried melt-in chip
+        // (v15.04) composes the same way — glideHome never touches
+        // alpha and the continued fade never touches translationX.
+        if (carryDep63 != null) {
+            for (int i63 = 0; i63 < carryDep63.size(); i63++) {
+                android.view.View dv63 = carryDep63.get(i63);
+                float a63 = carryDepAlpha63.get(i63);
+                int at63 = carryDepIdx63.get(i63);
+                if (at63 > favShelf.getChildCount()) at63 = favShelf.getChildCount();
+                favShelf.addView(dv63, at63);
+                dv63.setAlpha(a63);
+                // v15.03 (slice 1761): the departing chip's slot
+                // width — measured exactly as in the v15.00 block
+                // above, so the rank-close glide travels the same
+                // distance when this departure leaves.
+                final int atFinal63 = at63;
+                final float shift63;
+                {
+                    float s63 = 0f;
+                    if (dv63.getWidth() > 0) {
+                        s63 = dv63.getWidth();
+                        android.view.ViewGroup.LayoutParams lp63 =
+                                dv63.getLayoutParams();
+                        if (lp63 instanceof android.widget.LinearLayout.LayoutParams)
+                            s63 += ((android.widget.LinearLayout.LayoutParams) lp63).rightMargin;
+                    }
+                    if (s63 <= 0f) s63 = 82 * d;
+                    shift63 = s63;
+                }
+                // v15.05: the exact remainder of the fade — the
+                // DecelerateInterpolator curve is quadratic, so a
+                // fresh fade over 250 * sqrt(alpha) from the captured
+                // alpha reproduces the original 1 -> 0 curve and the
+                // departure still leaves at t=250, when the v15.02
+                // parked chip expects its slot free.
+                long remain63 = (long) (250 * Math.sqrt(a63));
+                if (remain63 < 1) remain63 = 1;
+                Fx.fadeOutAndRemove(dv63, remain63, new Runnable() {
+                    @Override public void run() {
+                        for (int j63 = atFinal63; j63 < favShelf.getChildCount(); j63++) {
+                            Fx.glideHome(favShelf.getChildAt(j63), shift63, 250);
+                        }
+                    }
+                });
+                shelfDepartingViews63.add(dv63);
             }
         }
     }
