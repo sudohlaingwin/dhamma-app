@@ -659,6 +659,22 @@ public class TalksActivity extends Activity {
             }
         });
     }
+    // v14.56 (slice 1713): the header's live-percent strip — the
+    // header carries the Up Next talk's LIVE download percent
+    // ("⏳42%"), and the branch's own progress diff can move that
+    // number on consecutive ticks while a download runs, so a raw
+    // text compare would re-fade the header on every percent tick
+    // (the drawer-header-line flicker class, slice 1712 dead end).
+    // The arm compares with the live percent removed, so only a
+    // structural change arms: a new Up Next title, a count change
+    // (★/⬇/✓/↺/◈/⏳-count), a ⬇ landing. A pure percent tick
+    // (42% -> 43%) reads equal — a missed melt, never a shimmer.
+    // The "· ⏳ M" count has no percent and survives the strip, so
+    // a download starting or finishing still arms through the count.
+    private static String stripHeaderLivePct(String s) {
+        if (s == null) return "";
+        return s.replaceAll("⏳[0-9]+%", "");
+    }
     // v4.89: last playing URL the rows were bound against — the
     // tick detects a change here and rebinds once (below).
     private String talkRowPlayingUrl = null;
@@ -708,6 +724,23 @@ public class TalksActivity extends Activity {
     // stopped case.
     private String upNextFadeUrl = null;
     private boolean upNextPrimed = false;
+    // v14.56 (slice 1713): the chooser header's melt prime — the
+    // header (R.id.title: sayadaw name + counts + Up Next line) is
+    // one TextView, written bare at the end of refreshFavHeader, so
+    // on a tick-detected change it swaps in one frame while the ▸
+    // row (v14.55) and the sounding row (v14.48) melt beside it:
+    // auto-advance moves the Up Next line to the next talk's title
+    // and bumps ✓ +1 in the same tick the rows melt. The arm below
+    // fires the header's own 250ms fade (the v14.48 rhythm) on the
+    // same branch. headerFadePrimed stays false until the first tick
+    // evaluation, so a load or rotation restore never arms a fade on
+    // top of the list pour (v14.23); a change discovered on a
+    // back-stack return melts the header as the return beat, like
+    // the row arms. Menu actions, load landings, returns and theme
+    // dips refresh the header outside this branch and never fade it
+    // — the same boundary as the v14.48/v14.55 arms, which cover
+    // tick-detected changes only.
+    private boolean headerFadePrimed = false;
     // v11.15: ended state the rows were last bound against —
     // the v4.89 tick detects playing-URL changes only, so a
     // natural end (same URL, liveEnded flipped) would otherwise
@@ -4590,6 +4623,15 @@ public class TalksActivity extends Activity {
             // (menu actions rebind with it at once), so the compare
             // below can never mistake an already-▸ row for a new one.
             String upNextBefore55 = upNextRowUrl;
+            // v14.56 (slice 1713): snapshot the header text the rows
+            // are currently bound under — BEFORE the refresh below
+            // rewrites it, with the live percent stripped (see
+            // stripHeaderLivePct): the same baseline shape as the
+            // upNextBefore55 snapshot beside it. A missing title view
+            // reads "" on both sides, so it can never arm.
+            android.widget.TextView headerTitle56 = findViewById(R.id.title);
+            String headerBefore56 = headerTitle56 == null ? ""
+                    : stripHeaderLivePct(headerTitle56.getText().toString());
             // v13.85 (slice 1077): the refresh runs BEFORE the notify below — refreshFavHeader also refreshes upNextRowUrl, and the rebind reads it, so a notify-first order would bind every row against the previous next talk until the next change tick.
             try { refreshFavHeader(); } catch (Exception ignored) {}
             // v14.55 (slice 1712): arm the new Up Next row's melt —
@@ -4607,9 +4649,23 @@ public class TalksActivity extends Activity {
                     && !upNextRowUrl.equals(upNextBefore55 == null ? "" : upNextBefore55)) {
                 upNextTarget55 = upNextRowUrl;
             }
+            // v14.56 (slice 1713): arm the header's melt — only a
+            // structural change (see stripHeaderLivePct), primed
+            // only. A marks-only change that leaves the header's
+            // structure untouched rebinds the same rows with no
+            // header fade, and a pure ⏳ percent tick reads equal
+            // after the strip and never re-fires.
+            boolean headerChanged56 = false;
+            if (headerFadePrimed) {
+                android.widget.TextView headerTitleAfter56 = findViewById(R.id.title);
+                String headerAfter56 = headerTitleAfter56 == null ? ""
+                        : stripHeaderLivePct(headerTitleAfter56.getText().toString());
+                headerChanged56 = !headerAfter56.equals(headerBefore56);
+            }
             adapter.notifyDataSetChanged();
             if (soundTarget48.length() > 0) { soundingFadeUrl = soundTarget48; fadeSoundingTalkRow(); }
             if (upNextTarget55.length() > 0) { upNextFadeUrl = upNextTarget55; fadeUpNextTalkRow(); }
+            if (headerChanged56) Fx.fadeIn(findViewById(R.id.title), 250);
         }
         // v14.48 (slice 1705): first tick evaluation adopts the
         // trackers silently — the arm above only ever reads the
@@ -4620,6 +4676,10 @@ public class TalksActivity extends Activity {
         // Next arm — a load / rotation restore never melts the ▸
         // row on top of the entrance pour (v14.23).
         upNextPrimed = true;
+        // v14.56 (slice 1713): same first-tick adoption for the
+        // header arm — a load / rotation restore never melts the
+        // header on top of the entrance pour (v14.23).
+        headerFadePrimed = true;
         android.view.View strip = findViewById(R.id.nowStrip);
         if (strip == null) return;
         boolean night = cachedNight;
