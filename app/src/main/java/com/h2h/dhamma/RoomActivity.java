@@ -11133,9 +11133,13 @@ if (snd67q >= 0) currentIndex = snd67q;
             // Clear button popped VISIBLE/GONE with no motion, the
             // same snap class one row up. The flip detector below
             // fires only when the MODE changes (drawerQueueOnly vs
-            // lastQueueOnly30); a count-only change (N dropping as
-            // talks play) still swaps instantly, so the label never
-            // flickers on the 1s poll tick. On a flip the toggle
+            // lastQueueOnly30). A count-only change (N dropping as
+            // talks play, growing on a queue add) used to swap
+            // instantly; v14.43 (slice 1698) melts it through
+            // Fx.fadeStripText instead — change-only by identity,
+            // so the label never flickers on the 1s poll tick, and
+            // the 90+180ms dip+rise matches the strip title/sub
+            // rhythm (v14.21). On a flip the toggle
             // label fades in (200ms) and Clear fades in behind it
             // (220ms, 40ms delay, the header stagger rhythm) or
             // fades out (150ms, GONE at the end, gen-guarded the
@@ -11157,11 +11161,37 @@ if (snd67q >= 0) currentIndex = snd67q;
                     ? Lang.t(RoomActivity.this, "dl_menu_show_all_again")
                     : "\u25C8 " + Lang.t(RoomActivity.this, "queue_clear_only") + (n > 0 ? " \u00B7 " + n : "");
             if (!wantTg.equals(tg.getText().toString())) {
-                tg.setText(wantTg);
                 if (flip30) {
+                    // v14.43 (slice 1698): the flip label lands
+                    // instantly through setStripTextNow — it cancels
+                    // any count-change dip in flight first (a dip
+                    // would otherwise swap its stale text over the
+                    // flip label at the dip end) and records the
+                    // flip label as the fade identity, so a later
+                    // count change back to an earlier count still
+                    // melts instead of hitting fadeStripText's
+                    // identity==last instant path. Tag animator
+                    // only — the tap morph's ViewPropertyAnimator
+                    // (scale, same view) is untouched, and the
+                    // flip's own 200ms rise below still owns the
+                    // motion.
+                    Fx.setStripTextNow(tg, wantTg, wantTg);
                     if (tg.getAlpha() >= 0.999f) tg.setAlpha(0f);
                     tg.animate().alpha(1f).setDuration(200)
                             .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+                } else {
+                    // v14.43 (slice 1698): count-only change melts
+                    // (90ms dip + 180ms rise, the strip rhythm) —
+                    // the 1685 flip fade left N changes swapping in
+                    // one frame while the flip itself fades. The
+                    // poll tick refreshes this every 500ms, but the
+                    // change-only guard above plus fadeStripText's
+                    // identity record mean a steady count never
+                    // re-fires, and a second change mid-melt
+                    // cancels the in-flight dip first and melts
+                    // from the restored alpha. Alpha-only, so the
+                    // tap morph (scale) is untouched.
+                    Fx.fadeStripText(tg, wantTg, wantTg);
                 }
             }
             int wantVis = (drawerQueueOnly && n > 0) ? android.view.View.VISIBLE : android.view.View.GONE;

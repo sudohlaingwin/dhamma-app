@@ -1532,6 +1532,36 @@ public class Fx {
         dip.start();
     }
 
+    // v14.43 (slice 1698): the instant writer for a view whose text
+    // fadeStripText owns — the Room drawer queue-toggle label melts
+    // on a count change through the helper, but a mode flip must
+    // land its label instantly (the flip's own 200ms rise owns the
+    // motion), and a bare setText there would desync the helper's
+    // recorded identity (tag says "◈ Queue · 3" while the view
+    // shows "show the full list again", so a later count change
+    // back to "◈ Queue · 3" hits the identity==last instant path
+    // and the melt is skipped). This stamps the text at once AND
+    // records it as the identity, cancelling any in-flight dip/rise
+    // first: a dip cancelled mid-flight would otherwise swap its
+    // stale text over the flip label at the dip end. The cancel
+    // listener restores alpha 1 and clears the tag (it fires before
+    // the end listener, which then skips its stale swap — the same
+    // cancel-then-end order crossfadeTextColor relies on, v14.42),
+    // and the explicit setAlpha(1f) pins it for the already-ended
+    // case. Alpha-only, so the tap morph's ViewPropertyAnimator
+    // (scale, same view) is untouched. Same "Now" pattern as
+    // setTextColorNow (v14.39) / setImageTintNow (v14.41).
+    public static void setStripTextNow(final android.widget.TextView v,
+            final String text, final String identity) {
+        if (v == null) return;
+        Object aObj = v.getTag(R.id.stripTextAnim);
+        if (aObj instanceof android.animation.Animator)
+            ((android.animation.Animator) aObj).cancel();
+        v.setText(text);
+        v.setTag(R.id.stripTextLast, identity);
+        v.setAlpha(1f);
+    }
+
     // v14.22 (slice 1676): the strip photo used to swap instantly —
     // all six strips end their photo sync with a bare
     // ImageLoader.load on a sayadaw change, while everything around
