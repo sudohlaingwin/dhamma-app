@@ -6906,9 +6906,17 @@ if (snd65 >= 0) currentIndex = snd65;
                             new java.util.ArrayList<String>();
                     for (String handLine : drawerQueueDisplayLines()) {
                         String handUrl = queueLineUrl(handLine);
-                        if (handUrl.length() == 0 || handSeen.contains(handUrl)) continue;
-                        handSeen.add(handUrl);
-                        if (!handUrl.equals(playingUrl)) handQ++;
+                        // v14.93 (slice 1751): dedup + sounding-skip read
+                        // the scheme-twin rule (the waitingQueueCountPure
+                        // shape) — a legacy http queue line for the
+                        // sounding talk counted as waiting, so the header
+                        // read "· ◈ N" one too many and twin lines
+                        // counted twice. Paths pass through identityUrl
+                        // unchanged, so a downloaded-file line dedups
+                        // exactly as before.
+                        if (handUrl.length() == 0 || handSeen.contains(SiteHttp.identityUrl(handUrl))) continue;
+                        handSeen.add(SiteHttp.identityUrl(handUrl));
+                        if (!SiteHttp.sameTalk(handUrl, playingUrl)) handQ++;
                     }
                     if (handQ > 0) want += " · ◈ " + handQ;
                     // v5.64: the header also counts finished talks
@@ -10236,9 +10244,14 @@ if (snd65h >= 0) currentIndex = snd65h;
                     java.util.ArrayList<String> waitSeen38 = new java.util.ArrayList<String>();
                     for (String waitLine38 : drawerQueueDisplayLines()) {
                         String waitUrl38 = queueLineUrl(waitLine38);
-                        if (waitUrl38.length() == 0 || waitSeen38.contains(waitUrl38)) continue;
-                        waitSeen38.add(waitUrl38);
-                        if (playUrl83 == null || !waitUrl38.equals(playUrl83)) waitQ83++;
+                        // v14.93 (slice 1751): the scheme-twin rule, the
+                        // header twin above — a legacy http queue line
+                        // for the sounding talk counted as waiting, so
+                        // the dialog quoted N+1 and offered "view queue
+                        // only" when only the sounding talk waited.
+                        if (waitUrl38.length() == 0 || waitSeen38.contains(SiteHttp.identityUrl(waitUrl38))) continue;
+                        waitSeen38.add(SiteHttp.identityUrl(waitUrl38));
+                        if (playUrl83 == null || !SiteHttp.sameTalk(waitUrl38, playUrl83)) waitQ83++;
                     }
                     // v11.81: the "only the playing talk is left" line is true only when
                     // something IS sounding — when the queue holds only stale (pruned-from-
@@ -11629,7 +11642,11 @@ if (snd67q >= 0) currentIndex = snd67q;
         String sounding = soundingUrlForQueue();
         for (String line : drawerQueueDisplayLines()) {
             String u = queueLineUrl(line);
-            if (u.length() > 0 && !u.equals(sounding)) return;
+            // v14.93 (slice 1751): the sounding skip reads the
+            // scheme-twin rule — a legacy http queue line for the
+            // sounding talk counted as waiting, so the drawer stayed
+            // queue-only when nothing waited.
+            if (u.length() > 0 && !SiteHttp.sameTalk(u, sounding)) return;
         }
         drawerQueueOnly = false;
     }
@@ -11638,6 +11655,17 @@ if (snd67q >= 0) currentIndex = snd67q;
     // waitingQueueCount72 mirrors the header (v5.81/v11.04) and the clear
     // dialog (v11.38): deduped display lines, skipping the sounding talk,
     // so the bar, the header count and the dialog always agree.
+    // v14.93 (slice 1751): the waiting class is closed — all six
+    // counters/gates (header handQ, header dialog waitQ83, this
+    // count, showClearQueueDialog72, exitQueueOnlyIfNothingWaiting,
+    // openQueueDrawer anyWaiting87) now dedup by identityUrl and
+    // skip the sounding talk via sameTalk, the
+    // Prefs.waitingQueueCountPure shape (v13.67, slice 1053); a
+    // legacy http queue line for the sounding talk (delivered
+    // v13.57 stored talk URLs verbatim; the 1737 page's
+    // absolute-http hrefs parse as-is) no longer counts as
+    // waiting, and twin lines count once. www/bare cross-form stays unfixed by design,
+    // same boundary as fav/played/downloaded.
     // refreshQueueBar72 is change-only like the header write beside it
     // (the poll tick calls it every second); the toggle reads "◈ view
     // queue only · N" in the full list and "show the full list again" in
@@ -11654,9 +11682,13 @@ if (snd67q >= 0) currentIndex = snd67q;
         String playing = soundingUrlForQueue();
         for (String line : drawerQueueDisplayLines()) {
             String u = queueLineUrl(line);
-            if (u.length() == 0 || seen.contains(u)) continue;
-            seen.add(u);
-            if (playing == null || !u.equals(playing)) n++;
+            // v14.93 (slice 1751): dedup + sounding-skip read the
+            // scheme-twin rule, the waitingQueueCountPure shape — a
+            // legacy http queue line for the sounding talk counted as
+            // waiting, so the bar ◈ count read one too many.
+            if (u.length() == 0 || seen.contains(SiteHttp.identityUrl(u))) continue;
+            seen.add(SiteHttp.identityUrl(u));
+            if (playing == null || !SiteHttp.sameTalk(u, playing)) n++;
         }
         return n;
     }
@@ -11777,9 +11809,13 @@ if (snd67q >= 0) currentIndex = snd67q;
         java.util.ArrayList<String> seen = new java.util.ArrayList<String>();
         for (String line : drawerQueueDisplayLines()) {
             String u = queueLineUrl(line);
-            if (u.length() == 0 || seen.contains(u)) continue;
-            seen.add(u);
-            if (playUrl == null || !u.equals(playUrl)) waitQ++;
+            // v14.93 (slice 1751): the scheme-twin rule, the
+            // waitingQueueCount72 twin above — a legacy http queue
+            // line for the sounding talk counted as waiting, so the
+            // dialog quoted N+1 instead of the only-playing line.
+            if (u.length() == 0 || seen.contains(SiteHttp.identityUrl(u))) continue;
+            seen.add(SiteHttp.identityUrl(u));
+            if (playUrl == null || !SiteHttp.sameTalk(u, playUrl)) waitQ++;
         }
         String msg;
         if (waitQ > 0) {
@@ -11864,7 +11900,12 @@ if (snd67q >= 0) currentIndex = snd67q;
         for (String u : drawerQueueDisplayLines()) {
             String pu87 = queueLineUrl(u);
             if (pu87.length() == 0) continue;
-            if (!pu87.equals(playUrl87)) { anyWaiting87 = true; break; }
+            // v14.93 (slice 1751): the waiting gate reads the
+            // scheme-twin rule — a legacy http queue line for the
+            // sounding talk counted as waiting, so the ◈ tap opened
+            // a queue-only drawer whose only row was the talk already
+            // playing (the v5.87 embarrassment in http form).
+            if (!SiteHttp.sameTalk(pu87, playUrl87)) { anyWaiting87 = true; break; }
         }
         if (!anyWaiting87) {
             Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_empty"), Toast.LENGTH_SHORT).show();
