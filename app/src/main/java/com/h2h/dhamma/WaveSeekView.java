@@ -127,6 +127,40 @@ public class WaveSeekView extends View {
         });
         swellAnim.start();
     }
+    // v14.18: drag-readout fade — the v4.13 scrub-time readout used
+    // to pop in at full alpha the instant a finger landed and vanish
+    // in one frame the instant it lifted, while the swell around it
+    // eases (v2.53: 120ms in, 200ms out) — the one instant change
+    // left in the scrub itself. The readout now rides the swell's
+    // own rhythm: it fades 0->1 over the same 120ms on touch-down
+    // and melts 1->0 over the same 200ms on lift, so the time and
+    // the bars swell and settle together. The fade-out runs after
+    // dragging clears (onDraw keys on readoutAlpha, not dragging),
+    // so the time lingers briefly at the scrub target instead of
+    // blinking out; a re-touch mid-fade-out cancels and fades back
+    // in from the current alpha, exactly like the swell. The
+    // TalkBack path never shows the readout (no dragging), so it
+    // never calls this; detach cancels and resets, like the swell.
+    private float readoutAlpha = 0f;
+    private android.animation.ValueAnimator readoutAnim;
+    private void animateReadout(float target, long durationMs) {
+        if (readoutAnim != null) readoutAnim.cancel();
+        readoutAnim = null;
+        float from = readoutAlpha;
+        dragTextPaint.setAlpha((int) (255f * readoutAlpha));
+        if (from == target) return;
+        readoutAnim = android.animation.ValueAnimator.ofFloat(from, target);
+        readoutAnim.setDuration(durationMs);
+        readoutAnim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        readoutAnim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                readoutAlpha = (Float) a.getAnimatedValue();
+                dragTextPaint.setAlpha((int) (255f * readoutAlpha));
+                invalidate();
+            }
+        });
+        readoutAnim.start();
+    }
     // v3.15: premium ripple ramp-in — the v2.52 wave bars used to jump
     // from flat (never played) to the full +/-10% ripple in a single
     // tick on the first play, the one play-start pop left after the
@@ -357,6 +391,47 @@ public class WaveSeekView extends View {
         sleepFading = f;
         applyRippleTarget();
     }
+    // v14.18: pause/play dim ease — the v4.13 dim used to snap the
+    // three bar paints (and the playhead dot, which shares
+    // playedPaint) straight between full and ~0.55 alpha the instant
+    // setPlaying flipped, while the glow around it fades (v2.33) and
+    // the ripple freezes or ramps — the one instant change left in
+    // the play/pause transition. The dim now eases over 200ms
+    // (decelerate), the same window as the swell-out, so a pause
+    // settles instead of blinking dim and a play brightens while
+    // the ripple ramps back in (v3.15). Change-only like the
+    // buffering/duck/fade targets: a poll tick re-entering a settled
+    // dim or an already-running ease toward the same target is a
+    // no-op, so the 500ms poll can never restart the fade; a
+    // mid-fade flip eases on from the current alpha. Detach cancels
+    // the animator and keeps the value, like the ripple amplitude.
+    private float dimAlphaF = 255f;
+    private android.animation.ValueAnimator dimAnim;
+    private float dimAnimTarget = 255f;
+    private void applyDim(float a) {
+        dimAlphaF = a;
+        int ia = Math.round(a);
+        playedPaint.setAlpha(ia);
+        bufferedPaint.setAlpha(ia);
+        restPaint.setAlpha(ia);
+    }
+    private void animateDim(float target) {
+        if (dimAnim != null && dimAnimTarget == target) return;
+        if (Math.abs(dimAlphaF - target) < 0.5f) { applyDim(target); return; }
+        if (dimAnim != null) dimAnim.cancel();
+        dimAnim = null;
+        dimAnimTarget = target;
+        dimAnim = android.animation.ValueAnimator.ofFloat(dimAlphaF, target);
+        dimAnim.setDuration(200);
+        dimAnim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        dimAnim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                applyDim((Float) a.getAnimatedValue());
+                invalidate();
+            }
+        });
+        dimAnim.start();
+    }
     private boolean playing = false;
     private final Runnable waveTick = new Runnable() {
         @Override public void run() {
@@ -375,10 +450,12 @@ public class WaveSeekView extends View {
         // view lands dim even when the poll's first call matches
         // the default flag. The error-flat (v4.10) and the frozen
         // pause shape are untouched — only their brightness moves.
-        int dimA = p ? 255 : 140;
-        playedPaint.setAlpha(dimA);
-        bufferedPaint.setAlpha(dimA);
-        restPaint.setAlpha(dimA);
+        // v14.18: the dim eases (animateDim, 200ms) instead of
+        // snapping — see the field note above; the every-call
+        // property is kept (animateDim no-ops on a settled dim),
+        // and a recreated view eases to dim on its first poll
+        // call, masked by the Room's own entrance pour.
+        animateDim(p ? 255f : 140f);
         if (p == playing) return;
         if (!p) {
             // v2.76: freeze the phase before flipping, so the next
@@ -443,6 +520,17 @@ public class WaveSeekView extends View {
         }
         if (swellAnim != null) swellAnim.cancel(); // v2.53: no off-screen swell tick
         swellAnim = null;
+        // v14.18: no off-screen readout fade or dim tick — the
+        // readout resets (a re-attached view starts with no
+        // readout, like a fresh drag), the dim value is kept like
+        // the ripple amplitude, so the next setPlaying re-targets
+        // from wherever it froze.
+        if (readoutAnim != null) readoutAnim.cancel();
+        readoutAnim = null;
+        readoutAlpha = 0f;
+        dragTextPaint.setAlpha(255);
+        if (dimAnim != null) dimAnim.cancel();
+        dimAnim = null;
         // v3.65: same stop-ease guard, detach side — the flag used
         // to be read AFTER the cancel, so a synchronous end action
         // (v3.19 behaviour) cleared the flag first and the detach
@@ -633,7 +721,11 @@ public class WaveSeekView extends View {
         // the bar colours are untouched, and the readout vanishes
         // with the finger (dragging clears on UP/CANCEL). Clamped
         // inside the view so edge drags never clip the text.
-        if (dragging && max > 0) {
+        // v14.18: it fades, not pops — the draw keys on
+        // readoutAlpha (animateReadout, 120ms in / 200ms out), so
+        // the time melts away at the scrub target after the lift
+        // instead of vanishing in one frame.
+        if (readoutAlpha > 0.01f && max > 0) {
             String t = fmtDragTime(progress);
             float tw = dragTextPaint.measureText(t);
             float cx = playedFrac * w;
@@ -710,6 +802,7 @@ public class WaveSeekView extends View {
                 activePointerId = e.getPointerId(0);
                 dragging = true;
                 animateSwell(1.25f, 120); // v2.53: swell eases in, no pop
+                animateReadout(1f, 120); // v14.18: readout fades in with the swell
                 if (listener != null) listener.onStartTrackingTouch(this);
                 // v12.64: a tap landing within 14dp of a bookmark pin
                 // snaps the scrub to that exact minute — the pin is
@@ -764,6 +857,7 @@ public class WaveSeekView extends View {
                 dragging = false;
                 activePointerId = -1;
                 animateSwell(1f, 200); // v2.53: swell eases out, no snap
+                animateReadout(0f, 200); // v14.18: readout melts out with the swell
                 // v11.80: the clickable-view contract — a consumed
                 // UP must offer performClick() (no OnClickListener
                 // is attached, so this is a no-op that keeps
@@ -780,6 +874,7 @@ public class WaveSeekView extends View {
                 dragging = false;
                 activePointerId = -1;
                 animateSwell(1f, 200);
+                animateReadout(0f, 200); // v14.18: readout melts out with the swell
                 performClick();
                 if (listener != null) listener.onStopTrackingTouch(this);
                 return true;
@@ -802,6 +897,7 @@ public class WaveSeekView extends View {
                 activePointerId = -1;
                 snappedBookmarkMs = -1; // v12.64: a cancelled tap is not a bookmark jump either
                 animateSwell(1f, 200);
+                animateReadout(0f, 200); // v14.18: readout melts out with the swell
                 if (wasDraggingCancel && listener != null) listener.onCancelTrackingTouch(this);
                 return true;
         }
