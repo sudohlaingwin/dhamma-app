@@ -1175,6 +1175,7 @@ public class DownloadedActivity extends Activity {
     }
     private android.widget.Button sortBtn;
     private android.widget.EditText dlSearchField;
+    private android.view.View dlClearBtn; // v15.33 (slice 1837): the library search clear ✕
     private AudioService service;
     private boolean bound;
     // v1.62: a library row tapped before the service finished binding
@@ -6005,6 +6006,7 @@ public class DownloadedActivity extends Activity {
         }
         // v1.38: one-tap clear for the library search
         android.view.View clearBtn = findViewById(R.id.btnClearDlSearch);
+        dlClearBtn = clearBtn; // v15.33 (slice 1837): the ✕ melts with the query
         if (clearBtn != null) clearBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 // v2.41: header click beat — morphs only when there
@@ -7530,6 +7532,32 @@ public class DownloadedActivity extends Activity {
         });
     }
 
+    // v15.33 (slice 1837): the library search clear ✕ melts with the query — btnClearDlSearch is the last of the three search ✕ controls that never hid: Talks fades it (v14.44), Main fades it (slice 1836), but the Library's ✕ sat permanently visible beside an empty search box, inert on tap (the v2.41 morph guard means an empty query earns no beat at all). The ✕ fades in 250ms (the app's settled Fx.fadeIn) when a gesture-driven filter pass leaves a non-empty query, and fades out 200ms (the v14.33 sleep-line rhythm) when the query empties; silent passes (rotation / restore) land instantly, the v1.53 rule. Shown for a non-empty query only — the ✕ is a clear control, not a no-match marker, so it never waits on the entries or the results. A mid-fadeOut re-show flows back on from its current alpha (Fx.fadeIn is restart-safe, v3.52, and its gen bump stands the fade-out's end action down, so it can never strand the view GONE), and a silent pass on a mid-fadeOut view parks it at full alpha instead. The ✕ keeps its Button + glass_btn look (applyTheme repaints it); only its visibility melts. The tap, long-press reset and morph guard are untouched.
+    private void refreshDlClear(boolean animate) {
+        if (dlClearBtn == null) return;
+        if (dlQuery != null && dlQuery.length() > 0) {
+            if (dlClearBtn.getVisibility() != android.view.View.VISIBLE) {
+                dlClearBtn.setVisibility(android.view.View.VISIBLE);
+                if (animate) Fx.fadeIn(dlClearBtn, 250);
+                else dlClearBtn.setAlpha(1f);
+            } else if (animate && dlClearBtn.getAlpha() < 0.999f) {
+                Fx.fadeIn(dlClearBtn, 250);
+            } else if (!animate) {
+                dlClearBtn.animate().cancel();
+                dlClearBtn.setAlpha(1f);
+            }
+        } else {
+            if (dlClearBtn.getVisibility() == android.view.View.VISIBLE) {
+                if (animate) Fx.fadeOut(dlClearBtn, 200);
+                else {
+                    dlClearBtn.animate().cancel();
+                    dlClearBtn.setVisibility(android.view.View.GONE);
+                    dlClearBtn.setAlpha(1f);
+                }
+            }
+        }
+    }
+
     private void applyDlFilter() {
         // v15.21 (slice 1784): capture BEFORE the rebuild below moves the rows — the posted glide after the notify parks each moved survivor at its old top (see captureDlSetGlide); a null return means the capture stood down (first load, delete/arrival rebind) and nothing posts.
         java.util.HashMap<String, Integer> tops84 = captureDlSetGlide();
@@ -7966,6 +7994,8 @@ public class DownloadedActivity extends Activity {
         }
         // v15.21 (slice 1784): post the set-change glide after the notify above (and after the search jump-to-top, so the post's window guard sees the post-jump first visible position).
         if (tops84 != null) postDlSetGlide(tops84);
+        // v15.33 (slice 1837): the ✕ follows the query on every filter pass — a watcher keystroke animates (dlSearchKeystroke is set only by the search watcher), sort/delete/loadList/rotation passes land instantly.
+        refreshDlClear(dlSearchKeystroke);
     }
 
     // v1.19: footer total — count + combined size of the offline library

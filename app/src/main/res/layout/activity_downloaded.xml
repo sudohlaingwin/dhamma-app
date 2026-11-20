@@ -74,7 +74,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginLeft="8dp"
-            android:text="✕" />
+            android:text="✕"
+            android:visibility="gone" />
     </LinearLayout>
     <!-- v13.75 (slice 1066): library filter chips — the ★ /
          unlistened filter views (v4.95) lived behind a long-press

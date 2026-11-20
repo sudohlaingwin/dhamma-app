@@ -63,6 +63,9 @@ public class MainActivity extends Activity {
     // actually changes the results can re-pour them (below) while
     // a keystroke that changes nothing never replays the cascade.
     private String lastShownKey = "";
+    // v15.33 (slice 1835): the empty-search view (see refreshNoResults) — the view itself plus the text key of the last shown line, so the fav-aware text is only re-set when it changes and a steady no-match query never rebinds the line.
+    private android.widget.TextView noResultsText;
+    private String lastNoResultsKey = null;
     // v14.26 (slice 1681): ★ filter-toggle pour arm — toggling the
     // favourites-only filter (or clearing it by gesture: Home
     // long-press reset, star long-press last-favourite exit) changes
@@ -157,6 +160,8 @@ public class MainActivity extends Activity {
     // search field — a direct tap for the favourites-only filter
     // (was a hidden long-press on an empty search, v4.19).
     private android.widget.TextView favFilterBtn;
+    // v15.33 (slice 1836): search clear ✕ beside the search field — a direct tap to clear the query (was a hidden long-press on the field, v4.17); the Talks chooser (v5.57) and the Library (v2.41) both carry one.
+    private android.widget.TextView searchClearBtn;
     private GridView gridView;
     // v2.03: row-bind cache — getView used to read SharedPreferences
     // (isNight + three size lookups, each a fontSize() call) for
@@ -213,6 +218,15 @@ public class MainActivity extends Activity {
     // strip already said ⚠.
     private boolean mainGridFailed = false;
     private boolean mainGridBuffering = false;
+    // v15.33 (slice 1838): playing state the grid rows were last
+    // bound against — the v12.38/v14.05 twin for the play/pause
+    // class: a pause or resume while Main sits on top flips
+    // livePlaying with no sounding-name / failed / buffering
+    // change, so the tick never rebound and the EQ badge's dance
+    // would keep dancing through a pause (or rest through a
+    // resume) until the next flip. Tracked beside the other
+    // tick trackers; steady ticks never touch the grid.
+    private boolean mainGridPlaying = false;
     // v4.60: is the mini strip currently showing the resume mode
     // (dead session + saved spot) instead of a live session? The
     // strip's toggle and long-press read it, so a resume tap
@@ -552,13 +566,14 @@ public class MainActivity extends Activity {
         // the melt lives on the 1s tick only (syncNavPlayerLiveTint below)
         if (adapter != null) adapter.notifyDataSetChanged();
         // v12.38: the grid was just rebound with the current
-        // marks — seed all three tick trackers here (onResume and
+        // marks — seed all five tick trackers here (onResume and
         // the theme-dip swap), so the tick's rebind check
         // below never fires on a return with a live session.
         mainGridEnded = AudioService.liveEnded;
         mainGridSounding = AudioService.liveEnded ? null : soundingSayadawNameVisual();
         mainGridFailed = AudioService.liveTrackError; // v14.05
         mainGridBuffering = AudioService.liveBuffering; // v14.06
+        mainGridPlaying = AudioService.livePlaying; // v15.33 (slice 1838)
         refreshFavShelf(); // v13.74: shelf recolour on theme return
     }
 
@@ -1147,14 +1162,17 @@ public class MainActivity extends Activity {
             if (child == null) continue;
             android.view.View nv = child.findViewById(R.id.name);
             if (nv instanceof android.widget.TextView) {
-                // v11.03: the playing card's name text carries the v5.44
-                // "▶ " mark, so a plain equals() here never matched the
-                // very card the bind had just armed — the first 1s tick
-                // then stopped the breath it was meant to keep alive,
-                // and the sounding card went still a second after it
-                // started pulsing until the next rebind. Strip the
-                // mark before comparing, so the tick keeps the pulse
-                // the bind armed; the mark itself is untouched.
+                // v11.03: the playing card's name text carried the v5.44
+                // "▶ " mark until v15.33 (slice 1838 retired it — the
+                // EQ badge owns the sounding mark now), so a plain
+                // equals() here never matched the very card the bind
+                // had just armed — the first 1s tick then stopped the
+                // breath it was meant to keep alive, and the sounding
+                // card went still a second after it started pulsing
+                // until the next rebind. Strip the mark before
+                // comparing, so the tick keeps the pulse the bind
+                // armed; the strip stays as a defensive guard for
+                // the ⚠ / buffering word that still rides as text.
                 String t = ((android.widget.TextView) nv).getText().toString();
                 if (t.startsWith("▶ ")) t = t.substring(2);
                 if (sounding.equals(t)) { found = nv; break; }
@@ -1893,11 +1911,13 @@ public class MainActivity extends Activity {
                             || (sndNow38 == null ? mainGridSounding != null
                                     : !sndNow38.equals(mainGridSounding))
                             || AudioService.liveTrackError != mainGridFailed
-                            || AudioService.liveBuffering != mainGridBuffering) {
+                            || AudioService.liveBuffering != mainGridBuffering
+                            || AudioService.livePlaying != mainGridPlaying) {
                         mainGridEnded = AudioService.liveEnded;
                         mainGridSounding = sndNow38;
                         mainGridFailed = AudioService.liveTrackError;
                         mainGridBuffering = AudioService.liveBuffering;
+                        mainGridPlaying = AudioService.livePlaying;
                         if (adapter != null) adapter.notifyDataSetChanged();
                         // v13.87: the same change moves the shelf ring
                         // (refreshFavShelf's key carries the sounding
@@ -2654,6 +2674,9 @@ public class MainActivity extends Activity {
         gridView = findViewById(R.id.grid);
         favShelfWrap = findViewById(R.id.favShelfWrap);
         favShelf = findViewById(R.id.favShelf);
+        noResultsText = findViewById(R.id.noResultsText);
+        // v15.33 (slice 1835): the empty-search view's first text — refreshNoResults re-sets it on every filter pass, but a first paint before any pass must never show a bare view.
+        if (noResultsText != null) noResultsText.setText(Lang.t(this, "sayadaw_not_found"));
         adapter = new SayadawAdapter();
         if (gridView != null) gridView.setAdapter(adapter);
         if (gridView != null) gridView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
@@ -2740,6 +2763,14 @@ public class MainActivity extends Activity {
             @Override public void onClick(android.view.View v) {
                 Fx.tap(MainActivity.this);
                 toggleFavOnly(v);
+            }
+        });
+        searchClearBtn = findViewById(R.id.searchClear);
+        // v15.33 (slice 1836): the clear ✕ morphs on tap (Fx.morph, the v15.28 chooser idiom — the tap leaves Main open while the grid re-pours, unlike the dev-profile ✕ which dismisses its dialog, Fx.press) and clears through setText("") so the watcher re-runs the filter exactly like the long-press path. No non-empty guard: the ✕ is GONE with an empty query, so a tap can only land on a real query. The morph animates scale only; the ✕ fade-out (refreshSearchClear, alpha only) runs on a separate channel, so the ✕ squashes away as it fades.
+        if (searchClearBtn != null) searchClearBtn.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                Fx.morph(v);
+                if (searchField != null) searchField.setText("");
             }
         });
         // v1.48: restore the pre-rotation query (see onSaveInstanceState).
@@ -2991,7 +3022,8 @@ public class MainActivity extends Activity {
             return;
         }
         // v13.12 (M5, sim1324): a library session sounds too —
-        // the card breathes and shows ▶ for it, so tapping it
+        // the card breathes and shows the EQ badge for it (v15.33,
+        // slice 1838 — the "▶ " prefix retired), so tapping it
         // must return to the library, not the Talks chooser.
         // The visual twin is the same name the grid's ▶ mark
         // and pulse use, so the tap can never disagree with
@@ -4152,6 +4184,63 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) {}
     }
 
+    // v15.33 (slice 1835): the empty-search view — a search matching no sayadaw used to leave a blank grid with only a transient toast (slice 1830); every streaming app names the empty state in place. The view fades in 250ms (the app's settled Fx.fadeIn) when a gesture-driven filter pass empties the grid, and fades out 200ms (the v14.33 sleep-line rhythm) when results return; silent passes (rotation / restore) land instantly, the v1.53 rule. Shown only for a real typed query over a loaded catalogue (the key arrives from applyFilter; null hides) — a still-loading or failed catalogue never reads "not found". The text is re-set only when the key changes, so a steady no-match query never rebinds the line; a mid-fadeOut re-show flows back on from its current alpha (Fx.fadeIn is restart-safe, v3.52, and its gen bump stands the fade-out's end action down, so it can never strand the view GONE), and a silent pass on a mid-fadeOut view parks it at full alpha instead.
+    private void refreshNoResults(boolean animate, String key) {
+        if (noResultsText == null) return;
+        if (key != null) {
+            if (!key.equals(lastNoResultsKey)) {
+                noResultsText.setText(Lang.t(this, key));
+                lastNoResultsKey = key;
+            }
+            if (noResultsText.getVisibility() != android.view.View.VISIBLE) {
+                noResultsText.setVisibility(android.view.View.VISIBLE);
+                if (animate) Fx.fadeIn(noResultsText, 250);
+                else noResultsText.setAlpha(1f);
+            } else if (animate && noResultsText.getAlpha() < 0.999f) {
+                Fx.fadeIn(noResultsText, 250);
+            } else if (!animate) {
+                noResultsText.animate().cancel();
+                noResultsText.setAlpha(1f);
+            }
+        } else {
+            lastNoResultsKey = null;
+            if (noResultsText.getVisibility() == android.view.View.VISIBLE) {
+                if (animate) Fx.fadeOut(noResultsText, 200);
+                else {
+                    noResultsText.animate().cancel();
+                    noResultsText.setVisibility(android.view.View.GONE);
+                    noResultsText.setAlpha(1f);
+                }
+            }
+        }
+    }
+
+    // v15.33 (slice 1836): the search clear ✕ — Main never had one (v4.17), so clearing a typed name meant a hidden long-press or letter-by-letter delete, while the Talks chooser (talkSearchClear, v5.57) and the Library (btnClearDlSearch, v2.41) both carry a ✕. The ✕ fades in 250ms (the app's settled Fx.fadeIn) when a gesture-driven filter pass leaves a non-empty query, and fades out 200ms (the v14.33 sleep-line rhythm) when the query empties; silent passes (rotation / restore) land instantly, the v1.53 rule. Shown for a non-empty query only — the ✕ is a clear control, not a no-match marker, so it never waits on the catalogue or the results. A mid-fadeOut re-show flows back on from its current alpha (Fx.fadeIn is restart-safe, v3.52, and its gen bump stands the fade-out's end action down, so it can never strand the view GONE), and a silent pass on a mid-fadeOut view parks it at full alpha instead.
+    private void refreshSearchClear(boolean animate) {
+        if (searchClearBtn == null) return;
+        if (query != null && query.length() > 0) {
+            if (searchClearBtn.getVisibility() != android.view.View.VISIBLE) {
+                searchClearBtn.setVisibility(android.view.View.VISIBLE);
+                if (animate) Fx.fadeIn(searchClearBtn, 250);
+                else searchClearBtn.setAlpha(1f);
+            } else if (animate && searchClearBtn.getAlpha() < 0.999f) {
+                Fx.fadeIn(searchClearBtn, 250);
+            } else if (!animate) {
+                searchClearBtn.animate().cancel();
+                searchClearBtn.setAlpha(1f);
+            }
+        } else {
+            if (searchClearBtn.getVisibility() == android.view.View.VISIBLE) {
+                if (animate) Fx.fadeOut(searchClearBtn, 200);
+                else {
+                    searchClearBtn.animate().cancel();
+                    searchClearBtn.setVisibility(android.view.View.GONE);
+                    searchClearBtn.setAlpha(1f);
+                }
+            }
+        }
+    }
+
     private void applyFilter(boolean allowToast) {
         shown.clear();
         // v1.90: NFC-normalise both sides — Myanmar stacking/keystroke
@@ -4274,10 +4363,10 @@ public class MainActivity extends Activity {
         // pass below reuses the filter loop's match (name + group,
         // NFC + digit-fold + flat) without the favOnly gate; the
         // once-per-query guard and the silent paths are untouched.
-        if (allowToast && q.length() > 0 && shown.isEmpty()
-                && !q.equals(lastEmptyToastQuery)) {
-            lastEmptyToastQuery = q;
-            String toastKey = "sayadaw_not_found";
+        // v15.33 (slice 1835): the empty-search text key, computed once per filter pass — the fav-aware scan below used to live inside the toast block only, so a silent pass (rotation restore, ★ toggle) could never name the empty state. Hoisted here and shared: the toast keeps its once-per-query guard below, and refreshNoResults takes the same key on every pass. "sayadaw_not_found_fav" only when the query matches someone in the full catalogue while the favourites-only filter is on; otherwise the plain key. A null key means no empty state (empty query, non-empty results, or an unloaded/failed catalogue — a still-loading grid never reads "not found").
+        String noResultsKey = null;
+        if (q.length() > 0 && shown.isEmpty() && !all.isEmpty()) {
+            noResultsKey = "sayadaw_not_found";
             if (favOnly) {
                 for (Sayadaw s : all) {
                     String n = Fx.foldDigits(java.text.Normalizer.normalize(s.name,
@@ -4290,16 +4379,24 @@ public class MainActivity extends Activity {
                             || Fx.stripWhitespace(n).indexOf(qzFlat) >= 0
                             || Fx.stripWhitespace(g).indexOf(qFlat) >= 0
                             || Fx.stripWhitespace(g).indexOf(qzFlat) >= 0) {
-                        toastKey = "sayadaw_not_found_fav";
+                        noResultsKey = "sayadaw_not_found_fav";
                         break;
                     }
                 }
             }
-            Toast.makeText(this, Lang.t(this, toastKey),
+        }
+        if (allowToast && q.length() > 0 && shown.isEmpty()
+                && !q.equals(lastEmptyToastQuery)) {
+            lastEmptyToastQuery = q;
+            Toast.makeText(this, Lang.t(this, noResultsKey == null ? "sayadaw_not_found" : noResultsKey),
                     Toast.LENGTH_SHORT).show();
         } else if (!shown.isEmpty()) {
             lastEmptyToastQuery = null;
         }
+        // v15.33 (slice 1835): the empty-search view follows every filter pass — it fades in on a gesture-driven pass (keystroke / ★ toggle) and lands instantly on silent passes (rotation / restore, the v1.53 rule).
+        refreshNoResults(allowToast || favToggleChange, noResultsKey);
+        // v15.33 (slice 1836): the search clear ✕ follows every filter pass — same animate rule as the empty-search view beside it (gesture passes animate, silent passes land instantly, the v1.53 rule).
+        refreshSearchClear(allowToast || favToggleChange);
     }
 
     private class SayadawAdapter extends BaseAdapter {
@@ -4387,7 +4484,10 @@ public class MainActivity extends Activity {
             // melts, v15.31 — the v14.16 settled decision bars
             // fading the label, never interpolating its colour).
             Fx.crossfadeCardTile(v, gridPlaying ? R.drawable.main_card_playing : (night ? R.drawable.card_bg_night : R.drawable.card_bg));
-            if (nameView != null) nameView.setText(Fx.soundingRowMark(gridPlaying, AudioService.liveTrackError, AudioService.liveBuffering ? Lang.t(MainActivity.this, "notif_state_buffering") : "", "\u25B6") + s.name);
+            // v15.33 (slice 1838): the EQ badge below owns the sounding mark now — the "▶ " text prefix retires on this card (the chooser/drawer rows keep theirs: there the bars replace the number slot, not the ▶). The ⚠ / buffering word still ride as text: the badge cannot say failed or loading.
+            String gridMark = Fx.soundingRowMark(gridPlaying, AudioService.liveTrackError, AudioService.liveBuffering ? Lang.t(MainActivity.this, "notif_state_buffering") : "", "\u25B6");
+            if (gridPlaying && !AudioService.liveTrackError && !AudioService.liveBuffering) gridMark = "";
+            if (nameView != null) nameView.setText(gridMark + s.name);
             // v15.31 (slice 1822): the card name colour melts
             // gold<->plain through Fx.crossfadeTextColor (250ms,
             // v14.34 helper) instead of snapping — the last snap
@@ -4408,6 +4508,11 @@ public class MainActivity extends Activity {
                     : (night ? Color.WHITE : Color.parseColor("#3B2314")));
             if (nameView != null) nameView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, cachedNameSize);
             if (nameView != null) armMainPulseFor(nameView, s.name);
+            // v15.33 (slice 1838): live EQ badge on the sounding card's photo — the last now-playing surface with a static mark: the chooser rows dance their bars (v15.29/15.30), the drawer rows dance theirs, the Library row pulses (v2.25) and the Room breathes (v3.99), but the grid card only ever wore a static "▶ " prefix + gold name. The badge is the same EqBarsView (gold, 3 bars, 180ms ramp in, 180ms ease-down on pause — v15.32) in a dark pill on the photo's bottom-right corner, like the playing indicator on album art: it dances while the talk sounds, rests low and equal while paused, and melts in/out with the sounding flip through Fx.crossfadeEqBadge (the v15.25 crossfadeEqSlot record pattern, single view — no number to swap here). setPlaying is idempotent, so a tick rebind of the same sounding card never restarts the dance; the badge owns only its own alpha/visibility, so the entrance pour (alpha+scale on the card), the press squash (scale on the card root) and the tile crossfade (background) never fight it. A recycled card rebinds its badge on every bind, so the badge can never leak onto another sayadaw.
+            android.view.View eqBadge = v.findViewById(R.id.eqBadge);
+            com.h2h.dhamma.EqBarsView eqBars = eqBadge == null ? null : (com.h2h.dhamma.EqBarsView) eqBadge.findViewById(R.id.eqBars);
+            if (eqBars != null) eqBars.setPlaying(gridPlaying && AudioService.livePlaying);
+            if (eqBadge != null) Fx.crossfadeEqBadge(eqBadge, gridPlaying);
             String g = s.group == null ? "" : s.group;
             // v1.92: the tap guard below already refuses a literal
             // "null" page_url, but this suffix missed it — such a

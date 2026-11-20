@@ -64,6 +64,17 @@
             android:textColor="@color/ink"
             android:textColorHint="@color/muted"
             android:textSize="16sp" />
+        <!-- v15.33 (slice 1836): search clear ✕ — Main never had a clear button (v4.17: clearing meant a hidden long-press or letter-by-letter delete) while the Talks chooser (talkSearchClear, v5.57) and the Library (btnClearDlSearch, v2.41) both carry one. The ✕ mirrors the chooser's control exactly — same 48dp, same glass_icon_3d badge, same gold ✕ — and fades in/out with the query (refreshSearchClear in MainActivity), morphing on tap (Fx.morph, the v15.28 chooser idiom). -->
+        <TextView
+            android:id="@+id/searchClear"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@drawable/glass_icon_3d"
+            android:gravity="center"
+            android:text="✕"
+            android:textColor="@color/gold"
+            android:textSize="20sp"
+            android:visibility="gone" />
         <TextView
             android:id="@+id/favFilterBtn"
             android:layout_width="48dp"
@@ -110,17 +121,32 @@
                 android:orientation="horizontal" />
         </HorizontalScrollView>
     </LinearLayout>
-    <GridView
-        android:id="@+id/grid"
+    <!-- v15.33 (slice 1835): empty-search view — a search matching no sayadaw used to leave a blank grid with only a transient toast (slice 1830); every streaming app names the empty state in place. The line sits centred over the grid area (FrameLayout wrap, grid id + geometry untouched) and fades in/out with the filter (refreshNoResults in MainActivity); text comes from Lang (sayadaw_not_found / _fav), never hardcoded. -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_marginTop="12dp"
-        android:layout_weight="1"
-        android:fastScrollEnabled="true"
-        android:horizontalSpacing="12dp"
-        android:numColumns="4"
-        android:stretchMode="columnWidth"
-        android:verticalSpacing="12dp" />
+        android:layout_weight="1">
+        <GridView
+            android:id="@+id/grid"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fastScrollEnabled="true"
+            android:horizontalSpacing="12dp"
+            android:numColumns="4"
+            android:stretchMode="columnWidth"
+            android:verticalSpacing="12dp" />
+        <TextView
+            android:id="@+id/noResultsText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:padding="16dp"
+            android:textColor="@color/muted"
+            android:textSize="16sp"
+            android:visibility="gone" />
+    </FrameLayout>
     <LinearLayout
         android:id="@+id/nowStrip"
         android:layout_width="match_parent"

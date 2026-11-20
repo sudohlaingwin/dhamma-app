@@ -1752,6 +1752,19 @@ public class RoomActivity extends Activity {
         }
     }
 
+    // v15.33 (slice 1834): the bookmark-list dialog's row-delete landing — the mutation + rebind + pin refresh + toast + dismiss-if-empty that used to run inline in the ✕ tap. Called from the collapse animation's end (the row melts first, the list lands after) and from the defensive immediate path (row unmeasured). Removal is by VALUE (the bookmark's ms): two rows deleting in flight can never shift each other's index, and it matches the Prefs.bookmarkRemoveBoth semantic the tap already uses. The wave pin fades out here via refreshBookmarkTicks (v15.32/1832), timed to the row finishing its leave — not at tap time, so row and pin leave together.
+    private void removeBookmarkRowNow(final java.util.ArrayList<Integer> marks,
+            final android.widget.BaseAdapter bmAdapter, final String url, int ms,
+            final android.app.AlertDialog[] dlgBox) {
+        marks.remove(java.lang.Integer.valueOf(ms));
+        bmAdapter.notifyDataSetChanged();
+        refreshBookmarkTicks();
+        android.widget.Toast.makeText(RoomActivity.this,
+                Lang.t(RoomActivity.this, "bm_deleted"),
+                android.widget.Toast.LENGTH_SHORT).show();
+        if (marks.isEmpty() && dlgBox[0] != null) dlgBox[0].dismiss();
+    }
+
     private void showBookmarkList() {
         final String url = bookmarkTalkUrl();
         if (url == null || url.length() == 0) {
@@ -1767,6 +1780,10 @@ public class RoomActivity extends Activity {
             return;
         }
         final android.app.AlertDialog[] dlgBox = new android.app.AlertDialog[1];
+        // v15.33 (slice 1834): one row-delete animation at a time — a second ✕ tap mid-collapse would rebind the list under the running animator and snap its row back to full alpha (the rebind discards the old view, the fresh one is full-alpha). 220ms window; the tap can be retried right after.
+        final boolean[] bmDelBusy = new boolean[1];
+        // v15.33 (slice 1834, repair): the adapter in a box — getView's ✕ tap cannot name bmAdapter directly (javac: the anonymous class is created during bmAdapter's own initializer, so the variable might not have been initialized). Same dlgBox shape as the dialog below; assigned right after the literal, read only from taps that run later.
+        final android.widget.BaseAdapter[] bmAdapterBox = new android.widget.BaseAdapter[1];
         final android.widget.BaseAdapter bmAdapter = new android.widget.BaseAdapter() {
             @Override public int getCount() { return marks.size(); }
             @Override public Object getItem(int p) { return marks.get(p); }
@@ -1794,15 +1811,40 @@ public class RoomActivity extends Activity {
                 del.setFocusableInTouchMode(false);
                 del.setOnClickListener(new android.view.View.OnClickListener() {
                     @Override public void onClick(android.view.View v) {
-                        int ms = marks.get(position);
+                        // v15.33 (slice 1834): the deleted row melts out instead of popping — the last un-melted snap in the bookmark family (pin arrival fades v15.32/1827, pin fade-out v15.32/1832, dialog motion v15.30/1811 — but the row itself vanished in one frame and the rows below jumped one rowHeight). Alpha 1->0 + height ->0 over 220ms DecelerateInterpolator (the batch's melt rhythm); the siblings glide up as the shrinking height re-lays-out the ListView, so the gap closes gradually. The removal lands at the animation end via removeBookmarkRowNow (value-based, so two rows deleting in flight can never shift each other's index).
+                        if (bmDelBusy[0]) return;
+                        final int ms = marks.get(position);
+                        final android.view.View rowView = (android.view.View) v.getParent();
+                        final int startH = rowView != null ? rowView.getHeight() : 0;
+                        // The bookmark is gone the moment the user taps ✕ (the old data semantic) — the 220ms is motion only.
                         Prefs.bookmarkRemoveBoth(RoomActivity.this, url, ms);
-                        marks.remove(position);
-                        notifyDataSetChanged();
-                        refreshBookmarkTicks();
-                        android.widget.Toast.makeText(RoomActivity.this,
-                                Lang.t(RoomActivity.this, "bm_deleted"),
-                                android.widget.Toast.LENGTH_SHORT).show();
-                        if (marks.isEmpty() && dlgBox[0] != null) dlgBox[0].dismiss();
+                        if (rowView == null || startH <= 0) {
+                            removeBookmarkRowNow(marks, bmAdapterBox[0], url, ms, dlgBox);
+                            return;
+                        }
+                        bmDelBusy[0] = true;
+                        v.setEnabled(false);
+                        final android.animation.ValueAnimator collapseAnim =
+                                android.animation.ValueAnimator.ofFloat(0f, 1f);
+                        collapseAnim.setDuration(220);
+                        collapseAnim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+                        collapseAnim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+                            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                                float f = ((Float) a.getAnimatedValue()).floatValue();
+                                rowView.setAlpha(1f - f);
+                                android.view.ViewGroup.LayoutParams lp = rowView.getLayoutParams();
+                                lp.height = (int) (startH * (1f - f));
+                                rowView.setLayoutParams(lp);
+                            }
+                        });
+                        collapseAnim.addListener(new android.animation.AnimatorListenerAdapter() {
+                            @Override public void onAnimationEnd(android.animation.Animator a) {
+                                if (a != collapseAnim) return;
+                                bmDelBusy[0] = false;
+                                removeBookmarkRowNow(marks, bmAdapterBox[0], url, ms, dlgBox);
+                            }
+                        });
+                        collapseAnim.start();
                     }
                 });
                 row.addView(del, new android.widget.LinearLayout.LayoutParams(
@@ -1811,6 +1853,7 @@ public class RoomActivity extends Activity {
                 return row;
             }
         };
+        bmAdapterBox[0] = bmAdapter;
         android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(RoomActivity.this)
                 .setTitle(Lang.t(this, "bm_title"))
                 .setAdapter(bmAdapter, new android.content.DialogInterface.OnClickListener() {

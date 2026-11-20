@@ -1056,6 +1056,44 @@ public class Fx {
         }
     }
 
+    // v15.33 (slice 1838): the grid-card EQ badge melt — the
+    // crossfadeEqSlot record pattern (v15.25) restated for a single
+    // view: the grid card has no number slot to swap, so the badge
+    // itself fades in/out on the sounding flip (250ms,
+    // DecelerateInterpolator, the melt rhythm). Recorded shown
+    // state, instant seed on a fresh view (a scroll-recycled card
+    // never melts in from transparent), no-op on a steady rebind,
+    // mid-fade re-target flows from the alpha the view actually
+    // has (fadeIn / fadeOut bump the same fade gen, so a
+    // superseded fade-out end action can never GONE a just-
+    // re-shown badge). The dance itself is untouched — setPlaying
+    // stays idempotent at the call site, and the bars keep dancing
+    // (or resting) under their own animator while their alpha
+    // melts; a real stop decays under the 250ms fade-out
+    // (v15.32). The card's entrance pour, press squash and tile
+    // crossfade live on other views/channels — the badge owns
+    // only its own alpha/visibility.
+    private static java.util.WeakHashMap<View, Boolean> eqBadgeSounding =
+            new java.util.WeakHashMap<View, Boolean>();
+    public static void crossfadeEqBadge(final View badge, boolean sounding) {
+        if (badge == null) return;
+        Boolean cur = eqBadgeSounding.get(badge);
+        if (cur == null) {
+            eqBadgeSounding.put(badge, Boolean.valueOf(sounding));
+            badge.setVisibility(sounding ? View.VISIBLE : View.GONE);
+            badge.setAlpha(1f);
+            return;
+        }
+        if (cur.booleanValue() == sounding) return;
+        eqBadgeSounding.put(badge, Boolean.valueOf(sounding));
+        if (sounding) {
+            badge.setVisibility(View.VISIBLE);
+            fadeIn(badge, 250);
+        } else {
+            fadeOut(badge, 250);
+        }
+    }
+
     // v15.26 (slice 1791): the strip Next/Prev buttons melt in/out instead
     // of popping on the resume <-> live mode flip — the v14.70/71/72
     // title melt, now on the transport pair: the 1s tick sync flips

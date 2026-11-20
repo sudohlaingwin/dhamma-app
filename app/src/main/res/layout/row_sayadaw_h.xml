@@ -19,6 +19,27 @@
             android:scaleType="centerCrop"
             android:transitionName="talksSayadawPhoto" />
 
+        <!-- v15.33 (slice 1838): live EQ badge — the sounding card's
+             mark, dancing while the talk sounds and resting while
+             paused (EqBarsView, v15.29). A dark pill on the photo's
+             bottom-right corner so the gold bars read on any photo,
+             like the playing indicator on album art. GONE unless
+             sounding; MainActivity getView owns the swap. -->
+        <FrameLayout
+            android:id="@+id/eqBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="2dp"
+            android:background="@drawable/eq_badge_bg"
+            android:padding="3dp"
+            android:visibility="gone">
+            <com.h2h.dhamma.EqBarsView
+                android:id="@+id/eqBars"
+                android:layout_width="20dp"
+                android:layout_height="18dp" />
+        </FrameLayout>
+
     </FrameLayout>
     <TextView
         android:id="@+id/name"
