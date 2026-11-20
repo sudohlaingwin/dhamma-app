@@ -1024,7 +1024,9 @@ public class SettingsActivity extends Activity {
                     i.putExtra("url", page);
                     i.putExtra("photo", sp.getString("lastPhoto", ""));
                     i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                    Fx.go(SettingsActivity.this, i);
+                    // v15.31 (slice 1823): shared-element open — the strip photo grows into the Room header portrait (v15.29, slice 1815), like the strip tap on this screen: this control used to slide plain while the strip tap beside it grew. Only when no Room is alive in the stack (RoomActivity.roomInStack): with CLEAR_TOP the tap re-delivers into the existing Room via onNewIntent and no transition runs, so that path keeps the plain nav fade; a fresh Room takes the shared open. Fx.goShared falls back to Fx.go itself when the photo is hidden or not laid out. Intent, flags, action and extras untouched.
+                    if (RoomActivity.roomInStack()) Fx.go(SettingsActivity.this, i);
+                    else Fx.goShared(SettingsActivity.this, i, findViewById(R.id.nowStripPhoto));
                 }
             });
         }
@@ -1072,7 +1074,9 @@ android.view.View settingsStripPrev = findViewById(R.id.nowStripPrev);
                     i.putExtra("url", page);
                     i.putExtra("photo", sp.getString("lastPhoto", ""));
                     i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                    Fx.go(SettingsActivity.this, i);
+                    // v15.31 (slice 1823): shared-element open — the strip photo grows into the Room header portrait (v15.29, slice 1815), like the strip tap on this screen: this control used to slide plain while the strip tap beside it grew. Only when no Room is alive in the stack (RoomActivity.roomInStack): with CLEAR_TOP the tap re-delivers into the existing Room via onNewIntent and no transition runs, so that path keeps the plain nav fade; a fresh Room takes the shared open. Fx.goShared falls back to Fx.go itself when the photo is hidden or not laid out. Intent, flags, action and extras untouched.
+                    if (RoomActivity.roomInStack()) Fx.go(SettingsActivity.this, i);
+                    else Fx.goShared(SettingsActivity.this, i, findViewById(R.id.nowStripPhoto));
                 }
             });
         }

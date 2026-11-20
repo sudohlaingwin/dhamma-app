@@ -2130,7 +2130,9 @@ public class MainActivity extends Activity {
                 i.putExtra("autoTitle", sp.getString("lastTitle", ""));
                 Fx.tap(MainActivity.this);
                 Fx.morph(v); // v2.36: nav morph, same beat as above
-                Fx.go(MainActivity.this, i);
+                // v15.31 (slice 1823): shared-element open — the strip photo grows into the Room header portrait (v15.29, slice 1815), like the strip tap on this screen: this control used to slide plain while the strip tap beside it grew. Only when no Room is alive in the stack (RoomActivity.roomInStack): this tap carries no CLEAR_TOP flags, so a Room alive in the stack still gets a second Room exactly as today (plain Fx.go, pre-existing behaviour, untouched); a fresh Room takes the shared open. Fx.goShared falls back to Fx.go itself when the photo is hidden or not laid out. Intent and extras untouched.
+                if (RoomActivity.roomInStack()) Fx.go(MainActivity.this, i);
+                else Fx.goShared(MainActivity.this, i, findViewById(R.id.nowStripPhoto));
             }
         });
         // v4.16: long-press the Mp3 Player nav item stops the
@@ -2536,7 +2538,9 @@ public class MainActivity extends Activity {
                     i.putExtra("url", page);
                     i.putExtra("photo", sp.getString("lastPhoto", ""));
                     i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                    Fx.go(MainActivity.this, i);
+                    // v15.31 (slice 1823): shared-element open — the strip photo grows into the Room header portrait (v15.29, slice 1815), like the strip tap on this screen: this control used to slide plain while the strip tap beside it grew. Only when no Room is alive in the stack (RoomActivity.roomInStack): with CLEAR_TOP the tap re-delivers into the existing Room via onNewIntent and no transition runs, so that path keeps the plain nav fade; a fresh Room takes the shared open. Fx.goShared falls back to Fx.go itself when the photo is hidden or not laid out. Intent, flags, action and extras untouched.
+                    if (RoomActivity.roomInStack()) Fx.go(MainActivity.this, i);
+                    else Fx.goShared(MainActivity.this, i, findViewById(R.id.nowStripPhoto));
                 }
             });
         }
@@ -2590,7 +2594,9 @@ public class MainActivity extends Activity {
                     i.putExtra("url", page);
                     i.putExtra("photo", sp.getString("lastPhoto", ""));
                     i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                    Fx.go(MainActivity.this, i);
+                    // v15.31 (slice 1823): shared-element open — the strip photo grows into the Room header portrait (v15.29, slice 1815), like the strip tap on this screen: this control used to slide plain while the strip tap beside it grew. Only when no Room is alive in the stack (RoomActivity.roomInStack): with CLEAR_TOP the tap re-delivers into the existing Room via onNewIntent and no transition runs, so that path keeps the plain nav fade; a fresh Room takes the shared open. Fx.goShared falls back to Fx.go itself when the photo is hidden or not laid out. Intent, flags, action and extras untouched.
+                    if (RoomActivity.roomInStack()) Fx.go(MainActivity.this, i);
+                    else Fx.goShared(MainActivity.this, i, findViewById(R.id.nowStripPhoto));
                 }
             });
         }
@@ -3259,12 +3265,15 @@ public class MainActivity extends Activity {
         // melt (v14.48/v14.49). The ring now crossfades through
         // Fx.crossfadeRing (v14.16, seeded at build time below so a
         // chip that already wears gold melts out instead of sticking),
-        // the ▶/⚠ mark + gold name stay instant text swaps by the
-        // v14.16 settled decision, and the newly-sounding chip melts
+        // the ▶/⚠ mark stays an instant text swap; the gold name
+        // colour melts through Fx.crossfadeTextColor (v15.31 — the
+        // v14.16 settled decision bars fading the label, never
+        // interpolating its colour), and the newly-sounding chip melts
         // in 250ms (the v14.48 rhythm). A fail / buffering flip on
         // the same sayadaw crossfades gold <-> red with no chip fade
         // (no new sounding chip); a stop (sounding -> null) melts
-        // nothing out, the old ring just crossfades away. A star /
+        // the name colour gold->plain (v15.31) beside the ring
+        // crossfading away. A star /
         // unstar, a theme flip, a search narrowing or a rotation
         // restore all miss the same-names / same-night / visible
         // gate and take the rebuild path below — and on that path
@@ -3312,7 +3321,22 @@ public class MainActivity extends Activity {
                 if (nameV instanceof TextView) {
                     TextView name = (TextView) nameV;
                     name.setText(Fx.soundingRowMark(shelfPlaying, AudioService.liveTrackError, AudioService.liveBuffering ? Lang.t(MainActivity.this, "notif_state_buffering") : "", "\u25B6") + s.name);
-                    name.setTextColor(shelfPlaying ? android.graphics.Color.parseColor("#C9A227")
+                    // v15.31 (slice 1821): the chip name colour
+                    // melts gold<->plain through Fx.crossfadeTextColor
+                    // (250ms, v14.34 helper) instead of snapping —
+                    // the last snap in the sounding-shelf transition:
+                    // the ring already crossfades (v14.50) and the
+                    // newly-sounding chip fades in (v15.04), but a
+                    // stop (sounding -> null) swapped the name
+                    // gold->plain in one frame while the ring melted
+                    // beside it. Only the colour interpolates (alpha
+                    // stays 1, the ▶/⚠ mark swap above stays
+                    // instant), so the v14.16 settled decision does
+                    // NOT bar this — its reason was fading the whole
+                    // label to ease a 2-char mark; same distinction
+                    // v14.34 drew for the sleep text, v14.62 for the
+                    // nav tint, v15.30 for the row title colour.
+                    Fx.crossfadeTextColor(name, shelfPlaying ? android.graphics.Color.parseColor("#C9A227")
                             : (cachedNight ? android.graphics.Color.WHITE
                             : android.graphics.Color.parseColor("#3B2314")));
                 }
@@ -4307,11 +4331,29 @@ public class MainActivity extends Activity {
             // whenever the 1s tick rebind fired on a sounding flip; now
             // it melts over 250ms via Fx.crossfadeCardTile (same model
             // as the v14.16 rings), seeded instantly on a fresh view so
-            // scroll recycles never melt in from transparent. The ▶ +
-            // gold name below stay instant by the v14.16 decision.
+            // scroll recycles never melt in from transparent. The ▶
+            // text + name text below stay instant (their colour
+            // melts, v15.31 — the v14.16 settled decision bars
+            // fading the label, never interpolating its colour).
             Fx.crossfadeCardTile(v, gridPlaying ? R.drawable.main_card_playing : (night ? R.drawable.card_bg_night : R.drawable.card_bg));
             if (nameView != null) nameView.setText(Fx.soundingRowMark(gridPlaying, AudioService.liveTrackError, AudioService.liveBuffering ? Lang.t(MainActivity.this, "notif_state_buffering") : "", "\u25B6") + s.name);
-            if (nameView != null) nameView.setTextColor(gridPlaying ? Color.parseColor("#C9A227")
+            // v15.31 (slice 1822): the card name colour melts
+            // gold<->plain through Fx.crossfadeTextColor (250ms,
+            // v14.34 helper) instead of snapping — the last snap
+            // in the sounding-card transition: the tile already
+            // melts (v14.31) and the name breathes (alpha-only
+            // pulse), but the colour swapped in one frame on the
+            // v12.38 tick rebind while the tile melted beside it.
+            // Only the colour interpolates (alpha stays 1, the ▶
+            // prefix + name text above stay instant), so the
+            // v14.16 settled decision does NOT bar this — its
+            // reason was fading the whole label to ease a 2-char
+            // mark; same distinction v14.34 drew for the sleep
+            // text, v14.62 for the nav tint, v15.30 for the row
+            // title colour, v15.31 for the shelf chip name. The
+            // group line below stays bare: theme paint, not
+            // sounding state.
+            if (nameView != null) Fx.crossfadeTextColor(nameView, gridPlaying ? Color.parseColor("#C9A227")
                     : (night ? Color.WHITE : Color.parseColor("#3B2314")));
             if (nameView != null) nameView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, cachedNameSize);
             if (nameView != null) armMainPulseFor(nameView, s.name);

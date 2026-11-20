@@ -256,6 +256,10 @@ public class DownloadedActivity extends Activity {
         libResumeMap = new java.util.HashMap<String, Integer>();
         libDurMap = new java.util.HashMap<String, Integer>();
         libSayadawMap = new java.util.HashMap<String, String>();
+        // v15.31 (slice 1825): the state-glyph map re-adopts with the
+        // other per-load caches — a rescan's rows set their glyphs
+        // instantly (first sighting) on top of the list pour.
+        dlStateGlyphByPath = new java.util.HashMap<String, String>();
         try {
             android.content.SharedPreferences pp =
                     getSharedPreferences("dhamma", MODE_PRIVATE);
@@ -1420,6 +1424,17 @@ public class DownloadedActivity extends Activity {
     // end action starts the loop; a pause or a leave clears the
     // flag with the view.
     private boolean dlPulseSettling = false;
+    // v15.31 (slice 1825): per-path last-shown state glyph — the
+    // flip's "last" record, keyed by file path (not by view tag: a
+    // recycled view's tag would lie about its file's glyph, so a
+    // scroll-in could flip a row that never changed while a real
+    // flip could be missed). Cleared in refreshLibMarkCache below
+    // with the other per-load maps, so a load, rotation restore or
+    // filter/sort rescan re-adopts every glyph instantly on top of
+    // the list pour (the v14.49 priming rule) instead of flipping
+    // rows the user never saw change.
+    private java.util.HashMap<String, String> dlStateGlyphByPath =
+            new java.util.HashMap<String, String>();
     // v2.05: has loadList() actually populated the list at least once?
     // A jump delivered before that (notification tap racing the first
     // load, or a tap while the list is still empty) must stay pending
@@ -3794,6 +3809,83 @@ public class DownloadedActivity extends Activity {
     // ends at alpha 1. The pulse lives on the state icon child, not
     // the row, and the listened title dim lives on titleView, so
     // neither reads the row alpha this fade moves.
+    // v15.31 (slice 1825): the library row's ▶/⏸ state icon flips
+    // instead of snapping — the last snap in the library
+    // sounding-row transition (card v15.24, hairline v15.25,
+    // title colour v15.30, row melt v14.49, departing melt v14.60):
+    // the 1s tick's v1.47 rebind fires exactly on a playing/active/
+    // track change, and getView swapped the glyph in one frame (bare
+    // setText), so a strip pause while browsing the library, or an
+    // auto-advance to the next file, snapped the icon while the card,
+    // the title and the hairline melt beside it. The strip glyph
+    // already flips (v14.20) and the Room play glyph already
+    // dips/swaps/rises (v3.20).
+    // Returns true when a dip-swap-rise started (the pulse block
+    // below must then defer the pulse start to the rise end — the
+    // flip owns the icon's alpha until then, and the v2.25 pulse
+    // loop writing the same property would fight the dip).
+    // First sighting of a path sets instantly (the list pour owns
+    // the entrance) and cancels any flip still running on the
+    // recycled view, so a stale dip can never swap a glyph onto
+    // the wrong file; a rebind with the same glyph does nothing
+    // (the v1.47 rebind only fires on state changes, so a steady
+    // tick never re-animates a settled icon); a changed glyph
+    // flips through Fx.flipDlStateGlyph (90ms dip, swap at the
+    // bottom, 180ms rise — the v14.20 rhythm). The "last" record
+    // is per file path (dlStateGlyphByPath), never the view tag.
+    // A view whose text disagrees with a settled glyph (a flip
+    // cancelled by a recycle mid-dip) is corrected instantly, but
+    // never while a flip is running on that view.
+    private boolean flipDlStateGlyph(android.widget.TextView state, String path, boolean active) {
+        if (state == null) return false;
+        String glyph = active ? "⏸" : "▶";
+        String last = dlStateGlyphByPath.get(path);
+        if (last == null) {
+            Object aObj = state.getTag(R.id.dlStateGlyphAnim);
+            if (aObj instanceof android.animation.Animator) ((android.animation.Animator) aObj).cancel();
+            state.setText(glyph);
+            dlStateGlyphByPath.put(path, glyph);
+            return false;
+        }
+        if (glyph.equals(last)) {
+            Object aObj = state.getTag(R.id.dlStateGlyphAnim);
+            boolean flipRunning = aObj instanceof android.animation.Animator;
+            if (!flipRunning && !glyph.equals(state.getText().toString())) state.setText(glyph);
+            return false;
+        }
+        dlStateGlyphByPath.put(path, glyph);
+        // The pulse loop (dlPulse) writes this same icon's alpha —
+        // cancel it before the dip starts, or the two
+        // ObjectAnimators fight per frame. Only when this view owns
+        // the pulse; the stopping / handover branches below repeat
+        // the cancel harmlessly. The v3.18 settle flag goes with it
+        // (the flip's rise is the settle now).
+        if (dlPulseView == state) {
+            if (dlPulse != null) dlPulse.cancel();
+            dlPulse = null;
+            dlPulseView = null;
+            dlPulseSettling = false;
+        }
+        final android.widget.TextView icon = state;
+        Fx.flipDlStateGlyph(state, glyph, new Runnable() {
+            @Override public void run() {
+                // Rise end: start the pulse loop, but only if this
+                // icon is still the claimed pulse view and no loop
+                // is running — a pause during the flip cleared the
+                // claim (stopping branch below), a handover claimed
+                // another icon, a leave/destroy cleared it too.
+                if (dlPulseView != icon || dlPulse != null) return;
+                dlPulseSettling = false;
+                dlPulse = android.animation.ObjectAnimator.ofFloat(icon, "alpha", 1f, 0.55f);
+                dlPulse.setDuration(900);
+                dlPulse.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+                dlPulse.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+                dlPulse.start();
+            }
+        });
+        return true;
+    }
+
     private void fadeSoundingDlRow() {
         final String path = dlSoundFadePath;
         dlSoundFadePath = null;
@@ -4158,7 +4250,9 @@ public class DownloadedActivity extends Activity {
                     i.putExtra("url", page);
                     i.putExtra("photo", sp.getString("lastPhoto", ""));
                     i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                    Fx.go(DownloadedActivity.this, i);
+                    // v15.31 (slice 1823): shared-element open — the strip photo grows into the Room header portrait (v15.29, slice 1815), like the strip tap on this screen: this control used to slide plain while the strip tap beside it grew. Only when no Room is alive in the stack (RoomActivity.roomInStack): with CLEAR_TOP the tap re-delivers into the existing Room via onNewIntent and no transition runs, so that path keeps the plain nav fade; a fresh Room takes the shared open. Fx.goShared falls back to Fx.go itself when the photo is hidden or not laid out. Intent, flags, action and extras untouched.
+                    if (RoomActivity.roomInStack()) Fx.go(DownloadedActivity.this, i);
+                    else Fx.goShared(DownloadedActivity.this, i, findViewById(R.id.nowStripPhoto));
                 }
             });
         }
@@ -4204,7 +4298,9 @@ public class DownloadedActivity extends Activity {
                     i.putExtra("url", page);
                     i.putExtra("photo", sp.getString("lastPhoto", ""));
                     i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                    Fx.go(DownloadedActivity.this, i);
+                    // v15.31 (slice 1823): shared-element open — the strip photo grows into the Room header portrait (v15.29, slice 1815), like the strip tap on this screen: this control used to slide plain while the strip tap beside it grew. Only when no Room is alive in the stack (RoomActivity.roomInStack): with CLEAR_TOP the tap re-delivers into the existing Room via onNewIntent and no transition runs, so that path keeps the plain nav fade; a fresh Room takes the shared open. Fx.goShared falls back to Fx.go itself when the photo is hidden or not laid out. Intent, flags, action and extras untouched.
+                    if (RoomActivity.roomInStack()) Fx.go(DownloadedActivity.this, i);
+                    else Fx.goShared(DownloadedActivity.this, i, findViewById(R.id.nowStripPhoto));
                 }
             });
         }
@@ -12965,7 +13061,12 @@ public class DownloadedActivity extends Activity {
                     && (service.isPlaying()
                             || (service.isBuffering() && !service.isHoldPaused()))
                     && e.file.getAbsolutePath().equals(service.getCurrentUrl());
-            if (state != null) state.setText(active ? "⏸" : "▶");
+            // v15.31 (slice 1825): the state icon flips instead of
+            // snapping — see flipDlStateGlyph below. The returned flag
+            // drives the pulse block: a flip in flight owns the icon's
+            // alpha until its rise ends, so the pulse start waits.
+            boolean dlStateFlipped25 = state != null
+                    && flipDlStateGlyph(state, e.file.getAbsolutePath(), active);
             // v2.01: the state icon sat at a fixed 22sp while the row
             // title (14/16/20) and size line (12/13/16) beside it
             // followed the font size — oversized on သေး, undersized
@@ -13026,6 +13127,22 @@ public class DownloadedActivity extends Activity {
                     }
                     state.animate().cancel();
                     dlPulseView = state;
+                    // v15.31 (slice 1825): a flip in flight owns this
+                    // icon's alpha until its rise ends — the rise-end
+                    // runnable in flipDlStateGlyph (above) starts the
+                    // pulse loop there, so the settle / loop start
+                    // below must wait: starting the loop now would
+                    // write the same alpha property the dip is
+                    // animating. The flag marks the pulse as pending,
+                    // so a rebind of the still-playing row
+                    // (dlPulseView == state) leaves it alone and a
+                    // pause during the flip clears it (the stopping
+                    // branch below, via the flip method) before the
+                    // rise end can start a loop for a paused row.
+                    // A flip never fires on the first sighting of a
+                    // path (instant set), so the common fresh-play
+                    // path below runs exactly as before.
+                    if (!dlStateFlipped25) {
                     // v3.18: premium library pulse-start settle,
                     // mirroring the Room drawer's v3.17 settle — a
                     // quick A->B->A file change leaves the
@@ -13074,6 +13191,7 @@ public class DownloadedActivity extends Activity {
                         dlPulse.setRepeatCount(android.animation.ValueAnimator.INFINITE);
                         dlPulse.start();
                     }
+                    } // v15.31 (slice 1825): end of the no-flip pulse start — a flip in flight defers it to the rise end (see the claim above).
                 }
             } else if (state != null && dlPulseView == state) {
                 if (dlPulse != null) dlPulse.cancel();

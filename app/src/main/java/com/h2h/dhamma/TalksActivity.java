@@ -1021,22 +1021,19 @@ public class TalksActivity extends Activity {
     // rotation restore never melts on top of the list pour (v14.23).
     private java.util.Set<String> syncMarksFadeUrls97 = null;
     private boolean syncMarksPrimed97 = false;
-    // v14.56 (slice 1713): the chooser header's melt prime — the
-    // header (R.id.title: sayadaw name + counts + Up Next line) is
-    // one TextView, written bare at the end of refreshFavHeader, so
-    // on a tick-detected change it swaps in one frame while the ▸
-    // row (v14.55) and the sounding row (v14.48) melt beside it:
-    // auto-advance moves the Up Next line to the next talk's title
-    // and bumps ✓ +1 in the same tick the rows melt. The arm below
-    // fires the header's own 250ms fade (the v14.48 rhythm) on the
-    // same branch. headerFadePrimed stays false until the first tick
-    // evaluation, so a load or rotation restore never arms a fade on
-    // top of the list pour (v14.23); a change discovered on a
-    // back-stack return melts the header as the return beat, like
-    // the row arms. Menu actions, load landings, returns and theme
-    // dips refresh the header outside this branch and never fade it
-    // — the same boundary as the v14.48/v14.55 arms, which cover
-    // tick-detected changes only.
+    // v14.56 (slice 1713) / v15.31 (slice 1824): the chooser
+    // header's melt prime — the header (R.id.title: sayadaw name +
+    // counts + Up Next line) is one TextView, written at the end of
+    // refreshFavHeader. The melt arm used to live in the 1s tick's
+    // change branch and only fired on tick-detected changes, so a
+    // Play All / Shuffle tap, a menu action, a download landing or
+    // a return swapped the header in one frame while the ▸ row
+    // (v14.55) and the sounding row (v14.48) melt beside it; since
+    // slice 1824 the arm lives inside refreshFavHeader itself and
+    // fires on every refresh. headerFadePrimed stays false until the
+    // first successful paint, so a load or rotation restore never
+    // arms a fade on top of the list pour (v14.23); the tick branch
+    // no longer primes or arms it.
     private boolean headerFadePrimed = false;
     // v11.15: ended state the rows were last bound against —
     // the v4.89 tick detects playing-URL changes only, so a
@@ -4854,7 +4851,41 @@ public class TalksActivity extends Activity {
                     + (nxPlayed ? " ✓" : "")
                     + (nxRp > 5000 ? " ↺ " + Fx.fmtTime(nxRp) : "");
         }
+        // v15.31 (slice 1824): snapshot the header text BEFORE the
+        // rewrite — the v14.56 tick arm's baseline, now owned here.
+        String headerBefore31 = stripHeaderLivePct(ht.getText().toString());
         ht.setText(header);
+        // v15.31 (slice 1824): the header melts on a structural
+        // change — the v14.56 arm (slice 1713) moved in here from
+        // the tick branch, so it fires on EVERY refresh, not just
+        // tick-detected ones: a Play All / Shuffle tap, a long-press
+        // menu action, a download landing, or a back-stack return
+        // used to swap the counts / Up Next line in one frame while
+        // the ▸ row (v14.55) and the sounding row (v14.48) melt
+        // beside it — the tick arm could never catch those, because
+        // the call sites paint the new text before the next tick
+        // evaluation reads it. Only a structural change arms (see
+        // stripHeaderLivePct — a pure ⏳ percent tick reads equal,
+        // never re-fires), primed only (the first successful paint
+        // adopts silently, never melting on top of the v6.04 open
+        // pour), resumed only (talksResumed — a download landing
+        // while this chooser sits paused paints silently and the
+        // return reads the new text already in place), and only
+        // while the header row sits settled (the open pour animates
+        // the ROW's alpha/translation, so a melt landing mid-pour
+        // would be cut short — a missed melt, never a fight; the
+        // v14.58 drawer-header settled guard, restated for the row
+        // that carries this title). Load landings and rotation
+        // restores prime but never melt; theme dips rewrite no text
+        // and read equal.
+        if (headerFadePrimed && talksResumed
+                && !stripHeaderLivePct(ht.getText().toString()).equals(headerBefore31)) {
+            android.view.View headerRow31 = findViewById(R.id.talksHeaderRow);
+            if (headerRow31 == null
+                    || (headerRow31.getAlpha() >= 0.999f && Math.abs(headerRow31.getTranslationY()) <= 0.5f))
+                Fx.fadeIn(ht, 250);
+        }
+        headerFadePrimed = true;
     }
 
     private void scrollToPlayingOnReturn() {
@@ -5241,15 +5272,13 @@ public class TalksActivity extends Activity {
             // (menu actions rebind with it at once), so the compare
             // below can never mistake an already-▸ row for a new one.
             String upNextBefore55 = upNextRowUrl;
-            // v14.56 (slice 1713): snapshot the header text the rows
-            // are currently bound under — BEFORE the refresh below
-            // rewrites it, with the live percent stripped (see
-            // stripHeaderLivePct): the same baseline shape as the
-            // upNextBefore55 snapshot beside it. A missing title view
-            // reads "" on both sides, so it can never arm.
-            android.widget.TextView headerTitle56 = findViewById(R.id.title);
-            String headerBefore56 = headerTitle56 == null ? ""
-                    : stripHeaderLivePct(headerTitle56.getText().toString());
+            // v15.31 (slice 1824): no header snapshot here any more
+            // — the header's melt arm moved into refreshFavHeader
+            // itself (its own before/after baseline, same
+            // stripHeaderLivePct strip), so the refresh below melts
+            // on a structural change whatever called it. The
+            // upNextBefore55 snapshot beside it stays: the ▸ row arm
+            // still compares against the last-bound value here.
             // v13.85 (slice 1077): the refresh runs BEFORE the notify below — refreshFavHeader also refreshes upNextRowUrl, and the rebind reads it, so a notify-first order would bind every row against the previous next talk until the next change tick.
             try { refreshFavHeader(); } catch (Exception ignored) {}
             // v14.55 (slice 1712): arm the new Up Next row's melt —
@@ -5267,24 +5296,14 @@ public class TalksActivity extends Activity {
                     && !upNextRowUrl.equals(upNextBefore55 == null ? "" : upNextBefore55)) {
                 upNextTarget55 = upNextRowUrl;
             }
-            // v14.56 (slice 1713): arm the header's melt — only a
-            // structural change (see stripHeaderLivePct), primed
-            // only. A marks-only change that leaves the header's
-            // structure untouched rebinds the same rows with no
-            // header fade, and a pure ⏳ percent tick reads equal
-            // after the strip and never re-fires.
-            boolean headerChanged56 = false;
-            if (headerFadePrimed) {
-                android.widget.TextView headerTitleAfter56 = findViewById(R.id.title);
-                String headerAfter56 = headerTitleAfter56 == null ? ""
-                        : stripHeaderLivePct(headerTitleAfter56.getText().toString());
-                headerChanged56 = !headerAfter56.equals(headerBefore56);
-            }
+            // v15.31 (slice 1824): the header's melt already fired
+            // inside refreshFavHeader above when the rewrite changed
+            // the structure — no second arm here (a second fadeIn on
+            // the same tick would only restart the same fade).
             adapter.notifyDataSetChanged();
             if (soundTarget48.length() > 0) { soundingFadeUrl = soundTarget48; fadeSoundingTalkRow(); }
             if (prevSoundTarget60.length() > 0) { prevSoundFadeUrl = prevSoundTarget60; fadePrevSoundTalkRow(); }
             if (upNextTarget55.length() > 0) { upNextFadeUrl = upNextTarget55; fadeUpNextTalkRow(); }
-            if (headerChanged56) Fx.fadeIn(findViewById(R.id.title), 250);
             if (syncChanged97 != null && !syncChanged97.isEmpty()) { syncMarksFadeUrls97 = syncChanged97; fadeSyncMarkedTalkRows97(); }
         }
         // v14.48 (slice 1705): first tick evaluation adopts the
@@ -5296,10 +5315,9 @@ public class TalksActivity extends Activity {
         // Next arm — a load / rotation restore never melts the ▸
         // row on top of the entrance pour (v14.23).
         upNextPrimed = true;
-        // v14.56 (slice 1713): same first-tick adoption for the
-        // header arm — a load / rotation restore never melts the
-        // header on top of the entrance pour (v14.23).
-        headerFadePrimed = true;
+        // v15.31 (slice 1824): the header arm's first-paint
+        // adoption moved into refreshFavHeader itself — the tick no
+        // longer primes it.
         // v14.97 (slice 1755): same first-tick adoption for the
         // sync-marks arm — a load / rotation restore never melts
         // rows on top of the entrance pour (v14.23).
@@ -6045,7 +6063,9 @@ public class TalksActivity extends Activity {
                     i.putExtra("url", page);
                     i.putExtra("photo", sp.getString("lastPhoto", ""));
                     i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                    Fx.go(TalksActivity.this, i);
+                    // v15.31 (slice 1823): shared-element open — the strip photo grows into the Room header portrait (v15.29, slice 1815), like the strip tap on this screen: this control used to slide plain while the strip tap beside it grew. Only when no Room is alive in the stack (RoomActivity.roomInStack): with CLEAR_TOP the tap re-delivers into the existing Room via onNewIntent and no transition runs, so that path keeps the plain nav fade; a fresh Room takes the shared open. Fx.goShared falls back to Fx.go itself when the photo is hidden or not laid out. Intent, flags, action and extras untouched.
+                    if (RoomActivity.roomInStack()) Fx.go(TalksActivity.this, i);
+                    else Fx.goShared(TalksActivity.this, i, findViewById(R.id.nowStripPhoto));
                 }
             });
         }
@@ -6092,7 +6112,9 @@ public class TalksActivity extends Activity {
                     i.putExtra("url", page);
                     i.putExtra("photo", sp.getString("lastPhoto", ""));
                     i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                    Fx.go(TalksActivity.this, i);
+                    // v15.31 (slice 1823): shared-element open — the strip photo grows into the Room header portrait (v15.29, slice 1815), like the strip tap on this screen: this control used to slide plain while the strip tap beside it grew. Only when no Room is alive in the stack (RoomActivity.roomInStack): with CLEAR_TOP the tap re-delivers into the existing Room via onNewIntent and no transition runs, so that path keeps the plain nav fade; a fresh Room takes the shared open. Fx.goShared falls back to Fx.go itself when the photo is hidden or not laid out. Intent, flags, action and extras untouched.
+                    if (RoomActivity.roomInStack()) Fx.go(TalksActivity.this, i);
+                    else Fx.goShared(TalksActivity.this, i, findViewById(R.id.nowStripPhoto));
                 }
             });
         }

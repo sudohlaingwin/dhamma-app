@@ -2212,6 +2212,84 @@ public class Fx {
         dip.start();
     }
 
+    // v15.31 (slice 1825): the library row's ▶/⏸ state icon flips
+    // instead of snapping — the last transport glyph in the app that
+    // still snapped (the strip glyph flips, v14.20; the Room play
+    // glyph dips/swaps/rises, v3.20). Same 90ms dip / swap at the
+    // bottom / 180ms rise as the strip flip, same DecelerateInterpolator.
+    // The caller (DownloadedActivity.flipDlStateGlyph) owns the "last"
+    // record per file path — this helper takes no last-glyph tag, because
+    // a recycled view's tag would lie about its file's glyph — so it
+    // always flips when called, and the caller decides whether a flip
+    // is due. The generation guard is the v3.20 lesson: a cancelled
+    // dip still fires its end action, so the gen is bumped BEFORE
+    // every cancel and a stale end action returns without swapping
+    // text or running onRiseEnd; the tag-identity check is the
+    // flipStripGlyph second guard. A v3.14 stop-fade or v3.18 settle
+    // on this same icon (the ViewPropertyAnimator channel) is
+    // cancelled first, or it would fight the dip per frame; the
+    // flip's own rise lands at alpha 1, so no fade-back is owed.
+    // onRiseEnd runs only when the gen is still current — the
+    // caller uses it to start the v2.25 pulse loop once the flip
+    // has handed the alpha back. Null onRiseEnd means no post-rise
+    // work (the departing row's flip).
+    public static void flipDlStateGlyph(final android.widget.TextView v,
+            final String glyph, final Runnable onRiseEnd) {
+        if (v == null || glyph == null) return;
+        Object gObj = v.getTag(R.id.dlStateGlyphGen);
+        int gen = (gObj instanceof Integer) ? ((Integer) gObj).intValue() + 1 : 1;
+        v.setTag(R.id.dlStateGlyphGen, Integer.valueOf(gen));
+        Object aObj = v.getTag(R.id.dlStateGlyphAnim);
+        if (aObj instanceof android.animation.Animator) ((android.animation.Animator) aObj).cancel();
+        v.animate().cancel();
+        final int myGen = gen;
+        final android.widget.TextView tv = v;
+        final String next = glyph;
+        final Runnable after = onRiseEnd;
+        android.animation.ObjectAnimator dip =
+                android.animation.ObjectAnimator.ofFloat(tv, "alpha", tv.getAlpha(), 0f);
+        dip.setDuration(90);
+        dip.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        dip.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                if (tv.getTag(R.id.dlStateGlyphAnim) != a) return;
+                Object gg = tv.getTag(R.id.dlStateGlyphGen);
+                if (!(gg instanceof Integer) || ((Integer) gg).intValue() != myGen) return;
+                tv.setText(next);
+                android.animation.ObjectAnimator rise =
+                        android.animation.ObjectAnimator.ofFloat(tv, "alpha", 0f, 1f);
+                rise.setDuration(180);
+                rise.setInterpolator(new android.view.animation.DecelerateInterpolator());
+                rise.addListener(new android.animation.AnimatorListenerAdapter() {
+                    @Override public void onAnimationEnd(android.animation.Animator a2) {
+                        if (tv.getTag(R.id.dlStateGlyphAnim) != a2) return;
+                        Object gg2 = tv.getTag(R.id.dlStateGlyphGen);
+                        if (!(gg2 instanceof Integer) || ((Integer) gg2).intValue() != myGen) return;
+                        tv.setTag(R.id.dlStateGlyphAnim, null);
+                        tv.setAlpha(1f);
+                        if (after != null) after.run();
+                    }
+                    @Override public void onAnimationCancel(android.animation.Animator a2) {
+                        if (tv.getTag(R.id.dlStateGlyphAnim) == a2) {
+                            tv.setTag(R.id.dlStateGlyphAnim, null);
+                            tv.setAlpha(1f);
+                        }
+                    }
+                });
+                tv.setTag(R.id.dlStateGlyphAnim, rise);
+                rise.start();
+            }
+            @Override public void onAnimationCancel(android.animation.Animator a) {
+                if (tv.getTag(R.id.dlStateGlyphAnim) == a) {
+                    tv.setTag(R.id.dlStateGlyphAnim, null);
+                    tv.setAlpha(1f);
+                }
+            }
+        });
+        v.setTag(R.id.dlStateGlyphAnim, dip);
+        dip.start();
+    }
+
     // v14.21 (slice 1675): the strip title/sub used to swap instantly —
     // all six strips set them with bare setText on the 1s tick, while
     // the Room's own title already pours on a talk change (v2.22/

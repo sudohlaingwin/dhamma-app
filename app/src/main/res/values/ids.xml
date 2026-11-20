@@ -27,4 +27,12 @@
          a settled portrait. No last-name key: the activity's
          <field>StripPhotoName is the single record (see Fx). -->
     <item name="stripPhotoAnim" type="id"/>
+    <!-- v15.31: tag keys for the library row state-glyph flip (Fx.flipDlStateGlyph).
+         The running flip animator + its generation ride on the state icon itself,
+         so they die with the view and a cancelled dip can never swap a stale glyph.
+         No last-glyph key: the last glyph lives per file path in
+         DownloadedActivity.dlStateGlyphByPath (a recycled view's tag would lie
+         about its file's glyph). -->
+    <item name="dlStateGlyphAnim" type="id"/>
+    <item name="dlStateGlyphGen" type="id"/>
 </resources>
