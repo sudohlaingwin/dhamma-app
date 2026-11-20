@@ -228,6 +228,21 @@ public class RoomActivity extends Activity {
     // already said ⚠.
     private boolean lastPollFailed = false;
     private boolean lastPollBuffering = false;
+    // v15.34 (slice 1844): favourite burst state — the altar
+    // long-press is the app's like action, but until now its only
+    // feedback was a toast: the Room itself showed nothing move
+    // (the ★ flips live on the chooser header, the drawer rows
+    // and the notification card — none of them visible here).
+    // The burst view is created once, lazily, and rides on the
+    // root FrameLayout above the full-bleed altar photo; the
+    // generation guards a re-burst landing mid-flight, and the
+    // DOWN point is remembered so the star bursts at the finger,
+    // not at the screen centre (the hold cancels on any move past
+    // 12dp, so the point is still under the finger at fire time).
+    private android.widget.TextView favBurstView;
+    private int favBurstGen = 0;
+    private float altarDownX = 0f;
+    private float altarDownY = 0f;
     // v13.88 (slice 1080): the Room header photo's gold ring — the
     // last sounding surface without the gold language (drawer rows
     // v12.92, chooser rows v13.83, library rows v13.84, grid card
@@ -2765,6 +2780,21 @@ public class RoomActivity extends Activity {
     // tap) clears it, so Back after a re-delivery takes the plain
     // path again.
     private boolean sharedPhotoOpen = false;
+    // v15.34 (slice 1843): the name this Room's portrait must
+    // carry for its own return flight (the strip photo or grid
+    // card it grew from) — the opened-with Room name: the
+    // per-tap name a chooser open carried in the extra, or the
+    // static XML name on a strip open. Captured in onCreate
+    // (T2 below) because onNewIntent calls setIntent, so
+    // getIntent() at Back time may hold a re-delivery that
+    // carries no name at all — a field is the only source of
+    // truth. The Back restore (T4) puts this name back after a
+    // Talks open overwrote the portrait with the Talks name.
+    // Re-deliveries carry no shared transition (v15.31), so the
+    // opened-with name never changes after onCreate; a plain
+    // open keeps the static default below, which is exactly
+    // the XML name the portrait already carries.
+    private String roomSharedPhotoName = Fx.SHARED_PHOTO_NAME;
     // v5.38: key of the portrait already bound to roomSayadawPhoto —
     // the header text is set from several paths (create, sayadaw
     // switch, rotation), but the portrait must load only when its
@@ -3331,6 +3361,91 @@ if (snd65 >= 0) currentIndex = snd65;
             if (adapter != null) adapter.notifyDataSetChanged();
             Fx.tap(this);
             Toast.makeText(this, Lang.t(this, nowFav ? "fav_added" : "fav_removed"), Toast.LENGTH_SHORT).show();
+            showFavBurst(nowFav); // v15.34 (slice 1844): the burst is the Room-visible half of the like — the toast alone never moved.
+        } catch (Exception ignored) {}
+    }
+
+    // v15.34 (slice 1844): favourite burst — a gold ★ pops at the
+    // finger when the altar hold stars the playing talk, a muted ☆
+    // when it un-stars it (the Instagram/Spotify like-burst idiom:
+    // the action's feedback lands where the finger is, not in a
+    // toast at the screen edge). The view is created once, lazily,
+    // on the root FrameLayout above the full-bleed altar photo —
+    // no layout change, no new string, no new drawable; the glyphs
+    // are the file's own ★/☆ and the gold is the app's 0xFFC9A227.
+    // Two phases on the file's own rhythm: a 180ms pop (scale
+    // 0.5 -> 1.15, DecelerateInterpolator, the morph beat) then a
+    // 420ms settle + fade (scale -> 1.0, alpha -> 0). The star is
+    // centre-clamped to the root so a hold near an edge never
+    // clips it half off-screen, and the pivot is the measured
+    // centre so the scale never walks the glyph. A re-burst
+    // cancels the in-flight animator and restarts from the pop
+    // (a second hold 600ms later replaces the first burst, never
+    // stacks a second star on top of it); the generation guards
+    // the end actions, so a phase-1 end landing after a newer
+    // burst started cannot start a stale fade or hide the new
+    // star. The DOWN dip (v15.27) owns the photo's alpha and the
+    // burst owns its own view, so the two never fight; the burst
+    // is non-clickable and non-focusable, so it can never eat a
+    // tap. Visual only — the pref write, the toast and the card
+    // rebuild above are untouched, and a missing root skips the
+    // burst instead of crashing the favourite.
+    private void showFavBurst(boolean nowFav) {
+        try {
+            android.view.View root = findViewById(R.id.root);
+            if (root == null || !(root instanceof android.view.ViewGroup)) return;
+            if (favBurstView == null) {
+                android.widget.TextView tv = new android.widget.TextView(this);
+                tv.setVisibility(View.GONE);
+                tv.setClickable(false);
+                tv.setFocusable(false);
+                tv.setGravity(android.view.Gravity.CENTER);
+                tv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 72);
+                tv.setShadowLayer(6f, 0f, 2f, 0x99000000);
+                ((android.view.ViewGroup) root).addView(tv,
+                        new android.widget.FrameLayout.LayoutParams(
+                                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT));
+                favBurstView = tv;
+            }
+            final android.widget.TextView tv = favBurstView;
+            tv.animate().cancel();
+            favBurstGen++;
+            final int myGen = favBurstGen;
+            tv.setText(nowFav ? "\u2605" : "\u2606");
+            tv.setTextColor(nowFav ? 0xFFC9A227 : 0xFFAAAAAA);
+            tv.setVisibility(View.VISIBLE);
+            tv.measure(android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED),
+                       android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+            int w = tv.getMeasuredWidth();
+            int h = tv.getMeasuredHeight();
+            tv.setPivotX(w / 2f);
+            tv.setPivotY(h / 2f);
+            float cx = altarDownX;
+            float cy = altarDownY;
+            if (root.getWidth() > 0) cx = Math.max(w / 2f, Math.min(root.getWidth() - w / 2f, cx));
+            if (root.getHeight() > 0) cy = Math.max(h / 2f, Math.min(root.getHeight() - h / 2f, cy));
+            tv.setX(cx - w / 2f);
+            tv.setY(cy - h / 2f);
+            tv.setScaleX(0.5f);
+            tv.setScaleY(0.5f);
+            tv.setAlpha(1f);
+            tv.animate().scaleX(1.15f).scaleY(1.15f).setDuration(180)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                    .withEndAction(new Runnable() {
+                        @Override public void run() {
+                            if (myGen != favBurstGen) return;
+                            tv.animate().scaleX(1f).scaleY(1f).alpha(0f).setDuration(420)
+                                    .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                                    .withEndAction(new Runnable() {
+                                        @Override public void run() {
+                                            if (myGen != favBurstGen) return;
+                                            tv.setVisibility(View.GONE);
+                                            tv.setAlpha(1f);
+                                        }
+                                    }).start();
+                        }
+                    }).start();
         } catch (Exception ignored) {}
     }
 
@@ -8204,6 +8319,12 @@ if (snd68 >= 0) currentIndex = snd68;
             // keeps the XML name.
             String sharedPhotoName = getIntent().getStringExtra(Fx.SHARED_PHOTO_NAME_EXTRA);
             if (sharedPhotoName != null && sharedPhotoName.length() > 0) {
+                // v15.34 (slice 1843): remember the opened-with
+                // Room name — the Back restore (T4) needs it
+                // after a Talks open overwrites the portrait's
+                // name with the Talks name. A strip open carries
+                // no extra and keeps the field's static default.
+                roomSharedPhotoName = sharedPhotoName;
                 android.view.View sharedPv = findViewById(R.id.roomSayadawPhoto);
                 if (sharedPv != null) sharedPv.setTransitionName(sharedPhotoName);
             }
@@ -8294,6 +8415,7 @@ if (snd68 >= 0) currentIndex = snd68;
                 switch (e.getAction()) {
                     case android.view.MotionEvent.ACTION_DOWN:
                         downX = e.getX(); downY = e.getY(); fling = false;
+                        altarDownX = e.getX(); altarDownY = e.getY(); // v15.34 (slice 1844): the burst point — the hold fires 600ms later, from the Runnable below.
                         downActive = true; longFired = false;
                         // v15.27 (slice 1797): the altar photo had no DOWN feedback at all — this listener consumes the whole touch stream (returns true on DOWN), so the platform pressed state never runs for the shrine photo: a tap's only feedback waited for UP (the Play button's morph) and the 600ms favourite hold sat dead for the full hold until togglePlayingFav's toast fired. Fx.press cannot be wired here — it would replace this gesture listener — so the dip lives inside it: while the finger is down the photo dims to 0.88 over 110ms (the press rhythm). The dip fires only while the photo is above the dim floor (alpha > 0.88): a mid-entrance fade below the floor is left alone — the v2.21 fade is never fought, and a dip mid-fade could only brighten a half-faded photo toward 0.88 — while a mid-restore re-press rides on from its current alpha (the v3.76 settled-vs-in-flight rule), never jumping to 1.0 first. Alpha, not scale: the photo is full-bleed (match_parent x match_parent), so a squash would reveal edges around the whole screen; alpha is the photo's own channel (v2.21 fade-in). The gestures are untouched — thresholds, the long-press arm, the tap/fling/swipe branches and the drawer-close path read exactly as before.
                         if (v.getAlpha() > 0.88f) {
@@ -8687,7 +8809,32 @@ if (snd68 >= 0) currentIndex = snd68;
                 i.putExtra("group", sayadawGroup);
                 i.putExtra("url", pageUrl);
                 i.putExtra("photo", photoUrl == null ? "" : photoUrl);
-                Fx.go(RoomActivity.this, i);
+                // v15.34 (slice 1843): shared-element open —
+                // the Room portrait grows into the Talks header
+                // portrait, the symmetric pair of the chooser->
+                // Room flight (v15.34 slice 1842): the same face
+                // used to snap from the Room header to the
+                // chooser header on every header tap (name text
+                // and portrait both funnel through this
+                // listener, the portrait via performClick).
+                // Same photo both ends (same intent "photo"
+                // extra, same ImageLoader memory cache, same
+                // CircleImageView), so the snapshot hands over
+                // with no pop; the Talks header takes this name
+                // from the extra in onCreate and sets up the
+                // Move set + Fade itself (v15.30/1816-1817), so
+                // no Talks change is needed here. Per-tap Talks
+                // name, the v15.30/1817 idiom: the Room portrait
+                // and the Talks header share the TALKS base
+                // while the Room's own return flight keeps the
+                // ROOM base. Fx.goSharedNamed falls back to
+                // plain Fx.go itself when the portrait is hidden
+                // or not laid out, so a shared open can never be
+                // the reason the chooser fails to open. The
+                // no-link toast above still returns first.
+                String sharedTalksName = Fx.sharedPhotoNameFor(Fx.SHARED_TALKS_PHOTO_NAME, sayadawName);
+                i.putExtra(Fx.SHARED_PHOTO_NAME_EXTRA, sharedTalksName);
+                Fx.goSharedNamed(RoomActivity.this, i, RoomActivity.this.findViewById(R.id.roomSayadawPhoto), sharedTalksName);
             }
         });
         // v5.38: the new portrait is part of the same header — a tap
@@ -12603,7 +12750,26 @@ if (snd67q >= 0) currentIndex = snd67q;
         // (finishAfterTransition runs the shared-element return +
         // the window return Fade). A plain open keeps the stock
         // nav fade. The drawer branch above already returned.
-        if (sharedPhotoOpen) { finishAfterTransition(); return; }
+        if (sharedPhotoOpen) {
+            // v15.34 (slice 1843): restore the Room name — a
+            // header tap above overwrote the portrait's name
+            // with the Talks name (the chooser flight), so
+            // without this the return flight to the strip /
+            // grid card would find no element under the Room
+            // name and degrade to a bare fade (the same loss
+            // slice 1842 fixed on the Talks side). The
+            // opened-with name lives in the field (T1), not
+            // getIntent() — onNewIntent calls setIntent, so a
+            // re-delivery would hand Back an intent with no
+            // name. Runs only in the shared branch: a plain
+            // open takes the nav fade below and no flight needs
+            // the name. No-op when no Talks open ever happened
+            // (the portrait already carries the Room name); a
+            // missing portrait view is guarded, never a crash.
+            android.view.View roomPv = findViewById(R.id.roomSayadawPhoto);
+            if (roomPv != null && roomSharedPhotoName != null && roomSharedPhotoName.length() > 0) roomPv.setTransitionName(roomSharedPhotoName);
+            finishAfterTransition(); return;
+        }
         super.onBackPressed();
         overridePendingTransition(R.anim.nav_in, R.anim.nav_out);
     }

@@ -1077,6 +1077,20 @@ public class TalksActivity extends Activity {
     // tap-to-top/long-press and the photo's ImageLoader bind are
     // untouched.
     private android.view.View talksHeaderPhotoRing = null;
+    // v15.34 (slice 1845): sounding header ring breath state —
+    // the fields the helpers below own. chooserRingBreath is
+    // the running loop (null when still); chooserRingBreathBg
+    // is the background drawable it writes (the photo is a
+    // child of the ring frame, so the breath animates the
+    // drawable's alpha, never the view's — the portrait stays
+    // solid); chooserRingBreathPending marks a delayed start
+    // still waiting out the 250ms crossfade;
+    // chooserRingBreathGen vetoes a stale delayed start after
+    // a state flip or an onPause cancel.
+    private android.animation.ValueAnimator chooserRingBreath = null;
+    private android.graphics.drawable.Drawable chooserRingBreathBg = null;
+    private boolean chooserRingBreathPending = false;
+    private int chooserRingBreathGen = 0;
     // v15.30 (slice 1816): shared-element open from the Main grid
     // — the grid photo grows into this chooser's header portrait.
     // True only when the intent carries sharedPhoto (set by
@@ -2196,6 +2210,19 @@ public class TalksActivity extends Activity {
     private String cachedLang = null;
     private ListView talkList;
     private ProgressBar progress;
+    // v15.34 (slice 1841): pull-to-refresh state — the header
+    // views, the finger tracking, the armed/refreshing flags
+    // and the one height animator (settle + collapse share it,
+    // identity-guarded like talksRetryFade above).
+    private View pullHeader;
+    private ProgressBar pullSpinner;
+    private TextView pullLabel;
+    private float pullStartY = -1f;
+    private float pullLastY = -1f;
+    private boolean pullTracking = false;
+    private boolean pullArmed = false;
+    private boolean pullRefreshing = false;
+    private android.animation.ValueAnimator pullHeightAnim;
     // v4.14: share-chooser guard for the long-press share above —
     // mirrors the Room's suppressBgPause (see there).
     private boolean suppressSharePause = false;
@@ -2439,6 +2466,7 @@ public class TalksActivity extends Activity {
         // Guarded in the file's own if (x != null) shape; a missing
         // list simply never wires, the search box still does.
         if (list != null) list.setAdapter(adapter);
+        wirePullRefresh(); // v15.34 (slice 1841): pull-to-refresh on this list
         wireSearchBox(); // v4.93: talk title search under the header
         if (list != null) list.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
@@ -3465,6 +3493,15 @@ public class TalksActivity extends Activity {
         // is left alone, so returning to the chooser still offers
         // the retry. Every destroy path passes through onPause,
         // so no separate onDestroy finish is needed.
+        // v15.34 (slice 1845): stop the header ring breath on
+        // leave — a hidden view must not keep animating, and an
+        // infinite animator would pin the dead activity past a
+        // rotation. onResume's refreshFavHeader re-arms it on
+        // return (the unconditional arm in
+        // updateChooserHeaderRing). Every destroy path passes
+        // through onPause, so no separate onDestroy finish is
+        // needed (the talksRetryFade rule below).
+        stopChooserRingBreath();
         if (talksRetryFade != null) {
             boolean wasHiding = talksRetryFadeHiding;
             talksRetryFade.cancel(); talksRetryFade = null; talksRetryFadeHiding = false;
@@ -3494,7 +3531,25 @@ public class TalksActivity extends Activity {
         // grid photo (finishAfterTransition runs the
         // shared-element return + the window return Fade). A plain
         // open keeps the stock nav fade.
-        if (sharedTalksPhotoOpen) { finishAfterTransition(); return; }
+        if (sharedTalksPhotoOpen) {
+            // v15.34 (slice 1842): restore the grid name — a
+            // row tap above overwrote the header portrait's
+            // transition name with the Room name, so the
+            // return flight to the grid would find no element
+            // under the grid name and degrade to a bare fade
+            // (the v15.30 flight lost after any Room visit).
+            // The grid name lives in this intent's own extra
+            // (the name the grid tap carried), so restoring it
+            // here — after every Room return has already
+            // landed, before this finish starts — costs
+            // nothing. A plain open has no grid name and never
+            // reaches this branch; a missing header view is
+            // guarded, never a crash.
+            String gridName = getIntent().getStringExtra(Fx.SHARED_PHOTO_NAME_EXTRA);
+            android.view.View hp = findViewById(R.id.talksHeaderPhoto);
+            if (gridName != null && gridName.length() > 0 && hp != null) hp.setTransitionName(gridName);
+            finishAfterTransition(); return;
+        }
         super.onBackPressed();
         overridePendingTransition(R.anim.nav_in, R.anim.nav_out);
     }
@@ -3708,7 +3763,32 @@ public class TalksActivity extends Activity {
         i.putExtra("photo", getIntent().getStringExtra("photo"));
         i.putExtra("autoUrl", t.url);
         i.putExtra("autoTitle", t.title);
-        Fx.go(TalksActivity.this, i);
+        // v15.34 (slice 1842): shared-element open — the
+        // chooser header portrait grows into the Room header
+        // portrait, the Spotify / YouTube Music / Apple Music
+        // now-playing open, on the funnel every Room entry
+        // from this screen already uses (row tap, Play All,
+        // Shuffle, auto-opens). The strip tap beside it
+        // already flies (v15.29/v15.31); the row tap used to
+        // slide plain, so the same face snapped from the
+        // chooser header to the Room header. Same photo both
+        // ends (same intent "photo" extra, same ImageLoader
+        // memory cache, same CircleImageView), so the snapshot
+        // hands over with no pop; the header is fixed above
+        // the list, always laid out. Per-tap unique name, the
+        // v15.30/1817 idiom: the Room renames its portrait
+        // from this extra in onCreate, and the return flight
+        // finds the header under the same name. Fx.
+        // goSharedNamed falls back to plain Fx.go itself when
+        // the header is hidden or not laid out, so a shared
+        // open can never be the reason a Room fails to open.
+        // No CLEAR_TOP flags on this intent, so no roomInStack
+        // guard (that guard is only for the v15.31 CLEAR_TOP
+        // re-delivery paths — a fresh Room stacks and the
+        // flight runs normally even with a Room alive below).
+        String sharedRoomName = Fx.sharedPhotoNameFor(Fx.SHARED_PHOTO_NAME, sayadawName);
+        i.putExtra(Fx.SHARED_PHOTO_NAME_EXTRA, sharedRoomName);
+        Fx.goSharedNamed(TalksActivity.this, i, findViewById(R.id.talksHeaderPhoto), sharedRoomName);
     }
 
     private void applyTheme() {
@@ -4350,6 +4430,15 @@ public class TalksActivity extends Activity {
         if (ringing != lastChooserHeaderRing || ringFailed != lastChooserHeaderRingFailed) {
             lastChooserHeaderRing = ringing;
             lastChooserHeaderRingFailed = ringFailed;
+            // v15.34 (slice 1845): the breath owns the outgoing
+            // background's alpha — cancel it before the
+            // background is replaced, or its animator would
+            // keep writing to a detached drawable and the
+            // restore below would land on the wrong drawable.
+            // A no-op when no breath runs (first gold, fresh
+            // instance); the restore puts the old drawable back
+            // to full alpha for any later reuse.
+            stopChooserRingBreath();
             if (talksHeaderPhotoRing != null) {
                 // v14.16 (slice 1670): gold/red/none crossfades
                 // instead of snapping — see Fx.crossfadeRing.
@@ -4357,6 +4446,85 @@ public class TalksActivity extends Activity {
                         : ringing ? R.drawable.shelf_ring_playing : 0);
             }
         }
+        // v15.34 (slice 1845): arm the breath on a gold ring,
+        // stop it anywhere else — the change block above fires
+        // only on a state flip, so this unconditional arm is
+        // the re-arm after an onPause cancel (a hidden view must
+        // not keep animating, and an infinite animator would
+        // pin the dead activity): onResume's refreshFavHeader
+        // re-runs this method on every return while the ring
+        // state never moved. A running breath or a pending start
+        // is a no-op; a failed (red) ring never breathes — an
+        // error state must read still, not alive.
+        if (ringing && !ringFailed) armChooserRingBreath();
+        else stopChooserRingBreath();
+    }
+
+    // v15.34 (slice 1845): sounding header ring breath — the
+    // last sounding ring that sat static while its talk played
+    // (the Main grid card name breathes, v3.13/v3.17; the Room
+    // play glow breathes, v2.07/v2.20; the Library pause icon
+    // breathes, v2.25). The ring breathes 1.00->0.55 on a 900ms
+    // reverse loop, the Library rhythm, while a talk in this
+    // list sounds — visible the moment the user browses a
+    // sounding sayadaw's list. The photo is a child of the
+    // ring frame, so the loop writes the background drawable's
+    // alpha, never the view's: crossfadeRing paints with a
+    // TransitionDrawable and never touches the view alpha, so
+    // the two never fight. The start waits 260ms (the crossfade
+    // is 250ms) so the breath never dims a fade-in, and the
+    // loop drops itself the moment the background is replaced.
+    private void armChooserRingBreath() {
+        if (chooserRingBreath != null || chooserRingBreathPending) return;
+        if (talksHeaderPhotoRing == null) return;
+        chooserRingBreathPending = true;
+        final int myGen = chooserRingBreathGen;
+        talksHeaderPhotoRing.postDelayed(new Runnable() {
+            @Override public void run() {
+                chooserRingBreathPending = false;
+                if (myGen != chooserRingBreathGen) return;
+                if (talksHeaderPhotoRing == null) return;
+                if (!lastChooserHeaderRing || lastChooserHeaderRingFailed) return;
+                android.graphics.drawable.Drawable bg = talksHeaderPhotoRing.getBackground();
+                if (bg == null) return;
+                chooserRingBreathBg = bg;
+                android.animation.ValueAnimator breath = android.animation.ValueAnimator.ofInt(255, 140);
+                breath.setDuration(900);
+                breath.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+                breath.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+                breath.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+                    @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                        android.graphics.drawable.Drawable cur = chooserRingBreathBg;
+                        if (cur == null || talksHeaderPhotoRing == null
+                                || talksHeaderPhotoRing.getBackground() != cur) {
+                            // Background replaced (a crossfade) —
+                            // drop the loop; the arm re-starts it
+                            // on the new background if the ring
+                            // is still gold. No gen bump: no
+                            // delayed start can exist while a
+                            // loop runs (the arm returns early).
+                            chooserRingBreath = null;
+                            chooserRingBreathBg = null;
+                            a.cancel();
+                            return;
+                        }
+                        cur.setAlpha(((Integer) a.getAnimatedValue()).intValue());
+                    }
+                });
+                chooserRingBreath = breath;
+                breath.start();
+            }
+        }, 260);
+    }
+
+    private void stopChooserRingBreath() {
+        if (chooserRingBreath == null && !chooserRingBreathPending) return;
+        chooserRingBreathGen++;
+        chooserRingBreathPending = false;
+        if (chooserRingBreath != null) chooserRingBreath.cancel();
+        if (chooserRingBreathBg != null) chooserRingBreathBg.setAlpha(255);
+        chooserRingBreath = null;
+        chooserRingBreathBg = null;
     }
 
     private void refreshFavHeader() {
@@ -6976,6 +7144,164 @@ public class TalksActivity extends Activity {
         talksRetryFade.start();
     }
 
+    // v15.34 (slice 1841): pull-to-refresh on the Talks list —
+    // the chooser had no way to re-fetch a sayadaw's talks without
+    // leaving and re-entering (the retry button only appears after
+    // a failed load). A downward pull at the very top of the list
+    // now grows a small gold header ("↻ ပြန်ဆွဲထုတ်မယ်" — the
+    // retry button's own text, no new strings) and, past the
+    // threshold, reloads the list through the same loadTalks() the
+    // retry uses. The header IS the load indicator while it runs:
+    // loadTalks keeps the central spinner down (see its guard), so
+    // the two never stack. The listener never consumes an event —
+    // row taps, long-press share and the queue pick-up/drop move
+    // (v5.77) all keep working; a pull simply never starts while
+    // a queue move is held. Damped 0.5, threshold 72dp, cap 144dp,
+    // settle 56dp, collapse 200ms Decelerate — the app's own melt
+    // rhythm (v2.60/v2.79). Rotation restores the list, never a
+    // pull in flight (v1.53): the fresh instance starts GONE.
+    private void wirePullRefresh() {
+        pullHeader = findViewById(R.id.pullRefreshHeader);
+        pullSpinner = findViewById(R.id.pullRefreshSpinner);
+        pullLabel = findViewById(R.id.pullRefreshLabel);
+        if (talkList == null || pullHeader == null) return;
+        talkList.setOnTouchListener(new View.OnTouchListener() {
+            @Override public boolean onTouch(View v, android.view.MotionEvent ev) {
+                return pullOnTouch(ev);
+            }
+        });
+    }
+
+    private boolean pullAtTop() {
+        if (talkList == null) return false;
+        if (talkList.getFirstVisiblePosition() != 0) return false;
+        View first = talkList.getChildAt(0);
+        return first == null || first.getTop() >= 0;
+    }
+
+    private int pullDp(float dp) {
+        return Math.round(dp * getResources().getDisplayMetrics().density);
+    }
+
+    private int pullMutedColor() {
+        return android.graphics.Color.parseColor(Prefs.isNight(TalksActivity.this) ? "#AAAAAA" : "#7A6A58");
+    }
+
+    private void pullSetHeight(int px) {
+        if (pullHeader == null) return;
+        android.view.ViewGroup.LayoutParams lp = pullHeader.getLayoutParams();
+        lp.height = px;
+        pullHeader.setLayoutParams(lp);
+        pullHeader.setVisibility(px > 0 ? View.VISIBLE : View.GONE);
+    }
+
+    private void pullSetArmed(boolean armed) {
+        if (pullArmed == armed) return;
+        pullArmed = armed;
+        if (pullLabel == null) return;
+        Fx.crossfadeTextColor(pullLabel, armed
+                ? android.graphics.Color.parseColor("#C9A227")
+                : pullMutedColor());
+    }
+
+    private void pullHeightTo(int px, long durationMs) {
+        if (pullHeader == null) return;
+        if (pullHeightAnim != null) pullHeightAnim.cancel();
+        final int start = pullHeader.getHeight();
+        if (start == px) return;
+        final android.animation.ValueAnimator anim =
+                android.animation.ValueAnimator.ofInt(start, px);
+        pullHeightAnim = anim;
+        anim.setDuration(durationMs);
+        anim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        anim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                pullSetHeight((Integer) a.getAnimatedValue());
+            }
+        });
+        anim.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                if (pullHeightAnim == anim) pullHeightAnim = null;
+            }
+        });
+        anim.start();
+    }
+
+    private void pullCollapse() {
+        if (pullHeader == null || pullHeader.getVisibility() != View.VISIBLE) return;
+        pullHeightTo(0, 200);
+    }
+
+    private void pullFinish() {
+        if (!pullRefreshing) return;
+        pullRefreshing = false;
+        if (pullSpinner != null) pullSpinner.setVisibility(View.GONE);
+        if (pullLabel != null) Fx.setTextColorNow(pullLabel, pullMutedColor());
+        pullCollapse();
+    }
+
+    private boolean pullOnTouch(android.view.MotionEvent ev) {
+        if (talkList == null || pullHeader == null) return false;
+        int action = ev.getActionMasked();
+        if (action == android.view.MotionEvent.ACTION_DOWN) {
+            if (pullRefreshing) return false;
+            if (moveHeldUrl != null) return false;
+            if (progress != null && progress.getVisibility() == View.VISIBLE) return false;
+            if (!pullAtTop()) return false;
+            pullStartY = ev.getY();
+            pullLastY = ev.getY();
+            pullTracking = true;
+            return false;
+        }
+        if (action == android.view.MotionEvent.ACTION_MOVE) {
+            float y = ev.getY();
+            if (!pullTracking) {
+                // Scrolled up to the top inside this same gesture:
+                // arm here, so a continuous scroll-then-pull works
+                // like the platform pull (no lift needed).
+                if (pullRefreshing || moveHeldUrl != null) { pullLastY = y; return false; }
+                if (progress != null && progress.getVisibility() == View.VISIBLE) { pullLastY = y; return false; }
+                if (pullAtTop() && y > pullLastY) {
+                    pullStartY = y;
+                    pullTracking = true;
+                }
+                pullLastY = y;
+                return false;
+            }
+            pullLastY = y;
+            float dy = y - pullStartY;
+            if (dy <= 0) {
+                pullSetHeight(0);
+                pullSetArmed(false);
+                return false;
+            }
+            if (pullHeightAnim != null) { pullHeightAnim.cancel(); pullHeightAnim = null; }
+            int h = Math.min((int) (dy * 0.5f), pullDp(144));
+            pullSetHeight(h);
+            pullSetArmed(h >= pullDp(72));
+            return false;
+        }
+        if (action == android.view.MotionEvent.ACTION_UP
+                || action == android.view.MotionEvent.ACTION_CANCEL) {
+            if (!pullTracking) return false;
+            pullTracking = false;
+            pullStartY = -1f;
+            pullLastY = -1f;
+            if (action == android.view.MotionEvent.ACTION_CANCEL || !pullArmed) {
+                pullSetArmed(false);
+                pullCollapse();
+                return false;
+            }
+            pullArmed = false;
+            pullRefreshing = true;
+            if (pullSpinner != null) pullSpinner.setVisibility(View.VISIBLE);
+            pullHeightTo(pullDp(56), 200);
+            loadTalks();
+            return false;
+        }
+        return false;
+    }
+
     private void loadTalks() {
         final int mySeq = ++loadSeq;
         // v12.56: a new load invalidates the clean-empty state — the
@@ -7020,7 +7346,12 @@ public class TalksActivity extends Activity {
         // progress field bare — a missing R.id.progress NPEd every
         // load, right after open. Guard the whole block; the load
         // itself proceeds without a spinner.
-        if (progress != null) {
+        // v15.34 (slice 1841): a pull-refresh load already shows
+        // its own spinner in the pull header — the central spinner
+        // stays down, so the two never stack. pullRefreshing is
+        // only ever true between the pull's release and this
+        // load's landing, so every other caller is untouched.
+        if (progress != null && !pullRefreshing) {
         if (progress.getVisibility() != View.VISIBLE) {
             progress.setVisibility(View.VISIBLE);
             Fx.fadeIn(progress, 250);
@@ -7188,6 +7519,7 @@ public class TalksActivity extends Activity {
                         // branch in loadTalks, and the end action
                         // never runs on a cancelled animator.
                         Fx.fadeOut(progress, 250);
+                        pullFinish(); // v15.34 (slice 1841): a pull-refresh load settles its header here — success or failure, the same landing owns both
                         talks.clear();
                         talks.addAll(found);
                         // v12.56: remember a clean empty landing — a

@@ -215,6 +215,34 @@
         android:layout_marginTop="8dp"
         android:text="↻ ပြန်ဆွဲထုတ်မယ်"
         android:visibility="gone" />
+    <!-- v15.34 (slice 1841): pull-to-refresh header — 0dp + GONE
+         until a downward pull at the top of the list grows it (see
+         TalksActivity pullOnTouch); the label reuses the retry
+         button's own text, no new strings; the small spinner is
+         gold like the strip progress. -->
+    <LinearLayout
+        android:id="@+id/pullRefreshHeader"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:visibility="gone">
+        <ProgressBar
+            android:id="@+id/pullRefreshSpinner"
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:indeterminateTint="@color/gold"
+            android:visibility="gone" />
+        <TextView
+            android:id="@+id/pullRefreshLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="↻ ပြန်ဆွဲထုတ်မယ်"
+            android:textColor="@color/muted"
+            android:textSize="14sp" />
+    </LinearLayout>
     <ListView
         android:id="@+id/list"
         android:layout_width="match_parent"
