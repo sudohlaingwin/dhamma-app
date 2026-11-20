@@ -10470,6 +10470,8 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         }
                                         // play-next: already-queued moves before the
                                         // first waiting entry, unqueued inserts there.
+                                        // v15.32 (slice 1829): capture BEFORE the remove/add below move the rows — the v15.20/v15.22 shape, the foreign-row and queue-only dialogs' play-next legs already do this (v15.22/v15.23); this full-list leg used to end in a bare notifyDataSetChanged, so the moved row appeared in its new slot in one frame and the rows between the old slot and the first waiting entry teleported one rowHeight. The already_next early return below leaves the capture orphaned (no post ever runs on it, the next capture replaces the map) — a restore rebinds nothing, so there is nothing to glide.
+                                        final java.util.HashMap<String, Integer> tops85 = captureDrawerReorderGlide();
                                         int qi = queueLineIndexForUrl(dt.url);
                                         String line;
                                         if (qi >= 0) { line = queueUrls.get(qi); queueUrls.remove(qi); }
@@ -10486,6 +10488,8 @@ if (snd67n >= 0) currentIndex = snd67n;
                                             if (ti >= 0) target = ti;
                                         }
                                         queueUrls.add(target, line);
+                                        // v15.32 (slice 1829): same drop-landing fade arm as the foreign-row / queue-only play-next legs (v15.23) — the moved row melts in at its new slot (see fadeDroppedQueueRow, v14.46) instead of popping. Set after the add, like the siblings; the v7.86 held-row rule below is untouched.
+                                        dropFadeUrl = dt.url;
                                         if (dt.url.equals(moveHeldUrl)) moveHeldUrl = null; // v7.86: a play-next move of the held row spends the arm, or the next drop would move it a second time (library v7.85 class)
                                         // v12.03: an UNQUEUED play-next inserts a brand-new
                                         // entry (qi < 0), so it needs the same singleton
@@ -10496,6 +10500,9 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         // adds nothing, so null is correct there.
                                         saveQueue(qi < 0 ? java.util.Collections.singleton(dt.url) : null, true);
                                         if (adapter != null) adapter.notifyDataSetChanged();
+                                        // v15.32 (slice 1829): same post as the sibling play-next legs (v15.22/v15.23) — the posted glide parks each moved survivor at its old top and glides it home 250ms (the moved row itself is excluded, its v14.46 fade owns its landing), then the dropped row melts in at its new slot. refreshQueueBar72 below still follows at once (v14.53).
+                                        postDrawerReorderGlide(tops85, dt.url);
+                                        fadeDroppedQueueRow();
                                         // v14.53 (slice 1710): the bar follows this dialog
                                         // at once — the foreign-row / in-list dialogs and
                                         // the clear-confirm all call refreshQueueBar72()

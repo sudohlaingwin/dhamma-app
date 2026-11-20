@@ -26,9 +26,11 @@ import android.view.animation.LinearInterpolator;
  * setPlaying is idempotent — a tick rebind of the same sounding
  * row never restarts the dance — and the amplitude ramps 0 to 1
  * over 180ms from start, so a resume grows out of the rest pose
- * instead of popping to staggered heights. Stopping cancels the
- * animator and repaints the rest pose at once. Detach cancels too,
- * so a recycled row can never keep a dead animator running.
+ * instead of popping to staggered heights. Stopping eases the dance
+ * down over the same 180ms ramp and only then parks at rest
+ * (v15.32): a pause used to snap the bars flat in full view while
+ * the sounding row still showed them. Detach cancels too, so a
+ * recycled row can never keep a dead animator running.
  */
 public class EqBarsView extends View {
     private static final int BAR_COUNT = 3;
@@ -41,6 +43,8 @@ public class EqBarsView extends View {
     private final RectF rect = new RectF();
     private final float density;
     private ValueAnimator animator;
+    private ValueAnimator stopAnim; // v15.32: the pause decay — see setPlaying.
+    private float stopRamp = 1f; // v15.32: surviving dance amplitude, 1 = full dance, 0 = rest pose.
     private long startMs;
     private boolean playing;
     private final float[] heights = new float[BAR_COUNT];
@@ -66,6 +70,13 @@ public class EqBarsView extends View {
         if (p == playing) return;
         playing = p;
         if (p) {
+            // v15.32 (slice 1826): a resume mid-decay cancels the
+            // decay and restores full amplitude before the dance
+            // restarts, so the start ramp grows from rest exactly
+            // as before and no stale end action can park the new
+            // dance at rest (the instance guard below).
+            if (stopAnim != null) { stopAnim.cancel(); stopAnim = null; }
+            stopRamp = 1f;
             startMs = SystemClock.uptimeMillis();
             animator = ValueAnimator.ofFloat(0f, 1f);
             animator.setDuration(CYCLE_MS);
@@ -79,23 +90,59 @@ public class EqBarsView extends View {
                     for (int i = 0; i < BAR_COUNT; i++) {
                         float full = REST_FRAC + (1f - REST_FRAC)
                                 * Math.abs((float) Math.sin(Math.PI * (frac + i * 0.37f)));
-                        heights[i] = REST_FRAC + (full - REST_FRAC) * ramp;
+                        // v15.32 (slice 1826): the pause decay rides the same
+                        // formula — at stopRamp 1 the paint is pixel-identical,
+                        // and as the decay runs the bars keep dancing while
+                        // shrinking toward rest instead of freezing flat.
+                        heights[i] = REST_FRAC + (full - REST_FRAC) * ramp * stopRamp;
                     }
                     invalidate();
                 }
             });
             animator.start();
         } else {
-            if (animator != null) { animator.cancel(); animator = null; }
-            rest();
-            invalidate();
+            // v15.32 (slice 1826): the bars ease down to rest instead
+            // of snapping flat — the start ramp's mirror. The dance
+            // keeps running while stopAnim decays its amplitude 1
+            // -> 0 over the same 180ms, and only the decay's end
+            // stops the dance and parks the rest pose, so a pause
+            // while the row still sounds decays in full view and a
+            // real stop decays under the slot's 250ms fade-out. A
+            // stop with no dance parks at rest at once (defensive —
+            // playing is only ever true beside a live animator).
+            if (animator == null) { rest(); invalidate(); return; }
+            stopAnim = ValueAnimator.ofFloat(stopRamp, 0f);
+            stopAnim.setDuration(RAMP_MS);
+            stopAnim.setInterpolator(new LinearInterpolator());
+            stopAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                @Override public void onAnimationUpdate(ValueAnimator a) {
+                    stopRamp = (Float) a.getAnimatedValue();
+                    invalidate();
+                }
+            });
+            stopAnim.addListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationEnd(android.animation.Animator a) {
+                    if (a != stopAnim) return; // v3.20 lesson: a cancelled decay still fires its end action, so the instance check stands between it and the teardown of a newer dance.
+                    stopAnim = null;
+                    if (animator != null) { animator.cancel(); animator = null; }
+                    stopRamp = 1f;
+                    rest();
+                    invalidate();
+                }
+            });
+            stopAnim.start();
         }
     }
 
     @Override protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         if (animator != null) { animator.cancel(); animator = null; }
+        // v15.32 (slice 1826): a decay in flight dies with the view
+        // — a recycled row can never keep a dead decay running, and
+        // the amplitude resets so the next dance starts full.
+        if (stopAnim != null) { stopAnim.cancel(); stopAnim = null; }
         playing = false;
+        stopRamp = 1f;
         rest();
     }
 

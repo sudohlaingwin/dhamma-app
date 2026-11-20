@@ -63,6 +63,20 @@ public class WaveSeekView extends View {
     // pin scrubs normally — the snap only owns the landing.
     private java.util.List<Integer> bookmarks;
     private int snappedBookmarkMs = -1;
+    // v15.32 (slice 1827): the pin arrival fade — see setBookmarks.
+    // v15.32 (slice 1832): the pin departure fade — a clear glides
+    // the set out over the same 250ms instead of snapping it off
+    // (the 1827 fade-in's missing half); fadingBookmarks holds the
+    // leaving set while it fades, so a new arrival can still start
+    // from 0 and a tap never snaps to a leaving pin (touch reads
+    // bookmarks only). pinAlpha is what onDraw paints: 0 = pins
+    // hidden, 1 = fully in. No animator alive always means
+    // pinAlpha == 1 while pins exist (0 while none) — the v15.28
+    // buffered rule restated; a fade-out in flight is the only
+    // mid-alpha state, and it always owns the animator.
+    private android.animation.ValueAnimator pinFadeAnim;
+    private float pinAlpha = 0f;
+    private java.util.List<Integer> fadingBookmarks;
     private final Paint bookmarkPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final android.graphics.Path bookmarkPath = new android.graphics.Path();
     private int max = 0;
@@ -546,6 +560,16 @@ public class WaveSeekView extends View {
         if (bufferedAnim != null) bufferedAnim.cancel();
         bufferedAnim = null;
         bufferedShown = bufferedPercent;
+        // v15.32 (slice 1827): no off-screen pin fade — the animator
+        // is cancelled and the alpha snaps to its target, so a
+        // re-attached view never sits frozen mid-fade: no animator
+        // alive always means pinAlpha == 1 while pins exist (0
+        // while none), the v15.28 buffered rule restated.
+        // v15.32 (slice 1832): the leaving set dies with the view
+        // too — a fade-out in flight never outlives a detach.
+        if (pinFadeAnim != null) { pinFadeAnim.cancel(); pinFadeAnim = null; }
+        fadingBookmarks = null;
+        pinAlpha = (bookmarks == null ? 0f : 1f);
         // v3.65: same stop-ease guard, detach side — the flag used
         // to be read AFTER the cancel, so a synchronous end action
         // (v3.19 behaviour) cleared the flag first and the detach
@@ -672,13 +696,100 @@ public class WaveSeekView extends View {
     // empty list clears them. Change-only, so the 500ms Room poll
     // costs nothing on a steady talk; a pending tap-snap is voided
     // with the list it belonged to.
+    // v15.32 (slice 1827): the set fades in instead of popping — a
+    // track change brings a new talk's pins while the bar glides
+    // (v2.20), the total fades in (v3.33), the buffered tint glides
+    // (v15.28) and the playhead swells (v15.27) around them, so the
+    // pins were the one element still landing in a single frame.
+    // The fade is set-level (250ms, DecelerateInterpolator, the
+    // melt rhythm): every new list starts at alpha 0 and rises to
+    // 1 — a track change, and an add/delete too, which re-reads as
+    // the set refreshing, the queue-bar count dip's rhythm (v14.43).
+    // v15.32 (slice 1832): the set fades OUT too — deleting the
+    // last bookmark used to snap the pin off in one frame while
+    // the list dialog exits and the wave sits fully drawn (max >
+    // 0), the departure half the 1827 arrival fade never got.
+    // The clear now glides pinAlpha to 0 over the same 250ms
+    // Decelerate, painting the leaving set from fadingBookmarks
+    // (bookmarks is already null, so a re-add of the same list
+    // mid-fade can never no-op on the change-only guard, and a
+    // tap never snaps to a leaving pin). The 1827 reason still
+    // holds: a fresh arrival cancels the fade-out and restarts
+    // from 0, so no stale pin ever melts across a fresh bar —
+    // the clear only owns the leaving, never the arriving. The
+    // track-change / stop clears still snap in EFFECT, not in
+    // code: both reset max to 0 first (RoomActivity), so the
+    // paint guard (max > 0) hides the pins before the fade
+    // starts — the fade only ever shows where the wave is drawn.
+    // A rapid second change mid-fade cancels and restarts from 0
+    // (arrival) or from the current alpha (a second clear is a
+    // no-op — the set is already leaving); the end action is
+    // identity-guarded the v3.65 way.
     public void setBookmarks(java.util.List<Integer> marks) {
         java.util.List<Integer> next = (marks == null || marks.isEmpty()) ? null
                 : new java.util.ArrayList<Integer>(marks);
-        if (next == null && bookmarks == null) return;
+        if (next == null && bookmarks == null && fadingBookmarks == null) return;
         if (next != null && next.equals(bookmarks)) return;
+        if (next == null) {
+            // v15.32 (slice 1832): clear — glide the leaving set
+            // out instead of snapping pinAlpha to 0 (see the
+            // comment above). bookmarks is already null here, so
+            // the change-only guard above can never swallow a
+            // re-add mid-fade, and the paint below reads the
+            // leaving set from fadingBookmarks.
+            if (bookmarks == null) return; // already leaving
+            fadingBookmarks = bookmarks;
+            bookmarks = null;
+            snappedBookmarkMs = -1;
+            if (pinFadeAnim != null) { pinFadeAnim.cancel(); pinFadeAnim = null; }
+            final float fromAlpha = pinAlpha;
+            pinFadeAnim = android.animation.ValueAnimator.ofFloat(fromAlpha, 0f);
+            pinFadeAnim.setDuration(250);
+            pinFadeAnim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+            pinFadeAnim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+                @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                    pinAlpha = (Float) a.getAnimatedValue();
+                    invalidate();
+                }
+            });
+            final android.animation.ValueAnimator fadeOutAnim = pinFadeAnim;
+            pinFadeAnim.addListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationEnd(android.animation.Animator a) {
+                    if (pinFadeAnim != fadeOutAnim) return;
+                    pinFadeAnim = null;
+                    fadingBookmarks = null;
+                    pinAlpha = 0f;
+                    invalidate();
+                }
+            });
+            pinFadeAnim.start();
+            invalidate();
+            return;
+        }
+        // Arrival: a fresh set voids any fade-out in flight, then
+        // fades in from 0 exactly as before (v15.32, slice 1827).
+        fadingBookmarks = null;
         bookmarks = next;
         snappedBookmarkMs = -1;
+        if (pinFadeAnim != null) { pinFadeAnim.cancel(); pinFadeAnim = null; }
+        pinAlpha = 0f;
+        pinFadeAnim = android.animation.ValueAnimator.ofFloat(0f, 1f);
+        pinFadeAnim.setDuration(250);
+        pinFadeAnim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        pinFadeAnim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                pinAlpha = (Float) a.getAnimatedValue();
+                invalidate();
+            }
+        });
+        final android.animation.ValueAnimator fadeAnim = pinFadeAnim;
+        pinFadeAnim.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                if (pinFadeAnim != fadeAnim) return;
+                pinFadeAnim = null;
+            }
+        });
+        pinFadeAnim.start();
         invalidate();
     }
 
@@ -772,10 +883,20 @@ public class WaveSeekView extends View {
         // below owns the tap, and the pins never dim with pause
         // (they are marks, not playback state), so they read in a
         // still whether the talk is playing or paused.
-        if (max > 0 && bookmarks != null) {
+        // v15.32 (slice 1832): the paint reads the leaving set too
+        // — bookmarks while pins live, fadingBookmarks while they
+        // fade out, so a clear glides the pins off instead of
+        // popping them. Touch still reads bookmarks only (below):
+        // a leaving pin takes no tap-snap.
+        java.util.List<Integer> pinsToPaint = (bookmarks != null ? bookmarks : fadingBookmarks);
+        if (max > 0 && pinsToPaint != null) {
             float density = getResources().getDisplayMetrics().density;
             float d = 4.5f * density;
-            for (int ms : bookmarks) {
+            // v15.32 (slice 1827): the arrival fade — the paint
+            // carries pinAlpha, restored to 255 after the loop so
+            // no later use inherits a faded alpha.
+            bookmarkPaint.setAlpha((int) (255 * pinAlpha));
+            for (int ms : pinsToPaint) {
                 float frac = Math.max(0f, Math.min(1f, (float) ms / max));
                 float cx = frac * w;
                 if (cx < d) cx = d;
@@ -790,6 +911,7 @@ public class WaveSeekView extends View {
                 bookmarkPath.close();
                 canvas.drawPath(bookmarkPath, bookmarkPaint);
             }
+            bookmarkPaint.setAlpha(255);
         }
         // v4.13: drag readout — while a finger scrubs, the exact
         // scrub time floats above the playhead (Spotify-style), so

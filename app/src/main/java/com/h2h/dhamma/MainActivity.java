@@ -182,6 +182,9 @@ public class MainActivity extends Activity {
     // is gone — it was written, never read; identity is by view.
     private android.animation.ObjectAnimator mainPulse = null;
     private android.view.View mainPulseView = null;
+    // v15.32 (slice 1831): the pulse-start settle flag — see
+    // startMainPulseOn below (the Room v3.17 shape).
+    private boolean mainPulseSettling = false;
     private android.os.Handler mainPulseHandler = new android.os.Handler();
     private Runnable mainPulseTick = null;
     // v11.15: ended state the grid rows were last bound against —
@@ -1042,19 +1045,67 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) { return null; }
     }
 
+    // v15.32 (slice 1831): premium breath-stop ease + pulse-start
+    // settle — the Room's v3.13/v3.17 pair, restated for the Main
+    // grid. stopMainPulse used to cancel the 900ms breath and
+    // setAlpha(1f) in one frame, so a talk ending, a session
+    // clearing or a sayadaw switch while Main sat on top snapped
+    // the sounding card's name from wherever it sat mid-breath
+    // (as low as 0.55) straight to full alpha — a visible pop
+    // beside the tile crossfade (v14.31) and the name-colour melt
+    // (v15.31), which both move on that same beat. The stopped
+    // name now glides back to 1 over 200ms (decelerate,
+    // alpha-only, on the name alone), so the breath hands over
+    // instead of cutting. The start settle below closes the
+    // restart half: a loop starting on a name still mid-glide
+    // (a quick A->B->A handover) used to snap it to 1 through
+    // the loop's own first value. mainPulseSettling guards the
+    // settle's end action, so a stop in between never starts a
+    // stale loop; the flag is cleared BEFORE any animator cancel
+    // (the v3.19 ordering — a cancelled ViewPropertyAnimator
+    // still fires its end action). Visual only; the pulse shape
+    // (900ms, REVERSE, INFINITE, 1f->0.55f) and every stop/start
+    // call site are untouched.
     private void startMainPulseOn(android.view.View v) {
         mainPulseView = v;
-        mainPulse = android.animation.ObjectAnimator.ofFloat(v, "alpha", 1f, 0.55f);
-        mainPulse.setDuration(900);
-        mainPulse.setRepeatMode(android.animation.ValueAnimator.REVERSE);
-        mainPulse.setRepeatCount(android.animation.ValueAnimator.INFINITE);
-        mainPulse.start();
+        mainPulseSettling = false;
+        v.animate().cancel();
+        if (v.getAlpha() < 0.999f) {
+            mainPulseSettling = true;
+            final android.view.View settleView = v;
+            v.animate().alpha(1f).setDuration(150)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                    .withEndAction(new Runnable() {
+                        @Override public void run() {
+                            if (!mainPulseSettling || mainPulseView != settleView || mainPulse != null) return;
+                            mainPulseSettling = false;
+                            mainPulse = android.animation.ObjectAnimator.ofFloat(settleView, "alpha", 1f, 0.55f);
+                            mainPulse.setDuration(900);
+                            mainPulse.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+                            mainPulse.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+                            mainPulse.start();
+                        }
+                    }).start();
+        } else {
+            mainPulseSettling = false;
+            mainPulse = android.animation.ObjectAnimator.ofFloat(v, "alpha", 1f, 0.55f);
+            mainPulse.setDuration(900);
+            mainPulse.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+            mainPulse.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+            mainPulse.start();
+        }
     }
 
     private void stopMainPulse() {
         if (mainPulse != null) mainPulse.cancel();
         mainPulse = null;
-        if (mainPulseView != null) mainPulseView.setAlpha(1f);
+        mainPulseSettling = false;
+        if (mainPulseView != null) {
+            android.view.View stopped = mainPulseView;
+            stopped.animate().cancel();
+            stopped.animate().alpha(1f).setDuration(200)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+        }
         mainPulseView = null;
     }
 
