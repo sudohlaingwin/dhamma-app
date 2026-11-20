@@ -1050,6 +1050,13 @@ public class TalksActivity extends Activity {
     // the strip already said ⚠.
     private boolean talkRowFailed = false;
     private boolean talkRowBuffering = false;
+    // v15.29 (slice 1813): playing state the rows were last bound
+    // against — the v11.15 twin for the pause class: the tick
+    // rebinds on URL/mark/ended/failed/buffering flips only, so a
+    // pure pause/play flip (same URL) would otherwise leave the
+    // sounding row's EQ bars (below) dancing after a pause until
+    // the next rebind, while the strip already showed ▶.
+    private boolean talkRowPlaying = false;
     // v13.85 (slice 1077): the Up Next talk's URL the rows were last bound against — the chooser's Up Next ▸ mark (Room v4.13, in the chooser rows). Written only by refreshFavHeader, alongside the header line it mirrors (queued head / forward top / shuffle-gated list-next; empty when a foreign head waits or nothing resolves), and read only by TalkAdapter.getView; the tick's change branch refreshes the header BEFORE the rebind below, so a row never binds against a stale next talk. Cleared at the top of every header refresh, so an early return can never leave a stale crown.
     private String upNextRowUrl = "";
     // v13.89 (slice 1081): chooser header photo ring — the last photo
@@ -5124,12 +5131,14 @@ public class TalksActivity extends Activity {
                 || !talkPlayingLibUrl.equals(talkRowPlayingLibUrl == null ? "" : talkRowPlayingLibUrl)
                 || AudioService.liveEnded != talkRowEnded
                 || AudioService.liveTrackError != talkRowFailed
-                || AudioService.liveBuffering != talkRowBuffering)) {
+                || AudioService.liveBuffering != talkRowBuffering
+                || AudioService.livePlaying != talkRowPlaying)) {
             talkRowPlayingUrl = talkPlayingUrl;
             talkRowPlayingLibUrl = talkPlayingLibUrl;
             talkRowEnded = AudioService.liveEnded;
             talkRowFailed = AudioService.liveTrackError;
             talkRowBuffering = AudioService.liveBuffering;
+            talkRowPlaying = AudioService.livePlaying;
             // v7.55: the filter view follows the same mark change
             // -- v7.44 rebinds the rows and v7.51 refreshes the
             // header when a mark changes under the chooser, but
@@ -5727,7 +5736,7 @@ public class TalksActivity extends Activity {
     private void wireNowStrip() {
         android.view.View nowStrip = findViewById(R.id.nowStrip);
         if (nowStrip != null) {
-            Fx.press(nowStrip);
+            Fx.stripSwipe(nowStrip);
             // v4.73: the strip's progress bar seeks (see Fx.miniSeekBar).
             Fx.miniSeekBar(TalksActivity.this, nowStrip);
             // v5.33: tap the strip's sub line (sayadaw + clock) flips
@@ -5820,7 +5829,17 @@ public class TalksActivity extends Activity {
                     i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
                     Fx.tap(TalksActivity.this);
                     Fx.morph(v);
-                    Fx.go(TalksActivity.this, i);
+                    // v15.29 (slice 1815): shared-element open — the strip
+                    // photo grows into the Room header portrait, but only
+                    // when no Room is alive in the stack: with CLEAR_TOP
+                    // the tap re-delivers into the existing Room via
+                    // onNewIntent, and no transition runs for a
+                    // re-delivery, so that path keeps the plain nav fade
+                    // (RoomActivity.roomInStack). A fresh Room takes the
+                    // shared open; Fx.goShared falls back to Fx.go
+                    // itself when the photo is hidden or not laid out.
+                    if (RoomActivity.roomInStack()) Fx.go(TalksActivity.this, i);
+                    else Fx.goShared(TalksActivity.this, i, findViewById(R.id.nowStripPhoto));
                 }
             });
             nowStrip.setOnLongClickListener(new View.OnLongClickListener() {
@@ -6513,6 +6532,28 @@ public class TalksActivity extends Activity {
             if (card != null) Fx.crossfadeCardTile(card, (rowPlaying || rowPlayingLib)
                     ? R.drawable.talks_row_playing
                     : (cachedNight ? R.drawable.card_bg_night : R.drawable.card_bg));
+            // v15.29 (slice 1813): the sounding row's EQ bars — the
+            // one standard streaming motion the chooser lacked (see
+            // EqBarsView): the number slot becomes three dancing
+            // gold bars while the talk sounds and rests, low and
+            // equal, while it is paused (livePlaying counts
+            // buffering as playing, so the bars dance while the
+            // talk is on its way, matching the strip's pause icon).
+            // Set on every bind so a recycled row rebinds its
+            // number/bars here and a dance can never leak onto the
+            // next talk; setPlaying is idempotent, so a tick rebind
+            // of the same sounding row never restarts the dance.
+            // The ▶ prefix + gold name stay instant per the v14.16
+            // settled decision — the EQ is an added live indicator,
+            // not a mark swap. Library rows keep their pulse
+            // (v2.25); the drawer keeps its title pulse (v2.27).
+            com.h2h.dhamma.EqBarsView eqBars = v.findViewById(R.id.eqBars);
+            if (indexView != null && eqBars != null) {
+                boolean eqSounding = rowPlaying || rowPlayingLib;
+                indexView.setVisibility(eqSounding ? android.view.View.GONE : android.view.View.VISIBLE);
+                eqBars.setVisibility(eqSounding ? android.view.View.VISIBLE : android.view.View.GONE);
+                eqBars.setPlaying(eqSounding && AudioService.livePlaying);
+            }
             // v5.77: held-row wash (see the ✋ mark above) — on the
             // row root, so the glass card itself is untouched, and
             // reset to TRANSPARENT on every bind, so the wash can

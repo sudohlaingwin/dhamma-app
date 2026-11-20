@@ -2700,7 +2700,28 @@ public class RoomActivity extends Activity {
     // sayadawName changes while resumed. No activity reference is
     // kept — a name only, so a finished Room leaves nothing behind.
     public static volatile String topRoomSayadaw = null;
+    // v15.29 (slice 1815): how many Room instances are alive in the
+    // back stack right now — onCreate increments, onDestroy
+    // decrements (a second Room can exist: Main/Settings strip taps
+    // carry no CLEAR_TOP flags). The Talks/Main strip taps carry
+    // CLEAR_TOP|SINGLE_TOP (v11.86/v13.72), so a tap while a Room is
+    // alive re-delivers into it via onNewIntent — no transition runs
+    // for a re-delivery, so those taps keep plain Fx.go and only a
+    // tap with no Room alive takes the shared-element open. A stale
+    // true here only ever falls back to the old nav fade, never to
+    // a snap; the counter floors at 0 so a double-destroy cannot
+    // drive it negative.
+    private static volatile int roomInstanceCount = 0;
+    public static boolean roomInStack() { return roomInstanceCount > 0; }
     private boolean roomResumed = false;
+    // v15.29 (slice 1815): this Room was opened with the shared-
+    // element transition (Fx.goShared from a strip tap) — its Back
+    // must finishAfterTransition() so the portrait shrinks back
+    // into the strip, instead of the plain nav fade. Updated in
+    // onNewIntent: a plain re-delivery (CLEAR_TOP tap, notification
+    // tap) clears it, so Back after a re-delivery takes the plain
+    // path again.
+    private boolean sharedPhotoOpen = false;
     // v5.38: key of the portrait already bound to roomSayadawPhoto —
     // the header text is set from several paths (create, sayadaw
     // switch, rotation), but the portrait must load only when its
@@ -8109,6 +8130,41 @@ if (snd68 >= 0) currentIndex = snd68;
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_room);
+        roomInstanceCount++;
+        // v15.29 (slice 1815): shared-element open — the strip photo
+        // grows into the header portrait. The window transitions live
+        // only on this instance and only on a shared open: the
+        // shared-element set (ChangeBounds + ChangeTransform +
+        // ChangeImageTransform + ChangeClipBounds, 300ms, the
+        // framework's standard "move") grows the 44dp strip circle
+        // into the 48dp header portrait, while a 250ms Fade owns the
+        // rest of the screen (the Room's own v2.15 entrance still
+        // pours the panel inside it; the portrait itself has no
+        // competing alpha animation on a fresh open — first bind is
+        // excluded from the v14.52 pour and ImageLoader sets the
+        // cached portrait synchronously, so the snapshot hands over
+        // to the real view with no pop). Plain opens keep the stock
+        // nav_in/nav_out: no transitions are set here unless the
+        // intent carries sharedPhoto, and window content transitions
+        // are enabled theme-wide (AppTheme) so the caller's strip
+        // photo hides during the flight.
+        sharedPhotoOpen = getIntent().getBooleanExtra("sharedPhoto", false);
+        if (sharedPhotoOpen) {
+            android.transition.TransitionSet sharedMove =
+                    new android.transition.TransitionSet();
+            sharedMove.addTransition(new android.transition.ChangeBounds());
+            sharedMove.addTransition(new android.transition.ChangeTransform());
+            sharedMove.addTransition(new android.transition.ChangeImageTransform());
+            sharedMove.addTransition(new android.transition.ChangeClipBounds());
+            sharedMove.setDuration(300);
+            sharedMove.setInterpolator(new android.view.animation.DecelerateInterpolator());
+            getWindow().setSharedElementEnterTransition(sharedMove);
+            getWindow().setSharedElementReturnTransition(sharedMove);
+            android.transition.Fade roomFade = new android.transition.Fade();
+            roomFade.setDuration(250);
+            getWindow().setEnterTransition(roomFade);
+            getWindow().setReturnTransition(roomFade);
+        }
         // v13.07: the altar is dark in both themes — dark system bars always.
         Fx.applySystemBars(this, true);
         // v13.03: real liquid glass on the bottom panel — the altar
@@ -11377,6 +11433,10 @@ if (snd67q >= 0) currentIndex = snd67q;
         // intent first (no later code re-reads getIntent() today, so this is hygiene).
         if (intent == null) return;
         setIntent(intent);
+        // v15.29 (slice 1815): a re-delivery carries no shared
+        // transition (CLEAR_TOP tap, notification tap) — Back after
+        // it takes the plain nav fade again, not the shared return.
+        sharedPhotoOpen = intent.getBooleanExtra("sharedPhoto", false);
         // v1.70: notification Next while this Room already sits on
         // top — advance in place instead of stacking a second Room.
         // v4.23: Previous takes the same path (same sayadaw-switch
@@ -12474,6 +12534,12 @@ if (snd67q >= 0) currentIndex = snd67q;
         // and the drawer close button already do. No transition here:
         // the Room stays put, only the sheet goes away.
         if (isPlayListPanelOpen()) { setPlayListPanel(false); return; }
+        // v15.29 (slice 1815): a shared-element open returns the
+        // same way — the portrait shrinks back into the strip
+        // (finishAfterTransition runs the shared-element return +
+        // the window return Fade). A plain open keeps the stock
+        // nav fade. The drawer branch above already returned.
+        if (sharedPhotoOpen) { finishAfterTransition(); return; }
         super.onBackPressed();
         overridePendingTransition(R.anim.nav_in, R.anim.nav_out);
     }
@@ -14165,7 +14231,8 @@ if (snd67q >= 0) currentIndex = snd67q;
                     // v14.32 (slice 1687): the tile used to snap on a sounding flip — the 500ms poll rebinds the drawer on a resync (currentIndex = resync59 + notifyDataSetChanged) and every open/queue/download rebind re-set the background in one frame, so a talk advancing, ending or handing over with the drawer open flashed the gold tile from one row to the next. It now crossfades through the v14.31 helper (same TransitionDrawable model: 250ms, crossFade on, recorded target, no-op when unchanged, instant seed on a fresh view) — the ▸/★/✓/⬇ marks and the gold name stay instant per the v14.16 settled decision.
                     android.view.View fRowCard = v.findViewById(R.id.rowCard);
                     if (fRowCard != null) Fx.crossfadeCardTile(fRowCard, fSounding ? R.drawable.drawer_row_playing : R.drawable.drawer_row);
-                    if (fHeld) v.setBackgroundColor(0x33C9A227);
+                    // v15.29 (slice 1808): the held wash melts in/out through Fx.crossfadeHeldWash instead of snapping — the ✋ prefix above stays instant per the v14.16 settled decision.
+                    Fx.crossfadeHeldWash(v, fHeld);
                     if (fPlayed && !fSounding && fTitle != null) fTitle.setAlpha(0.6f);
                     // v13.98 (slice 1093): paint the hairline — the track is GONE unless this bind set a fraction above. Weight-split fill / spacer, no measuring, no post-layout pass.
                     // v15.26 (slice 1789): the hairline melts in/out instead of popping — the v14.31 card-crossfade fix, now on the drawer's gold line: the 500ms poll rebinds the drawer on a resync and every open/queue/download rebind re-painted in one frame (setVisibility), so a talk advancing, ending or handing over with the drawer open flashed its line in while the gold card beside it crossfades (v14.32) and the strip and clock melt. Fx.crossfadeHairline (250ms, DecelerateInterpolator, recorded shown state, instant seed on a fresh view) owns the track from here; the fill/space weight split below stays an instant layout update (a progress value, not an appearance change), and the ▶/✓ marks + title dim stay instant per the v14.16 settled decision. No top-of-bind reset any more (the v13.98 reset moved to the stale-slot return below) — the paint is the sole writer on a content bind.
@@ -14446,7 +14513,8 @@ if (snd67q >= 0) currentIndex = snd67q;
             android.view.View rowCard = v.findViewById(R.id.rowCard);
             if (rowCard != null) Fx.crossfadeCardTile(rowCard, rowPlaying116 ? R.drawable.drawer_row_playing : R.drawable.drawer_row);
             // v4.92: held-row wash (see the ✋ mark above).
-            if (held) v.setBackgroundColor(0x33C9A227);
+            // v15.29 (slice 1808): the wash melts in/out through Fx.crossfadeHeldWash instead of snapping — the ✋ prefix stays instant per the v14.16 settled decision, like the ▸/★/✓/⬇ marks beside it.
+            Fx.crossfadeHeldWash(v, held);
             // v4.12: listened talks sit dimmer in the queue (Spotify
             // queue pattern: heard = quieter, unheard = full white),
             // so the next unheard talk stands out at a glance. The
@@ -15596,6 +15664,9 @@ if (snd67q >= 0) currentIndex = snd67q;
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        // v15.29 (slice 1815): this Room leaves the back stack —
+        // see roomInstanceCount.
+        if (roomInstanceCount > 0) roomInstanceCount--;
         // v13.08: detach the liquid-glass panel — the drawable is the
         // view's background and its callback pins the dead view + its
         // destroyed activity in GlassBlur's static map on every

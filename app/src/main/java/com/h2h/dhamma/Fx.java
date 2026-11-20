@@ -137,6 +137,47 @@ public class Fx {
         a.overridePendingTransition(R.anim.nav_in, R.anim.nav_out);
     }
 
+    // v15.29 (slice 1815): shared-element open — the mini-player
+    // strip photo grows into the Room header portrait (the Spotify /
+    // YouTube Music / Apple Music now-playing open). The strip and
+    // the Room load the SAME sayadaw portrait through ImageLoader
+    // (memory-cache hit, set synchronously in load()), so the
+    // framework snapshot and the Room's real view show the same
+    // face and there is no pop at the handover. The transition
+    // name below must match the android:transitionName on
+    // nowStripPhoto (all six strip layouts) and roomSayadawPhoto
+    // (activity_room.xml) — the sim pins the parity.
+    // Falls back to plain go() when the shared view is missing,
+    // hidden, not laid out yet, or detached (a resume strip with
+    // no photo, a tap mid-rebind) — a shared open must never be
+    // the reason a Room fails to open. Never calls
+    // overridePendingTransition: the override would replace the
+    // window animation the shared-element transition needs, so a
+    // shared open gets no nav_in/nav_out — the Room's own window
+    // enter Fade (set in RoomActivity when sharedPhoto) owns the
+    // rest of the screen. A startActivity throw after the options
+    // are built falls back to go() so the Room still opens.
+    public static final String SHARED_PHOTO_NAME = "roomSayadawPhoto";
+
+    public static void goShared(Activity a, Intent i, View shared) {
+        if (a == null || i == null) { return; }
+        if (shared == null || shared.getVisibility() != View.VISIBLE
+                || shared.getWidth() == 0 || shared.getHeight() == 0
+                || !shared.isAttachedToWindow()) {
+            go(a, i);
+            return;
+        }
+        i.putExtra("sharedPhoto", true);
+        try {
+            android.app.ActivityOptions opts =
+                    android.app.ActivityOptions.makeSceneTransitionAnimation(
+                            a, shared, SHARED_PHOTO_NAME);
+            a.startActivity(i, opts.toBundle());
+        } catch (Exception e) {
+            go(a, i);
+        }
+    }
+
     // v2.09: premium morph — the same squash + overshoot the Room
     // play button has used since v2.07, now shared so the Next
     // button morphs on every advance instead of only squashing
@@ -995,6 +1036,117 @@ public class Fx {
         }
     }
 
+    // v15.29 (slice 1808): the held-row gold wash melts in/out
+    // instead of snapping — the last still state arrival in the
+    // Room drawer: arming a pick-up/drop move (grip tap, dialog
+    // "move") rebinds and the picked-up row's wash (v4.92, the
+    // ✋ mark + 0x33C9A227 gold wash) used to land in one frame,
+    // while every surface beside it already melts (tile v14.32,
+    // hairline v15.25, clock v15.26, grip v15.26) and the drop
+    // landing fades (v14.46). Fx.crossfadeHeldWash (250ms,
+    // DecelerateInterpolator, recorded target, instant seed on a
+    // fresh view) owns the row root's background from here; the
+    // ✋ prefix + ◈/★/⬇/✓ marks stay instant per the v14.16
+    // settled decision. Same WeakHashMap discipline as
+    // crossfadeImageTint: a recorded target per row view makes
+    // the 500ms poll's rebind a repaint, not a re-melt; a
+    // mid-melt re-target cancels the in-flight animator and melts
+    // from the last painted alpha; the end stamps the exact
+    // target only while its animator is still current. Two
+    // differences from the tint helper, both forced by the wash
+    // living on the row root's background: the top-of-bind reset
+    // (RoomActivity, TRANSPARENT at the top of every bind) wipes
+    // the background before this call, so the steady-state branch
+    // must RE-PAINT — the target colour when no melt runs, the
+    // current interpolated colour while one does (no flicker, no
+    // restart) — and only the alpha animates (ofInt 0<->51, RGB
+    // fixed C9A227), so a half-melted wash is the same gold at
+    // half strength, never a darkened blend. The drop fade
+    // (v14.46, row alpha) and the rank-close glide (v15.20,
+    // translationY) live on other channels, so a wash melting out
+    // on the dropped row never fights either. No new view, no
+    // layout change, no speed-row touch.
+    private static java.util.WeakHashMap<View, Integer> washTarget =
+            new java.util.WeakHashMap<View, Integer>();
+    private static java.util.WeakHashMap<View, android.animation.ValueAnimator> washAnim =
+            new java.util.WeakHashMap<View, android.animation.ValueAnimator>();
+    private static java.util.WeakHashMap<View, Integer> washCurrent =
+            new java.util.WeakHashMap<View, Integer>();
+    private static final int WASH_HELD = 0x33C9A227;
+    public static void crossfadeHeldWash(final View row, final boolean held) {
+        if (row == null) return;
+        final int toColor = held ? WASH_HELD : android.graphics.Color.TRANSPARENT;
+        Integer cur = washTarget.get(row);
+        if (cur != null && cur.intValue() == toColor) {
+            // Steady state — but the top-of-bind reset just wiped
+            // the background, so re-paint: the target colour when
+            // no melt runs, the current interpolated colour while
+            // one does (the animator repaints on its next frame;
+            // this keeps the frame between reset and frame
+            // continuous). Never restarts the melt.
+            android.animation.ValueAnimator live = washAnim.get(row);
+            if (live != null) {
+                Integer now = washCurrent.get(row);
+                if (now != null) row.setBackgroundColor(now.intValue());
+            } else {
+                row.setBackgroundColor(toColor);
+            }
+            return;
+        }
+        washTarget.put(row, toColor);
+        android.animation.ValueAnimator old = washAnim.get(row);
+        washAnim.remove(row);
+        if (old != null) old.cancel();
+        Integer fromBox = washCurrent.get(row);
+        if (fromBox == null) {
+            // Fresh view: instant seed, like the other helpers —
+            // a first bind (or a rotation's new views) paints the
+            // final wash at once, never melts in from nothing.
+            washCurrent.put(row, toColor);
+            row.setBackgroundColor(toColor);
+            return;
+        }
+        final int fromAlpha = android.graphics.Color.alpha(fromBox.intValue());
+        final int toAlpha = android.graphics.Color.alpha(toColor);
+        if (fromAlpha == toAlpha) {
+            washCurrent.put(row, toColor);
+            row.setBackgroundColor(toColor);
+            return;
+        }
+        final android.animation.ValueAnimator anim =
+                android.animation.ValueAnimator.ofInt(fromAlpha, toAlpha);
+        anim.setDuration(250);
+        anim.setInterpolator(new DecelerateInterpolator());
+        washAnim.put(row, anim);
+        anim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                int al = ((Integer) a.getAnimatedValue()).intValue();
+                int c = android.graphics.Color.argb(al, 0xC9, 0xA2, 0x27);
+                washCurrent.put(row, c);
+                row.setBackgroundColor(c);
+            }
+        });
+        anim.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                // cancel() fires onAnimationEnd too: only the
+                // still-current animator may stamp the exact target —
+                // a superseded one must never paint its stale wash
+                // over a newer melt.
+                if (washAnim.get(row) == anim) {
+                    washCurrent.put(row, toColor);
+                    row.setBackgroundColor(toColor);
+                    washAnim.remove(row);
+                }
+            }
+        });
+        // Paint the starting alpha at once: the top-of-bind reset
+        // just wiped the background, so without this the row shows
+        // no wash until the animator's first frame (~16ms) — a
+        // one-frame blink on every re-target.
+        row.setBackgroundColor(fromBox.intValue());
+        anim.start();
+    }
+
     // v15.27 (slice 1794): the Settings Wi-Fi auto-download "check
     // now" gold action line melts in/out instead of popping when
     // the toggle flips — the Settings notes all melt already (size
@@ -1424,6 +1576,161 @@ public class Fx {
                 return false;
             }
         });
+    }
+
+    // v15.29 (slice 1812): swipe the mini-player strip to skip —
+    // the strip is the one playback surface with no gesture: the
+    // Room altar already swipes left/right to change talk (v4.14)
+    // and up/down for the drawer (v4.16), but on Main/Talks/
+    // Library/Settings the only way to advance was the ⏭/⏮
+    // buttons — the Spotify / YouTube Music / Apple Music mini-
+    // player swipe (left = next, right = previous, same 100dp
+    // threshold and direction as the Room) was missing. This
+    // helper replaces Fx.press on the four live strips and owns
+    // the strip container's touch stream from DOWN (the Room
+    // v4.14 pattern — the container's background is the plain
+    // nav_glass layer-list, no pressed-state ripple to lose, and
+    // the ⏮/⏯/⏭ buttons keep their own streams, so owning the
+    // container's stream cannot steal a button tap): DOWN
+    // squashes 0.96 over 110ms (the Fx.press beat) and arms the
+    // long-press at the platform timeout; MOVE past 100dp
+    // horizontal (and dominant) arms the fling and releases the
+    // squash; UP fires it through the button's own performClick
+    // — the Next/Prev click guards ride along for free (resume
+    // mode resumes the saved talk instead of advancing, the live
+    // path ACTION_NEXTs into the Room, morph + tap sound
+    // included), so a swipe can never do what the button would
+    // not. A tap (<12dp) still performClicks the strip (opens
+    // the Room / resumes), a hold still performLongClicks it
+    // (stop/dismiss) — both re-dispatched, never re-implemented
+    // — and a move past the 12dp tap slop cancels the hold, so
+    // a slow drag can never stop the session. The sub line is
+    // clickable (clock flip, v5.33), so its touches never reach
+    // the container: it gets a fling-only listener that returns
+    // false until the swipe threshold, so the clock flip, the
+    // sub long-press forward and the slop-cancelled hold all
+    // behave exactly as before, and only a real fling is
+    // consumed (pressed cleared, no flip). The progress bar
+    // keeps miniSeekBar (v4.73) — a fling starting on the bar
+    // still seeks. History/Playlist strips are dormant (no
+    // entry point) and keep plain Fx.press. No new view, no
+    // layout change, no speed-row touch.
+    public static void stripSwipe(final View strip) {
+        if (strip == null) return;
+        strip.setOnTouchListener(new View.OnTouchListener() {
+            float downX, downY;
+            boolean downActive = false;
+            boolean longFired = false;
+            boolean flung = false;
+            int flingDir = 0; // -1 = left = next, +1 = right = prev (Room v4.14)
+            Runnable pendingLongPress = null;
+            @Override public boolean onTouch(final View v, MotionEvent e) {
+                float density = v.getResources().getDisplayMetrics().density;
+                switch (e.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        downX = e.getX(); downY = e.getY();
+                        downActive = true; longFired = false; flung = false; flingDir = 0;
+                        pressScale(v, 0.96f, 110, new DecelerateInterpolator());
+                        pendingLongPress = new Runnable() {
+                            @Override public void run() {
+                                if (!downActive || longFired || flung) return;
+                                longFired = true;
+                                v.performLongClick();
+                            }
+                        };
+                        v.postDelayed(pendingLongPress, android.view.ViewConfiguration.getLongPressTimeout());
+                        return true;
+                    case MotionEvent.ACTION_MOVE:
+                        if (!flung && Math.abs(e.getX() - downX) > 100f * density
+                                && Math.abs(e.getX() - downX) > Math.abs(e.getY() - downY)) {
+                            flung = true;
+                            flingDir = (e.getX() - downX) < 0 ? -1 : +1;
+                            if (pendingLongPress != null) v.removeCallbacks(pendingLongPress);
+                            pressScale(v, 1f, 180, new OvershootInterpolator(1.4f));
+                        } else if (downActive && (Math.abs(e.getX() - downX) > 12f * density
+                                || Math.abs(e.getY() - downY) > 12f * density)) {
+                            downActive = false;
+                            if (pendingLongPress != null) v.removeCallbacks(pendingLongPress);
+                        }
+                        return true;
+                    case MotionEvent.ACTION_UP: {
+                        downActive = false;
+                        if (pendingLongPress != null) v.removeCallbacks(pendingLongPress);
+                        pressScale(v, 1f, 180, new OvershootInterpolator(1.4f));
+                        if (longFired) return true;
+                        if (flung) {
+                            fireStripSkip(strip, flingDir);
+                            return true;
+                        }
+                        float dx = e.getX() - downX, dy = e.getY() - downY;
+                        if (Math.abs(dx) < 12f * density && Math.abs(dy) < 12f * density) {
+                            v.performClick();
+                        }
+                        return true;
+                    }
+                    case MotionEvent.ACTION_CANCEL:
+                        downActive = false;
+                        if (pendingLongPress != null) v.removeCallbacks(pendingLongPress);
+                        pressScale(v, 1f, 180, new OvershootInterpolator(1.4f));
+                        return true;
+                }
+                return true;
+            }
+        });
+        // The sub line (v5.33 clock flip) is clickable, so its
+        // touches never reach the container listener above — a
+        // swipe starting on the sayadaw/clock line would do
+        // nothing. A fling-only listener here: false until the
+        // swipe threshold, so the tap (clock flip), the long-
+        // press forward to the strip and the slop-cancelled hold
+        // all behave exactly as before; only a real fling is
+        // consumed (pressed cleared so no ghost state, no flip).
+        final View sub = strip.findViewById(R.id.nowStripSub);
+        if (sub != null) {
+            sub.setOnTouchListener(new View.OnTouchListener() {
+                float downX, downY;
+                boolean flung = false;
+                int flingDir = 0;
+                @Override public boolean onTouch(View view, MotionEvent e) {
+                    float density = view.getResources().getDisplayMetrics().density;
+                    switch (e.getActionMasked()) {
+                        case MotionEvent.ACTION_DOWN:
+                            downX = e.getX(); downY = e.getY();
+                            flung = false; flingDir = 0;
+                            return false;
+                        case MotionEvent.ACTION_MOVE:
+                            if (!flung && Math.abs(e.getX() - downX) > 100f * density
+                                    && Math.abs(e.getX() - downX) > Math.abs(e.getY() - downY)) {
+                                flung = true;
+                                flingDir = (e.getX() - downX) < 0 ? -1 : +1;
+                                view.setPressed(false);
+                            }
+                            return flung;
+                        case MotionEvent.ACTION_UP:
+                            if (flung) {
+                                fireStripSkip(strip, flingDir);
+                                return true;
+                            }
+                            return false;
+                        case MotionEvent.ACTION_CANCEL:
+                            flung = false;
+                            return false;
+                    }
+                    return false;
+                }
+            });
+        }
+    }
+
+    // v15.29 (slice 1812): the swipe's landing — through the
+    // strip's own Next/Prev buttons (see stripSwipe), never a
+    // parallel skip path: resume mode resumes, live mode
+    // ACTION_NEXTs/PREVs into the player, exactly as a button
+    // tap would.
+    private static void fireStripSkip(final View strip, final int dir) {
+        if (strip == null) return;
+        View btn = strip.findViewById(dir < 0 ? R.id.nowStripNext : R.id.nowStripPrev);
+        if (btn != null) btn.performClick();
     }
 
     // v4.73: seekable mini-player progress bar — every now-playing

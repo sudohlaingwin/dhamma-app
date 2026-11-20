@@ -62,7 +62,8 @@
                     android:id="@+id/roomSayadawPhoto"
                     android:layout_width="48dp"
                     android:layout_height="48dp"
-                    android:layout_gravity="center" />
+                    android:layout_gravity="center"
+                    android:transitionName="roomSayadawPhoto" />
             </FrameLayout>
                 <TextView
                     android:id="@+id/roomSayadaw"

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v15.29 (slice 1811): premium AlertDialog entrance — fade + slight
+     scale-in, eased. The app's own entrance rhythm (nav_in 300ms /
+     Dev Profile pour 280ms), a touch quicker at 250ms so a confirm
+     dialog never feels slow. Wired through DhammaAlertDialog's
+     windowAnimationStyle in styles.xml, so every AlertDialog in the
+     app (31 Builder sites) enters the same way with no per-site code. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:anim/decelerate_interpolator">
+    <alpha
+        android:fromAlpha="0.0"
+        android:toAlpha="1.0"
+        android:duration="250" />
+    <scale
+        android:fromXScale="0.96"
+        android:toXScale="1.0"
+        android:fromYScale="0.96"
+        android:toYScale="1.0"
+        android:pivotX="50%"
+        android:pivotY="50%"
+        android:duration="250" />
+</set>

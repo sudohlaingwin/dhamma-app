@@ -28,6 +28,17 @@
             android:layout_gravity="center_vertical"
             android:textColor="@color/gold"
             android:textSize="14sp" />
+        <!-- v15.29 (slice 1813): the sounding row's EQ bars — the
+             Spotify / YouTube Music / Apple Music now-playing
+             indicator, in the 48dp number slot: the number hides
+             while its talk sounds and the bars dance (TalksActivity
+             getView owns the swap). GONE unless sounding. -->
+        <com.h2h.dhamma.EqBarsView
+            android:id="@+id/eqBars"
+            android:layout_width="48dp"
+            android:layout_height="18dp"
+            android:layout_gravity="center_vertical"
+            android:visibility="gone" />
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"

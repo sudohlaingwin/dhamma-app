@@ -2251,7 +2251,7 @@ public class MainActivity extends Activity {
         // long-press stops the session outright.
         android.view.View nowStrip = findViewById(R.id.nowStrip);
         if (nowStrip != null) {
-            Fx.press(nowStrip);
+            Fx.stripSwipe(nowStrip);
             // v4.73: the strip's progress bar seeks (see Fx.miniSeekBar).
             Fx.miniSeekBar(MainActivity.this, nowStrip);
             // v5.33: tap the strip's sub line (sayadaw + clock) flips
@@ -2339,7 +2339,17 @@ public class MainActivity extends Activity {
                     i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
                     Fx.tap(MainActivity.this);
                     Fx.morph(v);
-                    Fx.go(MainActivity.this, i);
+                    // v15.29 (slice 1815): shared-element open — the strip
+                    // photo grows into the Room header portrait, but only
+                    // when no Room is alive in the stack: with CLEAR_TOP
+                    // the tap re-delivers into the existing Room via
+                    // onNewIntent, and no transition runs for a
+                    // re-delivery, so that path keeps the plain nav fade
+                    // (RoomActivity.roomInStack). A fresh Room takes the
+                    // shared open; Fx.goShared falls back to Fx.go
+                    // itself when the photo is hidden or not laid out.
+                    if (RoomActivity.roomInStack()) Fx.go(MainActivity.this, i);
+                    else Fx.goShared(MainActivity.this, i, findViewById(R.id.nowStripPhoto));
                 }
             });
             nowStrip.setOnLongClickListener(new View.OnLongClickListener() {

@@ -3925,7 +3925,7 @@ public class DownloadedActivity extends Activity {
     private void wireDlStrip() {
         android.view.View nowStrip = findViewById(R.id.nowStrip);
         if (nowStrip != null) {
-            Fx.press(nowStrip);
+            Fx.stripSwipe(nowStrip);
             // v4.73: the strip's progress bar seeks (see Fx.miniSeekBar).
             Fx.miniSeekBar(DownloadedActivity.this, nowStrip);
             // v5.33: tap the strip's sub line (sayadaw + clock) flips
@@ -4017,7 +4017,13 @@ public class DownloadedActivity extends Activity {
                     i.putExtra("autoTitle", sp.getString("lastTitle", ""));
                     Fx.tap(DownloadedActivity.this);
                     Fx.morph(v);
-                    Fx.go(DownloadedActivity.this, i);
+                    // v15.29 (slice 1815): shared-element open — the strip
+                    // photo grows into the Room header portrait. This tap
+                    // carries no CLEAR_TOP flags, so it always creates a
+                    // fresh Room and always takes the shared open;
+                    // Fx.goShared falls back to Fx.go itself when the
+                    // photo is hidden or not laid out.
+                    Fx.goShared(DownloadedActivity.this, i, findViewById(R.id.nowStripPhoto));
                 }
             });
             nowStrip.setOnLongClickListener(new View.OnLongClickListener() {

@@ -792,7 +792,7 @@ public class SettingsActivity extends Activity {
         // clobber the strip's colours or glyph.
         android.view.View settingsStrip = findViewById(R.id.nowStrip);
         if (settingsStrip != null) {
-            Fx.press(settingsStrip);
+            Fx.stripSwipe(settingsStrip);
             // v4.73: the strip's progress bar seeks (see Fx.miniSeekBar).
             Fx.miniSeekBar(SettingsActivity.this, settingsStrip);
             // v5.33: tap the strip's sub line (sayadaw + clock) flips
@@ -885,7 +885,13 @@ public class SettingsActivity extends Activity {
                     i.putExtra("autoTitle", sp.getString("lastTitle", ""));
                     Fx.tap(SettingsActivity.this);
                     Fx.morph(v);
-                    Fx.go(SettingsActivity.this, i);
+                    // v15.29 (slice 1815): shared-element open — the strip
+                    // photo grows into the Room header portrait. This tap
+                    // carries no CLEAR_TOP flags, so it always creates a
+                    // fresh Room and always takes the shared open;
+                    // Fx.goShared falls back to Fx.go itself when the
+                    // photo is hidden or not laid out.
+                    Fx.goShared(SettingsActivity.this, i, findViewById(R.id.nowStripPhoto));
                 }
             });
             settingsStrip.setOnLongClickListener(new View.OnLongClickListener() {
@@ -1211,11 +1217,15 @@ android.view.View settingsStripPrev = findViewById(R.id.nowStripPrev);
         // pour — the pop-up is the app's only custom Dialog (the
         // rest are AlertDialog.Builder; UpdateChecker's is a
         // fullscreen blocking gate, not a showcase card) and it
-        // used to appear in one frame: no window animation is set
-        // anywhere (no setWindowAnimations call, no theme override
-        // — AppTheme sets no windowAnimationStyle), so the photo
-        // card just landed while its own x already presses (v15.27
-        // piece 2/5) and its FB icon already morphs. The card now
+        // used to appear in one frame: no window animation was set
+        // anywhere then (no setWindowAnimations call, no theme
+        // override). v15.29 (slice 1811) gave the AlertDialogs
+        // their entrance through the theme (DhammaAlertDialog in
+        // styles.xml), but this is a plain Dialog, so it still
+        // pours with its own animator below, exactly as before.
+        // The photo card just landed while its own x already
+        // presses (v15.27 piece 2/5) and its FB icon already
+        // morphs. The card now
         // pours in with the app's own entrance rhythm (280ms, the
         // v2.07 grid-entrance duration): alpha 0 -> 1 and scale
         // 0.96 -> 1, DecelerateInterpolator, ending at exactly

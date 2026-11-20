@@ -6,5 +6,38 @@
         <item name="android:colorAccent">@color/gold</item>
         <item name="android:windowBackground">@color/bg</item>
         <item name="android:textColorPrimary">@color/ink</item>
+        <!-- v15.29 (slice 1811): every AlertDialog enters/exits with
+             the app's own motion (dlg_in/dlg_out) instead of the
+             platform snap — see DhammaAlertDialog below. -->
+        <item name="android:alertDialogTheme">@style/DhammaAlertDialog</item>
+        <!-- v15.29 (slice 1815): shared-element open — the transition
+             framework needs window content transitions enabled or the
+             strip photo cannot grow into the Room portrait (see
+             Fx.goShared). Flag only: no window enter/exit/shared
+             transitions are set here, so every plain Fx.go/Fx.back
+             navigation keeps its nav_in/nav_out exactly; the Room
+             sets its own window transitions only on a shared open. -->
+        <item name="android:windowContentTransitions">true</item>
+    </style>
+
+    <!-- v15.29 (slice 1811): the dialog window's enter/exit
+         animation — 250ms fade + 0.96->1 scale in, 200ms fade +
+         1->0.98 scale out, DecelerateInterpolator, the same rhythm
+         as nav_in/nav_out and the Dev Profile pour. -->
+    <style name="DhammaDialogAnimation">
+        <item name="android:windowEnterAnimation">@anim/dlg_in</item>
+        <item name="android:windowExitAnimation">@anim/dlg_out</item>
+    </style>
+
+    <!-- v15.29 (slice 1811): the AlertDialog theme — the parent is
+         exactly the framework default the 1-arg Builder resolved
+         before (Theme.Material.Light.Dialog.Alert), so buttons,
+         colours and layout are byte-for-byte what they were; the
+         ONLY override is windowAnimationStyle. The UpdateChecker
+         fullscreen gate and the Dev Profile custom Dialog are plain
+         android.app.Dialogs, not AlertDialogs, so neither is
+         touched by this. -->
+    <style name="DhammaAlertDialog" parent="@android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:windowAnimationStyle">@style/DhammaDialogAnimation</item>
     </style>
 </resources>

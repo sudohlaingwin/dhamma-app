@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v15.29 (slice 1811): premium AlertDialog exit — fade + a
+     barely-there shrink, quicker than the entrance (200ms vs 250ms)
+     so a dismissal never lingers. Paired with dlg_in through
+     DhammaAlertDialog's windowAnimationStyle in styles.xml. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:anim/decelerate_interpolator">
+    <alpha
+        android:fromAlpha="1.0"
+        android:toAlpha="0.0"
+        android:duration="200" />
+    <scale
+        android:fromXScale="1.0"
+        android:toXScale="0.98"
+        android:fromYScale="1.0"
+        android:toYScale="0.98"
+        android:pivotX="50%"
+        android:pivotY="50%"
+        android:duration="200" />
+</set>
