@@ -159,7 +159,44 @@ public class Fx {
     // are built falls back to go() so the Room still opens.
     public static final String SHARED_PHOTO_NAME = "roomSayadawPhoto";
 
+    // v15.30 (slice 1816): second shared-element pair — the Main
+    // grid photo grows into the Talks chooser header portrait.
+    // Same model as the strip->Room pair above (the same portrait
+    // through ImageLoader, memory-cache hit, set synchronously),
+    // but a different transition name: the grid photo and the
+    // Talks header portrait share "talksSayadawPhoto", while the
+    // strips and the Room share "roomSayadawPhoto". Two names
+    // because both pairs can be live in one back stack (a grid
+    // under a chooser under a Room) and a name must identify one
+    // pair. The sim pins the parity.
+    public static final String SHARED_TALKS_PHOTO_NAME = "talksSayadawPhoto";
+
+    // v15.30 (slice 1817): per-tap unique shared names — a shared-
+    // element transition needs a UNIQUE transition name: the
+    // framework maps shared elements by name, so an XML name shared
+    // by every grid row leaves it no way to know which row's photo
+    // flies (it takes the last row in traversal order — the wrong
+    // face — and the return has nowhere to land). The grid therefore
+    // never shares under a static name: each tap builds its own name
+    // from the pair base + the sayadaw's name (the stable identity
+    // across filtering and rebinding — a position would shift) and
+    // carries it in this extra, so the destination portrait takes
+    // the same name in onCreate and the return finds the same card.
+    // A null/empty key falls back to the bare base (never a crash);
+    // a strip open carries no extra and the Room keeps its XML name.
+    public static final String SHARED_PHOTO_NAME_EXTRA = "sharedPhotoName";
+
+    public static String sharedPhotoNameFor(String base, String key) {
+        if (base == null) base = "";
+        if (key == null || key.length() == 0) return base;
+        return base + "_" + key;
+    }
+
     public static void goShared(Activity a, Intent i, View shared) {
+        goSharedNamed(a, i, shared, SHARED_PHOTO_NAME);
+    }
+
+    public static void goSharedNamed(Activity a, Intent i, View shared, String name) {
         if (a == null || i == null) { return; }
         if (shared == null || shared.getVisibility() != View.VISIBLE
                 || shared.getWidth() == 0 || shared.getHeight() == 0
@@ -167,11 +204,20 @@ public class Fx {
             go(a, i);
             return;
         }
+        // v15.30 (slice 1817): the exit-side lookup is by NAME, so
+        // the source view must carry exactly the name passed here —
+        // a just-set name is read at transition start, which is what
+        // makes the per-tap unique names work. Set it here, in the
+        // one funnel every shared open uses, so no caller can pass a
+        // name its view does not carry. A strip tap passes the static
+        // name its photo already carries in XML, so this is a no-op
+        // there; a grid tap passes its per-tap name.
+        shared.setTransitionName(name);
         i.putExtra("sharedPhoto", true);
         try {
             android.app.ActivityOptions opts =
                     android.app.ActivityOptions.makeSceneTransitionAnimation(
-                            a, shared, SHARED_PHOTO_NAME);
+                            a, shared, name);
             a.startActivity(i, opts.toBundle());
         } catch (Exception e) {
             go(a, i);
@@ -954,6 +1000,59 @@ public class Fx {
             fadeIn(clock, 250);
         } else {
             fadeOut(clock, 250);
+        }
+    }
+
+    // v15.30 (slice 1819): the chooser EQ slot crossfades instead of
+    // snapping — the v15.24 card / v15.25 hairline / v15.26 clock melts,
+    // now on the last snap in the sounding-row transition: the 1s tick
+    // rebinds the chooser rows exactly when the sounding URL changes
+    // (v4.89/v7.44) and getView swapped the 48dp number slot in one
+    // frame (setVisibility), so a talk starting, stopping or
+    // auto-advancing flashed three gold bars in (or the number back)
+    // while the gold card beside it crossfades (v15.24), the hairline
+    // melts (v15.25) and the clock melts (v15.26). Fx.crossfadeEqSlot
+    // (250ms, DecelerateInterpolator, recorded shown state, instant
+    // seed on a fresh view) owns the slot from here: sounding melts
+    // the number out and the bars in; silent melts the bars out and
+    // the number in. The dance itself is untouched — setPlaying stays
+    // idempotent at the call site, and the bars keep dancing (or
+    // resting) under their own animator while their alpha melts; the
+    // ▶ prefix + gold name stay instant per the v14.16 settled
+    // decision. A repeated call for the state already showing is a
+    // no-op and never restarts the melt, and a mid-melt re-target
+    // starts from the alpha each view actually has (fadeIn / fadeOut
+    // bump the same fade gen, so a superseded fade-out end action
+    // can never GONE a just-re-shown view). The record is keyed on
+    // the bars view — one entry per row slot, and the two views are
+    // always driven together, so they can never disagree. The row's
+    // own pour (view Animation), press squash (scale) and delete
+    // fade (row alpha) all live on other views/channels — the slot
+    // children own only their own alpha, and getView writes no other
+    // visibility/alpha onto them, so there is no strand to move.
+    private static java.util.WeakHashMap<View, Boolean> eqSlotSounding =
+            new java.util.WeakHashMap<View, Boolean>();
+    public static void crossfadeEqSlot(final View number, final View eq, boolean sounding) {
+        if (number == null || eq == null) return;
+        Boolean cur = eqSlotSounding.get(eq);
+        if (cur == null) {
+            eqSlotSounding.put(eq, Boolean.valueOf(sounding));
+            number.setVisibility(sounding ? View.GONE : View.VISIBLE);
+            number.setAlpha(1f);
+            eq.setVisibility(sounding ? View.VISIBLE : View.GONE);
+            eq.setAlpha(1f);
+            return;
+        }
+        if (cur.booleanValue() == sounding) return;
+        eqSlotSounding.put(eq, Boolean.valueOf(sounding));
+        if (sounding) {
+            fadeOut(number, 250);
+            eq.setVisibility(View.VISIBLE);
+            fadeIn(eq, 250);
+        } else {
+            fadeOut(eq, 250);
+            number.setVisibility(View.VISIBLE);
+            fadeIn(number, 250);
         }
     }
 

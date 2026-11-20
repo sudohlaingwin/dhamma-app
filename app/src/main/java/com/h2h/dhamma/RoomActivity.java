@@ -8150,6 +8150,20 @@ if (snd68 >= 0) currentIndex = snd68;
         // photo hides during the flight.
         sharedPhotoOpen = getIntent().getBooleanExtra("sharedPhoto", false);
         if (sharedPhotoOpen) {
+            // v15.30 (slice 1817): a grid open carries its own
+            // per-tap name in the extra — the Room portrait takes
+            // that name so the framework matches it to the tapped
+            // card's photo (the strip pair's name stays unique in
+            // its own window and needs no rename). Set in onCreate,
+            // before the enter transition captures shared elements;
+            // the portrait's image bind below is untouched (a name
+            // is not a bitmap). A strip open carries no extra and
+            // keeps the XML name.
+            String sharedPhotoName = getIntent().getStringExtra(Fx.SHARED_PHOTO_NAME_EXTRA);
+            if (sharedPhotoName != null && sharedPhotoName.length() > 0) {
+                android.view.View sharedPv = findViewById(R.id.roomSayadawPhoto);
+                if (sharedPv != null) sharedPv.setTransitionName(sharedPhotoName);
+            }
             android.transition.TransitionSet sharedMove =
                     new android.transition.TransitionSet();
             sharedMove.addTransition(new android.transition.ChangeBounds());
@@ -14224,11 +14238,12 @@ if (snd67q >= 0) currentIndex = snd67q;
                             + (fPlayed && !fSounding ? "✓ " : "")
                             + (fe.title.length() > 0 ? fe.title : fe.url)
                             + fResume + " · " + fe.sayadaw);
-                    if (fTitle != null) fTitle.setTextColor(fSounding
+                    // v15.30 (slice 1820): the foreign-head row's title colour melts on the flip instead of snapping — the same last snap as the main drawer branch below (card v14.32, held wash v15.29): the 500ms poll rebinds the drawer on a resync, and this branch swapped the title colour in one frame (bare setTextColor) while the card beside it crossfades. Fx.crossfadeTextColor (v14.34 helper: 250ms ValueAnimator.ofArgb, recorded target, no-op when unchanged) owns the colour from here. The v14.16 settled decision does NOT bar this — no label is faded, only the text colour is interpolated (alpha stays 1, text unchanged), so the row cannot flash — the same distinction v14.34 drew for the sleep text and v14.62 for the nav tint. The ▸/★/✓/⬇ marks + title text stay instant.
+                    if (fTitle != null) Fx.crossfadeTextColor(fTitle, fSounding
                             ? android.graphics.Color.parseColor("#C9A227")
                             : android.graphics.Color.WHITE);
                     // v12.92: raised row tile — gold tile for the sounding row, glass tile otherwise; set on every bind so a recycled view never keeps a stale tile.
-                    // v14.32 (slice 1687): the tile used to snap on a sounding flip — the 500ms poll rebinds the drawer on a resync (currentIndex = resync59 + notifyDataSetChanged) and every open/queue/download rebind re-set the background in one frame, so a talk advancing, ending or handing over with the drawer open flashed the gold tile from one row to the next. It now crossfades through the v14.31 helper (same TransitionDrawable model: 250ms, crossFade on, recorded target, no-op when unchanged, instant seed on a fresh view) — the ▸/★/✓/⬇ marks and the gold name stay instant per the v14.16 settled decision.
+                    // v14.32 (slice 1687): the tile used to snap on a sounding flip — the 500ms poll rebinds the drawer on a resync (currentIndex = resync59 + notifyDataSetChanged) and every open/queue/download rebind re-set the background in one frame, so a talk advancing, ending or handing over with the drawer open flashed the gold tile from one row to the next. It now crossfades through the v14.31 helper (same TransitionDrawable model: 250ms, crossFade on, recorded target, no-op when unchanged, instant seed on a fresh view) — the ▸/★/✓/⬇ marks and the title text stay instant per the v14.16 settled decision (its colour melts, v15.30).
                     android.view.View fRowCard = v.findViewById(R.id.rowCard);
                     if (fRowCard != null) Fx.crossfadeCardTile(fRowCard, fSounding ? R.drawable.drawer_row_playing : R.drawable.drawer_row);
                     // v15.29 (slice 1808): the held wash melts in/out through Fx.crossfadeHeldWash instead of snapping — the ✋ prefix above stays instant per the v14.16 settled decision.
@@ -14505,11 +14520,12 @@ if (snd67q >= 0) currentIndex = snd67q;
             // playIdx71 untouched, as v11.15 did elsewhere.
             boolean rowPlaying116 = talkIdx == playIdx71 && !AudioService.liveEnded;
             if (titleView != null) titleView.setText((held ? "✋ " : "") + Fx.soundingRowMark(rowPlaying116, AudioService.liveTrackError, service != null && service.isBuffering() && !service.isHoldPaused() ? Lang.t(RoomActivity.this, "notif_state_buffering") : "", "\u23F8") + handMark + (fav ? "★ " : "") + (downloaded ? "⬇ " : "") + queueMark + (played && !rowPlaying116 ? "✓ " : "") + t.title + resumeMark);
-            if (titleView != null) titleView.setTextColor(rowPlaying116
+            // v15.30 (slice 1820): the sounding-row title colour melts on the flip instead of snapping — the last snap in the sounding-row transition (card v14.32, hairline v15.26, clock v15.26, held wash v15.29): the 500ms poll rebinds the drawer on a resync, and getView swapped the title colour in one frame (bare setTextColor), so a talk advancing, ending or handing over with the drawer open flashed the gold name in or out while the card beside it crossfades. Fx.crossfadeTextColor (v14.34 helper: 250ms ValueAnimator.ofArgb, recorded target, no-op when unchanged) owns the colour from here. The v14.16 settled decision does NOT bar this — its reason was that fading the whole label to ease a 2-char mark would flash the row; here no label is faded, only the text colour is interpolated (alpha stays 1, text unchanged), so the row cannot flash — the same distinction v14.34 drew for the sleep text and v14.62 for the nav tint. The ▶/★/✓/⬇ marks + title text stay instant; the listened dim (alpha, below) is untouched.
+            if (titleView != null) Fx.crossfadeTextColor(titleView, rowPlaying116
                     ? android.graphics.Color.parseColor("#C9A227")
                     : android.graphics.Color.WHITE);
             // v12.92: raised row tile — gold tile for the playing row, glass tile otherwise; set on every bind so a recycled view never keeps a stale tile.
-            // v14.32 (slice 1687): same crossfade as the foreign branch above — the tile used to snap on a sounding flip while the drawer sat open; now it melts through Fx.crossfadeCardTile (v14.31 helper: 250ms, crossFade on, recorded target, no-op when unchanged, instant seed on a fresh view). Marks and gold name stay instant per the v14.16 settled decision.
+            // v14.32 (slice 1687): same crossfade as the foreign branch above — the tile used to snap on a sounding flip while the drawer sat open; now it melts through Fx.crossfadeCardTile (v14.31 helper: 250ms, crossFade on, recorded target, no-op when unchanged, instant seed on a fresh view). Marks and title text stay instant per the v14.16 settled decision (its colour melts, v15.30).
             android.view.View rowCard = v.findViewById(R.id.rowCard);
             if (rowCard != null) Fx.crossfadeCardTile(rowCard, rowPlaying116 ? R.drawable.drawer_row_playing : R.drawable.drawer_row);
             // v4.92: held-row wash (see the ✋ mark above).

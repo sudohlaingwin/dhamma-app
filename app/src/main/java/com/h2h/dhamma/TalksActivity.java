@@ -1080,6 +1080,14 @@ public class TalksActivity extends Activity {
     // tap-to-top/long-press and the photo's ImageLoader bind are
     // untouched.
     private android.view.View talksHeaderPhotoRing = null;
+    // v15.30 (slice 1816): shared-element open from the Main grid
+    // — the grid photo grows into this chooser's header portrait.
+    // True only when the intent carries sharedPhoto (set by
+    // Fx.goSharedNamed on the grid tap); plain opens keep the
+    // stock nav fade and the header entrance. Read in onCreate;
+    // the window transitions and the entrance skip below both
+    // follow it.
+    private boolean sharedTalksPhotoOpen = false;
     private boolean lastChooserHeaderRing = false;
     // v14.07 (slice 1102): failed state the chooser header ring was
     // last bound against — the ring is three-state now (gold / red /
@@ -2331,7 +2339,47 @@ public class TalksActivity extends Activity {
         // Rotations (saved state) never replay it, and applyTheme()
         // below touches only colour/size, never alpha/translation,
         // so the entrance ends cleanly at full opacity.
-        if (savedInstanceState == null) Fx.entrance(findViewById(R.id.talksHeaderRow)); // v6.04: photo + title rise together
+        // v15.30 (slice 1816): shared-element open — the grid photo
+        // grows into the header portrait, so the window takes the
+        // standard Move set (300ms) for the photo and a Fade (250ms)
+        // for the rest of the screen, the Room pattern from slice
+        // 1815. The header-row entrance is SKIPPED on a shared open:
+        // Fx.entrance rises the whole row 24dp + fades it over
+        // 320ms, which would drag the shared photo off its flight
+        // path for the entire 300ms Move — the window Fade owns the
+        // header's arrival instead, and the title still fades in
+        // with it. Plain opens keep the entrance exactly as before.
+        sharedTalksPhotoOpen = getIntent().getBooleanExtra("sharedPhoto", false);
+        if (sharedTalksPhotoOpen) {
+            // v15.30 (slice 1817): the grid tap carries its own
+            // per-tap name in the extra — the header portrait takes
+            // that name so the framework matches it to the tapped
+            // card's photo instead of the last row's (every grid
+            // row shares the XML name). Set in onCreate, before the
+            // enter transition captures shared elements; the photo
+            // bind above is untouched (a name is not a bitmap). A
+            // plain open carries no extra and keeps the XML name.
+            String sharedPhotoName = getIntent().getStringExtra(Fx.SHARED_PHOTO_NAME_EXTRA);
+            if (sharedPhotoName != null && sharedPhotoName.length() > 0) {
+                android.view.View sharedHp = findViewById(R.id.talksHeaderPhoto);
+                if (sharedHp != null) sharedHp.setTransitionName(sharedPhotoName);
+            }
+            android.transition.TransitionSet sharedMove =
+                    new android.transition.TransitionSet();
+            sharedMove.addTransition(new android.transition.ChangeBounds());
+            sharedMove.addTransition(new android.transition.ChangeTransform());
+            sharedMove.addTransition(new android.transition.ChangeImageTransform());
+            sharedMove.addTransition(new android.transition.ChangeClipBounds());
+            sharedMove.setDuration(300);
+            sharedMove.setInterpolator(new android.view.animation.DecelerateInterpolator());
+            getWindow().setSharedElementEnterTransition(sharedMove);
+            getWindow().setSharedElementReturnTransition(sharedMove);
+            android.transition.Fade talksFade = new android.transition.Fade();
+            talksFade.setDuration(250);
+            getWindow().setEnterTransition(talksFade);
+            getWindow().setReturnTransition(talksFade);
+        }
+        if (savedInstanceState == null && !sharedTalksPhotoOpen) Fx.entrance(findViewById(R.id.talksHeaderRow)); // v6.04: photo + title rise together
         // v4.12: tap the sayadaw-name title to glide back to the top
         // of a long talk list (same tap-to-top as Main's app name).
         // No new view, no mark, rows stay number + title only; an
@@ -3444,6 +3492,12 @@ public class TalksActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        // v15.30 (slice 1816): a shared-element open returns the
+        // same way — the header portrait shrinks back into the
+        // grid photo (finishAfterTransition runs the
+        // shared-element return + the window return Fade). A plain
+        // open keeps the stock nav fade.
+        if (sharedTalksPhotoOpen) { finishAfterTransition(); return; }
         super.onBackPressed();
         overridePendingTransition(R.anim.nav_in, R.anim.nav_out);
     }
@@ -6463,7 +6517,8 @@ public class TalksActivity extends Activity {
             }
             int tf = cachedFont;
             if (titleView != null) titleView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, tf == 0 ? 14 : (tf == 1 ? 16 : 20));
-            if (titleView != null) titleView.setTextColor((rowPlaying || rowPlayingLib)
+            // v15.30 (slice 1820): the sounding-row title colour melts on the flip instead of snapping — the last snap in the sounding-row transition (card v15.24, hairline v15.25, clock v15.26, EQ slot v15.30): the 1s tick rebinds exactly when the sounding URL changes, and getView swapped the title colour in one frame (bare setTextColor), so a talk ending, stopping or auto-advancing flashed the gold name in or out while the card beside it crossfades. Fx.crossfadeTextColor (v14.34 helper: 250ms ValueAnimator.ofArgb, recorded target, no-op when unchanged) owns the colour from here. The v14.16 settled decision does NOT bar this — its reason was that fading the whole label to ease a 2-char mark would flash the row; here no label is faded, only the text colour is interpolated (alpha stays 1, text unchanged), so the row cannot flash — the same distinction v14.34 drew for the sleep text and v14.62 for the nav tint. The ▶ prefix + title text stay instant; the listened dim (alpha, below) is untouched.
+            if (titleView != null) Fx.crossfadeTextColor(titleView, (rowPlaying || rowPlayingLib)
                     ? android.graphics.Color.parseColor("#C9A227")
                     : (cachedNight
                     ? android.graphics.Color.WHITE
@@ -6528,7 +6583,7 @@ public class TalksActivity extends Activity {
             // drawer's tile). Set on every bind so a recycled row can
             // never keep a stale gold card; the held-row wash on the
             // row root below is untouched and stacks harmlessly.
-            // v15.24 (slice 1787): the sounding card crossfades instead of snapping — the drawer's v14.32 fix, now on the chooser too: the 1s tick rebinds the rows exactly when the sounding URL changes (v4.89/v7.44), and getView swapped the card background in one frame, so a talk ending, stopping or auto-advancing while the chooser sat on top flashed the gold tile in or out while everything around it moves (header melt v14.56, Up Next melt v14.55, mark melts v14.97). Fx.crossfadeCardTile (v14.31 helper: 250ms TransitionDrawable, crossFade on, recorded target, instant seed on a fresh view) owns the card from here; the ▶ prefix + gold name stay instant per the v14.16 settled decision, and the held-row wash below lives on the row root, untouched.
+            // v15.24 (slice 1787): the sounding card crossfades instead of snapping — the drawer's v14.32 fix, now on the chooser too: the 1s tick rebinds the rows exactly when the sounding URL changes (v4.89/v7.44), and getView swapped the card background in one frame, so a talk ending, stopping or auto-advancing while the chooser sat on top flashed the gold tile in or out while everything around it moves (header melt v14.56, Up Next melt v14.55, mark melts v14.97). Fx.crossfadeCardTile (v14.31 helper: 250ms TransitionDrawable, crossFade on, recorded target, instant seed on a fresh view) owns the card from here; the ▶ prefix + title text stay instant per the v14.16 settled decision (its colour melts, v15.30), and the held-row wash below lives on the row root, untouched.
             if (card != null) Fx.crossfadeCardTile(card, (rowPlaying || rowPlayingLib)
                     ? R.drawable.talks_row_playing
                     : (cachedNight ? R.drawable.card_bg_night : R.drawable.card_bg));
@@ -6550,8 +6605,13 @@ public class TalksActivity extends Activity {
             com.h2h.dhamma.EqBarsView eqBars = v.findViewById(R.id.eqBars);
             if (indexView != null && eqBars != null) {
                 boolean eqSounding = rowPlaying || rowPlayingLib;
-                indexView.setVisibility(eqSounding ? android.view.View.GONE : android.view.View.VISIBLE);
-                eqBars.setVisibility(eqSounding ? android.view.View.VISIBLE : android.view.View.GONE);
+                // v15.30 (slice 1819): the slot crossfades (see
+                // Fx.crossfadeEqSlot) instead of snapping the number
+                // and the bars — the last snap in the sounding-row
+                // transition (card v15.24, hairline v15.25, clock
+                // v15.26). The helper owns both views' visibility +
+                // alpha from here; the raw setVisibility swap is gone.
+                Fx.crossfadeEqSlot(indexView, eqBars, eqSounding);
                 eqBars.setPlaying(eqSounding && AudioService.livePlaying);
             }
             // v5.77: held-row wash (see the ✋ mark above) — on the

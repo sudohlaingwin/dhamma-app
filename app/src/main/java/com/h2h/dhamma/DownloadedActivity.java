@@ -12830,7 +12830,8 @@ public class DownloadedActivity extends Activity {
                     + (held ? "✋ " : "")
                     + libQMark
                     + e.title);
-            if (title != null) title.setTextColor(rowPlaying
+            // v15.30 (slice 1820): the sounding-row title colour melts on the flip instead of snapping — the last snap in the sounding-row transition (card v15.24, hairline v15.25, clock v15.26): the 1s tick rebinds exactly when a track changes, and getView swapped the title colour in one frame (bare setTextColor), so an auto-advance flashed the gold name in or out while the card beside it crossfades. Fx.crossfadeTextColor (v14.34 helper: 250ms ValueAnimator.ofArgb, recorded target, no-op when unchanged) owns the colour from here. The v14.16 settled decision does NOT bar this — its reason was that fading the whole label to ease a 2-char mark would flash the row; here no label is faded, only the text colour is interpolated (alpha stays 1, text unchanged), so the row cannot flash — the same distinction v14.34 drew for the sleep text and v14.62 for the nav tint. The ▶ prefix + title text stay instant; the listened dim (alpha, below) is untouched.
+            if (title != null) Fx.crossfadeTextColor(title, rowPlaying
                     ? android.graphics.Color.parseColor("#C9A227")
                     : (night ? android.graphics.Color.WHITE
                     : android.graphics.Color.parseColor("#3B2314")));
@@ -12839,7 +12840,7 @@ public class DownloadedActivity extends Activity {
             // v1.99: the row background never followed night mode — the layout pins it to white @color/card, while the title above is set white at night, so night titles were invisible on their own white cards (same class as the v1.98 header fix, which never reached the rows). Same card drawables as the main grid's rows.
             android.view.View card = v.findViewById(R.id.cardInner);
             // v13.84 (slice 1076): the playing row is a raised gold card — the Talks chooser's v13.83 tile, now on the library too. The sounding file used to read only as gold text + ▶, which vanished in a long shelf; now its whole card turns gold (dl_row_playing.xml: drawer gold, library 24dp geometry, theme-independent like the chooser's tile). Set on every bind so a recycled row can never keep a stale gold card; the held-row wash on the row root above is untouched and stacks harmlessly.
-            // v15.24 (slice 1787): the sounding card crossfades instead of snapping — the drawer's v14.32 fix, as on the chooser above: the Library 1s tick rebinds on a track change, and getView swapped the gold card in one frame, so an auto-advance flashed the tile while the strip and clock melt beside it. Fx.crossfadeCardTile (v14.31 helper) owns the card from here; the ▶ prefix + gold name stay instant per the v14.16 settled decision.
+            // v15.24 (slice 1787): the sounding card crossfades instead of snapping — the drawer's v14.32 fix, as on the chooser above: the Library 1s tick rebinds on a track change, and getView swapped the gold card in one frame, so an auto-advance flashed the tile while the strip and clock melt beside it. Fx.crossfadeCardTile (v14.31 helper) owns the card from here; the ▶ prefix + title text stay instant per the v14.16 settled decision (its colour melts, v15.30).
             if (card != null) Fx.crossfadeCardTile(card, rowPlaying
                     ? R.drawable.dl_row_playing
                     : (night ? R.drawable.card_bg_night : R.drawable.card_bg));

@@ -9,11 +9,15 @@
     <FrameLayout
         android:layout_width="68dp"
         android:layout_height="68dp">
+        <!-- v15.30 (slice 1816): shared-element source — this photo
+             grows into the Talks header portrait; the name must
+             match talksHeaderPhoto in activity_talks.xml. -->
         <com.h2h.dhamma.CircleImageView
             android:id="@+id/photo"
             android:layout_width="68dp"
             android:layout_height="68dp"
-            android:scaleType="centerCrop" />
+            android:scaleType="centerCrop"
+            android:transitionName="talksSayadawPhoto" />
 
     </FrameLayout>
     <TextView

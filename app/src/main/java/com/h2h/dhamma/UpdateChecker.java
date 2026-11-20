@@ -384,6 +384,25 @@ public class UpdateChecker {
         // v13.10 (F5): dismissBlock() also nulls the view refs.
         dismissBlock();
         blockDialog = new Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        // v15.30 (slice 1818): the blocking update gate enters/
+        // exits with the app's own dialog motion — every
+        // AlertDialog got dlg_in/dlg_out through the
+        // DhammaAlertDialog theme (slice 1811), but this gate is
+        // a plain android.app.Dialog on the platform fullscreen
+        // theme, so 1811's own note names it as untouched and it
+        // still snaps in with no motion at all. The window takes
+        // the SAME DhammaDialogAnimation style the AlertDialogs
+        // use (250ms fade + 0.96->1 in, 200ms fade + 1->0.98
+        // out): the whole black screen pours in instead of
+        // appearing in one frame, and dismissBlock's dismiss()
+        // plays the exit the same way — no new resource, no
+        // theme change, no behaviour change. Set before show()
+        // below; the Window exists from the constructor,
+        // null-guarded per the v13.44 hygiene (a missing window
+        // leaves the gate exactly as before instead of crashing
+        // the update offer).
+        android.view.Window blockWindow = blockDialog.getWindow();
+        if (blockWindow != null) blockWindow.setWindowAnimations(R.style.DhammaDialogAnimation);
         blockDialog.setCancelable(false);
         blockDialog.setOnKeyListener(new DialogInterface.OnKeyListener() {
             @Override public boolean onKey(DialogInterface d, int keyCode, KeyEvent e) {

@@ -2916,7 +2916,21 @@ public class MainActivity extends Activity {
             i.putExtra("autoTitle", sp.getString("lastTitle", ""));
             Fx.morph(v);
             Fx.tap(MainActivity.this);
-            Fx.go(MainActivity.this, i);
+            // v15.30 (slice 1817): the sounding card's photo grows
+            // into the Room header portrait — the third shared pair,
+            // and the most-tapped one (returning to the player is
+            // the grid's commonest Room open). Slice 1816 rejected
+            // this share under the STATIC name, rightly: the strip
+            // already owns "roomSayadawPhoto" in this window, so a
+            // second view with that name would leave the framework
+            // mapping the wrong photo. The per-tap unique name is a
+            // distinct pair that never collides with the strip's,
+            // and the Room takes the same name from the extra in
+            // onCreate. Plain Fx.go for the fallback cases stays
+            // inside goSharedNamed (hidden / unlaid-out photo).
+            String sharedRoomName = Fx.sharedPhotoNameFor(Fx.SHARED_PHOTO_NAME, s.name);
+            i.putExtra(Fx.SHARED_PHOTO_NAME_EXTRA, sharedRoomName);
+            Fx.goSharedNamed(MainActivity.this, i, v.findViewById(R.id.photo), sharedRoomName);
             return;
         }
         // v13.12 (M5, sim1324): a library session sounds too —
@@ -2968,7 +2982,28 @@ public class MainActivity extends Activity {
         // as a successful one.
         Fx.morph(v);
         Fx.tap(MainActivity.this);
-        Fx.go(MainActivity.this, i);
+        // v15.30 (slice 1816, unique name in slice 1817):
+        // shared-element open — the grid photo grows into the
+        // Talks header portrait (the second shared pair after the
+        // strip->Room open, slice 1815). The card and the chooser
+        // load the SAME portrait through ImageLoader (s.photo
+        // travels in the intent), so the framework snapshot hands
+        // over to the chooser's real view with no pop. No gating
+        // here, unlike the strip taps: TalksActivity is not
+        // singleTop and this intent carries no flags, so every grid
+        // tap is a fresh chooser — never a re-delivery with no
+        // transition to animate. The library branch above returns
+        // before this and keeps plain Fx.go (Downloaded has no
+        // sayadaw portrait header to land on). The name is per-tap
+        // unique (slice 1817): the XML name is shared by every
+        // grid row, so sharing under it would fly the last row's
+        // photo, not the tapped card's — the chooser takes this
+        // name from the extra in onCreate. Fx.goSharedNamed falls
+        // back to Fx.go itself when the photo is hidden or not
+        // laid out (a tap mid-rebind), so the chooser still opens.
+        String sharedTalksName = Fx.sharedPhotoNameFor(Fx.SHARED_TALKS_PHOTO_NAME, s.name);
+        i.putExtra(Fx.SHARED_PHOTO_NAME_EXTRA, sharedTalksName);
+        Fx.goSharedNamed(MainActivity.this, i, v.findViewById(R.id.photo), sharedTalksName);
     }
 
     // v13.82 (slice 1074): favourites-only toggle — the body of the
