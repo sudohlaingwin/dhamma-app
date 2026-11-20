@@ -1318,6 +1318,9 @@ public class DownloadedActivity extends Activity {
     private java.util.HashMap<String, Integer> dlDelGlidePos = null;
     // v15.19 (slice 1782): old display positions for the live-arrival rank-close glide (see the tick's v4.00 branch) — file path -> old display position, armed by a live directory-signature change, cleared by the posted glide runnable; a newer arrival re-arms it first.
     private java.util.HashMap<String, Integer> dlArrGlidePos = null;
+    // v15.21 (slice 1784): old display positions for the search/sort/filter/return set-change rank-close glide (see captureDlSetGlide below) — file path -> old display position, armed by applyDlFilter's own start-capture, cleared by the posted glide runnable; a newer set change re-arms it first. dlSetGlideFirst84 holds the first visible position at arm time, so the post can tell whether the window moved.
+    private java.util.HashMap<String, Integer> dlSetGlidePos = null;
+    private int dlSetGlideFirst84 = -1;
     // v2.57: return-change entrance flag — armed only by onResume
     // after a real pause (see onPause/onResume below), never by a
     // fresh open or a rotation (both are new instances, so the
@@ -7372,7 +7375,61 @@ public class DownloadedActivity extends Activity {
         updateTotal();
     }
 
+    // v15.21 (slice 1784): capture the visible rows' old tops + display positions for the set-change rank-close glide — the v15.18 chooser shape transposed to the Library: identity-keyed by file path via libEntryAtDisplay while shownDl still holds the OLD list (applyDlFilter rebuilds it right after). Stands down (returns null, arms nothing) on the first load / rotation restore (dlListLoaded false), when the adapter or the list is null, and when a delete or a live arrival already owns this rebind — their maps are armed and their flags still set at capture time, so their own glides own the motion and this one never double-glides.
+    private java.util.HashMap<String, Integer> captureDlSetGlide() {
+        if (!dlListLoaded || adapter == null || dlListView == null) return null;
+        if (dlDelGlidePos != null || dlArrGlidePos != null) return null;
+        if (dlDeleteChange || dlLiveArrival) return null;
+        final java.util.HashMap<String, Integer> tops84 = new java.util.HashMap<String, Integer>();
+        dlSetGlidePos = new java.util.HashMap<String, Integer>();
+        dlSetGlideFirst84 = dlListView.getFirstVisiblePosition();
+        int first84 = dlSetGlideFirst84;
+        for (int i84 = 0; i84 < dlListView.getChildCount(); i84++) {
+            android.view.View ch84 = dlListView.getChildAt(i84);
+            if (ch84 == null) continue;
+            Entry e84 = libEntryAtDisplay(first84 + i84);
+            if (e84 == null) continue;
+            String p84 = e84.file.getAbsolutePath();
+            tops84.put(p84, Integer.valueOf(ch84.getTop()));
+            dlSetGlidePos.put(p84, Integer.valueOf(first84 + i84));
+        }
+        return tops84;
+    }
+
+    // v15.21 (slice 1784): the posted glide — runs after the layout the notify inside applyDlFilter scheduled, so each visible child sits at its NEW top; a surviving row whose old top differs from its new top is parked at its old top and glides home over 250ms via Fx.glideHomeY (the v15.19 shape, identity-keyed by path so recycling is irrelevant; the v15.18 chooser shape, made symmetric — a narrowing change pulls survivors UP and a widening change pushes them DOWN, both glide). Rows that did not move have shift 0 and are untouched; a brand-new row has no old top and pours via the v2.49/v2.54/v2.57/v14.24 guard. The glide is an ObjectAnimator, so the getView hygiene's animate().cancel() (ViewPropertyAnimator only) can never kill it, and a tick rebind landing mid-glide just rebinds content under the running glide; the glide always ends at translationY 0, so no reset is needed. A newer set change arming its own map first makes this post stand down without gliding or clearing (its own post owns the glide now — the v15.18 guard, one stricter than the v15.17 delete post); the first-visible check below is the backstop for any window move the disarm before the notify did not catch (the search jump-to-top is disarmed there, not here). The field is cleared only if it still holds this change's map.
+    private void postDlSetGlide(final java.util.HashMap<String, Integer> tops84) {
+        final java.util.HashMap<String, Integer> pos84 = dlSetGlidePos;
+        final int first84 = dlSetGlideFirst84;
+        if (dlListView != null) dlListView.post(new Runnable() {
+            @Override public void run() {
+                if (dlListView == null) {
+                    if (dlSetGlidePos == pos84) dlSetGlidePos = null;
+                    return;
+                }
+                if (dlSetGlidePos != pos84) return;
+                if (dlListView.getFirstVisiblePosition() != first84) {
+                    dlSetGlidePos = null;
+                    return;
+                }
+                int first84r = dlListView.getFirstVisiblePosition();
+                for (int i84 = 0; i84 < dlListView.getChildCount(); i84++) {
+                    android.view.View ch84 = dlListView.getChildAt(i84);
+                    if (ch84 == null) continue;
+                    Entry e84 = libEntryAtDisplay(first84r + i84);
+                    if (e84 == null) continue;
+                    Integer old84 = tops84.get(e84.file.getAbsolutePath());
+                    if (old84 == null) continue;
+                    float shift84 = old84.intValue() - ch84.getTop();
+                    if (shift84 != 0) Fx.glideHomeY(ch84, shift84, 250);
+                }
+                if (dlSetGlidePos == pos84) dlSetGlidePos = null;
+            }
+        });
+    }
+
     private void applyDlFilter() {
+        // v15.21 (slice 1784): capture BEFORE the rebuild below moves the rows — the posted glide after the notify parks each moved survivor at its old top (see captureDlSetGlide); a null return means the capture stood down (first load, delete/arrival rebind) and nothing posts.
+        java.util.HashMap<String, Integer> tops84 = captureDlSetGlide();
         shownDl.clear();
         // v1.51: space-insensitive match, same as the main list (v1.47)
         // and the chooser (v1.48) — typing a title without its spaces
@@ -7611,6 +7668,11 @@ public class DownloadedActivity extends Activity {
         // this filter before the adapter exists (it is created later in
         // onCreate), so rotating with a library search typed crashed on
         // a null adapter. The list rebinds anyway on the first loadList.
+        // v15.21 (slice 1784): disarm the set-change glide when the search jump-to-top below is about to move the window (dlSearchJumpTop set by the v2.49 branch above, and the list scrolled) — the recorded old tops are stale viewport coordinates then, so the pour owns the new window instead; clearing here, before the notify, means the getView skip never sees an armed map and nothing posts. When the list already sits at the top the jump is a no-op and the glide runs.
+        if (tops84 != null && dlSearchJumpTop && dlListView != null && dlListView.getFirstVisiblePosition() > 0) {
+            dlSetGlidePos = null;
+            tops84 = null;
+        }
         if (adapter != null) adapter.notifyDataSetChanged();
         if (dlSearchJumpTop) {
             dlSearchJumpTop = false;
@@ -7799,6 +7861,8 @@ public class DownloadedActivity extends Activity {
         } else {
             refreshDlFilterChips();
         }
+        // v15.21 (slice 1784): post the set-change glide after the notify above (and after the search jump-to-top, so the post's window guard sees the post-jump first visible position).
+        if (tops84 != null) postDlSetGlide(tops84);
     }
 
     // v1.19: footer total — count + combined size of the offline library
@@ -13087,7 +13151,11 @@ public class DownloadedActivity extends Activity {
                 boolean arrGlide82 = dlArrGlidePos != null
                         && dlArrGlidePos.containsKey(e.file.getAbsolutePath())
                         && dlArrGlidePos.get(e.file.getAbsolutePath()).intValue() != pos;
-                if (!delGlide79 && !arrGlide82) {
+                // v15.21 (slice 1784): same skip for a row the set-change glide owns — its old display position differs from its new one (identity by file path: the ListView recycles views by position). A narrowing change pulls survivors UP (oldPos > pos) and a widening change pushes them DOWN (oldPos < pos); either way the pour's +24dp rise would start the row 24dp off its old top and fight the glide's park-at-old-top, so the glide owns the motion alone; alpha stays 1 (the row was fully visible before, no fade). Rows that did not move (oldPos == pos) and brand-new rows (no old position) pour exactly as before.
+                boolean setGlide84 = dlSetGlidePos != null
+                        && dlSetGlidePos.containsKey(e.file.getAbsolutePath())
+                        && dlSetGlidePos.get(e.file.getAbsolutePath()).intValue() != pos;
+                if (!delGlide79 && !arrGlide82 && !setGlide84) {
                     float dy = 24f * v.getResources().getDisplayMetrics().density;
                     android.view.animation.AnimationSet set = new android.view.animation.AnimationSet(true);
                     android.view.animation.AlphaAnimation fa = new android.view.animation.AlphaAnimation(0f, 1f);
