@@ -6259,9 +6259,10 @@ if (snd65 >= 0) currentIndex = snd65;
                         // service duration on every tick, and
                         // the finished talk's played mark landed
                         // in the service and refreshes on return.
+                        // v15.37 (slice 1873): the poll-resync drawer follow now glides instead of teleporting — the last teleport in the jump-to-sounding family. This branch is the v7.59 foreground-race auto-advance path: the service advances internally on completion (advanceInBackground58) and the Room learns only from the 500ms poll — AudioService.Listener is never registered anywhere, so no callback reaches the Room and playIndex never runs for a service-side advance; playIndex's v2.32 glide covers Room-driven changes and the 1862 glides cover the two gesture jumps, but this resync follow still snapped the open list to the new sounding row in one frame while the title pours on the next tick, the shrine photo crossfades and the seek row pours (v14.74 fixed the bar snap in this very branch and left the list snap). Same target through drawerScrollPos (the mapping every scroll site uses; -1 means no row, scroll nowhere — the v4.98 rule), same visible guard, and smoothScrollToPosition is off-screen-only by construction — a visible sounding row stays put, the same discipline as v2.32. Visual only; the resync, the rebind, the Up Next melt (v14.57) and the seek-row pour are untouched.
                         if (roomList != null && roomList.getVisibility() == View.VISIBLE) {
                             int sp59 = drawerScrollPos(currentIndex);
-                            if (sp59 >= 0) roomList.setSelection(sp59);
+                            if (sp59 >= 0) roomList.smoothScrollToPosition(sp59);
                         }
                     } else {
                     currentIndex = -1;
@@ -7766,9 +7767,16 @@ int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
         roomHeaderRingBreathGen++;
         roomHeaderRingBreathPending = false;
         if (roomHeaderRingBreath != null) roomHeaderRingBreath.cancel();
-        if (roomHeaderRingBreathBg != null) roomHeaderRingBreathBg.setAlpha(255);
         roomHeaderRingBreath = null;
-        roomHeaderRingBreathBg = null;
+        if (roomHeaderRingBreathBg != null) {
+            // v15.37 (slice 1882): ease out, never snap — the
+            // ring glides back to opaque over 200ms (Fx
+            // easeRingAlphaToOpaque), which always lands
+            // before any re-arm's 260ms delayed start.
+            android.graphics.drawable.Drawable stoppedBg = roomHeaderRingBreathBg;
+            roomHeaderRingBreathBg = null;
+            Fx.easeRingAlphaToOpaque(stoppedBg);
+        }
     }
 
     // v14.35 (slice 1690): seed the Room sleep line from the no-bind

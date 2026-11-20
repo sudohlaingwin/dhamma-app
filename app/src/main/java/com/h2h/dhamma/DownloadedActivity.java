@@ -1599,6 +1599,12 @@ public class DownloadedActivity extends Activity {
         String t = tb.getText().toString();
         if (dlShuffle) { if (!t.startsWith("🔀 ")) tb.setText("🔀 " + t); }
         else if (t.startsWith("🔀 ")) tb.setText(t.substring("🔀 ".length()));
+        // v15.37 (slice 1879): the shuffle state now melts its label colour gold<->resting over 250ms (Fx.crossfadeTextColor) instead of snapping - the last shuffle-state snap in the app (the Room glyph melts its tint gold<->grey, v14.41; this button only swapped its prefix in one frame). The prefix swap above stays instant: the v14.16 settled decision bars fading a label to ease a 2-char mark, so only the colour interpolates (alpha stays 1, text unchanged), the same distinction v15.30 drew for the colour melt. The theme pass stamps the shuffle-aware target through Fx.setTextColorNow, so a return never strands the recorded target; a steady call is a no-op and a mid-melt re-toggle melts from the painted colour. Gold is the app gold 0xFFC9A227; the resting colour is the theme pass resting colour (white at night, #3B2314 by day), so the off state stays byte-identical to today.
+        Fx.crossfadeTextColor(tb, dlShuffle
+                ? android.graphics.Color.parseColor("#C9A227")
+                : (Prefs.isNight(DownloadedActivity.this)
+                        ? android.graphics.Color.WHITE
+                        : android.graphics.Color.parseColor("#3B2314")));
     }
 
     private void glideToDlPath(String path) {
@@ -2692,9 +2698,16 @@ public class DownloadedActivity extends Activity {
         dlStripPhotoRingBreathGen++;
         dlStripPhotoRingBreathPending = false;
         if (dlStripPhotoRingBreath != null) dlStripPhotoRingBreath.cancel();
-        if (dlStripPhotoRingBreathBg != null) dlStripPhotoRingBreathBg.setAlpha(255);
         dlStripPhotoRingBreath = null;
-        dlStripPhotoRingBreathBg = null;
+        if (dlStripPhotoRingBreathBg != null) {
+            // v15.37 (slice 1882): ease out, never snap — the
+            // ring glides back to opaque over 200ms (Fx
+            // easeRingAlphaToOpaque), which always lands
+            // before any re-arm's 260ms delayed start.
+            android.graphics.drawable.Drawable stoppedBg = dlStripPhotoRingBreathBg;
+            dlStripPhotoRingBreathBg = null;
+            Fx.easeRingAlphaToOpaque(stoppedBg);
+        }
     }
 
     // v4.40: real mini-player on the library, the same strip as
@@ -8694,9 +8707,15 @@ public class DownloadedActivity extends Activity {
                 // + white text at night, surface face + ink text
                 // by day); re-applied on return with the rest.
                 b.setBackgroundResource(night ? R.drawable.glass_btn_night : R.drawable.glass_btn);
-                b.setTextColor(night
-                        ? android.graphics.Color.WHITE
-                        : android.graphics.Color.parseColor("#3B2314"));
+                // v15.37 (slice 1879): the Random button text colour is owned by the shuffle melt (see applyShuffleMark) - a bare setTextColor here would desync crossfadeTextColor recorded target (map says gold while the view is plain, so a later melt to gold no-ops and the button strands plain while shuffling), the v14.39 setTextColorNow hazard. Stamp the shuffle-aware target at once instead: gold while shuffling, the resting colour otherwise - the resting row stays byte-identical to today.
+                if (id == R.id.btnDlRandom)
+                    Fx.setTextColorNow(b, dlShuffle
+                            ? android.graphics.Color.parseColor("#C9A227")
+                            : (night ? android.graphics.Color.WHITE : android.graphics.Color.parseColor("#3B2314")));
+                else
+                    b.setTextColor(night
+                            ? android.graphics.Color.WHITE
+                            : android.graphics.Color.parseColor("#3B2314"));
             }
         }
         // v9.89: the three action buttons + the truly-empty message were

@@ -2184,9 +2184,16 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         settingsStripPhotoRingBreathGen++;
         settingsStripPhotoRingBreathPending = false;
         if (settingsStripPhotoRingBreath != null) settingsStripPhotoRingBreath.cancel();
-        if (settingsStripPhotoRingBreathBg != null) settingsStripPhotoRingBreathBg.setAlpha(255);
         settingsStripPhotoRingBreath = null;
-        settingsStripPhotoRingBreathBg = null;
+        if (settingsStripPhotoRingBreathBg != null) {
+            // v15.37 (slice 1882): ease out, never snap — the
+            // ring glides back to opaque over 200ms (Fx
+            // easeRingAlphaToOpaque), which always lands
+            // before any re-arm's 260ms delayed start.
+            android.graphics.drawable.Drawable stoppedBg = settingsStripPhotoRingBreathBg;
+            settingsStripPhotoRingBreathBg = null;
+            Fx.easeRingAlphaToOpaque(stoppedBg);
+        }
     }
 
     // v14.73 (slice 1731): the Settings resume strip's title melts on a

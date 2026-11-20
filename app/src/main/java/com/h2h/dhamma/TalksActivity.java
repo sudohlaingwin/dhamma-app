@@ -4544,9 +4544,16 @@ public class TalksActivity extends Activity {
         chooserRingBreathGen++;
         chooserRingBreathPending = false;
         if (chooserRingBreath != null) chooserRingBreath.cancel();
-        if (chooserRingBreathBg != null) chooserRingBreathBg.setAlpha(255);
         chooserRingBreath = null;
-        chooserRingBreathBg = null;
+        if (chooserRingBreathBg != null) {
+            // v15.37 (slice 1882): ease out, never snap — the
+            // ring glides back to opaque over 200ms (Fx
+            // easeRingAlphaToOpaque), which always lands
+            // before any re-arm's 260ms delayed start.
+            android.graphics.drawable.Drawable stoppedBg = chooserRingBreathBg;
+            chooserRingBreathBg = null;
+            Fx.easeRingAlphaToOpaque(stoppedBg);
+        }
     }
 
     private void refreshFavHeader() {
@@ -5309,9 +5316,16 @@ public class TalksActivity extends Activity {
         talksStripPhotoRingBreathGen++;
         talksStripPhotoRingBreathPending = false;
         if (talksStripPhotoRingBreath != null) talksStripPhotoRingBreath.cancel();
-        if (talksStripPhotoRingBreathBg != null) talksStripPhotoRingBreathBg.setAlpha(255);
         talksStripPhotoRingBreath = null;
-        talksStripPhotoRingBreathBg = null;
+        if (talksStripPhotoRingBreathBg != null) {
+            // v15.37 (slice 1882): ease out, never snap — the
+            // ring glides back to opaque over 200ms (Fx
+            // easeRingAlphaToOpaque), which always lands
+            // before any re-arm's 260ms delayed start.
+            android.graphics.drawable.Drawable stoppedBg = talksStripPhotoRingBreathBg;
+            talksStripPhotoRingBreathBg = null;
+            Fx.easeRingAlphaToOpaque(stoppedBg);
+        }
     }
 
     // v14.71 (slice 1729): the Talks resume strip's title melts on a

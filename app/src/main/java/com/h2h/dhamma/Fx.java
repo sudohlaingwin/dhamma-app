@@ -1420,6 +1420,63 @@ public class Fx {
         v.setTextColor(color);
     }
 
+    // v15.37 (slice 1882): the sounding ring breath now eases out on
+    // stop — the last snap in the ring family. All seven ring breaths
+    // (chooser header 1845, Room header 1846, Main/Talks/Settings/
+    // Downloaded strips 1847-1850, shelf chip 1851) animate the ring
+    // drawable 255 -> 140 over 900ms REVERSE INFINITE, and every stop
+    // cancelled the loop and setAlpha(255) in one frame — a talk
+    // ending or a pause snapped the gold ring from wherever it sat
+    // mid-breath (as low as 0.55) straight to full alpha, the same
+    // pop slice 1831 eased out of the sounding card's name breath
+    // and slice 1826 eased out of the EQ bars. The ring now glides
+    // back to opaque over 200ms (Decelerate, the Library pause
+    // rhythm), so the breath hands over instead of cutting. 200ms is
+    // deliberately shorter than the 260ms delayed start every arm
+    // posts: a re-arm's runnable always lands after the ease has
+    // finished, and a stop inside the wait vetoes the start by gen —
+    // so no settle is needed on the restart half (the 1831 settle
+    // exists because the card pulse starts at once; the ring breath
+    // never does). The helper owns the animator per drawable
+    // (WeakHashMap, the crossfadeTextColor discipline): a repeated
+    // call cancels the in-flight ease first — map entry removed
+    // BEFORE the cancel, so the cancelled animator's end skips its
+    // stale stamp (v14.42) — and the end stamps 255 only while its
+    // animator is still current. A background replaced mid-ease (a
+    // crossfade) strands the write on the detached drawable, which
+    // is invisible; the new background is fresh at 255. Visual only;
+    // every stop call site and every arm is untouched.
+    private static java.util.WeakHashMap<android.graphics.drawable.Drawable, android.animation.ValueAnimator> ringEaseOutAnim =
+            new java.util.WeakHashMap<android.graphics.drawable.Drawable, android.animation.ValueAnimator>();
+    public static void easeRingAlphaToOpaque(final android.graphics.drawable.Drawable bg) {
+        if (bg == null) return;
+        android.animation.ValueAnimator old = ringEaseOutAnim.remove(bg);
+        if (old != null) old.cancel();
+        int from = bg.getAlpha();
+        if (from >= 255) return;
+        final android.animation.ValueAnimator anim =
+                android.animation.ValueAnimator.ofInt(from, 255);
+        anim.setDuration(200);
+        anim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        ringEaseOutAnim.put(bg, anim);
+        anim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                bg.setAlpha(((Integer) a.getAnimatedValue()).intValue());
+            }
+        });
+        anim.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                // cancel() fires onAnimationEnd too: only the
+                // still-current animator may stamp the exact target.
+                if (ringEaseOutAnim.get(bg) == anim) {
+                    bg.setAlpha(255);
+                    ringEaseOutAnim.remove(bg);
+                }
+            }
+        });
+        anim.start();
+    }
+
     // v15.36 (slice 1861): the listened title dim melts instead of
     // snapping — the last snap in the listened-flip transition on
     // the Talks chooser and Library rows (colour v15.30, hairline
@@ -1841,6 +1898,7 @@ public class Fx {
             boolean downActive = false;
             boolean longFired = false;
             boolean flung = false;
+            boolean tracking = false; // v15.37: a horizontal drag is following the finger
             int flingDir = 0; // -1 = left = next, +1 = right = prev (Room v4.14)
             Runnable pendingLongPress = null;
             @Override public boolean onTouch(final View v, MotionEvent e) {
@@ -1849,6 +1907,8 @@ public class Fx {
                     case MotionEvent.ACTION_DOWN:
                         downX = e.getX(); downY = e.getY();
                         downActive = true; longFired = false; flung = false; flingDir = 0;
+                        tracking = false;
+                        stripSwipeCancelX(v); // a fresh finger snaps any in-flight toss home first
                         pressScale(v, 0.96f, 110, new DecelerateInterpolator());
                         pendingLongPress = new Runnable() {
                             @Override public void run() {
@@ -1860,14 +1920,27 @@ public class Fx {
                         v.postDelayed(pendingLongPress, android.view.ViewConfiguration.getLongPressTimeout());
                         return true;
                     case MotionEvent.ACTION_MOVE:
-                        if (!flung && Math.abs(e.getX() - downX) > 100f * density
-                                && Math.abs(e.getX() - downX) > Math.abs(e.getY() - downY)) {
-                            flung = true;
-                            flingDir = (e.getX() - downX) < 0 ? -1 : +1;
+                        float mdx = e.getX() - downX, mdy = e.getY() - downY;
+                        if (!tracking && downActive && Math.abs(mdx) > 12f * density
+                                && Math.abs(mdx) > Math.abs(mdy)) {
+                            // v15.37: pick-up — the strip starts following the finger
+                            // here (12dp slop, horizontal dominant), not at the
+                            // 100dp fling arm: a drag is not a hold, so the
+                            // long-press dies and the DOWN squash lifts.
+                            tracking = true;
+                            downActive = false;
                             if (pendingLongPress != null) v.removeCallbacks(pendingLongPress);
                             pressScale(v, 1f, 180, new OvershootInterpolator(1.4f));
-                        } else if (downActive && (Math.abs(e.getX() - downX) > 12f * density
-                                || Math.abs(e.getY() - downY) > 12f * density)) {
+                        }
+                        if (tracking && !flung && Math.abs(mdx) > 100f * density
+                                && Math.abs(mdx) > Math.abs(mdy)) {
+                            flung = true;
+                            flingDir = mdx < 0 ? -1 : +1;
+                            if (pendingLongPress != null) v.removeCallbacks(pendingLongPress);
+                        }
+                        if (tracking) stripSwipeTrack(v, mdx);
+                        else if (downActive && (Math.abs(mdx) > 12f * density
+                                || Math.abs(mdy) > 12f * density)) {
                             downActive = false;
                             if (pendingLongPress != null) v.removeCallbacks(pendingLongPress);
                         }
@@ -1876,9 +1949,17 @@ public class Fx {
                         downActive = false;
                         if (pendingLongPress != null) v.removeCallbacks(pendingLongPress);
                         pressScale(v, 1f, 180, new OvershootInterpolator(1.4f));
-                        if (longFired) return true;
-                        if (flung) {
-                            fireStripSkip(strip, flingDir);
+                        if (longFired) {
+                            // a post-hold drag ends here: snap any follow home.
+                            tracking = false; flung = false;
+                            stripSwipeCancelX(v);
+                            return true;
+                        }
+                        if (tracking) {
+                            boolean wasFlung = flung; int dir = flingDir;
+                            tracking = false; flung = false;
+                            if (wasFlung) fireStripSkip(strip, dir);
+                            stripSwipeSettle(v, wasFlung, dir);
                             return true;
                         }
                         float dx = e.getX() - downX, dy = e.getY() - downY;
@@ -1891,6 +1972,10 @@ public class Fx {
                         downActive = false;
                         if (pendingLongPress != null) v.removeCallbacks(pendingLongPress);
                         pressScale(v, 1f, 180, new OvershootInterpolator(1.4f));
+                        if (tracking) {
+                            tracking = false; flung = false;
+                            stripSwipeSettle(v, false, 0);
+                        }
                         return true;
                 }
                 return true;
@@ -1909,6 +1994,7 @@ public class Fx {
             sub.setOnTouchListener(new View.OnTouchListener() {
                 float downX, downY;
                 boolean flung = false;
+                boolean tracking = false; // v15.37: same finger-follow as the container
                 int flingDir = 0;
                 @Override public boolean onTouch(View view, MotionEvent e) {
                     float density = view.getResources().getDisplayMetrics().density;
@@ -1916,22 +2002,42 @@ public class Fx {
                         case MotionEvent.ACTION_DOWN:
                             downX = e.getX(); downY = e.getY();
                             flung = false; flingDir = 0;
+                            tracking = false;
+                            stripSwipeCancelX(strip);
                             return false;
                         case MotionEvent.ACTION_MOVE:
-                            if (!flung && Math.abs(e.getX() - downX) > 100f * density
-                                    && Math.abs(e.getX() - downX) > Math.abs(e.getY() - downY)) {
-                                flung = true;
-                                flingDir = (e.getX() - downX) < 0 ? -1 : +1;
+                            float mdx = e.getX() - downX, mdy = e.getY() - downY;
+                            if (!tracking && Math.abs(mdx) > 12f * density
+                                    && Math.abs(mdx) > Math.abs(mdy)) {
+                                tracking = true;
                                 view.setPressed(false);
                             }
-                            return flung;
+                            if (tracking && !flung && Math.abs(mdx) > 100f * density
+                                    && Math.abs(mdx) > Math.abs(mdy)) {
+                                flung = true;
+                                flingDir = mdx < 0 ? -1 : +1;
+                            }
+                            if (tracking) stripSwipeTrack(strip, mdx);
+                            return tracking;
                         case MotionEvent.ACTION_UP:
-                            if (flung) {
-                                fireStripSkip(strip, flingDir);
+                            if (tracking) {
+                                boolean wasFlung = flung; int dir = flingDir;
+                                tracking = false; flung = false;
+                                if (wasFlung) {
+                                    fireStripSkip(strip, dir);
+                                    stripSwipeSettle(strip, true, dir);
+                                } else {
+                                    stripSwipeSettle(strip, false, 0);
+                                }
                                 return true;
                             }
                             return false;
                         case MotionEvent.ACTION_CANCEL:
+                            if (tracking) {
+                                tracking = false; flung = false;
+                                stripSwipeSettle(strip, false, 0);
+                                return true;
+                            }
                             flung = false;
                             return false;
                     }
@@ -1950,6 +2056,82 @@ public class Fx {
         if (strip == null) return;
         View btn = strip.findViewById(dir < 0 ? R.id.nowStripNext : R.id.nowStripPrev);
         if (btn != null) btn.performClick();
+    }
+
+    // v15.37 (slice 1878): the strip swipe follows the finger —
+    // the v15.29 swipe was dead during the drag: DOWN squashed the
+    // strip 0.96, MOVE only armed the fling at 100dp, UP fired the
+    // skip, so a 100dp drag moved nothing until the release, while
+    // the Spotify / YouTube Music / Apple Music mini-player tracks
+    // the finger and tosses the card off on a committed skip. The
+    // strip now translates with the drag (clamped to half its
+    // width, so it can never slide clean off), springs back under
+    // the threshold, and on a committed skip tosses 0.75 widths in
+    // the fling direction (150ms Decelerate) then springs home
+    // (240ms Overshoot 1.4, the Fx.press restore beat) while the
+    // skip fires through the same Next/Prev button as before — the
+    // new track's content melts underneath via the existing strip
+    // fades. Only translationX moves: showStrip/hideStrip own
+    // translationY + alpha and pressScale owns scale, so nothing
+    // fights; the X animator lives in its own ObjectAnimator (never
+    // strip.animate()), so a show/hide mid-toss cannot cancel it
+    // and every path ends at exactly 0 — a fresh DOWN snaps any
+    // in-flight X back to identity first. No new view, no layout
+    // change, no speed-row touch; the four live strips share this
+    // helper, History/Playlist keep plain Fx.press.
+    private static java.util.WeakHashMap<android.view.View, android.animation.Animator> stripSwipeXAnims =
+            new java.util.WeakHashMap<android.view.View, android.animation.Animator>();
+
+    private static void stripSwipeTrack(android.view.View strip, float dx) {
+        if (strip == null) return;
+        float w = strip.getWidth() > 0 ? strip.getWidth()
+                : 160f * strip.getResources().getDisplayMetrics().density;
+        float cap = 0.5f * w;
+        strip.setTranslationX(Math.max(-cap, Math.min(cap, dx)));
+    }
+
+    private static void stripSwipeCancelX(android.view.View strip) {
+        if (strip == null) return;
+        android.animation.Animator a = stripSwipeXAnims.remove(strip);
+        if (a != null) a.cancel();
+        strip.setTranslationX(0f);
+    }
+
+    private static void stripSwipeSettle(final android.view.View strip, boolean flung, int dir) {
+        if (strip == null) return;
+        android.animation.Animator old = stripSwipeXAnims.remove(strip);
+        if (old != null) old.cancel();
+        float w = strip.getWidth() > 0 ? strip.getWidth()
+                : 160f * strip.getResources().getDisplayMetrics().density;
+        android.animation.AnimatorSet set = new android.animation.AnimatorSet();
+        if (flung) {
+            android.animation.ObjectAnimator toss =
+                    android.animation.ObjectAnimator.ofFloat(strip, "translationX", dir * 0.75f * w);
+            toss.setDuration(150);
+            toss.setInterpolator(new android.view.animation.DecelerateInterpolator());
+            android.animation.ObjectAnimator home =
+                    android.animation.ObjectAnimator.ofFloat(strip, "translationX", 0f);
+            home.setDuration(240);
+            home.setInterpolator(new android.view.animation.OvershootInterpolator(1.4f));
+            set.playSequentially(toss, home);
+        } else {
+            android.animation.ObjectAnimator home =
+                    android.animation.ObjectAnimator.ofFloat(strip, "translationX", 0f);
+            home.setDuration(220);
+            home.setInterpolator(new android.view.animation.OvershootInterpolator(1.4f));
+            set.play(home);
+        }
+        set.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                if (stripSwipeXAnims.get(strip) == set) stripSwipeXAnims.remove(strip);
+                strip.setTranslationX(0f);
+            }
+            @Override public void onAnimationCancel(android.animation.Animator a) {
+                if (stripSwipeXAnims.get(strip) == set) stripSwipeXAnims.remove(strip);
+            }
+        });
+        stripSwipeXAnims.put(strip, set);
+        set.start();
     }
 
     // v4.73: seekable mini-player progress bar — every now-playing

@@ -67,6 +67,18 @@ public class MainActivity extends Activity {
     // change re-arms it first (identity guard, the v15.18
     // shape). Null while no glide is armed.
     private java.util.Map<String, int[]> gridSetGlideTops = null;
+    // v15.37 (slice 1877): Main grid favourite-burst state — the
+    // 1844 Room idiom, now on the home screen: the grid's
+    // favourite toggle (whole-card long-press, the only
+    // per-sayadaw favourite entry on Main — the cards carry no
+    // star) showed only a toast + morph, so the like never moved
+    // where the finger was. The burst view is created once,
+    // lazily, and rides on the content FrameLayout above the
+    // grid — never on the card, so a filter rebind below can
+    // never recycle it away mid-pop. Generation guards a
+    // re-burst landing mid-flight.
+    private android.widget.TextView mainFavBurstView;
+    private int mainFavBurstGen = 0;
     // v2.48: snapshot of the last filtered grid, so a search that
     // actually changes the results can re-pour them (below) while
     // a keystroke that changes nothing never replays the cascade.
@@ -1449,9 +1461,16 @@ public class MainActivity extends Activity {
         stripPhotoRingBreathGen++;
         stripPhotoRingBreathPending = false;
         if (stripPhotoRingBreath != null) stripPhotoRingBreath.cancel();
-        if (stripPhotoRingBreathBg != null) stripPhotoRingBreathBg.setAlpha(255);
         stripPhotoRingBreath = null;
-        stripPhotoRingBreathBg = null;
+        if (stripPhotoRingBreathBg != null) {
+            // v15.37 (slice 1882): ease out, never snap — the
+            // ring glides back to opaque over 200ms (Fx
+            // easeRingAlphaToOpaque), which always lands
+            // before any re-arm's 260ms delayed start.
+            android.graphics.drawable.Drawable stoppedBg = stripPhotoRingBreathBg;
+            stripPhotoRingBreathBg = null;
+            Fx.easeRingAlphaToOpaque(stoppedBg);
+        }
     }
 
     // v4.15: mini now-playing strip above the nav (Spotify-style) —
@@ -2862,6 +2881,7 @@ public class MainActivity extends Activity {
                 Fx.tap(MainActivity.this);
                 Fx.morph(v);
                 Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, nowFav ? "fav_added" : "fav_removed"), Toast.LENGTH_SHORT).show();
+                showMainFavBurst(nowFav, v); // v15.37 (slice 1877): the burst is the grid-visible half of the like — the toast alone never moved. Fires before the filter branch below rebinds the grid, so the card's centre is still its own; the burst rides on the content root, so the rebind can never take it with the card.
                 // v4.26: the star tap got this in v4.21 but the
                 // whole-card long-press never did - unfavouriting
                 // under the favourites-only filter left the
@@ -2895,6 +2915,7 @@ public class MainActivity extends Activity {
             }
         });
         loadCatalog();
+
         // v12.45: re-read favs after the catalog load — loadCatalog
         // runs the v11.99 alias migration (Prefs.migrateQueueKeys99),
         // which rewrites the STORED favs set alias -> current name,
@@ -3050,6 +3071,103 @@ public class MainActivity extends Activity {
         // a later first appearance (cleared search, first favourite)
         // still pours.
         shelfSkipFirstPour = false;
+    }
+
+    // v15.37 (slice 1877): Main grid favourite burst — a gold ★
+    // pops at the long-pressed card when it stars a sayadaw, a
+    // muted ☆ when it un-stars (the Instagram/Spotify like-burst
+    // idiom, the 1844 Room shape transposed to the grid: the
+    // action's feedback lands where the finger is, not in a toast
+    // at the screen edge). The view is created once, lazily, on
+    // the content FrameLayout — never on the card, so the filter
+    // rebind the long-press may trigger can never recycle it away
+    // mid-pop, and never in the layout XML, so no new id or
+    // drawable; the glyphs are the file's own ★/☆ and the gold is
+    // the app's 0xFFC9A227. The burst sits at the card's centre
+    // (the long-press gives no finger point, and the centre is the
+    // card's own middle either way), converted from screen to
+    // content coordinates so the status bar never shifts it. Two
+    // phases on the file's own rhythm: a 180ms pop (scale 0.5 ->
+    // 1.15, DecelerateInterpolator, the morph beat) then a 420ms
+    // settle + fade (scale -> 1.0, alpha -> 0). 48sp, not the
+    // Room's 72sp — a grid card is a quarter of the screen, and
+    // the star must sit inside it, not over its neighbours. The
+    // star is centre-clamped to the content root so a card at an
+    // edge never clips it half off-screen, and the pivot is the
+    // measured centre so the scale never walks the glyph. A
+    // re-burst cancels the in-flight animator and restarts from
+    // the pop (a second hold replaces the first burst, never
+    // stacks a second star on top of it); the generation guards
+    // the end actions, so a phase-1 end landing after a newer
+    // burst started cannot start a stale fade or hide the new
+    // star. The morph (v2.09) owns the card's scale and the burst
+    // owns its own view, so the two never fight; the burst is
+    // non-clickable and non-focusable, so it can never eat a tap.
+    // Visual only — the pref write, the toast, the shelf pour and
+    // the filter branch above are untouched, and a missing content
+    // root or card skips the burst instead of crashing the
+    // favourite.
+    private void showMainFavBurst(boolean nowFav, android.view.View card) {
+        try {
+            android.view.View content = findViewById(android.R.id.content);
+            if (content == null || !(content instanceof android.view.ViewGroup) || card == null) return;
+            if (mainFavBurstView == null) {
+                android.widget.TextView tv = new android.widget.TextView(this);
+                tv.setVisibility(View.GONE);
+                tv.setClickable(false);
+                tv.setFocusable(false);
+                tv.setGravity(android.view.Gravity.CENTER);
+                tv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 48);
+                tv.setShadowLayer(6f, 0f, 2f, 0x99000000);
+                ((android.view.ViewGroup) content).addView(tv,
+                        new android.widget.FrameLayout.LayoutParams(
+                                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT));
+                mainFavBurstView = tv;
+            }
+            final android.widget.TextView tv = mainFavBurstView;
+            tv.animate().cancel();
+            mainFavBurstGen++;
+            final int myGen = mainFavBurstGen;
+            tv.setText(nowFav ? "\u2605" : "\u2606");
+            tv.setTextColor(nowFav ? 0xFFC9A227 : 0xFFAAAAAA);
+            tv.setVisibility(View.VISIBLE);
+            tv.measure(android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED),
+                       android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+            int w = tv.getMeasuredWidth();
+            int h = tv.getMeasuredHeight();
+            tv.setPivotX(w / 2f);
+            tv.setPivotY(h / 2f);
+            int[] cardLoc = new int[2];
+            int[] contentLoc = new int[2];
+            card.getLocationOnScreen(cardLoc);
+            content.getLocationOnScreen(contentLoc);
+            float cx = (cardLoc[0] - contentLoc[0]) + card.getWidth() / 2f;
+            float cy = (cardLoc[1] - contentLoc[1]) + card.getHeight() / 2f;
+            if (content.getWidth() > 0) cx = Math.max(w / 2f, Math.min(content.getWidth() - w / 2f, cx));
+            if (content.getHeight() > 0) cy = Math.max(h / 2f, Math.min(content.getHeight() - h / 2f, cy));
+            tv.setX(cx - w / 2f);
+            tv.setY(cy - h / 2f);
+            tv.setScaleX(0.5f);
+            tv.setScaleY(0.5f);
+            tv.setAlpha(1f);
+            tv.animate().scaleX(1.15f).scaleY(1.15f).setDuration(180)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                    .withEndAction(new Runnable() {
+                        @Override public void run() {
+                            if (myGen != mainFavBurstGen) return;
+                            tv.animate().scaleX(1f).scaleY(1f).alpha(0f).setDuration(420)
+                                    .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                                    .withEndAction(new Runnable() {
+                                        @Override public void run() {
+                                            if (myGen != mainFavBurstGen) return;
+                                            tv.setVisibility(View.GONE);
+                                            tv.setAlpha(1f);
+                                        }
+                                    }).start();
+                        }
+                    }).start();
+        } catch (Exception ignored) {}
     }
 
     // v12.95: back is swallowed while the update block is up — the
@@ -4487,9 +4605,16 @@ public class MainActivity extends Activity {
         shelfChipRingBreathGen++;
         shelfChipRingBreathPending = false;
         if (shelfChipRingBreath != null) shelfChipRingBreath.cancel();
-        if (shelfChipRingBreathBg != null) shelfChipRingBreathBg.setAlpha(255);
         shelfChipRingBreath = null;
-        shelfChipRingBreathBg = null;
+        if (shelfChipRingBreathBg != null) {
+            // v15.37 (slice 1882): ease out, never snap — the
+            // ring glides back to opaque over 200ms (Fx
+            // easeRingAlphaToOpaque), which always lands
+            // before any re-arm's 260ms delayed start.
+            android.graphics.drawable.Drawable stoppedBg = shelfChipRingBreathBg;
+            shelfChipRingBreathBg = null;
+            Fx.easeRingAlphaToOpaque(stoppedBg);
+        }
         shelfChipRingBreathName = null;
     }
 
