@@ -1420,6 +1420,88 @@ public class Fx {
         v.setTextColor(color);
     }
 
+    // v15.36 (slice 1861): the listened title dim melts instead of
+    // snapping — the last snap in the listened-flip transition on
+    // the Talks chooser and Library rows (colour v15.30, hairline
+    // v15.25, clock v15.26 all melt beside it): when a talk
+    // finishes, the 1s tick rebinds and the title's gold melted to
+    // base over 250ms while its alpha snapped 1.0 -> 0.6 in the
+    // same frame. Fx.crossfadeTitleDim (250ms, DecelerateInterpolator,
+    // recorded target, instant seed on a fresh view) owns the alpha
+    // from here; the ✓ mark stays instant and the text is untouched,
+    // so the dim IS the state change — the v14.16 settled decision
+    // does NOT bar this (its reason was fading a whole label to ease
+    // a 2-char mark; here no label is faded to mask anything, the
+    // same distinction v15.30 drew for the colour melt). A repeated
+    // call for the state already showing is a no-op and never
+    // restarts the melt; a mid-melt re-target cancels the in-flight
+    // animator and melts from the alpha the view actually has; the
+    // end stamps the exact target only while its animator is still
+    // current (the v14.42 cancel-then-end order, map entry removed
+    // BEFORE the cancel). The Room drawer rows keep their bare
+    // setAlpha — their comments record the dim as staying instant
+    // per the v14.16 settled decision, and this helper never
+    // touches them.
+    private static java.util.WeakHashMap<View, Float> titleDimTarget =
+            new java.util.WeakHashMap<View, Float>();
+    private static java.util.WeakHashMap<View, android.animation.ValueAnimator> titleDimAnim =
+            new java.util.WeakHashMap<View, android.animation.ValueAnimator>();
+    public static void crossfadeTitleDim(final android.widget.TextView v, boolean listened) {
+        if (v == null) return;
+        float to = listened ? 0.6f : 1.0f;
+        Float cur = titleDimTarget.get(v);
+        if (cur == null) {
+            titleDimTarget.put(v, Float.valueOf(to));
+            v.setAlpha(to);
+            return;
+        }
+        if (cur.floatValue() == to) return;
+        titleDimTarget.put(v, Float.valueOf(to));
+        android.animation.ValueAnimator old = titleDimAnim.get(v);
+        titleDimAnim.remove(v);
+        if (old != null) old.cancel();
+        float from = v.getAlpha();
+        if (from == to) return;
+        final android.animation.ValueAnimator anim =
+                android.animation.ValueAnimator.ofFloat(from, to);
+        anim.setDuration(250);
+        anim.setInterpolator(new DecelerateInterpolator());
+        titleDimAnim.put(v, anim);
+        anim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                v.setAlpha(((Float) a.getAnimatedValue()).floatValue());
+            }
+        });
+        anim.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                if (titleDimAnim.get(v) == anim) {
+                    v.setAlpha(to);
+                    titleDimAnim.remove(v);
+                }
+            }
+        });
+        anim.start();
+    }
+
+    // v15.36 (slice 1861): the instant writer for a view whose
+    // alpha crossfadeTitleDim owns — the Library stale-slot clear
+    // must land at once (an empty row has no content to melt), and
+    // a bare setAlpha there would desync the helper's recorded
+    // target (map says 0.6 while the view is 1.0, so a later melt
+    // to 0.6 no-ops and the row strands undimmed while listened).
+    // This stamps the alpha at once AND records it as the target,
+    // cancelling any in-flight melt first — the v14.39
+    // setTextColorNow shape.
+    public static void setTitleDimNow(final android.widget.TextView v, boolean listened) {
+        if (v == null) return;
+        float to = listened ? 0.6f : 1.0f;
+        titleDimTarget.put(v, Float.valueOf(to));
+        android.animation.ValueAnimator old = titleDimAnim.get(v);
+        titleDimAnim.remove(v);
+        if (old != null) old.cancel();
+        v.setAlpha(to);
+    }
+
     // v14.41 (slice 1696): the Room shuffle glyph melts gold<->grey
     // on tap instead of snapping — applyShuffleGlyph set the
     // ImageButton's colour filter in one frame, so the shuffle icon

@@ -56,13 +56,24 @@ public class WaveSeekView extends View {
     // v12.64: bookmark pins — premium backlog #1. Gold pins on the
     // wave at each saved minute of the sounding talk (the Room feeds
     // them via setBookmarks on every track change / add / delete).
-    // A tap landing within 14dp of a pin snaps the scrub to that
-    // exact minute instead of the finger's x, so a bookmark is a
-    // one-tap jump; the Room reads the snapped value after the
-    // release commit and toasts the time. Dragging away from the
-    // pin scrubs normally — the snap only owns the landing.
+    // A tap landing within 14dp of a pin glides the scrub to that
+    // exact minute instead of the finger's x (v15.36, slice
+    // 1852 — the landing used to snap there in one frame), so a
+    // bookmark is a one-tap jump; the Room reads the snapped
+    // value after the release commit and toasts the time.
+    // Dragging away from the pin scrubs normally — the glide
+    // only owns the landing.
     private java.util.List<Integer> bookmarks;
     private int snappedBookmarkMs = -1;
+    // v15.36 (slice 1852): bookmark pin-tap glide state — the
+    // pin landing used to jump the bar to the pin in one frame
+    // (v12.64 scrubTo on DOWN); the glide animates it there
+    // instead. pinGlideAnim is the running glide (null when
+    // still); pinGlideTargetMs is the pin it is gliding to,
+    // so finishPinGlide can land exactly on it even after the
+    // animator is cancelled.
+    private android.animation.ValueAnimator pinGlideAnim = null;
+    private int pinGlideTargetMs = -1;
     // v15.32 (slice 1827): the pin arrival fade — see setBookmarks.
     // v15.32 (slice 1832): the pin departure fade — a clear glides
     // the set out over the same 250ms instead of snapping it off
@@ -568,6 +579,7 @@ public class WaveSeekView extends View {
         // v15.32 (slice 1832): the leaving set dies with the view
         // too — a fade-out in flight never outlives a detach.
         if (pinFadeAnim != null) { pinFadeAnim.cancel(); pinFadeAnim = null; }
+        cancelPinGlide(); // v15.36 (slice 1852): no off-screen pin glide tick
         fadingBookmarks = null;
         pinAlpha = (bookmarks == null ? 0f : 1f);
         // v3.65: same stop-ease guard, detach side — the flag used
@@ -741,6 +753,7 @@ public class WaveSeekView extends View {
             fadingBookmarks = bookmarks;
             bookmarks = null;
             snappedBookmarkMs = -1;
+            cancelPinGlide(); // v15.36 (slice 1852): a new pin set voids the pending snap
             if (pinFadeAnim != null) { pinFadeAnim.cancel(); pinFadeAnim = null; }
             final float fromAlpha = pinAlpha;
             pinFadeAnim = android.animation.ValueAnimator.ofFloat(fromAlpha, 0f);
@@ -771,6 +784,7 @@ public class WaveSeekView extends View {
         fadingBookmarks = null;
         bookmarks = next;
         snappedBookmarkMs = -1;
+        cancelPinGlide(); // v15.36 (slice 1852): a new pin set voids the pending snap
         if (pinFadeAnim != null) { pinFadeAnim.cancel(); pinFadeAnim = null; }
         pinAlpha = 0f;
         pinFadeAnim = android.animation.ValueAnimator.ofFloat(0f, 1f);
@@ -803,7 +817,7 @@ public class WaveSeekView extends View {
 
     public void setOnWaveSeekListener(OnWaveSeekListener l) { listener = l; }
     public int getMax() { return max; }
-    public void setMax(int m) { max = Math.max(0, m); if (progress > max) progress = max; snappedBookmarkMs = -1; invalidate(); }
+    public void setMax(int m) { max = Math.max(0, m); if (progress > max) progress = max; snappedBookmarkMs = -1; cancelPinGlide(); invalidate(); }
     public int getProgress() { return progress; }
     public void setProgress(int p) {
         int np = Math.max(0, Math.min(max, p));
@@ -952,6 +966,69 @@ public class WaveSeekView extends View {
         scrubToMs(Math.round(frac * max));
     }
 
+    // v15.36 (slice 1852): bookmark pin-tap glide — the pin
+    // landing used to jump the bar to the pin in one frame
+    // (v12.64 scrubTo on DOWN) while every other wave move
+    // glides (poll glide v2.20, buffered tint v15.28, pin fades
+    // v15.32). A tap landing within 14dp of a pin now glides
+    // the playhead to that exact minute over 200ms Decelerate
+    // (the swell-out rhythm, v2.53), so the jump reads as the
+    // bar sliding to the mark the finger chose. The glide writes
+    // through scrubToMs per frame, so the elapsed / remaining
+    // clocks glide with the bar (the onProgressChanged channel,
+    // same as a drag); the Room's 500ms poll can never fight
+    // it — seeking is true from onStartTrackingTouch (fired
+    // before the snap) and the poll's bar writes are
+    // !seeking-guarded. A MOVE cancels it (the finger owns the
+    // bar from there); UP / POINTER_UP finish it first, so the
+    // release commit (seekTarget = getProgress()) always reads
+    // the pin exactly, never a mid-glide value; CANCEL, a new
+    // pin set, a track change (setMax) and a detach all cancel
+    // it. A tap already on the pin (from == target) skips the
+    // animator and lands at once — no movement, no glide. The
+    // end listener is identity-guarded the v3.65 way; finish
+    // nulls the field BEFORE cancelling, so a synchronous end
+    // drops instead of clearing state the finish already owns.
+    private void startPinGlide(int targetMs) {
+        cancelPinGlide();
+        if (targetMs == progress) { scrubToMs(targetMs); return; }
+        pinGlideTargetMs = targetMs;
+        final int from = progress;
+        android.animation.ValueAnimator g = android.animation.ValueAnimator.ofInt(from, targetMs);
+        g.setDuration(200);
+        g.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        g.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                scrubToMs(((Integer) a.getAnimatedValue()).intValue());
+            }
+        });
+        final android.animation.ValueAnimator self = g;
+        g.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                if (pinGlideAnim != self) return;
+                pinGlideAnim = null;
+            }
+        });
+        pinGlideAnim = g;
+        g.start();
+    }
+
+    private void cancelPinGlide() {
+        if (pinGlideAnim == null) return;
+        android.animation.ValueAnimator g = pinGlideAnim;
+        pinGlideAnim = null;
+        g.cancel();
+    }
+
+    private void finishPinGlide() {
+        if (pinGlideAnim == null) return;
+        int target = pinGlideTargetMs;
+        android.animation.ValueAnimator g = pinGlideAnim;
+        pinGlideAnim = null;
+        g.cancel();
+        scrubToMs(target);
+    }
+
     // v11.91: TalkBack support — the view extends plain View, so
     // a TalkBack user could not operate the seek bar at all (no
     // range, no actions, activation a no-op). It now presents as
@@ -1004,13 +1081,17 @@ public class WaveSeekView extends View {
                 animateReadout(1f, 120); // v14.18: readout fades in with the swell
                 if (listener != null) listener.onStartTrackingTouch(this);
                 // v12.64: a tap landing within 14dp of a bookmark pin
-                // snaps the scrub to that exact minute — the pin is
-                // a one-tap jump, not a near-miss scrub. The snapped
-                // value rides the normal release commit (the bar
-                // already sits at the pin), and the Room toasts the
-                // time from consumeSnappedBookmark; a MOVE clears
-                // it, so a drag away from the pin never toasts.
+                // glides the scrub to that exact minute (v15.36,
+                // slice 1852 — the landing used to snap there in
+                // one frame) — the pin is a one-tap jump, not a
+                // near-miss scrub. The snapped value rides the
+                // normal release commit (the glide is finished on
+                // UP, so the bar sits exactly at the pin), and the
+                // Room toasts the time from consumeSnappedBookmark;
+                // a MOVE clears it, so a drag away from the pin
+                // never toasts.
                 snappedBookmarkMs = -1;
+                cancelPinGlide(); // v15.36 (slice 1852): a stale glide can never survive a new DOWN
                 float downX = e.getX();
                 if (max > 0 && bookmarks != null) {
                     float snapPx = 14f * getResources().getDisplayMetrics().density;
@@ -1026,7 +1107,8 @@ public class WaveSeekView extends View {
                         downX = (float) bestMs / max * getWidth();
                     }
                 }
-                scrubTo(downX);
+                if (snappedBookmarkMs >= 0) startPinGlide(snappedBookmarkMs);
+                else scrubTo(downX);
                 return true;
             case MotionEvent.ACTION_MOVE:
                 // v11.80: read the tracked finger, not index 0 —
@@ -1038,6 +1120,7 @@ public class WaveSeekView extends View {
                 int moveIdx = e.findPointerIndex(activePointerId);
                 if (moveIdx < 0) return true;
                 snappedBookmarkMs = -1; // v12.64: a drag away from the pin is a scrub, not a bookmark tap
+                cancelPinGlide(); // v15.36 (slice 1852): the finger owns the bar from here
                 scrubTo(e.getX(moveIdx));
                 return true;
             case MotionEvent.ACTION_UP:
@@ -1062,6 +1145,7 @@ public class WaveSeekView extends View {
                 // is attached, so this is a no-op that keeps
                 // TalkBack activation working).
                 performClick();
+                finishPinGlide(); // v15.36 (slice 1852): land exactly on the pin before the commit reads progress
                 if (wasDragging && listener != null) listener.onStopTrackingTouch(this);
                 return true;
             case MotionEvent.ACTION_POINTER_UP:
@@ -1075,6 +1159,7 @@ public class WaveSeekView extends View {
                 animateSwell(1f, 200);
                 animateReadout(0f, 200); // v14.18: readout melts out with the swell
                 performClick();
+                finishPinGlide(); // v15.36 (slice 1852): land exactly on the pin before the commit reads progress
                 if (listener != null) listener.onStopTrackingTouch(this);
                 return true;
             case MotionEvent.ACTION_CANCEL:
@@ -1095,6 +1180,7 @@ public class WaveSeekView extends View {
                 dragging = false;
                 activePointerId = -1;
                 snappedBookmarkMs = -1; // v12.64: a cancelled tap is not a bookmark jump either
+                cancelPinGlide(); // v15.36 (slice 1852): a cancelled tap glides nowhere
                 animateSwell(1f, 200);
                 animateReadout(0f, 200); // v14.18: readout melts out with the swell
                 if (wasDraggingCancel && listener != null) listener.onCancelTrackingTouch(this);

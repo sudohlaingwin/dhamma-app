@@ -12956,7 +12956,8 @@ public class DownloadedActivity extends Activity {
                 android.view.View card73 = v.findViewById(R.id.cardInner);
                 // v15.24 (slice 1787): the clear goes through the same helper — crossfadeCardTile is the card's sole writer now, so the recorded target must follow the paint: a bare setBackgroundResource here would leave the map recording gold while the view shows plain, and the next gold bind would no-op and strand the row plain while sounding.
                 if (card73 != null) Fx.crossfadeCardTile(card73, cachedDlNight ? R.drawable.card_bg_night : R.drawable.card_bg);
-                if (t73 != null) t73.setAlpha(1.0f);
+                // v15.36 (slice 1861): the clear goes through the same helper — crossfadeTitleDim is the title's sole writer now, so the recorded target must follow the paint (see the card clear above, v15.24).
+                if (t73 != null) Fx.setTitleDimNow(t73, false);
                 // v13.97 (slice 1092): the hairline is row STATE
                 // too — a recycled half-heard row rebound to a
                 // stale slot kept its gold line on an empty row
@@ -13081,7 +13082,9 @@ public class DownloadedActivity extends Activity {
                     : (night ? android.graphics.Color.WHITE
                     : android.graphics.Color.parseColor("#3B2314")));
             // v13.84 (slice 1076): listened rows sit dimmer — the Room drawer's v4.12 Spotify pattern, now on the library too (the chooser got it in v13.83): a ✓ file's title reads at 0.6 alpha so the next unheard file stands out at a glance. Set on every bind (1.0f otherwise) so a recycled row rebinds its alpha here and a dim can never leak onto the next file; the playing row is never dimmed — its gold tile owns its emphasis.
-            if (title != null) title.setAlpha(rowListened ? 0.6f : 1.0f);
+            // v15.36 (slice 1861): the dim melts through
+            // Fx.crossfadeTitleDim instead of snapping (see Fx).
+            if (title != null) Fx.crossfadeTitleDim(title, rowListened);
             // v1.99: the row background never followed night mode — the layout pins it to white @color/card, while the title above is set white at night, so night titles were invisible on their own white cards (same class as the v1.98 header fix, which never reached the rows). Same card drawables as the main grid's rows.
             android.view.View card = v.findViewById(R.id.cardInner);
             // v13.84 (slice 1076): the playing row is a raised gold card — the Talks chooser's v13.83 tile, now on the library too. The sounding file used to read only as gold text + ▶, which vanished in a long shelf; now its whole card turns gold (dl_row_playing.xml: drawer gold, library 24dp geometry, theme-independent like the chooser's tile). Set on every bind so a recycled row can never keep a stale gold card; the held-row wash on the row root above is untouched and stacks harmlessly.

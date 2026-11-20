@@ -10894,7 +10894,19 @@ if (snd66 >= 0) currentIndex = snd66;
                     // under a search it would land on the wrong row.
                     if (drawerQueueOnly || drawerFilterMode != 0) { drawerQueueOnly = false; drawerFilterMode = 0; if (adapter != null) adapter.notifyDataSetChanged(); }
                     clearDrawerSearch();
-                    roomList.setSelection(currentIndex);
+                    // v15.36 (slice 1862): the jump-to-sounding now glides instead of teleporting — the chooser's v4.93 return-scroll and the Library's jump already glide, and the drawer open path glides on a mid-close reopen too (setPlayListPanel), so this open-drawer jump was the last teleport in the family: the gold sounding row used to snap to the top in one frame behind the visible list. Posted so the queue-only/filter/search exit's rebind settles first (the chooser's posted shape), off-screen only (a visible sounding row stays put — the gesture's job is to show it, not to park it), target through drawerScrollPos (the mapping every scroll site uses; -1 means no row, scroll nowhere — the v4.98 rule). Visual only; the exits, the toast and the landing row are untouched.
+                    final int target36 = drawerScrollPos(currentIndex);
+                    if (target36 >= 0) {
+                        roomList.post(new Runnable() {
+                            @Override public void run() {
+                                if (roomList == null) return;
+                                int first = roomList.getFirstVisiblePosition();
+                                int last = roomList.getLastVisiblePosition();
+                                if (target36 < first || target36 > last)
+                                    roomList.smoothScrollToPosition(target36);
+                            }
+                        });
+                    }
                 } else {
                     Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "no_talk_playing"), Toast.LENGTH_SHORT).show();
                 }
@@ -11065,7 +11077,19 @@ if (snd65h >= 0) currentIndex = snd65h;
                 if (roomList != null && currentIndex >= 0 && currentIndex < talks.size()) {
                     if (drawerQueueOnly || drawerFilterMode != 0) { drawerQueueOnly = false; drawerFilterMode = 0; if (adapter != null) adapter.notifyDataSetChanged(); }
                     clearDrawerSearch(); // v4.98: same full-list promise as the toggle long-press above
-                    roomList.setSelection(currentIndex);
+                    // v15.36 (slice 1862): the jump-to-sounding now glides instead of teleporting — the chooser's v4.93 return-scroll and the Library's jump already glide, and the drawer open path glides on a mid-close reopen too (setPlayListPanel), so this open-drawer jump was the last teleport in the family: the gold sounding row used to snap to the top in one frame behind the visible list. Posted so the queue-only/filter/search exit's rebind settles first (the chooser's posted shape), off-screen only (a visible sounding row stays put — the gesture's job is to show it, not to park it), target through drawerScrollPos (the mapping every scroll site uses; -1 means no row, scroll nowhere — the v4.98 rule). Visual only; the exits, the toast and the landing row are untouched.
+                    final int target36 = drawerScrollPos(currentIndex);
+                    if (target36 >= 0) {
+                        roomList.post(new Runnable() {
+                            @Override public void run() {
+                                if (roomList == null) return;
+                                int first = roomList.getFirstVisiblePosition();
+                                int last = roomList.getLastVisiblePosition();
+                                if (target36 < first || target36 > last)
+                                    roomList.smoothScrollToPosition(target36);
+                            }
+                        });
+                    }
                     Fx.tap(RoomActivity.this);
                 } else {
                     Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "no_talk_playing"), Toast.LENGTH_SHORT).show();

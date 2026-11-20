@@ -6835,7 +6835,15 @@ public class TalksActivity extends Activity {
             // otherwise) so a recycled row rebinds its alpha here and
             // a dim can never leak onto the next talk; the playing row
             // is never dimmed — its gold tile owns its emphasis.
-            if (titleView != null) titleView.setAlpha(rowListened ? 0.6f : 1.0f);
+            // v15.36 (slice 1861): the dim melts through
+            // Fx.crossfadeTitleDim instead of snapping (see Fx) — the
+            // Up Next ▸ row below is exempted here, so a marked row
+            // seeds at 1.0f on its first bind instead of melting up
+            // from a just-seeded 0.6f.
+            boolean rowDimmed = rowListened
+                    && !(upNextRowUrl.length() > 0
+                    && SiteHttp.sameTalk(rowUrl, upNextRowUrl));
+            if (titleView != null) Fx.crossfadeTitleDim(titleView, rowDimmed);
             // v13.99 (slice 1094): talk duration clock — the stored
             // total length (talkDurCache, v13.96) as a small muted
             // clock on the row's right edge, so a listener can judge
@@ -6871,12 +6879,11 @@ public class TalksActivity extends Activity {
                 durView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, cachedFont == 0 ? 12 : (cachedFont == 1 ? 13 : 16));
                 durView.setTextColor(cachedNight ? android.graphics.Color.parseColor("#AAAAAA") : android.graphics.Color.parseColor("#7A6A58"));
             }
-            // v13.85 (slice 1077): Up Next row mark — the Room drawer's v4.13 ▸, now on the chooser rows too: the row the header's Up Next line names carries a ▸ prefix at full alpha, even when already listened, so the imminent talk stands out in the long list instead of hiding behind its ✓ dim. The mark follows upNextRowUrl, the URL refreshFavHeader resolved alongside that line (queued head first, else forward-history top, else shuffle-gated list-next — the Room's peekNextIndex order, restated in the chooser), so the row and the line can never disagree. No ▸ when a foreign queue head waits (upNextRowUrl is empty then, the drawer's v11.60 rule — the foreign head has no row here), while shuffle is on with no head (order unknowable, v5.84), or with no live Room session for this sayadaw (the resolution gates on talkPlayingUrl). The playing row itself never carries it: the guard below, plus the resolution can never name the sounding talk. Set on every bind — the dim above runs first, so a recycled listened row rebinds its alpha here and the mark can never leak onto the next talk.
+            // v13.85 (slice 1077): Up Next row mark — the Room drawer's v4.13 ▸, now on the chooser rows too: the row the header's Up Next line names carries a ▸ prefix at full alpha, even when already listened, so the imminent talk stands out in the long list instead of hiding behind its ✓ dim. The mark follows upNextRowUrl, the URL refreshFavHeader resolved alongside that line (queued head first, else forward-history top, else shuffle-gated list-next — the Room's peekNextIndex order, restated in the chooser), so the row and the line can never disagree. No ▸ when a foreign queue head waits (upNextRowUrl is empty then, the drawer's v11.60 rule — the foreign head has no row here), while shuffle is on with no head (order unknowable, v5.84), or with no live Room session for this sayadaw (the resolution gates on talkPlayingUrl). The playing row itself never carries it: the guard below, plus the resolution can never name the sounding talk. Set on every bind — the dim above already exempts the marked row (v15.36), so no alpha write lives here any more and the mark can never leak onto the next talk.
             if (titleView != null && !rowPlaying && !rowPlayingLib
                     && upNextRowUrl.length() > 0
                     && SiteHttp.sameTalk(rowUrl, upNextRowUrl)) {
                 titleView.setText("▸ " + titleView.getText().toString());
-                titleView.setAlpha(1.0f);
             }
             android.view.View card = v.findViewById(R.id.cardInner);
             // v13.83 (slice 1075): the playing row is a raised gold

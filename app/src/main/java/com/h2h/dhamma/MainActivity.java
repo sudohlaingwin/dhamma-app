@@ -59,6 +59,14 @@ public class MainActivity extends Activity {
     // v2.07: grid entrance guard, same model as the Talks rows —
     // only positions never seen before animate in.
     private int lastGridAnimPos = -1;
+    // v15.36 (slice 1853): Main grid rank-close glide state —
+    // the chooser (v15.18) / Library (v15.21) shape transposed
+    // to the 4-column grid: sayadaw name -> old (left, top) of
+    // each visible card, armed by a search/filter set change
+    // and cleared by the posted glide runnable; a newer set
+    // change re-arms it first (identity guard, the v15.18
+    // shape). Null while no glide is armed.
+    private java.util.Map<String, int[]> gridSetGlideTops = null;
     // v2.48: snapshot of the last filtered grid, so a search that
     // actually changes the results can re-pour them (below) while
     // a keystroke that changes nothing never replays the cascade.
@@ -255,6 +263,25 @@ public class MainActivity extends Activity {
     private android.graphics.drawable.Drawable stripPhotoRingBreathBg = null;
     private boolean stripPhotoRingBreathPending = false;
     private int stripPhotoRingBreathGen = 0;
+    // v15.36 (slice 1851): sounding shelf chip ring breath state —
+    // the fields the helpers below own. shelfChipRingBreath is
+    // the running loop (null when still); shelfChipRingBreathBg
+    // is the background drawable it writes (the photo is a
+    // child of the ring frame, so the breath animates the
+    // drawable's alpha, never the view's — the portrait stays
+    // solid); shelfChipRingBreathPending marks a delayed start
+    // still waiting out the 250ms crossfade;
+    // shelfChipRingBreathGen vetoes a stale delayed start after
+    // a state flip, a rebuild or an onPause cancel;
+    // shelfChipRingBreathName is the sayadaw whose chip owns
+    // the loop — chips carry no ids, only their name tag, and
+    // a rebuild replaces every chip view, so the name (not a
+    // view) is the stable identity.
+    private android.animation.ValueAnimator shelfChipRingBreath = null;
+    private android.graphics.drawable.Drawable shelfChipRingBreathBg = null;
+    private boolean shelfChipRingBreathPending = false;
+    private int shelfChipRingBreathGen = 0;
+    private String shelfChipRingBreathName = null;
     // v10.08: download-complete listener for the notification card
     // while Main is foreground — Main leg of the v10.06/v10.07
     // live-sync family. Main's own strip re-syncs every second
@@ -2031,6 +2058,16 @@ public class MainActivity extends Activity {
                         // only a real change re-pours the chips).
                         refreshFavShelf();
                     }
+                    // v15.36 (slice 1851): the shelf chip ring breath's
+                    // second driver — refreshFavShelf's change gate
+                    // returns early on steady ticks, so the arm at
+                    // its end can never re-arm the breath after an
+                    // onPause cancel (the ring state never flips on
+                    // return). The tick runs every second while Main
+                    // is visible, so this unconditional sync is the
+                    // re-arm; a running breath or a settled still
+                    // ring is a no-op either way.
+                    syncShelfChipRingBreath();
                 } finally {
                     // v11.78: a throw above used to abort the re-post
                     // and freeze the strip/pulse/nav tint for the rest
@@ -2077,6 +2114,14 @@ public class MainActivity extends Activity {
         // syncStripPhoto). Every destroy path passes through
         // onPause, so no separate onDestroy finish is needed.
         stopStripPhotoRingBreath();
+        // v15.36 (slice 1851): same for the shelf chip ring breath —
+        // a hidden view must not keep animating, and an infinite
+        // animator would pin the dead activity past a rotation.
+        // The restarted tick re-arms it on return (the tick tail
+        // sync — the change gate in refreshFavShelf cannot).
+        // Every destroy path passes through onPause, so no
+        // separate onDestroy finish is needed.
+        stopShelfChipRingBreath();
         // v10.08: stop listening while hidden — onResume re-registers.
         if (mainDlCompleteRegistered && mainDlCompleteReceiver != null) {
             try { unregisterReceiver(mainDlCompleteReceiver); } catch (Exception ignored) {}
@@ -3423,6 +3468,12 @@ public class MainActivity extends Activity {
             // GONE at the end, gen-guarded (v3.62) so a re-appear
             // landing mid-fade never strands it hidden. The
             // steady-empty case is unchanged (already GONE skips).
+            // v15.36 (slice 1851): the shelf is leaving — a hidden
+            // view must not keep animating, and an infinite
+            // animator would pin the dead chip past the fade-out.
+            // The next appearance re-arms through the sync at the
+            // end of this method.
+            stopShelfChipRingBreath();
             if (favShelfWrap.getVisibility() != android.view.View.GONE)
                 Fx.fadeOut(favShelfWrap, 200);
             lastFavShelfKey = null;
@@ -3511,6 +3562,17 @@ public class MainActivity extends Activity {
                         && soundingShelf != null
                         && soundingShelf.equals(s.name);
                 android.view.View ring = ((android.view.ViewGroup) chip).getChildAt(0);
+                // v15.36 (slice 1851): the breath owns the outgoing
+                // background's alpha — cancel it before the
+                // crossfade when this chip owns the loop and its
+                // new state is not gold, or its animator would
+                // keep writing to a replaced drawable. A chip
+                // that keeps sounding gold keeps its breath (no
+                // stop, no restart pop); a chip that never owned
+                // the loop has nothing to stop.
+                if (s.name.equals(shelfChipRingBreathName)
+                        && !(shelfPlaying && !AudioService.liveTrackError))
+                    stopShelfChipRingBreath();
                 Fx.crossfadeRing(ring, shelfPlaying && AudioService.liveTrackError
                         ? R.drawable.shelf_ring_failed
                         : shelfPlaying ? R.drawable.shelf_ring_playing : 0);
@@ -3550,6 +3612,15 @@ public class MainActivity extends Activity {
             // landing mid-fade-out rides back to full instead of
             // letting a stale fadeOut end action GONE the wrap.
             if (favShelfWrap.getAlpha() < 0.999f) Fx.fadeIn(favShelfWrap, 250);
+            // v15.36 (slice 1851): arm the breath on the gold chip,
+            // stop it anywhere else — the change gate above fires
+            // only on a sounding / failed / buffering flip, so this
+            // unconditional sync is the re-arm after a stop in the
+            // loop (a flip that kept the same chip sounding but
+            // failed it, or a new chip sounding). A running breath
+            // for the same name is a no-op; the tick tail covers
+            // the onPause re-arm the change gate cannot.
+            syncShelfChipRingBreath();
             return;
         }
         // v14.15 (slice 1669): remember whether the shelf was
@@ -3723,6 +3794,15 @@ public class MainActivity extends Activity {
             shelfGlideStart65.clear();
             shelfGlideDur65.clear();
         }
+        // v15.36 (slice 1851): the rebuild destroys every chip —
+        // cancel the breath before the views die, or its animator
+        // would keep writing to a detached drawable and pin the
+        // dead chip (and its activity) past the rebuild. The
+        // departing chips captured above are the same views, so
+        // this one stop covers a sounding chip leaving too; a
+        // re-seated departure fades out with a still ring. The
+        // sync at the end of this method re-arms on the fresh chip.
+        stopShelfChipRingBreath();
         favShelf.removeAllViews();
         float d = getResources().getDisplayMetrics().density;
         for (final Sayadaw s : favList) {
@@ -4282,6 +4362,141 @@ public class MainActivity extends Activity {
                 shelfDepartingViews63.add(dv63);
             }
         }
+        // v15.36 (slice 1851): arm the breath on the fresh gold
+        // chip — the rebuild seeded its ring (Fx.seedRing above)
+        // but a fresh view has no animator yet. A rebuild landing
+        // inside the 260ms delayed start detaches the captured
+        // chip, so the runnable's parent check vetoes the stale
+        // start and the next rebuild's own sync re-arms on the
+        // newer chip. The tick tail covers the onPause re-arm the
+        // change gate cannot.
+        syncShelfChipRingBreath();
+    }
+
+    // v15.36 (slice 1851): sounding shelf chip ring breath — the
+    // last static sounding ring in the app (the ring family is
+    // otherwise complete: chooser v15.34, Room header + Main /
+    // Talks / Settings / Downloaded strips v15.35). The shelf is
+    // the surface a listener stares at while browsing sayadaws
+    // mid-talk, and its gold ring only ever crossfaded in and sat
+    // still while its talk played. The ring now breathes
+    // 1.00->0.55 on a 900ms reverse loop, the Library pause-icon
+    // rhythm, while the session sounds — gold only, never the red
+    // failed ring (the Room header precedent, v15.35 slice 1846:
+    // a failed ring breathing would read as an alarm, not a
+    // pulse). The photo is a CHILD of the ring frame (56dp frame
+    // around the 52dp portrait), so the loop writes the
+    // background drawable's alpha, never the view's:
+    // crossfadeRing paints with a TransitionDrawable and never
+    // touches the view alpha, so the two never fight. The start
+    // waits 260ms (the crossfade is 250ms) so the breath never
+    // dims a fade-in, and the loop drops itself the moment the
+    // background is replaced. Chips carry no ids, only their
+    // sayadaw name tag (v15.08), and a rebuild replaces every
+    // chip view — so the arm looks the sounding chip up fresh
+    // by tag on every call, and the delayed start re-checks that
+    // the captured chip is still attached to the shelf, still
+    // tagged with the same name, still sounding gold and not a
+    // departing chip before looping. Every crossfade and every
+    // rebuild is preceded by a stop, so a stale animator can
+    // never write to a detached drawable; onPause stops the
+    // breath, and the 1s tick tail re-arms it on return (the
+    // change gate in refreshFavShelf cannot — a steady tick
+    // returns early there and never reaches the arm).
+    private void armShelfChipRingBreath() {
+        if (shelfChipRingBreath != null || shelfChipRingBreathPending) return;
+        String snd = AudioService.liveEnded ? null : soundingSayadawNameVisual();
+        if (snd == null || AudioService.liveTrackError) return;
+        if (favShelf == null) return;
+        final String name = snd;
+        android.view.View chip = null;
+        for (int i = 0; i < favShelf.getChildCount(); i++) {
+            android.view.View c = favShelf.getChildAt(i);
+            // A departing chip is re-seated in the shelf while it
+            // fades out (v15.00) and still carries its name tag —
+            // breathing its ring would pin a view the fade is
+            // about to remove, so it never owns the loop.
+            if (c != null && name.equals(c.getTag())
+                    && !shelfDepartingViews63.contains(c)) { chip = c; break; }
+        }
+        if (chip == null || !(chip instanceof android.view.ViewGroup)) return;
+        final android.view.View chipFinal = chip;
+        final android.view.View ring = ((android.view.ViewGroup) chip).getChildAt(0);
+        if (ring == null) return;
+        shelfChipRingBreathPending = true;
+        shelfChipRingBreathName = name;
+        final int myGen = shelfChipRingBreathGen;
+        ring.postDelayed(new Runnable() {
+            @Override public void run() {
+                shelfChipRingBreathPending = false;
+                if (myGen != shelfChipRingBreathGen) return;
+                // A rebuild landing inside the 260ms wait replaced
+                // every chip — the captured chip is detached, and
+                // the fresh chip for the same name owns the ring
+                // now; the rebuild's own sync re-arms on it. A
+                // chip that started departing in the same window
+                // is a stale start too.
+                if (chipFinal.getParent() != favShelf
+                        || !name.equals(chipFinal.getTag())
+                        || shelfDepartingViews63.contains(chipFinal)) {
+                    if (name.equals(shelfChipRingBreathName)) shelfChipRingBreathName = null;
+                    return;
+                }
+                String sndNow = AudioService.liveEnded ? null : soundingSayadawNameVisual();
+                if (sndNow == null || !sndNow.equals(name) || AudioService.liveTrackError) {
+                    if (name.equals(shelfChipRingBreathName)) shelfChipRingBreathName = null;
+                    return;
+                }
+                android.graphics.drawable.Drawable bg = ring.getBackground();
+                if (bg == null) {
+                    if (name.equals(shelfChipRingBreathName)) shelfChipRingBreathName = null;
+                    return;
+                }
+                shelfChipRingBreathBg = bg;
+                android.animation.ValueAnimator breath = android.animation.ValueAnimator.ofInt(255, 140);
+                breath.setDuration(900);
+                breath.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+                breath.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+                breath.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+                    @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                        android.graphics.drawable.Drawable cur = shelfChipRingBreathBg;
+                        if (cur == null || ring.getBackground() != cur) {
+                            // Background replaced (a crossfade) —
+                            // drop the loop; the sync re-starts it
+                            // on the new background if the ring
+                            // is still gold. No gen bump: no
+                            // delayed start can exist while a
+                            // loop runs (the arm returns early).
+                            shelfChipRingBreath = null;
+                            shelfChipRingBreathBg = null;
+                            shelfChipRingBreathName = null;
+                            a.cancel();
+                            return;
+                        }
+                        cur.setAlpha(((Integer) a.getAnimatedValue()).intValue());
+                    }
+                });
+                shelfChipRingBreath = breath;
+                breath.start();
+            }
+        }, 260);
+    }
+
+    private void stopShelfChipRingBreath() {
+        if (shelfChipRingBreath == null && !shelfChipRingBreathPending) return;
+        shelfChipRingBreathGen++;
+        shelfChipRingBreathPending = false;
+        if (shelfChipRingBreath != null) shelfChipRingBreath.cancel();
+        if (shelfChipRingBreathBg != null) shelfChipRingBreathBg.setAlpha(255);
+        shelfChipRingBreath = null;
+        shelfChipRingBreathBg = null;
+        shelfChipRingBreathName = null;
+    }
+
+    private void syncShelfChipRingBreath() {
+        String snd = AudioService.liveEnded ? null : soundingSayadawNameVisual();
+        if (snd != null && !AudioService.liveTrackError) armShelfChipRingBreath();
+        else stopShelfChipRingBreath();
     }
 
     // v4.22: hide the search keyboard — the only keyboard-hide
@@ -4355,7 +4570,73 @@ public class MainActivity extends Activity {
         }
     }
 
+    // v15.36 (slice 1853): capture the visible cards' old
+    // (left, top) BEFORE the filter below rebuilds shown —
+    // identity by sayadaw name (the adapter's item key, like
+    // favs / the shelf); display position = firstVisible +
+    // child index, read against the OLD shown list, so the map
+    // keys the layout exactly as it stands.
+    private java.util.Map<String, int[]> captureGridSetGlide() {
+        java.util.Map<String, int[]> tops = new java.util.HashMap<String, int[]>();
+        if (gridView == null) return tops;
+        int first = gridView.getFirstVisiblePosition();
+        for (int i = 0; i < gridView.getChildCount(); i++) {
+            android.view.View ch = gridView.getChildAt(i);
+            if (ch == null) continue;
+            int pos = first + i;
+            if (pos < 0 || pos >= shown.size()) continue;
+            Sayadaw sd = shown.get(pos);
+            if (sd == null || sd.name == null) continue;
+            tops.put(sd.name, new int[]{ch.getLeft(), ch.getTop()});
+        }
+        return tops;
+    }
+
+    // v15.36 (slice 1853): the posted glide — runs after the
+    // layout the notify + setSelection below scheduled, so each
+    // visible child sits at its NEW slot; a surviving card
+    // whose old slot differs is parked at its old slot and
+    // glides home 250ms (Fx.glideHome for X, Fx.glideHomeY for
+    // Y — the v15.18 chooser shape, 2D: a grid move can change
+    // column AND row). The park is additive (the helpers add
+    // the shift to the current translation), so a second
+    // keystroke landing mid-glide re-parks from where the card
+    // visually is and never snaps. A newer set change arming
+    // its own map first makes this post stand down without
+    // gliding (its own post owns the glide now); rows that did
+    // not move and brand-new rows pour exactly as before.
+    private void postGridSetGlide(final java.util.Map<String, int[]> tops) {
+        if (gridView == null || tops == null || tops.isEmpty()) return;
+        gridSetGlideTops = tops;
+        final java.util.Map<String, int[]> mine = tops;
+        gridView.post(new Runnable() {
+            @Override public void run() {
+                if (gridView == null || gridSetGlideTops != mine) return;
+                int first = gridView.getFirstVisiblePosition();
+                for (int i = 0; i < gridView.getChildCount(); i++) {
+                    android.view.View ch = gridView.getChildAt(i);
+                    if (ch == null) continue;
+                    int pos = first + i;
+                    if (pos < 0 || pos >= shown.size()) continue;
+                    Sayadaw sd = shown.get(pos);
+                    if (sd == null || sd.name == null) continue;
+                    int[] old = mine.get(sd.name);
+                    if (old == null) continue;
+                    float shiftX = old[0] - ch.getLeft();
+                    float shiftY = old[1] - ch.getTop();
+                    if (shiftX != 0) Fx.glideHome(ch, shiftX, 250);
+                    if (shiftY != 0) Fx.glideHomeY(ch, shiftY, 250);
+                }
+                if (gridSetGlideTops == mine) gridSetGlideTops = null;
+            }
+        });
+    }
+
     private void applyFilter(boolean allowToast) {
+        // v15.36 (slice 1853): capture BEFORE shown.clear() below —
+        // the posted glide after the notify parks each moved
+        // survivor at its old slot (see captureGridSetGlide).
+        final java.util.Map<String, int[]> gridTops = captureGridSetGlide();
         shown.clear();
         // v1.90: NFC-normalise both sides — Myanmar stacking/keystroke
         // variants that look identical but differ in code-point order
@@ -4458,6 +4739,10 @@ public class MainActivity extends Activity {
             }
         }
         adapter.notifyDataSetChanged();
+        // v15.36 (slice 1853): arm the rank-close glide on a real
+        // set change (the same gesture-only rule as the pour
+        // reset above) — silent passes never arm it.
+        if (setChanged) postGridSetGlide(gridTops);
         refreshFavShelf(); // v13.74: shelf follows every filter run
         if (allowToast && setChanged && gridView != null && gridView.getFirstVisiblePosition() > 0)
             gridView.setSelection(0);
