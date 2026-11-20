@@ -581,6 +581,8 @@ public class RoomActivity extends Activity {
     // helper, so a cancel / stale-arm / sounding-guard path — or
     // any other rebind — never inherits a fade.
     private String dropFadeUrl = null;
+    // v15.20 (slice 1783): old display positions for the drawer reorder rank-close glide (see captureDrawerReorderGlide) — queue URL -> old display position, armed by a pick-up/drop reorder, cleared by the posted glide runnable; a newer reorder arming its own map first makes an older post stand down.
+    private java.util.HashMap<String, Integer> drawerReorderGlidePos83 = null;
     // v4.92: pick-up/drop queue move — the URL of the talk the
     // listener picked up (v6.85: queue-only long-press, after the
     // v6.61 drawer row ⋮ removal + v6.84 menu deletion killed the
@@ -857,6 +859,61 @@ public class RoomActivity extends Activity {
             }
         });
     }
+    // v15.20 (slice 1783): URL of the row at a drawer display position, for the reorder glide's capture — queue-only (unsearched) reads the display line (foreign rows included, the drawerPosOfQueueUrl shape); any other view maps the talk index through drawerTalkIndex, so a drawer search narrows it the same way and a foreign row outside the queue-only view has no row.
+    private String drawerRowUrlAt83(int displayPos) {
+        if (drawerQueueOnly && !drawerSearching()) {
+            java.util.ArrayList<String> lines83 = drawerQueueDisplayLines();
+            if (displayPos < 0 || displayPos >= lines83.size()) return null;
+            return queueLineUrl(lines83.get(displayPos));
+        }
+        int ti83 = drawerTalkIndex(displayPos);
+        if (ti83 < 0 || ti83 >= talks.size()) return null;
+        return talks.get(ti83).url;
+    }
+
+    // v15.20 (slice 1783): rank-close glide for a pick-up/drop queue reorder — the drawer analogue of the chooser's v15.18 / Library's v15.16 glides. A reorder used to end in a bare notifyDataSetChanged plus the dropped row's own fade (v14.46), so every row BETWEEN the old and new slots teleported one rowHeight in the first frame after the rebind while only the dropped row had a beat. Capture the visible rows' old tops + display positions (by queue URL) BEFORE the remove/add below moves them; the posted runnable after the rebind parks each moved survivor at its old top and glides it home 250ms via Fx.glideHomeY. The glide is symmetric: dropping DOWN shifts the rows between UP (oldPos > pos) and dropping UP shifts them DOWN (oldPos < pos) — both glide, shift != 0; rows that did not move never glide. The dropped row itself is EXCLUDED — its v14.46 fade owns its landing, and a glide would park it N slots away and fight the fade (excluded by SiteHttp.sameTalk, since the held URL's spelling can differ from the stored line's). The sounding row glides like any survivor (translationY only — its gold tile crossfade v14.32 and title pulse v2.27 live on other views). No getView pour-skip: the drawer rebinds with no pour (the open pour v2.10 and the remove pour v14.51 are posted staggerChildren, never armed by a drop), so the glide owns the motion alone; the v3.45 hygiene's translationY reset runs during the rebind, before the posted park. A newer reorder arming its own map first makes an older post stand down (identity guard, the v15.18 shape).
+    private java.util.HashMap<String, Integer> captureDrawerReorderGlide() {
+        final java.util.HashMap<String, Integer> tops83 = new java.util.HashMap<String, Integer>();
+        drawerReorderGlidePos83 = new java.util.HashMap<String, Integer>();
+        if (roomList != null) {
+            int first83 = roomList.getFirstVisiblePosition();
+            for (int i83 = 0; i83 < roomList.getChildCount(); i83++) {
+                android.view.View ch83 = roomList.getChildAt(i83);
+                if (ch83 == null) continue;
+                String u83 = drawerRowUrlAt83(first83 + i83);
+                if (u83 == null || u83.length() == 0) continue;
+                tops83.put(u83, Integer.valueOf(ch83.getTop()));
+                drawerReorderGlidePos83.put(u83, Integer.valueOf(first83 + i83));
+            }
+        }
+        return tops83;
+    }
+    private void postDrawerReorderGlide(final java.util.HashMap<String, Integer> tops83, final String dropUrl83) {
+        if (roomList == null || tops83 == null) return;
+        final java.util.HashMap<String, Integer> pos83 = drawerReorderGlidePos83;
+        roomList.post(new Runnable() {
+            @Override public void run() {
+                // A newer reorder armed its own map first — stand down without gliding or clearing (its own post owns the glide now).
+                if (roomList == null || drawerReorderGlidePos83 != pos83) return;
+                // The drawer closed between arm and post — clear the field (it still holds this reorder's map) and glide nothing; the open pour owns the next open.
+                if (!isPlayListPanelOpen()) { drawerReorderGlidePos83 = null; return; }
+                int first83 = roomList.getFirstVisiblePosition();
+                for (int i83 = 0; i83 < roomList.getChildCount(); i83++) {
+                    android.view.View ch83 = roomList.getChildAt(i83);
+                    if (ch83 == null) continue;
+                    String u83 = drawerRowUrlAt83(first83 + i83);
+                    if (u83 == null || u83.length() == 0) continue;
+                    if (dropUrl83 != null && SiteHttp.sameTalk(dropUrl83, u83)) continue;
+                    Integer old83 = tops83.get(u83);
+                    if (old83 == null) continue;
+                    float shift83 = old83.intValue() - ch83.getTop();
+                    if (shift83 != 0) Fx.glideHomeY(ch83, shift83, 250);
+                }
+                if (drawerReorderGlidePos83 == pos83) drawerReorderGlidePos83 = null;
+            }
+        });
+    }
+
     // v14.58 (slice 1715): the drawer header's live-part strip —
     // the chooser's stripHeaderLivePct (v14.56) plus the sleep
     // suffix this header also carries. The arm compares with the
@@ -9125,6 +9182,9 @@ if (snd67n >= 0) currentIndex = snd67n;
                             int heldIdx = talkIndexForUrl(moveHeldUrl);
                             String heldTitle = heldIdx >= 0 ? talks.get(heldIdx).title
                                     : QueueEntry.parse(heldLineStr).title;
+                            // v15.20 (slice 1783): capture BEFORE the remove/add below move the rows — the posted glide after the notify parks each moved survivor at its old top (see captureDrawerReorderGlide).
+                            final java.util.HashMap<String, Integer> tops83 = captureDrawerReorderGlide();
+                            final String dropUrl83 = moveHeldUrl;
                             queueUrls.remove(heldLine);
                             int at = queueLineIndexForUrl(fe.url);
                             queueUrls.add(at >= 0 ? at : queueUrls.size(), heldLineStr);
@@ -9133,6 +9193,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                             saveQueue(null, true);
                             Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "moved_item") + heldTitle, Toast.LENGTH_SHORT).show();
                             if (adapter != null) adapter.notifyDataSetChanged();
+                            postDrawerReorderGlide(tops83, dropUrl83);
                             fadeDroppedQueueRow();
                             return;
                         }
@@ -9256,6 +9317,9 @@ if (snd67n >= 0) currentIndex = snd67n;
                     int heldIdx = talkIndexForUrl(moveHeldUrl);
                     String heldTitle = heldIdx >= 0 ? talks.get(heldIdx).title
                             : QueueEntry.parse(heldLineStr).title;
+                    // v15.20 (slice 1783): capture BEFORE the remove/add below move the rows — the posted glide after the notify parks each moved survivor at its old top (see captureDrawerReorderGlide).
+                    final java.util.HashMap<String, Integer> tops83 = captureDrawerReorderGlide();
+                    final String dropUrl83 = moveHeldUrl;
                     queueUrls.remove(heldLineIdx);
                     queueUrls.add(queueLineIndexForUrl(tappedUrl), heldLineStr);
                     dropFadeUrl = moveHeldUrl;
@@ -9263,6 +9327,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                     saveQueue(null, true);
                     Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "moved_item") + heldTitle, Toast.LENGTH_SHORT).show();
                     if (adapter != null) adapter.notifyDataSetChanged();
+                    postDrawerReorderGlide(tops83, dropUrl83);
                     fadeDroppedQueueRow();
                     return;
                 }
