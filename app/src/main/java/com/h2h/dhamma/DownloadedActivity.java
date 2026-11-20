@@ -2521,6 +2521,21 @@ public class DownloadedActivity extends Activity {
     // re-loads a face.
     private String dlStripPhotoName = null;
     private boolean lastDlStripPhotoRing = false;
+    // v15.35 (slice 1850): sounding strip ring breath state —
+    // the fields the helpers below own. dlStripPhotoRingBreath
+    // is the running loop (null when still);
+    // dlStripPhotoRingBreathBg is the background drawable
+    // it writes (the photo is a child of the ring frame, so the
+    // breath animates the drawable's alpha, never the view's —
+    // the portrait stays solid);
+    // dlStripPhotoRingBreathPending marks a delayed start
+    // still waiting out the 250ms crossfade;
+    // dlStripPhotoRingBreathGen vetoes a stale delayed start
+    // after a state flip or an onPause cancel.
+    private android.animation.ValueAnimator dlStripPhotoRingBreath = null;
+    private android.graphics.drawable.Drawable dlStripPhotoRingBreathBg = null;
+    private boolean dlStripPhotoRingBreathPending = false;
+    private int dlStripPhotoRingBreathGen = 0;
 
     // v6.02: sayadaw portrait on the library strip — Main's v6.00
     // and Talks' v6.01 mirror, completing portrait parity across
@@ -2560,12 +2575,35 @@ public class DownloadedActivity extends Activity {
                 && AudioService.liveSession && AudioService.liveHasTrack && !AudioService.liveEnded;
         if (ringing != lastDlStripPhotoRing) {
             lastDlStripPhotoRing = ringing;
+            // v15.35 (slice 1850): the breath owns the outgoing
+            // background's alpha — cancel it before the
+            // background is replaced, or its animator would
+            // keep writing to a detached drawable and the
+            // restore below would land on the wrong drawable.
+            // A no-op when no breath runs (first gold, fresh
+            // instance); the restore puts the old drawable back
+            // to full alpha for any later reuse.
+            stopDlStripPhotoRingBreath();
             if (ring != null) {
                 // v14.16 (slice 1670): the ring crossfades in/out
                 // instead of snapping — see Fx.crossfadeRing.
                 Fx.crossfadeRing(ring, ringing ? R.drawable.shelf_ring_playing : 0);
             }
         }
+        // v15.35 (slice 1850): arm the breath on a gold ring,
+        // stop it anywhere else — the change block above fires
+        // only on a state flip, so this unconditional arm is
+        // the re-arm after an onPause cancel (a hidden view must
+        // not keep animating, and an infinite animator would
+        // pin the dead activity): onResume restarts the 1s
+        // refresh (v1.71), which re-runs syncDlStripPhoto on
+        // every tick while the ring state never moved. A running
+        // breath or a pending start is a no-op. The strip ring
+        // has no failed (red) state — gold while sounding,
+        // nothing otherwise — so the arm condition is the ringing
+        // predicate alone.
+        if (ringing) armDlStripPhotoRingBreath();
+        else stopDlStripPhotoRingBreath();
         if (name == null || name.length() == 0) {
             dlStripPhotoName = null;
             if (ring != null) ring.setVisibility(android.view.View.GONE);
@@ -2585,6 +2623,78 @@ public class DownloadedActivity extends Activity {
                 ImageLoader.load(DownloadedActivity.this, url, name, (CircleImageView) pv);
             }
         });
+    }
+
+    // v15.35 (slice 1850): sounding strip ring breath — the
+    // twin of the Main strip ring breath (v15.35, slice 1847),
+    // the Talks strip ring breath (v15.35, slice 1848) and the
+    // Settings strip ring breath (v15.35, slice 1849): the
+    // Downloaded strip is the surface a listener stares at
+    // while browsing downloads mid-talk, and its gold ring only
+    // ever crossfaded in and sat still while its talk played.
+    // The ring now breathes 1.00->0.55 on a 900ms reverse loop,
+    // the Library rhythm, while the session sounds — visible
+    // the moment the user looks at the strip while browsing
+    // the library. The photo is a child of the ring frame, so
+    // the loop writes the background drawable's alpha, never
+    // the view's: crossfadeRing paints with a TransitionDrawable
+    // and never touches the view alpha, so the two never fight.
+    // The start waits 260ms (the crossfade is 250ms) so the
+    // breath never dims a fade-in, and the loop drops itself
+    // the moment the background is replaced. The strip ring has
+    // no failed (red) state — gold while sounding, nothing
+    // otherwise — so the breath condition is the ringing
+    // predicate alone.
+    private void armDlStripPhotoRingBreath() {
+        if (dlStripPhotoRingBreath != null || dlStripPhotoRingBreathPending) return;
+        final android.view.View ring = findViewById(R.id.nowStripPhotoRing);
+        if (ring == null) return;
+        dlStripPhotoRingBreathPending = true;
+        final int myGen = dlStripPhotoRingBreathGen;
+        ring.postDelayed(new Runnable() {
+            @Override public void run() {
+                dlStripPhotoRingBreathPending = false;
+                if (myGen != dlStripPhotoRingBreathGen) return;
+                if (!lastDlStripPhotoRing) return;
+                android.graphics.drawable.Drawable bg = ring.getBackground();
+                if (bg == null) return;
+                dlStripPhotoRingBreathBg = bg;
+                android.animation.ValueAnimator breath = android.animation.ValueAnimator.ofInt(255, 140);
+                breath.setDuration(900);
+                breath.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+                breath.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+                breath.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+                    @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                        android.graphics.drawable.Drawable cur = dlStripPhotoRingBreathBg;
+                        if (cur == null || ring.getBackground() != cur) {
+                            // Background replaced (a crossfade) —
+                            // drop the loop; the arm re-starts it
+                            // on the new background if the ring
+                            // is still gold. No gen bump: no
+                            // delayed start can exist while a
+                            // loop runs (the arm returns early).
+                            dlStripPhotoRingBreath = null;
+                            dlStripPhotoRingBreathBg = null;
+                            a.cancel();
+                            return;
+                        }
+                        cur.setAlpha(((Integer) a.getAnimatedValue()).intValue());
+                    }
+                });
+                dlStripPhotoRingBreath = breath;
+                breath.start();
+            }
+        }, 260);
+    }
+
+    private void stopDlStripPhotoRingBreath() {
+        if (dlStripPhotoRingBreath == null && !dlStripPhotoRingBreathPending) return;
+        dlStripPhotoRingBreathGen++;
+        dlStripPhotoRingBreathPending = false;
+        if (dlStripPhotoRingBreath != null) dlStripPhotoRingBreath.cancel();
+        if (dlStripPhotoRingBreathBg != null) dlStripPhotoRingBreathBg.setAlpha(255);
+        dlStripPhotoRingBreath = null;
+        dlStripPhotoRingBreathBg = null;
     }
 
     // v4.40: real mini-player on the library, the same strip as
@@ -6897,6 +7007,15 @@ public class DownloadedActivity extends Activity {
         if (suppressDlSharePause || suppressPermPause92) AppForeground.scheduleBackgroundCheck(this, 10000);
         else AppForeground.scheduleBackgroundCheck(this);
         refreshHandler.removeCallbacks(refreshRunnable);
+        // v15.35 (slice 1850): same for the strip ring breath —
+        // a hidden view must not keep animating, and an infinite
+        // animator would pin the dead activity past a rotation.
+        // The restarted tick re-arms it on return (the
+        // unconditional arm after the ring change block in
+        // syncDlStripPhoto). Every destroy path passes
+        // through onPause, so no separate onDestroy finish is
+        // needed.
+        stopDlStripPhotoRingBreath();
         // v10.09: stop listening while hidden — onResume re-registers.
         if (libDlCompleteRegistered && libDlCompleteReceiver != null) {
             try { unregisterReceiver(libDlCompleteReceiver); } catch (Exception ignored) {}

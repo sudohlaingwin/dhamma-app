@@ -258,6 +258,20 @@ public class RoomActivity extends Activity {
     // below the header through the flames, the playGlow and the
     // ▶/⏸ glyph, so the ring never has to carry transport state.
     private View headerPhotoRing;
+    // v15.35 (slice 1846): sounding header ring breath state —
+    // the fields the helpers below own. roomHeaderRingBreath is
+    // the running loop (null when still); roomHeaderRingBreathBg
+    // is the background drawable it writes (the photo is a
+    // child of the ring frame, so the breath animates the
+    // drawable's alpha, never the view's — the portrait stays
+    // solid); roomHeaderRingBreathPending marks a delayed start
+    // still waiting out the 250ms crossfade;
+    // roomHeaderRingBreathGen vetoes a stale delayed start after
+    // a state flip or an onPause cancel.
+    private android.animation.ValueAnimator roomHeaderRingBreath = null;
+    private android.graphics.drawable.Drawable roomHeaderRingBreathBg = null;
+    private boolean roomHeaderRingBreathPending = false;
+    private int roomHeaderRingBreathGen = 0;
     private boolean lastHeaderRing = false;
     // v14.05 (slice 1100): failed state the header ring was last bound
     // against — the ring is three-state now (gold / red / none), so the
@@ -5475,6 +5489,15 @@ if (snd65 >= 0) currentIndex = snd65;
                 if (headerRinging != lastHeaderRing || headerRingFailed != lastHeaderRingFailed) {
                     lastHeaderRing = headerRinging;
                     lastHeaderRingFailed = headerRingFailed;
+                    // v15.35 (slice 1846): the breath owns the outgoing
+                    // background's alpha — cancel it before the
+                    // background is replaced, or its animator would
+                    // keep writing to a detached drawable and the
+                    // restore below would land on the wrong drawable.
+                    // A no-op when no breath runs (first gold, fresh
+                    // instance); the restore puts the old drawable back
+                    // to full alpha for any later reuse.
+                    stopRoomHeaderRingBreath();
                     if (headerPhotoRing != null) {
                         // v14.16 (slice 1670): gold/red/none crossfades
                         // instead of snapping — see Fx.crossfadeRing.
@@ -5482,6 +5505,18 @@ if (snd65 >= 0) currentIndex = snd65;
                                 : headerRinging ? R.drawable.shelf_ring_playing : 0);
                     }
                 }
+                // v15.35 (slice 1846): arm the breath on a gold ring,
+                // stop it anywhere else — the change block above fires
+                // only on a state flip, so this unconditional arm is
+                // the re-arm after an onPause cancel (a hidden view must
+                // not keep animating, and an infinite animator would
+                // pin the dead activity): onResume restarts the 500ms
+                // poll, which re-runs this arm on every tick while the
+                // ring state never moved. A running breath or a pending
+                // start is a no-op; a failed (red) ring never breathes —
+                // an error state must read still, not alive.
+                if (headerRinging && !headerRingFailed) armRoomHeaderRingBreath();
+                else stopRoomHeaderRingBreath();
                 // v1.81: the shrine flames follow the same active
                 // rule as the button — a talk buffering towards play
                 // lights them like a playing one, instead of sitting
@@ -7667,6 +7702,74 @@ int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
             handler.postDelayed(this, 500);
         }
     };
+
+    // v15.35 (slice 1846): sounding header ring breath — the
+    // twin of the chooser ring breath (v15.34, slice 1845): the
+    // last sounding ring that sat static while its talk played
+    // (the Main grid card name breathes, v3.13/v3.17; the Room
+    // play glow breathes, v2.07/v2.20; the Library pause icon
+    // breathes, v2.25). The ring breathes 1.00->0.55 on a 900ms
+    // reverse loop, the Library rhythm, while this Room's talk
+    // sounds — visible the moment the user looks at the header
+    // while listening. The photo is a child of the ring frame,
+    // so the loop writes the background drawable's alpha, never
+    // the view's: crossfadeRing paints with a TransitionDrawable
+    // and never touches the view alpha, so the two never fight.
+    // The start waits 260ms (the crossfade is 250ms) so the
+    // breath never dims a fade-in, and the loop drops itself the
+    // moment the background is replaced.
+    private void armRoomHeaderRingBreath() {
+        if (roomHeaderRingBreath != null || roomHeaderRingBreathPending) return;
+        if (headerPhotoRing == null) return;
+        roomHeaderRingBreathPending = true;
+        final int myGen = roomHeaderRingBreathGen;
+        headerPhotoRing.postDelayed(new Runnable() {
+            @Override public void run() {
+                roomHeaderRingBreathPending = false;
+                if (myGen != roomHeaderRingBreathGen) return;
+                if (headerPhotoRing == null) return;
+                if (!lastHeaderRing || lastHeaderRingFailed) return;
+                android.graphics.drawable.Drawable bg = headerPhotoRing.getBackground();
+                if (bg == null) return;
+                roomHeaderRingBreathBg = bg;
+                android.animation.ValueAnimator breath = android.animation.ValueAnimator.ofInt(255, 140);
+                breath.setDuration(900);
+                breath.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+                breath.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+                breath.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+                    @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                        android.graphics.drawable.Drawable cur = roomHeaderRingBreathBg;
+                        if (cur == null || headerPhotoRing == null
+                                || headerPhotoRing.getBackground() != cur) {
+                            // Background replaced (a crossfade) —
+                            // drop the loop; the arm re-starts it
+                            // on the new background if the ring
+                            // is still gold. No gen bump: no
+                            // delayed start can exist while a
+                            // loop runs (the arm returns early).
+                            roomHeaderRingBreath = null;
+                            roomHeaderRingBreathBg = null;
+                            a.cancel();
+                            return;
+                        }
+                        cur.setAlpha(((Integer) a.getAnimatedValue()).intValue());
+                    }
+                });
+                roomHeaderRingBreath = breath;
+                breath.start();
+            }
+        }, 260);
+    }
+
+    private void stopRoomHeaderRingBreath() {
+        if (roomHeaderRingBreath == null && !roomHeaderRingBreathPending) return;
+        roomHeaderRingBreathGen++;
+        roomHeaderRingBreathPending = false;
+        if (roomHeaderRingBreath != null) roomHeaderRingBreath.cancel();
+        if (roomHeaderRingBreathBg != null) roomHeaderRingBreathBg.setAlpha(255);
+        roomHeaderRingBreath = null;
+        roomHeaderRingBreathBg = null;
+    }
 
     // v14.35 (slice 1690): seed the Room sleep line from the no-bind
     // live statics at resume, so a strip -> Room entry with a timer
@@ -15830,6 +15933,14 @@ if (snd67q >= 0) currentIndex = snd67q;
         // fade-in/out must not strand it faded, and the restarted
         // poll re-arms it from the service state on return.
         if (playGlow != null) { playGlow.animate().cancel(); playGlow.setScaleX(1f); playGlow.setScaleY(1f); playGlow.setAlpha(1f); playGlow.setVisibility(View.GONE); glowFadingIn = false; glowFadingOut = false; }
+        // v15.35 (slice 1846): same for the header ring breath —
+        // a hidden view must not keep animating, and an infinite
+        // animator would pin the dead activity past a rotation.
+        // The restarted poll re-arms it on return (the
+        // unconditional arm after the ring change block). Every
+        // destroy path passes through onPause, so no separate
+        // onDestroy finish is needed (the retry-fade rule below).
+        stopRoomHeaderRingBreath();
         // v2.34: same for a mid-nudge Next button — a leave
         // mid-nudge must not strand it offset; the next tap
         // re-arms it from 0.

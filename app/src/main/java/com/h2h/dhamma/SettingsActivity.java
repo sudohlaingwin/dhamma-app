@@ -67,6 +67,21 @@ public class SettingsActivity extends Activity {
     // change-only guard, so the 1s tick never re-loads a face.
     private String settingsStripPhotoName = null;
     private boolean lastSettingsStripPhotoRing = false;
+    // v15.35 (slice 1849): sounding strip ring breath state —
+    // the fields the helpers below own. settingsStripPhotoRingBreath
+    // is the running loop (null when still);
+    // settingsStripPhotoRingBreathBg is the background drawable
+    // it writes (the photo is a child of the ring frame, so the
+    // breath animates the drawable's alpha, never the view's —
+    // the portrait stays solid);
+    // settingsStripPhotoRingBreathPending marks a delayed start
+    // still waiting out the 250ms crossfade;
+    // settingsStripPhotoRingBreathGen vetoes a stale delayed start
+    // after a state flip or an onPause cancel.
+    private android.animation.ValueAnimator settingsStripPhotoRingBreath = null;
+    private android.graphics.drawable.Drawable settingsStripPhotoRingBreathBg = null;
+    private boolean settingsStripPhotoRingBreathPending = false;
+    private int settingsStripPhotoRingBreathGen = 0;
     // v10.10: download-complete listener for the paused shade card
     // (Main v10.08 pattern) — registered in onResume, unregistered
     // in onPause; Settings has no rows, its strip + button counts
@@ -1962,6 +1977,15 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
     protected void onPause() {
         super.onPause();
         stopSettingsStripTick(); // v4.41, below
+        // v15.35 (slice 1849): same for the strip ring breath —
+        // a hidden view must not keep animating, and an infinite
+        // animator would pin the dead activity past a rotation.
+        // The restarted tick re-arms it on return (the
+        // unconditional arm after the ring change block in
+        // syncSettingsStripPhoto). Every destroy path passes
+        // through onPause, so no separate onDestroy finish is
+        // needed.
+        stopSettingsStripPhotoRingBreath();
         // v10.10: stop listening while hidden — onResume re-registers.
         if (settingsDlCompleteRegistered && settingsDlCompleteReceiver != null) {
             try { unregisterReceiver(settingsDlCompleteReceiver); } catch (Exception ignored) {}
@@ -2044,12 +2068,35 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                 && AudioService.liveSession && AudioService.liveHasTrack && !AudioService.liveEnded;
         if (ringing != lastSettingsStripPhotoRing) {
             lastSettingsStripPhotoRing = ringing;
+            // v15.35 (slice 1849): the breath owns the outgoing
+            // background's alpha — cancel it before the
+            // background is replaced, or its animator would
+            // keep writing to a detached drawable and the
+            // restore below would land on the wrong drawable.
+            // A no-op when no breath runs (first gold, fresh
+            // instance); the restore puts the old drawable back
+            // to full alpha for any later reuse.
+            stopSettingsStripPhotoRingBreath();
             if (ring != null) {
                 // v14.16 (slice 1670): the ring crossfades in/out
                 // instead of snapping — see Fx.crossfadeRing.
                 Fx.crossfadeRing(ring, ringing ? R.drawable.shelf_ring_playing : 0);
             }
         }
+        // v15.35 (slice 1849): arm the breath on a gold ring,
+        // stop it anywhere else — the change block above fires
+        // only on a state flip, so this unconditional arm is
+        // the re-arm after an onPause cancel (a hidden view must
+        // not keep animating, and an infinite animator would
+        // pin the dead activity): onResume restarts the 1s tick,
+        // which re-runs syncSettingsStripPhoto on every tick
+        // while the ring state never moved. A running breath or
+        // a pending start is a no-op. The strip ring has no
+        // failed (red) state — gold while sounding, nothing
+        // otherwise — so the arm condition is the ringing
+        // predicate alone.
+        if (ringing) armSettingsStripPhotoRingBreath();
+        else stopSettingsStripPhotoRingBreath();
         if (name == null || name.length() == 0) {
             settingsStripPhotoName = null;
             if (ring != null) ring.setVisibility(android.view.View.GONE);
@@ -2069,6 +2116,77 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                 ImageLoader.load(SettingsActivity.this, url, name, (CircleImageView) pv);
             }
         });
+    }
+
+    // v15.35 (slice 1849): sounding strip ring breath — the
+    // twin of the Main strip ring breath (v15.35, slice 1847)
+    // and the Talks strip ring breath (v15.35, slice 1848): the
+    // Settings strip is the surface a listener stares at while
+    // changing a setting mid-talk, and its gold ring only ever
+    // crossfaded in and sat still while its talk played. The
+    // ring now breathes 1.00->0.55 on a 900ms reverse loop, the
+    // Library rhythm, while the session sounds — visible the
+    // moment the user looks at the strip while browsing
+    // Settings. The photo is a child of the ring frame, so the
+    // loop writes the background drawable's alpha, never the
+    // view's: crossfadeRing paints with a TransitionDrawable
+    // and never touches the view alpha, so the two never fight.
+    // The start waits 260ms (the crossfade is 250ms) so the
+    // breath never dims a fade-in, and the loop drops itself
+    // the moment the background is replaced. The strip ring has
+    // no failed (red) state — gold while sounding, nothing
+    // otherwise — so the breath condition is the ringing
+    // predicate alone.
+    private void armSettingsStripPhotoRingBreath() {
+        if (settingsStripPhotoRingBreath != null || settingsStripPhotoRingBreathPending) return;
+        final android.view.View ring = findViewById(R.id.nowStripPhotoRing);
+        if (ring == null) return;
+        settingsStripPhotoRingBreathPending = true;
+        final int myGen = settingsStripPhotoRingBreathGen;
+        ring.postDelayed(new Runnable() {
+            @Override public void run() {
+                settingsStripPhotoRingBreathPending = false;
+                if (myGen != settingsStripPhotoRingBreathGen) return;
+                if (!lastSettingsStripPhotoRing) return;
+                android.graphics.drawable.Drawable bg = ring.getBackground();
+                if (bg == null) return;
+                settingsStripPhotoRingBreathBg = bg;
+                android.animation.ValueAnimator breath = android.animation.ValueAnimator.ofInt(255, 140);
+                breath.setDuration(900);
+                breath.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+                breath.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+                breath.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+                    @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                        android.graphics.drawable.Drawable cur = settingsStripPhotoRingBreathBg;
+                        if (cur == null || ring.getBackground() != cur) {
+                            // Background replaced (a crossfade) —
+                            // drop the loop; the arm re-starts it
+                            // on the new background if the ring
+                            // is still gold. No gen bump: no
+                            // delayed start can exist while a
+                            // loop runs (the arm returns early).
+                            settingsStripPhotoRingBreath = null;
+                            settingsStripPhotoRingBreathBg = null;
+                            a.cancel();
+                            return;
+                        }
+                        cur.setAlpha(((Integer) a.getAnimatedValue()).intValue());
+                    }
+                });
+                settingsStripPhotoRingBreath = breath;
+                breath.start();
+            }
+        }, 260);
+    }
+
+    private void stopSettingsStripPhotoRingBreath() {
+        if (settingsStripPhotoRingBreath == null && !settingsStripPhotoRingBreathPending) return;
+        settingsStripPhotoRingBreathGen++;
+        settingsStripPhotoRingBreathPending = false;
+        if (settingsStripPhotoRingBreath != null) settingsStripPhotoRingBreath.cancel();
+        if (settingsStripPhotoRingBreathBg != null) settingsStripPhotoRingBreathBg.setAlpha(255);
+        settingsStripPhotoRingBreath = null;
+        settingsStripPhotoRingBreathBg = null;
     }
 
     // v14.73 (slice 1731): the Settings resume strip's title melts on a

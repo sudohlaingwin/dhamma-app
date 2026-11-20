@@ -2308,6 +2308,20 @@ public class TalksActivity extends Activity {
     // guard, mirrored, so the 1s tick never re-loads a face.
     private String talksStripPhotoName = null;
     private boolean lastTalksStripPhotoRing = false;
+    // v15.35 (slice 1848): sounding strip ring breath state —
+    // the fields the helpers below own. talksStripPhotoRingBreath is
+    // the running loop (null when still); talksStripPhotoRingBreathBg
+    // is the background drawable it writes (the photo is a
+    // child of the ring frame, so the breath animates the
+    // drawable's alpha, never the view's — the portrait stays
+    // solid); talksStripPhotoRingBreathPending marks a delayed start
+    // still waiting out the 250ms crossfade;
+    // talksStripPhotoRingBreathGen vetoes a stale delayed start after
+    // a state flip or an onPause cancel.
+    private android.animation.ValueAnimator talksStripPhotoRingBreath = null;
+    private android.graphics.drawable.Drawable talksStripPhotoRingBreathBg = null;
+    private boolean talksStripPhotoRingBreathPending = false;
+    private int talksStripPhotoRingBreathGen = 0;
     // v4.61: resume-strip mode (Main's v4.60 continue strip,
     // mirrored) — true while the chooser strip shows a dead
     // session's saved spot instead of a live track, so the
@@ -3476,6 +3490,14 @@ public class TalksActivity extends Activity {
         super.onPause();
         talksResumed = false; // v13.24 (T2): the landing's resumed read
         stopTalksStripTick(); // v4.31: never tick a detached strip
+        // v15.35 (slice 1848): same for the strip ring breath —
+        // a hidden view must not keep animating, and an infinite
+        // animator would pin the dead activity past a rotation.
+        // The restarted tick re-arms it on return (the
+        // unconditional arm after the ring change block in
+        // syncTalksStripPhoto). Every destroy path passes through
+        // onPause, so no separate onDestroy finish is needed.
+        stopTalksStripPhotoRingBreath();
         // v10.07: stop listening while hidden — onResume re-registers.
         if (talksDlCompleteRegistered && talksDlCompleteReceiver != null) {
             try { unregisterReceiver(talksDlCompleteReceiver); } catch (Exception ignored) {}
@@ -5172,12 +5194,34 @@ public class TalksActivity extends Activity {
                 && AudioService.liveSession && AudioService.liveHasTrack && !AudioService.liveEnded;
         if (ringing != lastTalksStripPhotoRing) {
             lastTalksStripPhotoRing = ringing;
+            // v15.35 (slice 1848): the breath owns the outgoing
+            // background's alpha — cancel it before the
+            // background is replaced, or its animator would
+            // keep writing to a detached drawable and the
+            // restore below would land on the wrong drawable.
+            // A no-op when no breath runs (first gold, fresh
+            // instance); the restore puts the old drawable back
+            // to full alpha for any later reuse.
+            stopTalksStripPhotoRingBreath();
             if (ring != null) {
                 // v14.16 (slice 1670): the ring crossfades in/out
                 // instead of snapping — see Fx.crossfadeRing.
                 Fx.crossfadeRing(ring, ringing ? R.drawable.shelf_ring_playing : 0);
             }
         }
+        // v15.35 (slice 1848): arm the breath on a gold ring,
+        // stop it anywhere else — the change block above fires
+        // only on a state flip, so this unconditional arm is
+        // the re-arm after an onPause cancel (a hidden view must
+        // not keep animating, and an infinite animator would
+        // pin the dead activity): onResume restarts the 1s tick,
+        // which re-runs syncTalksStripPhoto on every tick while the
+        // ring state never moved. A running breath or a pending
+        // start is a no-op. The strip ring has no failed (red)
+        // state — gold while sounding, nothing otherwise — so
+        // the arm condition is the ringing predicate alone.
+        if (ringing) armTalksStripPhotoRingBreath();
+        else stopTalksStripPhotoRingBreath();
         if (name == null || name.length() == 0) {
             talksStripPhotoName = null;
             if (ring != null) ring.setVisibility(android.view.View.GONE);
@@ -5197,6 +5241,77 @@ public class TalksActivity extends Activity {
                 ImageLoader.load(TalksActivity.this, url, name, (CircleImageView) pv);
             }
         });
+    }
+
+    // v15.35 (slice 1848): sounding strip ring breath — the
+    // twin of the Main strip ring breath (v15.35, slice 1847),
+    // the chooser ring breath (v15.34, slice 1845) and the
+    // Room header ring breath (v15.35, slice 1846): the
+    // chooser strip is the surface a listener stares at while
+    // browsing one sayadaw's talks, and its gold ring only ever
+    // crossfaded in and sat still while its talk played. The
+    // ring now breathes 1.00->0.55 on a 900ms reverse loop, the
+    // Library rhythm, while the session sounds — visible the
+    // moment the user looks at the strip while browsing. The
+    // photo is a child of the ring frame, so the loop writes
+    // the background drawable's alpha, never the view's:
+    // crossfadeRing paints with a TransitionDrawable and never
+    // touches the view alpha, so the two never fight. The start
+    // waits 260ms (the crossfade is 250ms) so the breath never
+    // dims a fade-in, and the loop drops itself the moment the
+    // background is replaced. The strip ring has no failed
+    // (red) state — gold while sounding, nothing otherwise —
+    // so the breath condition is the ringing predicate alone.
+    private void armTalksStripPhotoRingBreath() {
+        if (talksStripPhotoRingBreath != null || talksStripPhotoRingBreathPending) return;
+        final android.view.View ring = findViewById(R.id.nowStripPhotoRing);
+        if (ring == null) return;
+        talksStripPhotoRingBreathPending = true;
+        final int myGen = talksStripPhotoRingBreathGen;
+        ring.postDelayed(new Runnable() {
+            @Override public void run() {
+                talksStripPhotoRingBreathPending = false;
+                if (myGen != talksStripPhotoRingBreathGen) return;
+                if (!lastTalksStripPhotoRing) return;
+                android.graphics.drawable.Drawable bg = ring.getBackground();
+                if (bg == null) return;
+                talksStripPhotoRingBreathBg = bg;
+                android.animation.ValueAnimator breath = android.animation.ValueAnimator.ofInt(255, 140);
+                breath.setDuration(900);
+                breath.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+                breath.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+                breath.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+                    @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                        android.graphics.drawable.Drawable cur = talksStripPhotoRingBreathBg;
+                        if (cur == null || ring.getBackground() != cur) {
+                            // Background replaced (a crossfade) —
+                            // drop the loop; the arm re-starts it
+                            // on the new background if the ring
+                            // is still gold. No gen bump: no
+                            // delayed start can exist while a
+                            // loop runs (the arm returns early).
+                            talksStripPhotoRingBreath = null;
+                            talksStripPhotoRingBreathBg = null;
+                            a.cancel();
+                            return;
+                        }
+                        cur.setAlpha(((Integer) a.getAnimatedValue()).intValue());
+                    }
+                });
+                talksStripPhotoRingBreath = breath;
+                breath.start();
+            }
+        }, 260);
+    }
+
+    private void stopTalksStripPhotoRingBreath() {
+        if (talksStripPhotoRingBreath == null && !talksStripPhotoRingBreathPending) return;
+        talksStripPhotoRingBreathGen++;
+        talksStripPhotoRingBreathPending = false;
+        if (talksStripPhotoRingBreath != null) talksStripPhotoRingBreath.cancel();
+        if (talksStripPhotoRingBreathBg != null) talksStripPhotoRingBreathBg.setAlpha(255);
+        talksStripPhotoRingBreath = null;
+        talksStripPhotoRingBreathBg = null;
     }
 
     // v14.71 (slice 1729): the Talks resume strip's title melts on a
