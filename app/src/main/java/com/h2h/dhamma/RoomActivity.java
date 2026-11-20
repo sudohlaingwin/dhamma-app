@@ -9654,15 +9654,18 @@ if (snd67n >= 0) currentIndex = snd67n;
                                                 Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_changed"), Toast.LENGTH_SHORT).show();
                                                 return;
                                             }
-                                            // v15.22 (slice 1785, 1783-NEW-1): capture BEFORE the remove/add below move the rows — the posted glide after the notify parks each moved survivor at its old top (see captureDrawerReorderGlide, v15.20); the moved row itself is excluded (its URL is the dropUrl), so it pops to its new slot while the survivors glide home.
+                                            // v15.22 (slice 1785, 1783-NEW-1): capture BEFORE the remove/add below move the rows — the posted glide after the notify parks each moved survivor at its old top (see captureDrawerReorderGlide, v15.20); the moved row itself is excluded (its URL is the dropUrl), so it melts in at its new slot via the v14.46 drop-landing fade (armed below) while the survivors glide home.
                                             final java.util.HashMap<String, Integer> tops85 = captureDrawerReorderGlide();
                                             String fLine = queueUrls.get(fqi);
                                             queueUrls.remove(fqi);
                                             queueUrls.add(fLine);
+                                            // v15.23 (slice 1786): arm the v14.46 drop-landing fade for the moved row — the drop flow's shape (dropFadeUrl set after the add, fadeDroppedQueueRow called after the glide post); the row melts in at its new slot instead of popping while the survivors glide home.
+                                            dropFadeUrl = ffe.url;
                                             moveHeldUrl = null;
                                             saveQueue(null, true);
                                             if (adapter != null) adapter.notifyDataSetChanged();
                                             postDrawerReorderGlide(tops85, ffe.url);
+                                            fadeDroppedQueueRow();
                                             Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "moved_to_end"), Toast.LENGTH_SHORT).show();
                                         } else {
                                             // v7.16: play-next — move the
@@ -9711,10 +9714,13 @@ if (snd67n >= 0) currentIndex = snd67n;
                                                 if (ti >= 0) target = ti;
                                             }
                                             queueUrls.add(target, fLine);
+                                            // v15.23 (slice 1786): same drop-landing fade arm as the move-to-end branch above — the moved row melts in at its new slot (see fadeDroppedQueueRow, v14.46).
+                                            dropFadeUrl = ffe.url;
                                             moveHeldUrl = null;
                                             saveQueue(null, true);
                                             if (adapter != null) adapter.notifyDataSetChanged();
                                             postDrawerReorderGlide(tops85, ffe.url);
+                                            fadeDroppedQueueRow();
                                             Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "set_as_next"), Toast.LENGTH_SHORT).show();
                                         }
                                     }
@@ -9918,15 +9924,18 @@ if (snd67n >= 0) currentIndex = snd67n;
                                             Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_changed"), Toast.LENGTH_SHORT).show();
                                             return;
                                         }
-                                        // v15.22 (slice 1785, 1783-NEW-1): capture BEFORE the remove/add below move the rows — the posted glide after the notify parks each moved survivor at its old top (see captureDrawerReorderGlide, v15.20); the moved row itself is excluded (its URL is the dropUrl), so it pops to its new slot while the survivors glide home.
+                                        // v15.22 (slice 1785, 1783-NEW-1): capture BEFORE the remove/add below move the rows — the posted glide after the notify parks each moved survivor at its old top (see captureDrawerReorderGlide, v15.20); the moved row itself is excluded (its URL is the dropUrl), so it melts in at its new slot via the v14.46 drop-landing fade (armed below) while the survivors glide home.
                                         final java.util.HashMap<String, Integer> tops85 = captureDrawerReorderGlide();
                                         String qLine = queueUrls.get(qi);
                                         queueUrls.remove(qi);
                                         queueUrls.add(qLine);
+                                        // v15.23 (slice 1786): arm the v14.46 drop-landing fade for the moved row — the drop flow's shape (dropFadeUrl set after the add, fadeDroppedQueueRow called after the glide post); the row melts in at its new slot instead of popping while the survivors glide home.
+                                        dropFadeUrl = qt.url;
                                         moveHeldUrl = null;
                                         saveQueue(null, true);
                                         if (adapter != null) adapter.notifyDataSetChanged();
                                         postDrawerReorderGlide(tops85, qt.url);
+                                        fadeDroppedQueueRow();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "moved_to_end"), Toast.LENGTH_SHORT).show();
                                     } else if ("dl_btn_download".equals(qKeyArr[which])) {
                                         // v11.71: the shared Room enqueue -- re-checks
@@ -9967,10 +9976,13 @@ if (snd67n >= 0) currentIndex = snd67n;
                                             if (ti >= 0) target = ti;
                                         }
                                         queueUrls.add(target, qLine);
+                                        // v15.23 (slice 1786): same drop-landing fade arm as the move-to-end branch above — the moved row melts in at its new slot (see fadeDroppedQueueRow, v14.46).
+                                        dropFadeUrl = qt.url;
                                         moveHeldUrl = null;
                                         saveQueue(null, true);
                                         if (adapter != null) adapter.notifyDataSetChanged();
                                         postDrawerReorderGlide(tops85, qt.url);
+                                        fadeDroppedQueueRow();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "set_as_next"), Toast.LENGTH_SHORT).show();
                                     }
                                 }
