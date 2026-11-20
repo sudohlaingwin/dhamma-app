@@ -12710,7 +12710,8 @@ public class DownloadedActivity extends Activity {
                 // stale slot kept its gold line on an empty row
                 // until the next tick prune dropped the slot.
                 android.view.View hair73 = v.findViewById(R.id.hairTrack);
-                if (hair73 != null) hair73.setVisibility(android.view.View.GONE);
+                // v15.25 (slice 1788): the clear goes through the same helper — crossfadeHairline is the track's sole writer now, so the recorded target must follow the paint: a bare setVisibility(GONE) here would leave the map recording shown while the view hides, and the next show bind would no-op and strand the row lineless while half-heard.
+                if (hair73 != null) Fx.crossfadeHairline(hair73, false);
                 v.setBackgroundColor(android.graphics.Color.TRANSPARENT);
                 v.clearAnimation();
                 return v;
@@ -12880,7 +12881,8 @@ public class DownloadedActivity extends Activity {
             android.view.View hairTrack = v.findViewById(R.id.hairTrack);
             android.view.View hairFill = v.findViewById(R.id.hairFill);
             android.view.View hairSpace = v.findViewById(R.id.hairSpace);
-            if (hairTrack != null) hairTrack.setVisibility(hairFrac > 0f ? android.view.View.VISIBLE : android.view.View.GONE);
+            // v15.25 (slice 1788): the hairline melts in/out instead of popping — the v14.31 card-crossfade fix, now on the gold line: the Library 1s tick rebinds on a track change, and getView swapped the track in one frame (setVisibility), so an auto-advance flashed the line in/out while the strip melts beside it. Fx.crossfadeHairline (250ms, DecelerateInterpolator, recorded shown state, instant seed on a fresh view) owns the track from here; the fill/space weight split below stays an instant layout update (a progress value, not an appearance change), and the ▶/✓ marks + title dim stay instant per the v14.16 settled decision.
+            if (hairTrack != null) Fx.crossfadeHairline(hairTrack, hairFrac > 0f);
             if (hairFrac > 0f && hairFill != null && hairSpace != null) {
                 hairFill.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, hairFrac));
                 hairSpace.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1f - hairFrac));

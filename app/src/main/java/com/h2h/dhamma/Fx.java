@@ -832,6 +832,52 @@ public class Fx {
         td.startTransition(250);
     }
 
+    // v15.25 (slice 1788): the listened-progress hairline melts in/out
+    // instead of popping — the v14.31 card-crossfade fix, now on the
+    // gold line: the 1s tick rebinds the chooser/Library rows exactly
+    // when a talk ends, stops or auto-advances, and getView swapped
+    // the hairTrack in one frame (setVisibility VISIBLE <-> GONE), so
+    // a finished talk's gold line flashed in under its row while the
+    // gold card beside it crossfades (v15.24) and the strip and clock
+    // melt. The track now melts over the same 250ms,
+    // DecelerateInterpolator, through the gen-guarded fadeIn / fadeOut
+    // above: fadeIn from 0 for an appearing line, fadeOut to 0 then
+    // GONE (alpha restored to 1) for a leaving one. Recorded shown
+    // state in a WeakHashMap, like the tile map: a repeated call for
+    // the state already showing is a no-op and never restarts the
+    // fade, a fresh view seeds instantly (never melts in from
+    // transparent on a scroll recycle), and a mid-fade re-target
+    // (fadeIn/fadeOut bump the same fade gen) starts from the alpha
+    // the view actually has. The fill/space weight split stays an
+    // instant layout update — it is a progress value, not an
+    // appearance change. The row's own pour (view Animation), press
+    // squash (scale) and delete fade (row alpha) all live on other
+    // views/channels — the hairline is a child view whose alpha is
+    // its own. The Room drawer hairlines keep their instant swap this
+    // slice: the drawer's top-of-bind reset hides the track before
+    // the paint below, so a recorded melt would re-melt on every
+    // rebind — the reset must move onto the early-return paths first.
+    private static java.util.WeakHashMap<View, Boolean> hairShown =
+            new java.util.WeakHashMap<View, Boolean>();
+    public static void crossfadeHairline(final View track, boolean show) {
+        if (track == null) return;
+        Boolean cur = hairShown.get(track);
+        if (cur == null) {
+            hairShown.put(track, Boolean.valueOf(show));
+            track.setVisibility(show ? View.VISIBLE : View.GONE);
+            track.setAlpha(1f);
+            return;
+        }
+        if (cur.booleanValue() == show) return;
+        hairShown.put(track, Boolean.valueOf(show));
+        if (show) {
+            track.setVisibility(View.VISIBLE);
+            fadeIn(track, 250);
+        } else {
+            fadeOut(track, 250);
+        }
+    }
+
     // v14.34 (slice 1689): the Room sleep countdown's under-a-minute
     // gold flip used to snap — the 500ms poll swapped the text
     // colour in one frame (setTextColor: grey #AAAAAA <-> gold

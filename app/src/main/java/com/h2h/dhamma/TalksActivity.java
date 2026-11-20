@@ -6311,7 +6311,8 @@ public class TalksActivity extends Activity {
             android.view.View hairTrack = v.findViewById(R.id.hairTrack);
             android.view.View hairFill = v.findViewById(R.id.hairFill);
             android.view.View hairSpace = v.findViewById(R.id.hairSpace);
-            if (hairTrack != null) hairTrack.setVisibility(hairFrac > 0f ? android.view.View.VISIBLE : android.view.View.GONE);
+            // v15.25 (slice 1788): the hairline melts in/out instead of popping — the v14.31 card-crossfade fix, now on the gold line: the 1s tick rebinds exactly when a talk ends, stops or auto-advances, and getView swapped the track in one frame (setVisibility), so a finished talk's line flashed in while the gold card beside it crossfades (v15.24). Fx.crossfadeHairline (250ms, DecelerateInterpolator, recorded shown state, instant seed on a fresh view) owns the track from here; the fill/space weight split below stays an instant layout update (a progress value, not an appearance change), and the ▶/✓ marks + title dim stay instant per the v14.16 settled decision.
+            if (hairTrack != null) Fx.crossfadeHairline(hairTrack, hairFrac > 0f);
             if (hairFrac > 0f && hairFill != null && hairSpace != null) {
                 hairFill.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, hairFrac));
                 hairSpace.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1f - hairFrac));
