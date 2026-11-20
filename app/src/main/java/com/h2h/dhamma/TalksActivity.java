@@ -43,6 +43,8 @@ public class TalksActivity extends Activity {
     // pours; a rotation restores it null too, but the restore
     // flag (below) keeps the restored rows still regardless.
     private String lastVisibleKey = null;
+    // v15.18 (slice 1781): old display positions for the chooser rank-close glide (see captureTalkSetGlide) — talk index -> old display position, armed by a filter/search set change, cleared by the posted glide runnable; a newer set change re-arms it first.
+    private java.util.HashMap<Integer, Integer> talkSetGlidePos = null;
     // v14.23 (slice 1677): rotation-restore flag — while this is
     // up, the search watcher rebuilds + rebinds but never pours
     // (Main's restoringSearch, same shape). Set only around the
@@ -2008,6 +2010,46 @@ public class TalksActivity extends Activity {
         }
     }
 
+    // v15.18 (slice 1781): rank-close glide for filter/search set changes — the chooser's v14.23 list-change pour re-lays every visible row out at its NEW top and then pours it from +24dp, so a surviving row that moved N slots teleported N x rowHeight - 24dp in the first frame after the rebind (the Library's v15.16 defect, same shape, identity by full-list talk index instead of file path). Capture the visible rows' old tops + display positions BEFORE the rebuild below moves them (talkIndexAtDisplay maps each visible child exactly as laid out, while visibleHits still holds the OLD set); the posted runnable after the rebind parks each moved survivor at its old top and glides it home 250ms via Fx.glideHomeY. The glide is symmetric: a narrowing change moves survivors UP (oldPos > pos) and a widening change (clearing a filter/search) moves them DOWN (oldPos < pos) — both glide, shift != 0; rows that did not move and brand-new rows pour exactly as before. A newer set change arming its own map first makes an older post stand down (identity guard), so stale tops can never re-park a row.
+    private java.util.HashMap<Integer, Integer> captureTalkSetGlide() {
+        final java.util.HashMap<Integer, Integer> tops82 = new java.util.HashMap<Integer, Integer>();
+        talkSetGlidePos = new java.util.HashMap<Integer, Integer>();
+        if (talkList != null) {
+            int first82 = talkList.getFirstVisiblePosition();
+            for (int i82 = 0; i82 < talkList.getChildCount(); i82++) {
+                android.view.View ch82 = talkList.getChildAt(i82);
+                if (ch82 == null) continue;
+                int ti82 = talkIndexAtDisplay(first82 + i82);
+                if (ti82 < 0) continue;
+                tops82.put(Integer.valueOf(ti82), Integer.valueOf(ch82.getTop()));
+                talkSetGlidePos.put(Integer.valueOf(ti82), Integer.valueOf(first82 + i82));
+            }
+        }
+        return tops82;
+    }
+    private void postTalkSetGlide(final java.util.HashMap<Integer, Integer> tops82) {
+        if (talkList == null || tops82 == null) return;
+        final java.util.HashMap<Integer, Integer> pos82 = talkSetGlidePos;
+        talkList.post(new Runnable() {
+            @Override public void run() {
+                // A newer set change armed its own map first — stand down without gliding or clearing (its own post owns the glide now); the getView pour-skip already reads the newer map.
+                if (talkList == null || talkSetGlidePos != pos82) return;
+                int first82 = talkList.getFirstVisiblePosition();
+                for (int i82 = 0; i82 < talkList.getChildCount(); i82++) {
+                    android.view.View ch82 = talkList.getChildAt(i82);
+                    if (ch82 == null) continue;
+                    int ti82 = talkIndexAtDisplay(first82 + i82);
+                    if (ti82 < 0) continue;
+                    Integer old82 = tops82.get(Integer.valueOf(ti82));
+                    if (old82 == null) continue;
+                    float shift82 = old82.intValue() - ch82.getTop();
+                    if (shift82 != 0) Fx.glideHomeY(ch82, shift82, 250);
+                }
+                if (talkSetGlidePos == pos82) talkSetGlidePos = null;
+            }
+        });
+    }
+
     // v13.95 (slice 1090): one direct-set path for the filter mode —
     // the cycling button's click body, extracted verbatim (dedent
     // 20sp -> 8sp) so a chip tap can never disagree with it: same
@@ -2023,9 +2065,12 @@ public class TalksActivity extends Activity {
         if (mode == filterMode) return;
         filterMode = mode;
         refreshTalkFilterChipsAnimated(); // v14.39 (slice 1694): chip tap melts the colours — the rows pour below (v14.23) while the tapped chip warms to gold; the instant painter stays for create/theme/restore/clearFilter.
+        // v15.18 (slice 1781): capture BEFORE rebuildFilter + the rebind below move the rows — the posted glide after the notify parks each moved survivor at its old top (see captureTalkSetGlide).
+        final java.util.HashMap<Integer, Integer> tops82 = captureTalkSetGlide();
         rebuildFilter();
         maybePourOnListChange();
         if (adapter != null) adapter.notifyDataSetChanged();
+        postTalkSetGlide(tops82);
         android.widget.Toast.makeText(TalksActivity.this,
                 filterMode == 1 ? Lang.t(TalksActivity.this, "filter_starred_only")
                         : (filterMode == 2 ? Lang.t(TalksActivity.this, "filter_unlistened_only")
@@ -2038,9 +2083,12 @@ public class TalksActivity extends Activity {
         filterMode = 0;
         filterHits = null;
         refreshTalkFilterChips();
+        // v15.18 (slice 1781): capture BEFORE rebuildVisible + the rebind below move the rows — a widening change moves survivors DOWN and glides them down home (see captureTalkSetGlide).
+        final java.util.HashMap<Integer, Integer> tops82 = captureTalkSetGlide();
         rebuildVisible();
         maybePourOnListChange(); // v14.23: same set-changed pour as a chip tap
         if (adapter != null) adapter.notifyDataSetChanged();
+        postTalkSetGlide(tops82);
     }
     private void rebuildSearch() {
         if (searchQuery == null || searchQuery.length() == 0) {
@@ -5946,9 +5994,12 @@ public class TalksActivity extends Activity {
             @Override public void onTextChanged(CharSequence s, int st, int b, int c) {}
             @Override public void afterTextChanged(android.text.Editable s) {
                 searchQuery = s.toString().trim();
+                // v15.18 (slice 1781): capture BEFORE rebuildSearch + the rebind below move the rows; a rotation restore never arms the glide (see captureTalkSetGlide).
+                final java.util.HashMap<Integer, Integer> tops82 = restoringTalkSearch ? null : captureTalkSetGlide();
                 rebuildSearch();
                 maybePourOnListChange(); // v14.23: rows pour when the searched set actually changes
                 if (adapter != null) adapter.notifyDataSetChanged();
+                postTalkSetGlide(tops82);
             }
         });
         searchBox.setOnEditorActionListener(new android.widget.TextView.OnEditorActionListener() {
@@ -6299,28 +6350,37 @@ public class TalksActivity extends Activity {
             // v1.52: rows fade + rise in once when first shown
             if (pos > lastAnimPos) {
                 lastAnimPos = pos;
-                android.view.animation.AnimationSet set = new android.view.animation.AnimationSet(true);
-                android.view.animation.AlphaAnimation fa = new android.view.animation.AlphaAnimation(0f, 1f);
-                fa.setDuration(300);
-                // v3.54: premium cascade rise density — the v1.52/v2.07
-                // pour above rose a raw 24 PIXELS, so on a dense phone
-                // (~3x) it read as ~8dp while every other pour in the
-                // app rises a full 24dp (Fx.entrance, Fx.staggerChildren,
-                // the library cascade's dy = 24f * density) — the Talks
-                // rows poured noticeably flatter than the Room drawer
-                // rows and the library rows beside them. The rise is
-                // now 24dp like the rest, so the cascade reads the same
-                // on any screen. Duration, stagger, fade and the v3.40
-                // recycled-row hygiene are untouched; the settled state
-                // is still exactly alpha 1 / offset 0. Visual only.
-                android.view.animation.TranslateAnimation ta = new android.view.animation.TranslateAnimation(0, 0, 24f * v.getResources().getDisplayMetrics().density, 0);
-                ta.setDuration(300);
-                set.addAnimation(fa); set.addAnimation(ta);
-                // v2.07: staggered cascade — rows pour in one after
-                // another instead of all at once, with a soft ease.
-                set.setStartOffset(Math.min(pos, 10) * 45);
-                set.setInterpolator(new android.view.animation.DecelerateInterpolator());
-                v.startAnimation(set);
+                // v15.18 (slice 1781): skip the pour for a row the filter/search set change is about to glide — its old display position differs from its new one (identity by full-list talk index: the ListView recycles views by position). The pour's +24dp rise would start the row 24dp below its old top and fight the glide's park-at-old-top, so the glide owns the motion alone; alpha stays 1 (the row was fully visible before, no fade). Rows that did not move (oldPos == pos) and brand-new rows (no old position) pour exactly as before. The glide is symmetric — a widening change moves survivors DOWN (oldPos < pos) and glides them down home just as a narrowing change glides them up.
+                boolean setGlide82 = talkSetGlidePos != null
+                        && talkSetGlidePos.containsKey(Integer.valueOf(talkIdx))
+                        && talkSetGlidePos.get(Integer.valueOf(talkIdx)).intValue() != pos;
+                if (!setGlide82) {
+                    android.view.animation.AnimationSet set = new android.view.animation.AnimationSet(true);
+                    android.view.animation.AlphaAnimation fa = new android.view.animation.AlphaAnimation(0f, 1f);
+                    fa.setDuration(300);
+                    // v3.54: premium cascade rise density — the v1.52/v2.07
+                    // pour above rose a raw 24 PIXELS, so on a dense phone
+                    // (~3x) it read as ~8dp while every other pour in the
+                    // app rises a full 24dp (Fx.entrance, Fx.staggerChildren,
+                    // the library cascade's dy = 24f * density) — the Talks
+                    // rows poured noticeably flatter than the Room drawer
+                    // rows and the library rows beside them. The rise is
+                    // now 24dp like the rest, so the cascade reads the same
+                    // on any screen. Duration, stagger, fade and the v3.40
+                    // recycled-row hygiene are untouched; the settled state
+                    // is still exactly alpha 1 / offset 0. Visual only.
+                    android.view.animation.TranslateAnimation ta = new android.view.animation.TranslateAnimation(0, 0, 24f * v.getResources().getDisplayMetrics().density, 0);
+                    ta.setDuration(300);
+                    set.addAnimation(fa); set.addAnimation(ta);
+                    // v2.07: staggered cascade — rows pour in one after
+                    // another instead of all at once, with a soft ease.
+                    set.setStartOffset(Math.min(pos, 10) * 45);
+                    set.setInterpolator(new android.view.animation.DecelerateInterpolator());
+                    v.startAnimation(set);
+                } else {
+                    // A view recycled mid-pour keeps its old fade + rise running — clear it so the glide owns the motion alone (clearAnimation touches view Animations only, never the ObjectAnimator translationY glide, and never the v2.08 press squash).
+                    v.clearAnimation();
+                }
             } else {
                 // v3.40: same recycled-row pour hygiene as the Main
                 // grid — a view recycled mid-pour keeps its old
