@@ -12702,7 +12702,8 @@ public class DownloadedActivity extends Activity {
                 // v5.78 wash reset, the v3.40 pour hygiene).
                 // v13.84 (slice 1076): the card + title alpha are row STATE too — a recycled playing (gold tile) or listened (dimmed) view rebound to a stale slot kept its tile/dim on an empty row until the next tick prune dropped the slot. Reset both here, like the wash + pour above (cachedDlNight: night is declared below, in the normal bind).
                 android.view.View card73 = v.findViewById(R.id.cardInner);
-                if (card73 != null) card73.setBackgroundResource(cachedDlNight ? R.drawable.card_bg_night : R.drawable.card_bg);
+                // v15.24 (slice 1787): the clear goes through the same helper — crossfadeCardTile is the card's sole writer now, so the recorded target must follow the paint: a bare setBackgroundResource here would leave the map recording gold while the view shows plain, and the next gold bind would no-op and strand the row plain while sounding.
+                if (card73 != null) Fx.crossfadeCardTile(card73, cachedDlNight ? R.drawable.card_bg_night : R.drawable.card_bg);
                 if (t73 != null) t73.setAlpha(1.0f);
                 // v13.97 (slice 1092): the hairline is row STATE
                 // too — a recycled half-heard row rebound to a
@@ -12830,7 +12831,8 @@ public class DownloadedActivity extends Activity {
             // v1.99: the row background never followed night mode — the layout pins it to white @color/card, while the title above is set white at night, so night titles were invisible on their own white cards (same class as the v1.98 header fix, which never reached the rows). Same card drawables as the main grid's rows.
             android.view.View card = v.findViewById(R.id.cardInner);
             // v13.84 (slice 1076): the playing row is a raised gold card — the Talks chooser's v13.83 tile, now on the library too. The sounding file used to read only as gold text + ▶, which vanished in a long shelf; now its whole card turns gold (dl_row_playing.xml: drawer gold, library 24dp geometry, theme-independent like the chooser's tile). Set on every bind so a recycled row can never keep a stale gold card; the held-row wash on the row root above is untouched and stacks harmlessly.
-            if (card != null) card.setBackgroundResource(rowPlaying
+            // v15.24 (slice 1787): the sounding card crossfades instead of snapping — the drawer's v14.32 fix, as on the chooser above: the Library 1s tick rebinds on a track change, and getView swapped the gold card in one frame, so an auto-advance flashed the tile while the strip and clock melt beside it. Fx.crossfadeCardTile (v14.31 helper) owns the card from here; the ▶ prefix + gold name stay instant per the v14.16 settled decision.
+            if (card != null) Fx.crossfadeCardTile(card, rowPlaying
                     ? R.drawable.dl_row_playing
                     : (night ? R.drawable.card_bg_night : R.drawable.card_bg));
             int f = cachedDlFont;

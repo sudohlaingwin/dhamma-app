@@ -6459,7 +6459,8 @@ public class TalksActivity extends Activity {
             // drawer's tile). Set on every bind so a recycled row can
             // never keep a stale gold card; the held-row wash on the
             // row root below is untouched and stacks harmlessly.
-            if (card != null) card.setBackgroundResource((rowPlaying || rowPlayingLib)
+            // v15.24 (slice 1787): the sounding card crossfades instead of snapping — the drawer's v14.32 fix, now on the chooser too: the 1s tick rebinds the rows exactly when the sounding URL changes (v4.89/v7.44), and getView swapped the card background in one frame, so a talk ending, stopping or auto-advancing while the chooser sat on top flashed the gold tile in or out while everything around it moves (header melt v14.56, Up Next melt v14.55, mark melts v14.97). Fx.crossfadeCardTile (v14.31 helper: 250ms TransitionDrawable, crossFade on, recorded target, instant seed on a fresh view) owns the card from here; the ▶ prefix + gold name stay instant per the v14.16 settled decision, and the held-row wash below lives on the row root, untouched.
+            if (card != null) Fx.crossfadeCardTile(card, (rowPlaying || rowPlayingLib)
                     ? R.drawable.talks_row_playing
                     : (cachedNight ? R.drawable.card_bg_night : R.drawable.card_bg));
             // v5.77: held-row wash (see the ✋ mark above) — on the
