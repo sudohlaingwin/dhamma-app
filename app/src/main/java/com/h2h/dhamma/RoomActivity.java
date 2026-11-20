@@ -8103,12 +8103,19 @@ if (snd68 >= 0) currentIndex = snd68;
             boolean downActive = false;
             boolean longFired = false;
             Runnable pendingLongPress = null;
+            // v15.27 (slice 1797): true only while the DOWN dip below is active, so UP/CANCEL restore alpha to 1 only when this run dimmed it — a tap landing mid-entrance-fade (alpha at/below the 0.88 dim floor) dips nothing and restores nothing, and the v2.21 fade proceeds untouched.
+            boolean photoDimmed = false;
             @Override public boolean onTouch(View v, android.view.MotionEvent e) {
                 float density = getResources().getDisplayMetrics().density;
                 switch (e.getAction()) {
                     case android.view.MotionEvent.ACTION_DOWN:
                         downX = e.getX(); downY = e.getY(); fling = false;
                         downActive = true; longFired = false;
+                        // v15.27 (slice 1797): the altar photo had no DOWN feedback at all — this listener consumes the whole touch stream (returns true on DOWN), so the platform pressed state never runs for the shrine photo: a tap's only feedback waited for UP (the Play button's morph) and the 600ms favourite hold sat dead for the full hold until togglePlayingFav's toast fired. Fx.press cannot be wired here — it would replace this gesture listener — so the dip lives inside it: while the finger is down the photo dims to 0.88 over 110ms (the press rhythm). The dip fires only while the photo is above the dim floor (alpha > 0.88): a mid-entrance fade below the floor is left alone — the v2.21 fade is never fought, and a dip mid-fade could only brighten a half-faded photo toward 0.88 — while a mid-restore re-press rides on from its current alpha (the v3.76 settled-vs-in-flight rule), never jumping to 1.0 first. Alpha, not scale: the photo is full-bleed (match_parent x match_parent), so a squash would reveal edges around the whole screen; alpha is the photo's own channel (v2.21 fade-in). The gestures are untouched — thresholds, the long-press arm, the tap/fling/swipe branches and the drawer-close path read exactly as before.
+                        if (v.getAlpha() > 0.88f) {
+                            photoDimmed = true;
+                            v.animate().alpha(0.88f).setDuration(110).setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+                        }
                         // v4.19: altar long-press favours the playing
                         // talk (see togglePlayingFav) — a held,
                         // still finger only: any move past the
@@ -8140,6 +8147,8 @@ if (snd68 >= 0) currentIndex = snd68;
                     case android.view.MotionEvent.ACTION_UP: {
                         downActive = false;
                         if (pendingLongPress != null) v.removeCallbacks(pendingLongPress);
+                        // v15.27 (slice 1797): lift the DOWN dip — before the branch logic, so every UP exit (tap, fling, swipe, drawer-close, long-fired) restores the photo; only when this run dimmed it (photoDimmed), so a mid-entrance tap never cuts the v2.21 fade short.
+                        if (photoDimmed) { photoDimmed = false; v.animate().alpha(1f).setDuration(180).setInterpolator(new android.view.animation.DecelerateInterpolator()).start(); }
                         if (longFired) return true;
                         float dx = e.getX() - downX, dy = e.getY() - downY;
                         if (fling || (Math.abs(dx) > 100f * density && Math.abs(dx) > Math.abs(dy))) {
@@ -8220,6 +8229,8 @@ if (snd68 >= 0) currentIndex = snd68;
                     case android.view.MotionEvent.ACTION_CANCEL:
                         downActive = false;
                         if (pendingLongPress != null) v.removeCallbacks(pendingLongPress);
+                        // v15.27 (slice 1797): same lift as UP — a slide-off restores the photo to 1 with no gesture fired.
+                        if (photoDimmed) { photoDimmed = false; v.animate().alpha(1f).setDuration(180).setInterpolator(new android.view.animation.DecelerateInterpolator()).start(); }
                         return true;
                 }
                 return false;

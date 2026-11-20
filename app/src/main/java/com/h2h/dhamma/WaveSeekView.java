@@ -676,7 +676,9 @@ public class WaveSeekView extends View {
         // started (progress > 0 with a known range); dragging keeps
         // working because this is paint only, never touch handling.
         if (max > 0 && progress > 0) {
-            float dotR = 3.5f * getResources().getDisplayMetrics().density;
+            // v15.27 (slice 1798): the playhead dot swells under the finger — the bars swell (v2.53) and the readout fades in (v14.18) on a drag, but the scrubber head itself sat at a constant 3.5dp, the one still element left in the scrub (Spotify grows its head on drag). The radius now rides the bars' own animated swellScale: 3.5dp at rest (factor exactly 1, pixel-identical), 5.6dp at full drag swell (1.6x), easing over the same 120ms-in / 200ms-out DecelerateInterpolator with zero new animator or state. The v11.91 clamp below already uses dotR, so the swollen dot still stays a full circle inside the view; the readout baseline sits at h/2 - 8dp while the biggest dot top is h/2 - 5.6dp, so the time never overlaps the head. TalkBack never drags (swell 1.0, dot unchanged); CANCEL / POINTER_UP ease the swell out so the dot shrinks back with the bars; detach resets swellScale to 1.
+            float dotR = 3.5f * getResources().getDisplayMetrics().density
+                    * (1f + 2.4f * (swellScale - 1f));
             // v11.80: the dot used to sit at playedFrac * w
             // unclamped, so at full progress its centre was on the
             // view's right edge (right half clipped away) and at

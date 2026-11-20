@@ -995,6 +995,50 @@ public class Fx {
         }
     }
 
+    // v15.27 (slice 1794): the Settings Wi-Fi auto-download "check
+    // now" gold action line melts in/out instead of popping when
+    // the toggle flips — the Settings notes all melt already (size
+    // note v14.66, auto-download note v14.67, data-saver note
+    // v14.68, notification-blocked note v14.69), but this line was
+    // the last raw visibility flip in refresh(): the toggle tap
+    // morphs the switch and dips the root (themeDip: root -> 0.55,
+    // swap at the dip bottom, root back over 260ms), and refresh()
+    // runs as that swap, so the line used to appear/vanish in one
+    // frame at 55% brightness directly under the tapped toggle
+    // while the screen rose back. Fx.crossfadeCheckNow (250ms,
+    // DecelerateInterpolator, recorded shown state, instant seed on
+    // a fresh view) owns the line from here; the text / colour /
+    // size stay instant at the call site (values, not appearance
+    // changes, per the v14.16 settled decision). A repeated call
+    // for the state already showing is a no-op and never restarts
+    // the fade (refresh() runs on every onResume and every toggle
+    // tap, so a steady line must never re-melt), and a mid-fade
+    // re-target starts from the alpha the view actually has. One
+    // view, one map entry — a refresh() from any other toggle is a
+    // no-op for the line. The tap routing, the toggle morph/dip
+    // and the note above are untouched — the melt changes
+    // appearance only.
+    private static java.util.WeakHashMap<View, Boolean> checkNowShown =
+            new java.util.WeakHashMap<View, Boolean>();
+    public static void crossfadeCheckNow(final View line, boolean show) {
+        if (line == null) return;
+        Boolean cur = checkNowShown.get(line);
+        if (cur == null) {
+            checkNowShown.put(line, Boolean.valueOf(show));
+            line.setVisibility(show ? View.VISIBLE : View.GONE);
+            line.setAlpha(1f);
+            return;
+        }
+        if (cur.booleanValue() == show) return;
+        checkNowShown.put(line, Boolean.valueOf(show));
+        if (show) {
+            line.setVisibility(View.VISIBLE);
+            fadeIn(line, 250);
+        } else {
+            fadeOut(line, 250);
+        }
+    }
+
     // v14.34 (slice 1689): the Room sleep countdown's under-a-minute
     // gold flip used to snap — the 500ms poll swapped the text
     // colour in one frame (setTextColor: grey #AAAAAA <-> gold

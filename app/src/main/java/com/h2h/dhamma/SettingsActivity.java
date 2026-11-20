@@ -1160,10 +1160,40 @@ android.view.View settingsStripPrev = findViewById(R.id.nowStripPrev);
             }
         });
         android.view.View close = dlg.findViewById(R.id.devProfileClose);
-        if (close != null) close.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { dlg.dismiss(); }
-        });
+        // v15.27 (slice 1796): the x had no press state at all — a bare 44dp TextView with no background drawable (so no platform pressed state), no morph and no tap: the finger landed on a dead glyph and the dialog just vanished. Fx.press wires the shared DOWN-squash (0.96 over 110ms) / UP-spring-back (180ms, overshoot) onto it, so the x squashes under the finger like every other tappable control; the touch listener returns false, so the click still fires and dismisses. Fx.morph would be dead here — it fires on click, and the dialog is dismissed by that same click before the dip/spring could read. The FB icon's morph and the row's morph are untouched.
+        if (close != null) {
+            Fx.press(close);
+            close.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { dlg.dismiss(); }
+            });
+        }
         dlg.show();
+        // v15.27 (slice 1799): premium Developer Profile entrance
+        // pour — the pop-up is the app's only custom Dialog (the
+        // rest are AlertDialog.Builder; UpdateChecker's is a
+        // fullscreen blocking gate, not a showcase card) and it
+        // used to appear in one frame: no window animation is set
+        // anywhere (no setWindowAnimations call, no theme override
+        // — AppTheme sets no windowAnimationStyle), so the photo
+        // card just landed while its own x already presses (v15.27
+        // piece 2/5) and its FB icon already morphs. The card now
+        // pours in with the app's own entrance rhythm (280ms, the
+        // v2.07 grid-entrance duration): alpha 0 -> 1 and scale
+        // 0.96 -> 1, DecelerateInterpolator, ending at exactly
+        // alpha 1 / scale 1. A fresh Dialog is built on every open,
+        // so the root is always fresh — no stale-animator guard is
+        // needed, and a re-open pours from 0 again. Dismiss stays
+        // instant (the 1796 decision: the dialog dies on the same
+        // click), the x press and FB morph are untouched, and the
+        // clipToOutline round-rect survives (scale is a transform;
+        // the outline is computed from width/height). Visual only.
+        if (root != null) {
+            root.setAlpha(0f);
+            root.setScaleX(0.96f);
+            root.setScaleY(0.96f);
+            root.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(280)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+        }
     }
 
     // v1.30: clear favourite sayadaws + favourite talks in one tap
@@ -3533,7 +3563,8 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
             adCheck.setText(Lang.t(this, "ad_check_now"));
             adCheck.setTextColor(Color.parseColor("#C9A227"));
             adCheck.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn);
-            adCheck.setVisibility(Prefs.autoDlEnabled(this) ? android.view.View.VISIBLE : android.view.View.GONE);
+            // v15.27 (slice 1794): the line melts in/out instead of popping — the last raw visibility flip in refresh(), now through Fx.crossfadeCheckNow: the toggle tap morphs the switch and dips the root, refresh() runs at the dip bottom (root alpha 0.55), and the gold line used to appear/vanish in one frame under the tapped toggle while the screen rose back. The text / colour / size above stay instant (values, not appearance changes, per the v14.16 settled decision); the tap routing (:500 listener, scheduleSoon/cancel, toasts) is untouched — the melt changes appearance only.
+            Fx.crossfadeCheckNow(adCheck, Prefs.autoDlEnabled(this));
         }
         // v4.13: live network note on the existing data-saver
         // button (Spotify-style context, no new view): the gate
