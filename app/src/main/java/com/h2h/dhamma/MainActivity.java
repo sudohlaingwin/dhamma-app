@@ -1491,7 +1491,7 @@ public class MainActivity extends Activity {
                 String libSd = Fx.stripLibSayadaw(MainActivity.this, sp);
                 if (sb != null) sb.setText(libSd != null ? libSd + lClockTxt + Lang.t(MainActivity.this, "resume_from") : Lang.t(MainActivity.this, "downloaded_talk") + lClockTxt + Lang.t(MainActivity.this, "resume_from"));
                 if (tg != null) tg.setText("▶");
-                if (nx != null) nx.setVisibility(android.view.View.GONE);
+                if (nx != null) Fx.crossfadeStripBtn(nx, false);
                 // v7.31: Previous hides with Next in resume mode —
                 // stepping back needs a live track exactly like
                 // advancing does, and its handler had no resume
@@ -1499,7 +1499,7 @@ public class MainActivity extends Activity {
                 // Room/library with ACTION_PREV and played a
                 // different talk instead of resuming this one.
                 android.view.View pv0 = findViewById(R.id.nowStripPrev);
-                if (pv0 != null) pv0.setVisibility(android.view.View.GONE);
+                if (pv0 != null) Fx.crossfadeStripBtn(pv0, false);
                 android.widget.ProgressBar lPb = findViewById(R.id.nowStripProgress);
                 if (lPb != null) Fx.stripResumeProgress(lPb, rPos, lDur);
                 resumeStripMode = true;
@@ -1532,11 +1532,11 @@ public class MainActivity extends Activity {
             meltResumeStripTitle70(tx, want70);
             if (sb != null) sb.setText(rName + (rClock.length() > 0 ? rClock : " · " + rTime) + Lang.t(MainActivity.this, "resume_from"));
             if (tg != null) tg.setText("▶");
-            if (nx != null) nx.setVisibility(android.view.View.GONE);
+            if (nx != null) Fx.crossfadeStripBtn(nx, false);
             // v7.31: same Previous hide as the library resume
             // branch above — a ↺ strip never shows ⏮.
             android.view.View pv0 = findViewById(R.id.nowStripPrev);
-            if (pv0 != null) pv0.setVisibility(android.view.View.GONE);
+            if (pv0 != null) Fx.crossfadeStripBtn(pv0, false);
             android.widget.ProgressBar rPb = findViewById(R.id.nowStripProgress);
             if (rPb != null) Fx.stripResumeProgress(rPb, rPos, rDur);
             resumeStripMode = true;
@@ -1546,12 +1546,13 @@ public class MainActivity extends Activity {
         }
         resumeStripMode = false;
         resumeStripTitle70 = null; // v14.70: live branch owns tx via fadeStripText from here
-        if (nx != null) nx.setVisibility(android.view.View.VISIBLE);
+        // v15.26 (slice 1791): the strip Next/Prev buttons melt in/out instead of popping on the resume <-> live mode flip — both buttons ride Fx.crossfadeStripBtn from here (the two resume branches above hide through the same helper); the toggle glyph + title stay instant per v14.16.
+        if (nx != null) Fx.crossfadeStripBtn(nx, true);
         // v7.31: Previous returns with Next on a live session
         // (it was never hidden by layout, only left visible
         // through resume mode by the missing sync above).
         android.view.View pv0 = findViewById(R.id.nowStripPrev);
-        if (pv0 != null) pv0.setVisibility(android.view.View.VISIBLE);
+        if (pv0 != null) Fx.crossfadeStripBtn(pv0, true);
         String kind = sp.getString("lastKind", "");
         // v4.30: a real mini-player shows title over artist, not
         // one combined line — the strip's old "name — title"

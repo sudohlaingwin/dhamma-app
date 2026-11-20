@@ -13875,28 +13875,52 @@ if (snd67q >= 0) currentIndex = snd67q;
             }
             v.setBackgroundColor(android.graphics.Color.TRANSPARENT);
             // v13.73: move-grip reset — a recycled queue-only row must never
-            // keep a visible grip (or its listener) when rebound as a
-            // full-list / stale row; the bind helper below shows it only
-            // where it applies, on every bind path that returns content.
+            // keep a grip listener when rebound as a full-list / stale
+            // row; the bind helper below shows it only where it applies,
+            // on every bind path that returns content.
+            // v15.26 (slice 1793): the VISIBILITY half of this reset is
+            // GONE — it hid the grip before the paint below, which would
+            // leave gripShown recording shown while the view hides, so
+            // the paint's helper call would no-op and strand the row
+            // gripless while queued (the B3 strand). The reset's job —
+            // a recycled grip-showing row rebound to a stale slot must
+            // never keep its gold ↕ — now lives on the stale-slot
+            // return below, through the same helper; both paints below
+            // are the sole writers on a content bind. The LISTENER half
+            // stays here (setOnClickListener(null) — the listener is
+            // not recorded, so clearing it can never strand a later
+            // paint; the show bind re-sets it every time).
             android.view.View mgReset73 = v.findViewById(R.id.moveGrip);
             if (mgReset73 != null) {
-                mgReset73.setVisibility(View.GONE);
                 mgReset73.setOnClickListener(null);
             }
-            // v13.98 (slice 1093): hairline reset — same recycled-row
-            // rule as the grip above: a recycled half-heard row must
-            // never keep its gold line when rebound to a stale slot
-            // or a row the paint below never reaches.
-            android.view.View hairReset98 = v.findViewById(R.id.hairTrack);
-            if (hairReset98 != null) hairReset98.setVisibility(View.GONE);
+            // v15.26 (slice 1789): the v13.98 top-of-bind hairline
+            // reset is GONE — it hid the track before the paint
+            // below, which would leave hairShown recording shown
+            // while the view hides, so the paint's helper call
+            // would no-op and strand the row lineless while
+            // half-heard (the B3 strand). The reset's job — a
+            // recycled half-heard row rebound to a stale slot must
+            // never keep its gold line — now lives on the stale-slot
+            // return below, through the same helper; both paints
+            // below are the sole writers on a content bind.
             // v14.00 (slice 1095): duration-clock reset — same
             // recycled-row rule as the grip/hairline above: a
             // recycled row must never keep the previous talk's
-            // clock when rebound.
+            // clock when rebound. The TEXT half stays here
+            // (setText("") — text is not recorded, so clearing
+            // it can never strand a later paint); the VISIBILITY
+            // half moved with the v15.26 hairline reset onto the
+            // stale-slot return below, through Fx.crossfadeClock:
+            // a bare setVisibility(GONE) here would leave
+            // clockShown recording shown while the view hides,
+            // and the next show bind would no-op and strand the
+            // row clockless while its duration is known (the B3
+            // strand). Both paints below are the sole writers on
+            // a content bind.
             android.widget.TextView durReset100 = v.findViewById(R.id.talkDur);
             if (durReset100 != null) {
                 durReset100.setText("");
-                durReset100.setVisibility(View.GONE);
             }
             // v3.45: premium drawer recycled-row pour hygiene, mirroring
             // the delivered v3.40 hygiene in the Main, Talks and
@@ -14061,16 +14085,12 @@ if (snd67q >= 0) currentIndex = snd67q;
                     if (fRowCard != null) Fx.crossfadeCardTile(fRowCard, fSounding ? R.drawable.drawer_row_playing : R.drawable.drawer_row);
                     if (fHeld) v.setBackgroundColor(0x33C9A227);
                     if (fPlayed && !fSounding && fTitle != null) fTitle.setAlpha(0.6f);
-                    // v13.98 (slice 1093): paint the hairline — reset
-                    // on every bind, like the alpha/card/wash above,
-                    // so a recycled row can never keep the previous
-                    // talk's fraction; the track is GONE unless this
-                    // bind set a fraction above. Weight-split fill /
-                    // spacer, no measuring, no post-layout pass.
+                    // v13.98 (slice 1093): paint the hairline — the track is GONE unless this bind set a fraction above. Weight-split fill / spacer, no measuring, no post-layout pass.
+                    // v15.26 (slice 1789): the hairline melts in/out instead of popping — the v14.31 card-crossfade fix, now on the drawer's gold line: the 500ms poll rebinds the drawer on a resync and every open/queue/download rebind re-painted in one frame (setVisibility), so a talk advancing, ending or handing over with the drawer open flashed its line in while the gold card beside it crossfades (v14.32) and the strip and clock melt. Fx.crossfadeHairline (250ms, DecelerateInterpolator, recorded shown state, instant seed on a fresh view) owns the track from here; the fill/space weight split below stays an instant layout update (a progress value, not an appearance change), and the ▶/✓ marks + title dim stay instant per the v14.16 settled decision. No top-of-bind reset any more (the v13.98 reset moved to the stale-slot return below) — the paint is the sole writer on a content bind.
                     android.view.View hairTrack = v.findViewById(R.id.hairTrack);
                     android.view.View hairFill = v.findViewById(R.id.hairFill);
                     android.view.View hairSpace = v.findViewById(R.id.hairSpace);
-                    if (hairTrack != null) hairTrack.setVisibility(hairFrac > 0f ? android.view.View.VISIBLE : android.view.View.GONE);
+                    if (hairTrack != null) Fx.crossfadeHairline(hairTrack, hairFrac > 0f);
                     if (hairFrac > 0f && hairFill != null && hairSpace != null) {
                         hairFill.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, hairFrac));
                         hairSpace.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1f - hairFrac));
@@ -14100,11 +14120,11 @@ if (snd67q >= 0) currentIndex = snd67q;
                         }
                         if (durI100 != null && durI100.intValue() > 0) {
                             durView100.setText(formatTime(durI100.intValue()));
-                            durView100.setVisibility(android.view.View.VISIBLE);
                         } else {
                             durView100.setText("");
-                            durView100.setVisibility(android.view.View.GONE);
                         }
+                        // v15.26 (slice 1790): the clock melts in/out instead of popping — the v14.31 card-crossfade fix, now on the duration label: the 500ms poll rebinds the drawer on a resync and every open/queue/download rebind re-painted in one frame (setVisibility), so a fresh length flashed onto its row while the gold card beside it crossfades (v14.32) and the hairline melts (v15.26 piece 1/5). Fx.crossfadeClock (250ms, DecelerateInterpolator, recorded shown state, instant seed on a fresh view) owns the label from here; the text/size/colour reset above stays instant (a value, not an appearance change), like the hairline's weight split.
+                        Fx.crossfadeClock(durView100, durI100 != null && durI100.intValue() > 0);
                         durView100.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, tf == 0 ? 12 : (tf == 1 ? 13 : 16));
                         durView100.setTextColor(android.graphics.Color.parseColor("#AAAAAA"));
                     }
@@ -14127,7 +14147,18 @@ if (snd67q >= 0) currentIndex = snd67q;
             // queue position in queue-only view, the list number
             // otherwise — both equal ◈N for a queued row.
             final int talkIdx = drawerTalkIndex(pos);
-            if (talkIdx < 0 || talkIdx >= talks.size()) return v;
+            if (talkIdx < 0 || talkIdx >= talks.size()) {
+                // v15.26 (slice 1789): the stale-slot hide — the v13.98 top-of-bind reset's job, moved here: a recycled half-heard row rebound to a stale slot must never keep its gold line — but through Fx.crossfadeHairline, so the recorded target follows the paint: a bare setVisibility(GONE) here would leave hairShown recording shown while the view hides, and the next show bind would no-op and strand the row lineless while half-heard. The hide melts out over 250ms on a stale slot; the next tick prunes the slot. The foreign return above needs no hide — its branch paints before returning.
+                android.view.View hairStale26 = v.findViewById(R.id.hairTrack);
+                if (hairStale26 != null) Fx.crossfadeHairline(hairStale26, false);
+                // v15.26 (slice 1790): the stale-slot clock hide — the v14.00 top-of-bind reset's job, moved here beside the hairline hide: a recycled clock-showing row rebound to a stale slot must never keep its duration clock — but through Fx.crossfadeClock, so the recorded target follows the paint: a bare setVisibility(GONE) here would leave clockShown recording shown while the view hides, and the next show bind would no-op and strand the row clockless while its duration is known. The hide melts out over 250ms on a stale slot; the next tick prunes the slot.
+                android.widget.TextView durStale100 = v.findViewById(R.id.talkDur);
+                if (durStale100 != null) Fx.crossfadeClock(durStale100, false);
+                // v15.26 (slice 1793): the stale-slot grip hide — the v13.73 top-of-bind reset's job, moved here beside the hairline/clock hides: a recycled grip-showing row rebound to a stale slot must never keep its gold ↕ — but through Fx.crossfadeMoveGrip, so the recorded target follows the paint: a bare setVisibility(GONE) here would leave gripShown recording shown while the view hides, and the next show bind would no-op and strand the row gripless while queued. The hide melts out over 250ms on a stale slot; the next tick prunes the slot.
+                android.view.View gripStale73 = v.findViewById(R.id.moveGrip);
+                if (gripStale73 != null) Fx.crossfadeMoveGrip(gripStale73, false);
+                return v;
+            }
             Talk t = talks.get(talkIdx);
             // v7.71: this bind's playing identity is the scan-proven
             // sounding index (see soundingIndexForBind), not
@@ -14377,16 +14408,12 @@ if (snd67q >= 0) currentIndex = snd67q;
                 // only ever arm the fresh row or miss the melt).
                 drawerUpNextUrl57 = t.url;
             }
-            // v13.98 (slice 1093): paint the hairline — reset on
-            // every bind, like the alpha/card/wash above, so a
-            // recycled row can never keep the previous talk's
-            // fraction; the track is GONE unless this bind set a
-            // fraction above. Weight-split fill / spacer, no
-            // measuring, no post-layout pass.
+            // v13.98 (slice 1093): paint the hairline — the track is GONE unless this bind set a fraction above. Weight-split fill / spacer, no measuring, no post-layout pass.
+            // v15.26 (slice 1789): the hairline melts in/out instead of popping — the v14.31 card-crossfade fix, now on the drawer's gold line: the 500ms poll rebinds the drawer on a resync and every open/queue/download rebind re-painted in one frame (setVisibility), so a talk advancing, ending or handing over with the drawer open flashed its line in while the gold card beside it crossfades (v14.32) and the strip and clock melt. Fx.crossfadeHairline (250ms, DecelerateInterpolator, recorded shown state, instant seed on a fresh view) owns the track from here; the fill/space weight split below stays an instant layout update (a progress value, not an appearance change), and the ▶/✓ marks + title dim stay instant per the v14.16 settled decision. No top-of-bind reset any more (the v13.98 reset moved to the stale-slot return above) — the paint is the sole writer on a content bind.
             android.view.View hairTrack = v.findViewById(R.id.hairTrack);
             android.view.View hairFill = v.findViewById(R.id.hairFill);
             android.view.View hairSpace = v.findViewById(R.id.hairSpace);
-            if (hairTrack != null) hairTrack.setVisibility(hairFrac > 0f ? android.view.View.VISIBLE : android.view.View.GONE);
+            if (hairTrack != null) Fx.crossfadeHairline(hairTrack, hairFrac > 0f);
             if (hairFrac > 0f && hairFill != null && hairSpace != null) {
                 hairFill.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, hairFrac));
                 hairSpace.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1f - hairFrac));
@@ -14414,11 +14441,11 @@ if (snd67q >= 0) currentIndex = snd67q;
                 }
                 if (durI100 != null && durI100.intValue() > 0) {
                     durView100.setText(formatTime(durI100.intValue()));
-                    durView100.setVisibility(android.view.View.VISIBLE);
                 } else {
                     durView100.setText("");
-                    durView100.setVisibility(android.view.View.GONE);
                 }
+                // v15.26 (slice 1790): the clock melts in/out instead of popping — the v14.31 card-crossfade fix, now on the duration label: the 500ms poll rebinds the drawer on a resync and every open/queue/download rebind re-painted in one frame (setVisibility), so a fresh length flashed onto its row while the gold card beside it crossfades (v14.32) and the hairline melts (v15.26 piece 1/5). Fx.crossfadeClock (250ms, DecelerateInterpolator, recorded shown state, instant seed on a fresh view) owns the label from here; the text/size/colour reset above stays instant (a value, not an appearance change), like the hairline's weight split.
+                Fx.crossfadeClock(durView100, durI100 != null && durI100.intValue() > 0);
                 durView100.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, tf == 0 ? 12 : (tf == 1 ? 13 : 16));
                 durView100.setTextColor(android.graphics.Color.parseColor("#AAAAAA"));
             }
@@ -14457,11 +14484,12 @@ if (snd67q >= 0) currentIndex = snd67q;
                 && (foreign ? !isSoundingForeignTalk(url, sayadaw)
                         : !isSoundingTalk(url));
         if (!show) {
-            grip.setVisibility(View.GONE);
+            // v15.26 (slice 1793): the grip melts in/out instead of popping — the v13.73 one-frame swap, now through Fx.crossfadeMoveGrip: the queue-only <-> full-list flip, a move arm and a track handover all rebind every row, and the grip used to vanish/appear in one frame while the card beside it crossfades (v14.32) and the hairline (piece 1/5) and clock (piece 2/5) melt. The listener still clears here on a hide (a fading-out grip must never take a stale tap) and re-sets on a show below.
+            Fx.crossfadeMoveGrip(grip, false);
             grip.setOnClickListener(null);
             return;
         }
-        grip.setVisibility(View.VISIBLE);
+        Fx.crossfadeMoveGrip(grip, true);
         grip.setText("↕");
         int tf = Prefs.fontSize(RoomActivity.this);
         grip.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,

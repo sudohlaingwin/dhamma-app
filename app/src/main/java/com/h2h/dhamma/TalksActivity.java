@@ -5371,7 +5371,7 @@ public class TalksActivity extends Activity {
                 String libSd = Fx.stripLibSayadaw(TalksActivity.this, rsp);
                 if (sb != null) sb.setText(libSd != null ? libSd + lClockTxt + Lang.t(TalksActivity.this, "resume_from") : Lang.t(TalksActivity.this, "downloaded_talk") + lClockTxt + Lang.t(TalksActivity.this, "resume_from"));
                 if (tg != null) tg.setText("▶");
-                if (nx != null) nx.setVisibility(android.view.View.GONE);
+                if (nx != null) Fx.crossfadeStripBtn(nx, false);
                 // v7.31: Previous hides with Next in resume mode
                 // (Main's mirror fix) — stepping back needs a
                 // live track exactly like advancing does, and
@@ -5379,7 +5379,7 @@ public class TalksActivity extends Activity {
                 // on a ↺ strip ACTION_PREV-ed into a different
                 // talk instead of resuming this one.
                 android.view.View pv0 = findViewById(R.id.nowStripPrev);
-                if (pv0 != null) pv0.setVisibility(android.view.View.GONE);
+                if (pv0 != null) Fx.crossfadeStripBtn(pv0, false);
                 android.widget.ProgressBar lPb = findViewById(R.id.nowStripProgress);
                 if (lPb != null) Fx.stripResumeProgress(lPb, rPos, lDur);
                 talksResumeStripMode = true;
@@ -5413,11 +5413,11 @@ public class TalksActivity extends Activity {
             meltResumeStripTitle71(tx, want71);
             if (sb != null) sb.setText(rName + (rClock.length() > 0 ? rClock : " · " + rTime) + Lang.t(TalksActivity.this, "resume_from"));
             if (tg != null) tg.setText("▶");
-            if (nx != null) nx.setVisibility(android.view.View.GONE);
+            if (nx != null) Fx.crossfadeStripBtn(nx, false);
             // v7.31: same Previous hide as the library resume
             // branch above — a ↺ strip never shows ⏮.
             android.view.View pv0 = findViewById(R.id.nowStripPrev);
-            if (pv0 != null) pv0.setVisibility(android.view.View.GONE);
+            if (pv0 != null) Fx.crossfadeStripBtn(pv0, false);
             android.widget.ProgressBar rPb = findViewById(R.id.nowStripProgress);
             if (rPb != null) Fx.stripResumeProgress(rPb, rPos, rDur);
             talksResumeStripMode = true;
@@ -5427,10 +5427,11 @@ public class TalksActivity extends Activity {
         }
         talksResumeStripMode = false;
         resumeStripTitle71 = null; // v14.71: live branch owns tx via fadeStripText from here
-        if (nx != null) nx.setVisibility(android.view.View.VISIBLE);
+        // v15.26 (slice 1791): the strip Next/Prev buttons melt in/out instead of popping on the resume <-> live mode flip — both buttons ride Fx.crossfadeStripBtn from here (the two resume branches above hide through the same helper); the toggle glyph + title stay instant per v14.16.
+        if (nx != null) Fx.crossfadeStripBtn(nx, true);
         // v7.31: Previous returns with Next on a live session.
         android.view.View pv0 = findViewById(R.id.nowStripPrev);
-        if (pv0 != null) pv0.setVisibility(android.view.View.VISIBLE);
+        if (pv0 != null) Fx.crossfadeStripBtn(pv0, true);
         android.content.SharedPreferences sp =
                 getSharedPreferences("dhamma", MODE_PRIVATE);
         String kind = sp.getString("lastKind", "");
@@ -6419,9 +6420,9 @@ public class TalksActivity extends Activity {
             // position is on the strip, the length is a property
             // of the talk). Hidden when no duration was ever
             // stored — never guessed. Reset on every bind (text,
-            // size, colour, visibility), like the alpha above, so
-            // a recycled row can never keep the previous talk's
-            // clock.
+            // size, colour), like the alpha above, so a recycled
+            // row can never keep the previous talk's clock; the
+            // visibility melts through the helper below (v15.26).
             android.widget.TextView durView = v.findViewById(R.id.talkDur);
             if (durView != null) {
                 Integer durI99 = talkDurCache.get(rowUrl);
@@ -6435,11 +6436,11 @@ public class TalksActivity extends Activity {
                 }
                 if (durI99 != null && durI99.intValue() > 0) {
                     durView.setText(Fx.fmtTime(durI99.intValue()));
-                    durView.setVisibility(android.view.View.VISIBLE);
                 } else {
                     durView.setText("");
-                    durView.setVisibility(android.view.View.GONE);
                 }
+                // v15.26 (slice 1790): the clock melts in/out instead of popping — the v14.31 card-crossfade fix, now on the duration label: the 1s tick rebinds exactly when a duration lands in talkDurCache, and getView swapped the label in one frame (setVisibility), so a fresh length flashed onto its row while the gold card beside it crossfades (v15.24) and the hairline melts (v15.25). Fx.crossfadeClock (250ms, DecelerateInterpolator, recorded shown state, instant seed on a fresh view) owns the label from here; the text/size/colour reset above stays instant (a value, not an appearance change), like the hairline's weight split.
+                Fx.crossfadeClock(durView, durI99 != null && durI99.intValue() > 0);
                 durView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, cachedFont == 0 ? 12 : (cachedFont == 1 ? 13 : 16));
                 durView.setTextColor(cachedNight ? android.graphics.Color.parseColor("#AAAAAA") : android.graphics.Color.parseColor("#7A6A58"));
             }

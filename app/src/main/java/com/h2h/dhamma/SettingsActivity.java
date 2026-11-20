@@ -2187,14 +2187,14 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                 String libSd = Fx.stripLibSayadaw(SettingsActivity.this, sp);
                 if (sb != null) sb.setText(libSd != null ? libSd + lClockTxt + Lang.t(SettingsActivity.this, "resume_from") : Lang.t(SettingsActivity.this, "downloaded_talk") + lClockTxt + Lang.t(SettingsActivity.this, "resume_from"));
                 if (tg != null) tg.setText("▶");
-                if (nx != null) nx.setVisibility(android.view.View.GONE);
+                if (nx != null) Fx.crossfadeStripBtn(nx, false);
                 // v7.36: Previous hides with Next in resume mode —
                 // stepping back needs a live track exactly like
                 // advancing does (Main v7.31, library v7.35).
                 // Settings was the last strip whose sync never
                 // hid ⏮, so a ↺ strip here openly showed it.
                 android.view.View pvPrev0 = findViewById(R.id.nowStripPrev);
-                if (pvPrev0 != null) pvPrev0.setVisibility(android.view.View.GONE);
+                if (pvPrev0 != null) Fx.crossfadeStripBtn(pvPrev0, false);
                 android.widget.ProgressBar lPb = findViewById(R.id.nowStripProgress);
                 if (lPb != null) Fx.stripResumeProgress(lPb, rPos, lDur);
                 settingsResumeStripMode = true;
@@ -2246,11 +2246,11 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
             meltResumeStripTitle73(tx, want73);
             if (sb != null) sb.setText(rName + (rClock.length() > 0 ? rClock : " · " + rTime) + Lang.t(SettingsActivity.this, "resume_from"));
             if (tg != null) tg.setText("▶");
-            if (nx != null) nx.setVisibility(android.view.View.GONE);
+            if (nx != null) Fx.crossfadeStripBtn(nx, false);
             // v7.36: same Previous hide as the library resume
             // branch above — a ↺ strip never shows ⏮.
             android.view.View pvPrev0 = findViewById(R.id.nowStripPrev);
-            if (pvPrev0 != null) pvPrev0.setVisibility(android.view.View.GONE);
+            if (pvPrev0 != null) Fx.crossfadeStripBtn(pvPrev0, false);
             android.widget.ProgressBar rPb = findViewById(R.id.nowStripProgress);
             if (rPb != null) Fx.stripResumeProgress(rPb, rPos, rDur);
             settingsResumeStripMode = true;
@@ -2260,11 +2260,12 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         }
         settingsResumeStripMode = false;
         resumeStripTitle73 = null; // v14.73: live branch owns tx via fadeStripText from here
-        if (nx != null) nx.setVisibility(android.view.View.VISIBLE);
+        // v15.26 (slice 1792): the strip Next/Prev buttons melt in/out instead of popping on the resume <-> live mode flip — both buttons ride Fx.crossfadeStripBtn from here (the two resume branches above hide through the same helper); the toggle glyph + title stay instant per v14.16. Settings is the last reachable strip to melt: Main (v14.70) / Talks (v14.71) / Library (v14.72) melt their titles and the Main/Talks/Library transport pair melts since slice 1791 — the Settings pair still swapped in one frame on the 1s tick sync, while the ↺ title melts in beside them (v14.73).
+        if (nx != null) Fx.crossfadeStripBtn(nx, true);
         // v7.36: Previous returns with Next on a live session
         // (Main v7.31, library v7.35 mirrors).
         android.view.View pvPrev0 = findViewById(R.id.nowStripPrev);
-        if (pvPrev0 != null) pvPrev0.setVisibility(android.view.View.VISIBLE);
+        if (pvPrev0 != null) Fx.crossfadeStripBtn(pvPrev0, true);
         String kind = sp.getString("lastKind", "");
         // v13.94 (F-920 F-NEW-5): the strip names a stream still loading or
         // already failed — until now both read exactly like a paused talk

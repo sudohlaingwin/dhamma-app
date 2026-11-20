@@ -853,10 +853,11 @@ public class Fx {
     // appearance change. The row's own pour (view Animation), press
     // squash (scale) and delete fade (row alpha) all live on other
     // views/channels — the hairline is a child view whose alpha is
-    // its own. The Room drawer hairlines keep their instant swap this
-    // slice: the drawer's top-of-bind reset hides the track before
-    // the paint below, so a recorded melt would re-melt on every
-    // rebind — the reset must move onto the early-return paths first.
+    // its own. v15.26 (slice 1789): the Room drawer hairlines ride
+    // Fx.crossfadeHairline now — the drawer's top-of-bind reset moved
+    // onto the stale-slot return (RoomActivity), so both drawer paints
+    // are the sole writers on a content bind and a showing line never
+    // re-melts on a rebind.
     private static java.util.WeakHashMap<View, Boolean> hairShown =
             new java.util.WeakHashMap<View, Boolean>();
     public static void crossfadeHairline(final View track, boolean show) {
@@ -875,6 +876,122 @@ public class Fx {
             fadeIn(track, 250);
         } else {
             fadeOut(track, 250);
+        }
+    }
+
+    // v15.26 (slice 1790): the duration clock melts in/out instead
+    // of popping — the v15.24 card-crossfade / v15.25 hairline fix,
+    // now on the clock beside them: the 1s tick rebinds the chooser
+    // rows exactly when a duration lands in the cache (a talk played
+    // or downloaded stores its length, v13.96) and the 500ms poll
+    // rebinds the drawer, and both paints swapped the talkDur label
+    // in one frame (setVisibility), so a fresh length flashed onto
+    // its row while the gold card beside it crossfades (v15.24) and
+    // the hairline melts (v15.25). Fx.crossfadeClock (250ms,
+    // DecelerateInterpolator, recorded shown state, instant seed on a
+    // fresh view) owns the label from here; the clock text/size/colour
+    // reset on every bind, instantly, at the call sites — the helper
+    // owns visibility + alpha only, never the text. A repeated call
+    // for the state already showing is a no-op and never restarts
+    // the fade (a duration-text-only rebind never re-melts), and a
+    // mid-fade re-target starts from the alpha the view actually has.
+    private static java.util.WeakHashMap<View, Boolean> clockShown =
+            new java.util.WeakHashMap<View, Boolean>();
+    public static void crossfadeClock(final View clock, boolean show) {
+        if (clock == null) return;
+        Boolean cur = clockShown.get(clock);
+        if (cur == null) {
+            clockShown.put(clock, Boolean.valueOf(show));
+            clock.setVisibility(show ? View.VISIBLE : View.GONE);
+            clock.setAlpha(1f);
+            return;
+        }
+        if (cur.booleanValue() == show) return;
+        clockShown.put(clock, Boolean.valueOf(show));
+        if (show) {
+            clock.setVisibility(View.VISIBLE);
+            fadeIn(clock, 250);
+        } else {
+            fadeOut(clock, 250);
+        }
+    }
+
+    // v15.26 (slice 1791): the strip Next/Prev buttons melt in/out instead
+    // of popping on the resume <-> live mode flip — the v14.70/71/72
+    // title melt, now on the transport pair: the 1s tick sync flips
+    // the strip between live and resume mode, and both branches
+    // swapped Next + Prev in one frame (setVisibility) while the
+    // resume title beside them melts in (v14.70) and the strip itself
+    // slides (v14.14). Fx.crossfadeStripBtn (250ms,
+    // DecelerateInterpolator, recorded shown state, instant seed on a
+    // fresh view) owns both buttons from here; the toggle glyph
+    // ▶/⏸ + title/sub text stay instant on every sync (values, not
+    // appearance changes, per the v14.16 settled decision). A
+    // repeated call for the state already showing is a no-op and
+    // never restarts the fade, and a mid-fade re-target starts from
+    // the alpha the view actually has. Next and Prev are independent
+    // map entries — one button's melt never touches the other's
+    // record. No top-of-bind reset exists on these buttons (no other
+    // writer), so there is no strand to move — unlike the drawer
+    // clock (slice 1790).
+    private static java.util.WeakHashMap<View, Boolean> stripBtnShown =
+            new java.util.WeakHashMap<View, Boolean>();
+    public static void crossfadeStripBtn(final View btn, boolean show) {
+        if (btn == null) return;
+        Boolean cur = stripBtnShown.get(btn);
+        if (cur == null) {
+            stripBtnShown.put(btn, Boolean.valueOf(show));
+            btn.setVisibility(show ? View.VISIBLE : View.GONE);
+            btn.setAlpha(1f);
+            return;
+        }
+        if (cur.booleanValue() == show) return;
+        stripBtnShown.put(btn, Boolean.valueOf(show));
+        if (show) {
+            btn.setVisibility(View.VISIBLE);
+            fadeIn(btn, 250);
+        } else {
+            fadeOut(btn, 250);
+        }
+    }
+
+    // v15.26 (slice 1793): the drawer move-grip melts in/out instead
+    // of popping on the queue-only <-> full-list flip — the v14.32
+    // card crossfade / v15.25 hairline / v15.26 piece-2 clock melt,
+    // now on the gold ↕ grip (v13.73): every drawer rebind (the
+    // queue-only flip, a move arm, a track handover on the 500ms
+    // poll resync) re-painted every row through bindMoveGrip73, and
+    // the grip swapped in one frame (setVisibility) while the card
+    // beside it crossfades and the hairline and clock melt. Fx.
+    // crossfadeMoveGrip (250ms, DecelerateInterpolator, recorded
+    // shown state, instant seed on a fresh view) owns the grip from
+    // here; the ↕ text / size / tap listener stay instant at the
+    // call site (values, not appearance changes, per the v14.16
+    // settled decision). A repeated call for the state already
+    // showing is a no-op and never restarts the fade, and a mid-fade
+    // re-target starts from the alpha the view actually has. Each
+    // row view is its own map entry — one row's melt never touches
+    // another row's record. The top-of-bind reset's visibility half
+    // moved onto the stale-slot return through this helper (see
+    // RoomActivity), so the recorded target stays truthful.
+    private static java.util.WeakHashMap<View, Boolean> gripShown =
+            new java.util.WeakHashMap<View, Boolean>();
+    public static void crossfadeMoveGrip(final View grip, boolean show) {
+        if (grip == null) return;
+        Boolean cur = gripShown.get(grip);
+        if (cur == null) {
+            gripShown.put(grip, Boolean.valueOf(show));
+            grip.setVisibility(show ? View.VISIBLE : View.GONE);
+            grip.setAlpha(1f);
+            return;
+        }
+        if (cur.booleanValue() == show) return;
+        gripShown.put(grip, Boolean.valueOf(show));
+        if (show) {
+            grip.setVisibility(View.VISIBLE);
+            fadeIn(grip, 250);
+        } else {
+            fadeOut(grip, 250);
         }
     }
 
