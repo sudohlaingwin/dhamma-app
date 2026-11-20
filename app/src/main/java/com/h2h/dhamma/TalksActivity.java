@@ -800,7 +800,8 @@ public class TalksActivity extends Activity {
     // visible mark change there is nothing to melt.
     static java.util.Set<String> syncMarksChanged97(
             java.util.Set<String> beforeFav, java.util.Set<String> afterFav,
-            java.util.Set<String> beforePlayed, java.util.Set<String> afterPlayed) {
+            java.util.Set<String> beforePlayed, java.util.Set<String> afterPlayed,
+            java.util.Set<String> beforeQueued, java.util.Set<String> afterQueued) {
         java.util.Set<String> out = new java.util.HashSet<String>();
         java.util.Set<String> bf = new java.util.HashSet<String>();
         if (beforeFav != null) for (String u : beforeFav) {
@@ -826,6 +827,25 @@ public class TalksActivity extends Activity {
         }
         for (String id : bp) if (!ap.contains(id)) out.add(id);
         for (String id : ap) if (!bp.contains(id)) out.add(id);
+        // v15.28 (slice 1802): the queued pair — a download queueing
+        // (⏳ appearing) is the last mark arrival the diff missed:
+        // the tick rebinds on a queued-set change (marksDlQueued44
+        // in marksChanged44) but the diff was fav/played only, so
+        // the row snapped its ⏳ in one frame while ★/✓ beside it
+        // melted (v14.97). Membership only, never the live percents
+        // — a 42% -> 43% tick diffs to nothing and arms no melt.
+        java.util.Set<String> bq = new java.util.HashSet<String>();
+        if (beforeQueued != null) for (String u : beforeQueued) {
+            String id = SiteHttp.identityUrl(u);
+            if (id != null) bq.add(id);
+        }
+        java.util.Set<String> aq = new java.util.HashSet<String>();
+        if (afterQueued != null) for (String u : afterQueued) {
+            String id = SiteHttp.identityUrl(u);
+            if (id != null) aq.add(id);
+        }
+        for (String id : bq) if (!aq.contains(id)) out.add(id);
+        for (String id : aq) if (!bq.contains(id)) out.add(id);
         return out;
     }
     // v14.97 (slice 1755): melt the rows whose ★/✓ just changed
@@ -971,9 +991,12 @@ public class TalksActivity extends Activity {
     // without a new mark is a no-op. Not the header: the v14.56
     // boundary stands — menu actions never fade the header, only
     // the row. Not queue-from-here (many rows; the Up Next melt
-    // owns the head change), not the download verb (the tick owns
-    // the mark and v14.47 covers the landing), not play-next
-    // (v14.55 owns the Up Next row).
+    // owns the head change), not play-next (v14.55 owns the Up
+    // Next row). The download verb JOINS the melt since v15.28
+    // (slice 1802): the old exclusion ("the tick owns the mark
+    // and v14.47 covers the landing") was stale — the tick
+    // rebinds on a queued-set change but never melted the ⏳-gain,
+    // and v14.47 covers only the landing (⬇), never the queueing.
     private String menuMarkFadeUrl75 = null;
     // v14.97 (slice 1755): the tick-detected external ★/✓ change's
     // melt set — the Room drawer's v14.96 sync-melt field, restated
@@ -982,7 +1005,11 @@ public class TalksActivity extends Activity {
     // branch's fadeSyncMarkedTalkRows97 consumes them. The menu path
     // never writes it (menu branches reload the caches synchronously,
     // so the next tick snapshots the new state and sees no change —
-    // v10.88 / v14.75). The return path writes it too:
+    // v10.88 / v14.75). v15.28 (slice 1802): the queued pair joins
+    // the same diff — a ⏳ gained or lost under the open chooser
+    // melts through the same helper; the live percents are never
+    // an input, so a percent tick arms nothing. The return path
+    // writes it too:
     // v14.98 (slice 1756) — onResume diffs its pre-return snapshots
     // against the refreshed caches and banks the changed URLs here;
     // the tick arm still reads only what its own tick found, because
@@ -2931,6 +2958,18 @@ public class TalksActivity extends Activity {
                                         refreshTalkRowMarks(true);
                                         if (!talks.isEmpty() && sayadawName != null) refreshFavHeader();
                                         if (adapter != null) adapter.notifyDataSetChanged();
+                                        // v15.28 (slice 1802): melt the row whose ⏳ just
+                                        // appeared — the download verb used to end in a
+                                        // bare notify, so the hourglass snapped onto its
+                                        // row in one frame while the ★ toggle in the same
+                                        // dialog melts (v14.75). Same shape as the fav
+                                        // arm above (menuMarkFadeUrl75 + posted resolve
+                                        // through visibleHits, Fx.fadeIn 250ms); the tick
+                                        // snapshots the new queued state, so it cannot
+                                        // double-arm (v10.88 / v14.75). The already-
+                                        // downloaded / already-queued early returns above
+                                        // change no mark, so they arm nothing.
+                                        if (dt != null && dt.url != null) { menuMarkFadeUrl75 = dt.url; fadeMenuMarkedTalkRow(); }
                                         if (Fx.stripIsWifi(TalksActivity.this))
                                             android.widget.Toast.makeText(TalksActivity.this,
                                                     "\u2B07 " + (dt.title != null && dt.title.length() > 0 ? dt.title : dt.url) + Lang.t(TalksActivity.this, "dl_downloading_suffix"),
@@ -3780,11 +3819,14 @@ public class TalksActivity extends Activity {
         boolean retIsReturn98 = resumedOnce;
         java.util.Set<String> retFavBefore98 = null;
         java.util.Set<String> retPlayedBefore98 = null;
+        java.util.Set<String> retQueuedBefore98 = null;
         if (retIsReturn98) {
             retFavBefore98 = talkFavCache != null
                     ? new java.util.HashSet<String>(talkFavCache) : new java.util.HashSet<String>();
             retPlayedBefore98 = talkPlayedCache != null
                     ? new java.util.HashSet<String>(talkPlayedCache) : new java.util.HashSet<String>();
+            retQueuedBefore98 = talkDlQueuedCache != null
+                    ? new java.util.HashSet<String>(talkDlQueuedCache) : new java.util.HashSet<String>();
         }
         // v1.81: count this screen as on top (see AppForeground).
         AppForeground.activityResumed();
@@ -3922,9 +3964,13 @@ public class TalksActivity extends Activity {
         // refreshed caches, and the v14.47 getView hygiene restores
         // row alpha 1 on any rebind, so the fade can never strand a
         // row half-transparent.
-        if (retIsReturn98 && retFavBefore98 != null && retPlayedBefore98 != null) {
+        // v15.28 (slice 1802): the queued pair joins the return diff
+        // too — a ⏳ gained while in the Room (queued from the drawer
+        // or the data gate) melts on the return rebind, like ★/✓.
+        if (retIsReturn98 && retFavBefore98 != null && retPlayedBefore98 != null && retQueuedBefore98 != null) {
             java.util.Set<String> retChanged98 = syncMarksChanged97(retFavBefore98, talkFavCache,
-                    retPlayedBefore98, talkPlayedCache);
+                    retPlayedBefore98, talkPlayedCache,
+                    retQueuedBefore98, talkDlQueuedCache);
             if (retChanged98 != null && !retChanged98.isEmpty()) {
                 if (filterMode == 0 && adapter != null) adapter.notifyDataSetChanged();
                 syncMarksFadeUrls97 = retChanged98;
@@ -4998,7 +5044,8 @@ public class TalksActivity extends Activity {
         java.util.Set<String> syncChanged97 = null;
         if (syncMarksPrimed97) {
             syncChanged97 = syncMarksChanged97(marksFav44, talkFavCache,
-                    marksPlayed44, talkPlayedCache);
+                    marksPlayed44, talkPlayedCache,
+                    marksDlQueued44, talkDlQueuedCache);
         }
         boolean marksChanged44 = !marksFav44.equals(talkFavCache)
                 || !marksPlayed44.equals(talkPlayedCache)
@@ -6015,8 +6062,9 @@ public class TalksActivity extends Activity {
             }
         });
         android.view.View clear = findViewById(R.id.talkSearchClear);
+        // v15.28 (slice 1800): the clear x had no press state at all — its listener was a bare clearSearch() with no morph, no tap and no press, while its Library twin (btnClearDlSearch) morphs (v2.41) and the chooser's own chips / Play All / Shuffle / rows all carry Fx.press. Fx.morph (dip 0.86 over 70ms, spring back over 220ms) renders fully here — this tap leaves the chooser open while the list re-pours, unlike the dev-profile x (v15.27 piece 2/5, Fx.press, because that tap dismisses the dialog). No non-empty guard: the x is GONE with an empty query (v14.44), so a tap can only land on a real query. The morph animates scale only; clearSearch's fade-out of the x (v14.44, alpha only) runs on a separate channel, so the x squashes away as it fades. clearSearch() itself is untouched.
         if (clear != null) clear.setOnClickListener(new android.view.View.OnClickListener() {
-            @Override public void onClick(android.view.View v) { clearSearch(); }
+            @Override public void onClick(android.view.View v) { Fx.morph(v); clearSearch(); }
         });
         // v13.95 (slice 1090): wire the visible filter chips — one
         // tap sets the mode directly (setTalkFilterMode, the cycle's

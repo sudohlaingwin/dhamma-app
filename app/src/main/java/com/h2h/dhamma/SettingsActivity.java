@@ -1161,10 +1161,49 @@ android.view.View settingsStripPrev = findViewById(R.id.nowStripPrev);
         });
         android.view.View close = dlg.findViewById(R.id.devProfileClose);
         // v15.27 (slice 1796): the x had no press state at all — a bare 44dp TextView with no background drawable (so no platform pressed state), no morph and no tap: the finger landed on a dead glyph and the dialog just vanished. Fx.press wires the shared DOWN-squash (0.96 over 110ms) / UP-spring-back (180ms, overshoot) onto it, so the x squashes under the finger like every other tappable control; the touch listener returns false, so the click still fires and dismisses. Fx.morph would be dead here — it fires on click, and the dialog is dismissed by that same click before the dip/spring could read. The FB icon's morph and the row's morph are untouched.
+        // v15.28 (slice 1807): the pour-out — the 1799 entrance's
+        // matched exit. The card pours in over 280ms but used to
+        // vanish in one frame on the ✕ tap, so the open/close pair
+        // read as unfinished; the 1799 "dismiss stays instant" line
+        // was the 1796 scope (a morph on the ✕ would be dead — the
+        // dialog dies on the same click), not a ban on an exit
+        // animation: the ✕ press still reads under the finger
+        // (Fx.press above) and the dismiss is only deferred ~200ms
+        // while the card melts out (alpha 1 -> 0, scale 1 -> 0.96,
+        // DecelerateInterpolator — the entrance in reverse, a touch
+        // quicker so the tap still feels immediate). The guard makes
+        // a second ✕ tap mid-pour a no-op; the end action dismisses
+        // only while still showing (BACK / outside-touch can beat
+        // it — the framework dismiss is instant there, as on every
+        // AlertDialog, and the guarded end is then a no-op), and
+        // the cancel path dismisses the same way, so a rotation
+        // mid-pour never strands the dialog. A fresh Dialog is
+        // built on every open, so no stale state survives a re-open.
+        final boolean[] dismissPouring07 = new boolean[]{false};
+        final Runnable dismissDlg07 = new Runnable() {
+            @Override public void run() {
+                try { if (dlg.isShowing()) dlg.dismiss(); } catch (Exception ignored) {}
+            }
+        };
         if (close != null) {
             Fx.press(close);
             close.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) { dlg.dismiss(); }
+                @Override public void onClick(View v) {
+                    if (dismissPouring07[0]) return;
+                    dismissPouring07[0] = true;
+                    if (root != null) {
+                        root.animate().cancel();
+                        root.animate().setListener(null);
+                        root.animate().alpha(0f).scaleX(0.96f).scaleY(0.96f).setDuration(200)
+                                .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                                .setListener(new android.animation.AnimatorListenerAdapter() {
+                                    @Override public void onAnimationEnd(android.animation.Animator a) { dismissDlg07.run(); }
+                                    @Override public void onAnimationCancel(android.animation.Animator a) { dismissDlg07.run(); }
+                                }).start();
+                    } else {
+                        dismissDlg07.run();
+                    }
+                }
             });
         }
         dlg.show();

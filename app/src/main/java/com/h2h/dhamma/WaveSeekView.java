@@ -46,6 +46,13 @@ public class WaveSeekView extends View {
     // v4.13: drag readout paint, configured in init().
     private final Paint dragTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private int bufferedPercent = 0;
+    // v15.28 (slice 1805): the buffered-ahead tint edge glides —
+    // the shown value below is what onDraw paints, eased toward
+    // the target over 400ms, so the tint creeps between the 500ms
+    // polls instead of stepping. At rest shown == target, so a
+    // settled wave is pixel-identical.
+    private float bufferedShown = 0f;
+    private android.animation.ValueAnimator bufferedAnim;
     // v12.64: bookmark pins — premium backlog #1. Gold pins on the
     // wave at each saved minute of the sounding talk (the Room feeds
     // them via setBookmarks on every track change / add / delete).
@@ -531,6 +538,14 @@ public class WaveSeekView extends View {
         dragTextPaint.setAlpha(255);
         if (dimAnim != null) dimAnim.cancel();
         dimAnim = null;
+        // v15.28 (slice 1805): no off-screen buffered glide — the
+        // animator is cancelled and the shown value snaps to the
+        // target, so a re-attached view never sits frozen at a
+        // stale tint: no animator alive always means shown ==
+        // target, and the next poll re-targets from the true value.
+        if (bufferedAnim != null) bufferedAnim.cancel();
+        bufferedAnim = null;
+        bufferedShown = bufferedPercent;
         // v3.65: same stop-ease guard, detach side — the flag used
         // to be read AFTER the cancel, so a synchronous end action
         // (v3.19 behaviour) cleared the flag first and the detach
@@ -588,9 +603,69 @@ public class WaveSeekView extends View {
     // v4.06: percent of duration buffered (0-100, streams only).
     // Invalidates only on change, so the 500ms Room poll costs
     // nothing once buffering settles at 100.
+    // v15.28 (slice 1805): the tint edge glides instead of stepping
+    // — the poll's setBufferedPercent used to land the new value in
+    // one frame, so on a slow stream the buffered tint jumped in
+    // big steps (12 -> 31 -> 58) every 500ms while the gold played
+    // edge beside it glides smoothly (v2.20 poll glide): the one
+    // still element left in the wave. The shown value now eases
+    // toward each new target over 400ms (DecelerateInterpolator,
+    // the rippleAmp ramp's own rhythm), re-targeting mid-glide
+    // from wherever the edge has reached, exactly like the swell
+    // (v2.53); a repeated poll with the same target is still a
+    // no-op, so a settled stream costs nothing. Resets (stop /
+    // new talk / discard) snap at once via clearBufferedPercent
+    // below — a stale tint must never melt across a fresh bar.
     public void setBufferedPercent(int p) {
         int np = Math.max(0, Math.min(100, p));
-        if (np != bufferedPercent) { bufferedPercent = np; invalidate(); }
+        if (np == bufferedPercent) return;
+        bufferedPercent = np;
+        animateBuffered(np);
+    }
+
+    // v15.28 (slice 1805): the buffered glide itself — the
+    // swell/readout/rippleAmp pattern (cancel, null, re-animate
+    // from the current value, DecelerateInterpolator). The end
+    // listener nulls the field on natural completion (the v3.65
+    // identity guard: a cancel fires the end synchronously while
+    // the field still matches, so it nulls harmlessly there too,
+    // and a late end after a new glide was assigned is dropped),
+    // so a finished animator never lingers as a live one.
+    private void animateBuffered(int target) {
+        if (bufferedAnim != null) bufferedAnim.cancel();
+        bufferedAnim = null;
+        float from = bufferedShown;
+        if (from == target) return;
+        bufferedAnim = android.animation.ValueAnimator.ofFloat(from, target);
+        bufferedAnim.setDuration(400);
+        bufferedAnim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        bufferedAnim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                bufferedShown = (Float) a.getAnimatedValue();
+                invalidate();
+            }
+        });
+        final android.animation.ValueAnimator glideAnim = bufferedAnim;
+        bufferedAnim.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                if (bufferedAnim != glideAnim) return;
+                bufferedAnim = null;
+            }
+        });
+        bufferedAnim.start();
+    }
+
+    // v15.28 (slice 1805): instant buffered clear for the resets —
+    // stop, new talk, discard and no-service all pair it with
+    // setMax(0)/setProgress(0), so the tint must vanish with the
+    // bar, never melt across a fresh one. Cancels any glide in
+    // flight and snaps both values to 0; a no-op when already 0.
+    public void clearBufferedPercent() {
+        if (bufferedAnim != null) { bufferedAnim.cancel(); bufferedAnim = null; }
+        if (bufferedPercent == 0 && bufferedShown == 0f) return;
+        bufferedPercent = 0;
+        bufferedShown = 0f;
+        invalidate();
     }
 
     // v12.64: bookmark pins for the sounding talk, in ms. A null or
@@ -644,7 +719,7 @@ public class WaveSeekView extends View {
         float bw = (w - gap * (BARS - 1)) / BARS;
         if (bw <= 0) bw = 1;
         float playedFrac = max > 0 ? (float) progress / max : 0f;
-        float bufferedFrac = bufferedPercent / 100f; // v4.06
+        float bufferedFrac = bufferedShown / 100f; // v4.06 + v15.28: the shown (gliding) value, not the target — the tint edge creeps between polls instead of stepping; at rest shown == target, so a settled wave paints exactly as before
         float swell = swellScale; // v2.53: animated swell, not a dragging snap
         // v2.52: travelling ripple while playing, frozen when paused.
         // v2.76: the frozen phase is the accumulated one, not 0, so

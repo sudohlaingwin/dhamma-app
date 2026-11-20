@@ -1053,9 +1053,13 @@ public class RoomActivity extends Activity {
     // talk and arms no melt — the detector's raw .equals may still
     // fire its rebind on that spelling split, but with no visible
     // mark change there is nothing to melt.
+    // v15.28 (slice 1803): the queued pair, the drawer's mirror of
+    // the chooser's slice-1802 pair — the open-drawer poll is the
+    // last path whose diff missed the ⏳ (see the v7.46 note).
     static java.util.Set<String> syncMarksChanged96(
             java.util.Set<String> liveFav, java.util.Set<String> cacheFav,
-            java.util.Set<String> livePlayed, java.util.Set<String> cachePlayed) {
+            java.util.Set<String> livePlayed, java.util.Set<String> cachePlayed,
+            java.util.Set<String> liveQueued, java.util.Set<String> cacheQueued) {
         java.util.Set<String> out = new java.util.HashSet<String>();
         java.util.Set<String> lf = new java.util.HashSet<String>();
         if (liveFav != null) for (String u : liveFav) {
@@ -1081,6 +1085,25 @@ public class RoomActivity extends Activity {
         }
         for (String id : lp) if (!cp.contains(id)) out.add(id);
         for (String id : cp) if (!lp.contains(id)) out.add(id);
+        // v15.28 (slice 1803): the queued pair — an externally-queued
+        // download (Wi-Fi auto-download while the Room sits
+        // foreground) gained its ⏳ on no path at all under the open
+        // drawer, and on the next unrelated rebind it snapped on
+        // while ★/✓ beside it melted (v14.96). Membership only,
+        // never the live percents — a 42% -> 43% tick diffs to
+        // nothing and arms no melt.
+        java.util.Set<String> lq = new java.util.HashSet<String>();
+        if (liveQueued != null) for (String u : liveQueued) {
+            String id = SiteHttp.identityUrl(u);
+            if (id != null) lq.add(id);
+        }
+        java.util.Set<String> cq = new java.util.HashSet<String>();
+        if (cacheQueued != null) for (String u : cacheQueued) {
+            String id = SiteHttp.identityUrl(u);
+            if (id != null) cq.add(id);
+        }
+        for (String id : lq) if (!cq.contains(id)) out.add(id);
+        for (String id : cq) if (!lq.contains(id)) out.add(id);
         return out;
     }
     // v14.96 (slice 1754): melt the rows whose ★/✓ just changed
@@ -2955,13 +2978,31 @@ public class RoomActivity extends Activity {
     // v7.43/v7.44/v7.45 class. The poll now compares the live
     // prefs sets against the row caches while the drawer is
     // open and rebinds once on a real difference; steady polls
-    // only copy two small sets and compare, never touching the
-    // adapter, so scrolling and the open pour stay undisturbed.
+    // only copy two small sets, parse one small JSON array and
+    // compare, never touching the adapter, so scrolling and the
+    // open pour stay undisturbed.
     // Guards: skipped while a move is armed (moveHeldUrl), so a
     // rebind can never disturb the held-row/drop logic; the
     // finish path already refreshes its own sets, so its ✓
-    // never double-rebinds; queue marks are out of scope (no
-    // external queue writer runs while this Room is foreground).
+    // never double-rebinds.
+    // v15.28 (slice 1803): queue marks are IN scope now — the
+    // "no external queue writer runs while this Room is
+    // foreground" premise was wrong: the Wi-Fi auto-download
+    // job (AutoDownloadJob, on connectivity change) writes
+    // dlQueued while the Room sits foreground with its Play
+    // List open, so an externally-queued ⏳ never surfaced on
+    // the open drawer rows at all — no rebind fired (the 30s
+    // rescan's rebind condition needs a download landing, a
+    // newly-downloaded row or a pruned queue entry, none of
+    // which a pure queue-add produces), and on the next
+    // unrelated rebind the ⏳ snapped on with no melt. The
+    // poll now diffs the live dlQueued set against the
+    // queuedDownloads cache too, and refreshMarkSets (which
+    // refreshes the queued cache) + the melt arm ride the same
+    // branch as ★/✓, so rows and the header's "· ⏳ N" count
+    // (same poll, v7.52 ordering, reads the refreshed cache)
+    // follow in the same tick. Membership only, never the live
+    // percents — a 42% -> 43% tick diffs to nothing.
     // Prefs reads only — no layout, duration, or ban touch.
     private void syncOpenDrawerMarks46() {
         try {
@@ -2970,19 +3011,39 @@ public class RoomActivity extends Activity {
                     getSharedPreferences("dhamma", MODE_PRIVATE);
             java.util.Set<String> favs = sp.getStringSet("favTalks", null);
             java.util.Set<String> played = sp.getStringSet("playedTalks", null);
+            // v15.28 (slice 1803): the live queued set — dlQueued
+            // is a JSON array, not a StringSet, so it parses here
+            // (small: one array of queued URLs) while the detector
+            // compares. Empty on a missing/malformed value, like
+            // refreshQueuedSet.
+            java.util.Set<String> queued = new java.util.HashSet<String>();
+            try {
+                org.json.JSONArray qa03 = new org.json.JSONArray(
+                        sp.getString("dlQueued", "[]"));
+                for (int i03 = 0; i03 < qa03.length(); i03++)
+                    queued.add(qa03.optString(i03));
+            } catch (Exception ignored) {}
             boolean favDiff = (favs == null)
                     ? (favSet != null && !favSet.isEmpty()) : !favs.equals(favSet);
             boolean playedDiff = (played == null)
                     ? (playedSet != null && !playedSet.isEmpty()) : !played.equals(playedSet);
-            if (favDiff || playedDiff) {
+            boolean queuedDiff = (queuedDownloads == null)
+                    ? !queued.isEmpty() : !queued.equals(queuedDownloads);
+            if (favDiff || playedDiff || queuedDiff) {
                 // v14.96 (slice 1754): arm the melt for exactly the
                 // rows whose ★/✓ changed — the diff is taken BEFORE
                 // refreshMarkSets overwrites the caches, and the
                 // arm is consumed by the posted fade below. A
                 // spelling-only split diffs to nothing and arms
                 // nothing (the rebind still runs, as today).
+                // v15.28 (slice 1803): the queued pair joins the
+                // same diff, so a ⏳ gained or lost under the open
+                // drawer melts like a ★/✓ — the melt arm needs no
+                // new path, it already resolves identity URLs
+                // through drawerPosOfQueueUrl.
                 java.util.Set<String> changed96 =
-                        syncMarksChanged96(favs, favSet, played, playedSet);
+                        syncMarksChanged96(favs, favSet, played, playedSet,
+                                queued, queuedDownloads);
                 refreshMarkSets();
                 adapter.notifyDataSetChanged();
                 syncMarksFadeUrls96 = changed96.isEmpty() ? null : changed96;
@@ -3616,7 +3677,7 @@ if (snd65 >= 0) currentIndex = snd65;
                     if (seekBar != null) {
                         seekBar.setMax(0);
                         seekBar.setProgress(0);
-                        seekBar.setBufferedPercent(0);
+                        seekBar.clearBufferedPercent();
                     }
                     if (elapsedText != null) elapsedText.setText("0:00");
                     if (totalText != null) totalText.setText("0:00");
@@ -4279,6 +4340,16 @@ if (snd65 >= 0) currentIndex = snd65;
         refreshDownloadedSet();
         refreshCardIfFlipped1025(t.url);
         if (adapter != null) adapter.notifyDataSetChanged();
+        // v15.28 (slice 1802): melt the row whose ⏳ just appeared —
+        // enqueueRoomDownload used to end in a bare notify, so the
+        // hourglass snapped onto its drawer row in one frame while
+        // the fav/queue verbs beside it melt (menuMarkFadeUrl77).
+        // Same shape as the fav arm (posted resolve through
+        // drawerPosOfQueueUrl, Fx.fadeIn 250ms, drawer-open guard
+        // inside the helper); both dialog call sites ride it, and
+        // the already-downloaded / already-queued early returns
+        // above change no mark, so they arm nothing.
+        menuMarkFadeUrl77 = t.url; fadeMenuMarkedDrawerRow77();
         if (Fx.stripIsWifi(RoomActivity.this))
             android.widget.Toast.makeText(RoomActivity.this,
                     "\u2B07 " + (t.title != null && t.title.length() > 0 ? t.title : t.url) + Lang.t(RoomActivity.this, "dl_downloading_suffix"),
@@ -5866,7 +5937,7 @@ if (snd65 >= 0) currentIndex = snd65;
                             if (seekBar != null) {
                                 seekBar.setMax(0);
                                 seekBar.setProgress(0);
-                                seekBar.setBufferedPercent(0);
+                                seekBar.clearBufferedPercent();
                             }
                             if (elapsedText != null) elapsedText.setText("0:00");
                             if (totalText != null) totalText.setText("0:00");
@@ -6087,7 +6158,7 @@ if (snd65 >= 0) currentIndex = snd65;
                             if (seekBar != null) {
                                 seekBar.setMax(0);
                                 seekBar.setProgress(0);
-                                seekBar.setBufferedPercent(0); // v4.06: a stop clears the buffered tint
+                                seekBar.clearBufferedPercent(); // v4.06: a stop clears the buffered tint
                                 seekBar.setBookmarks(null); // v12.64: a stop clears the pins too — no track, no marks
                             }
                             // v3.27: a stop resets the wave shape too —
@@ -8611,7 +8682,7 @@ if (snd68 >= 0) currentIndex = snd68;
                     if (seekBar != null) {
                         seekBar.setMax(0);
                         seekBar.setProgress(0);
-                        seekBar.setBufferedPercent(0);
+                        seekBar.clearBufferedPercent();
                         // v13.20: the discard resets bar + clocks
                         // to 0/0, but the wave shape was left
                         // frozen — a stop mid-drag (poll branch)
@@ -8677,7 +8748,7 @@ if (snd68 >= 0) currentIndex = snd68;
                     } else if (seekBar != null) {
                         seekBar.setMax(0);
                         seekBar.setProgress(0);
-                        seekBar.setBufferedPercent(0);
+                        seekBar.clearBufferedPercent();
                         if (elapsedText != null) elapsedText.setText("0:00");
                         if (totalText != null) totalText.setText("0:00");
                     }
@@ -8748,7 +8819,7 @@ if (snd68 >= 0) currentIndex = snd68;
                     if (seekBar != null) {
                         seekBar.setMax(0);
                         seekBar.setProgress(0);
-                        seekBar.setBufferedPercent(0);
+                        seekBar.clearBufferedPercent();
                     }
                     if (elapsedText != null) elapsedText.setText("0:00");
                     if (totalText != null) totalText.setText("0:00");
@@ -8835,7 +8906,7 @@ if (snd68 >= 0) currentIndex = snd68;
                 } else if (seekBar != null) {
                     seekBar.setMax(0);
                     seekBar.setProgress(0);
-                    seekBar.setBufferedPercent(0);
+                    seekBar.clearBufferedPercent();
                     // v13.21: a system CANCEL after a stop (the
                     // v13.20 residual) — the same frozen ripple as
                     // W1, through the cancel path instead of the
@@ -13595,7 +13666,7 @@ if (snd67q >= 0) currentIndex = snd67q;
             if (seekBar != null) {
                 seekBar.setMax(0);
                 seekBar.setProgress(0);
-                seekBar.setBufferedPercent(0); // v4.06: a new talk starts unbuffered
+                seekBar.clearBufferedPercent(); // v4.06: a new talk starts unbuffered
                 seekBar.setBookmarks(null); // v12.64: stale pins go with the old talk; the poll re-adds the new talk's marks once its duration arrives
             }
             if (elapsedText != null) elapsedText.setText("0:00");
