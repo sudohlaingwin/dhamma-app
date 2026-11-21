@@ -98,6 +98,18 @@ public class Prefs {
         sp(c).edit().putBoolean("shuffleOn", v).apply();
     }
 
+    // v15.43 (slice 1931): Talks list sort — persisted, so
+    // one tap survives reopening the chooser; default false
+    // = the site's own order (newest first on dated pages,
+    // series order on series pages). True = oldest first.
+    public static boolean talksSortOldest(Context c) {
+        return sp(c).getBoolean("talksSortOldest", false);
+    }
+
+    public static void setTalksSortOldest(Context c, boolean v) {
+        sp(c).edit().putBoolean("talksSortOldest", v).apply();
+    }
+
     // v4.37: hand queue persistence, per sayadaw — one key per
     // sayadaw name, so opening sayadaw B's Room can never clobber
     // sayadaw A's saved queue (a single shared key would). URLs are

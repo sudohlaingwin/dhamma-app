@@ -1682,6 +1682,7 @@ public class TalksActivity extends Activity {
         // refreshes the chooser row marks that used to ride along with it.
         refreshQueueMarks();
         refreshTalkRowMarks(false);
+        refreshContinueRow(); // v15.43 (slice 1932): the Continue row follows the row marks (load / return / 1s tick), with the played + download caches fresh
     }
     // v4.71: offline check for the chooser header's Up Next mark —
     // the Room's isDownloadedFile (v1.90 map + v1.82 candidates +
@@ -1947,6 +1948,20 @@ public class TalksActivity extends Activity {
     // that owns the shared visibility gate + its own 700ms
     // debounce clock (Play All's lastPlayAllMs stays untouched).
     private android.widget.Button btnTalkShuffle = null;
+    // v15.43 (slice 1931): sort button beside Play All /
+    // Shuffle — reverses the shown list between the site
+    // order and oldest-first. Shares the Play row's
+    // GONE-until-a-list-lands gate.
+    private android.widget.Button btnTalkSort = null;
+    // v15.43 (slice 1932): "Continue listening" row — the
+    // one-tap return to this sayadaw's in-progress talk.
+    // Shares no gate with the Play row: it hides while a
+    // search or filter narrows the list, and it appears
+    // only when such a talk exists.
+    private android.view.View talkContinueRow = null;
+    private android.widget.TextView talkContinueTitle = null;
+    private String continuePickKey = "";
+    private int continuePickIdx = -1;
     private android.view.View talkPlayRow = null;
     // v14.45 (slice 1700): skip-first-fade flag — a rotation
     // restore must snap the Play All row back (the v1.53 rule,
@@ -1964,6 +1979,23 @@ public class TalksActivity extends Activity {
         } else if (searchHits != null) visibleHits = searchHits;
         else if (filterHits != null) visibleHits = filterHits;
         else visibleHits = null;
+        // v15.43 (slice 1931): list sort — the display order
+        // is the site order, or reversed (oldest first)
+        // while the sort is on. Applied here, the single
+        // funnel every search/filter/load path already runs
+        // through, so taps, long-press, queue-from-here,
+        // Play All and the glides all follow the shown
+        // order with no other change. A null set (no
+        // narrowing) becomes the full reversed index list
+        // while sorted, so getCount/talkIndexAtDisplay keep
+        // reading visibleHits; the 1s tick's reverse
+        // lookups and the empty-state gate are
+        // order-blind, so a full reversed list is safe.
+        if (Prefs.talksSortOldest(TalksActivity.this)) {
+            visibleHits = visibleHits == null
+                    ? TalkSort.fullOrder(talks == null ? 0 : talks.size(), true)
+                    : TalkSort.apply(visibleHits, true);
+        }
         android.view.View empty = findViewById(R.id.talkSearchEmpty);
         if (empty != null) {
             // v9.98: the empty line kept its layout 15sp in every
@@ -2215,6 +2247,134 @@ public class TalksActivity extends Activity {
                 if (talkSetGlidePos == pos82) talkSetGlidePos = null;
             }
         });
+    }
+
+    // v15.43 (slice 1931): Talks list sort toggle + painter —
+    // the toggle body sits beside the filter-mode setter
+    // because it runs the same v15.18 sequence (capture ->
+    // rebuild -> pour check -> rebind -> glide).
+
+    // v15.43 (slice 1931): Talks list sort toggle — one tap
+    // reverses the shown list between the site order and
+    // oldest-first (verified live: dated pages list newest-first,
+    // series pages in series order — the reverse is useful on
+    // both). The pref persists, so one tap survives reopening
+    // the chooser. The sequence is the v15.18 filter-change
+    // sequence verbatim (capture -> rebuild -> pour check ->
+    // rebind -> glide): a pure reorder changes visibleKey, so
+    // the pour arms, and the getView pour-skip lets the glide
+    // own every moved row — the list glides into its new order
+    // instead of teleporting. The button melts gold<->muted on
+    // the tap (the 1926 ● idiom); Play All follows the shown
+    // order (it iterates display positions), so oldest-first
+    // Play All plays oldest first.
+    private void toggleTalkSort(android.view.View v) {
+        boolean oldest = !Prefs.talksSortOldest(TalksActivity.this);
+        Prefs.setTalksSortOldest(TalksActivity.this, oldest);
+        paintTalkSortBtn(true);
+        final java.util.HashMap<Integer, Integer> tops31 = captureTalkSetGlide();
+        rebuildVisible();
+        maybePourOnListChange();
+        if (adapter != null) adapter.notifyDataSetChanged();
+        postTalkSetGlide(tops31);
+    }
+
+    // v15.43 (slice 1931): the sort button's state colour — gold
+    // #C9A227 while oldest-first is on, the night-aware muted
+    // pair (#AAAAAA night / #7A6A58 day) while off. The 1926 ●
+    // painter shape: animated melt on the toggle, instant stamp
+    // everywhere else (create / return / theme / restore, via
+    // refreshTalkPlayAllRow below).
+    private void paintTalkSortBtn(boolean animate) {
+        if (btnTalkSort == null) return;
+        int color = Prefs.talksSortOldest(TalksActivity.this)
+                ? android.graphics.Color.parseColor("#C9A227")
+                : (cachedNight ? android.graphics.Color.parseColor("#AAAAAA") : android.graphics.Color.parseColor("#7A6A58"));
+        if (animate) Fx.crossfadeTextColor(btnTalkSort, color);
+        else Fx.setTextColorNow(btnTalkSort, color);
+    }
+
+    // v15.43 (slice 1932): Continue row refresh + resume-spot
+    // helper — the refresh body sits beside the filter-mode
+    // setter because it reads the same visibleHits gate.
+
+    // v15.43 (slice 1932): "Continue listening" row — the one-tap
+    // return to this sayadaw's in-progress talk (saved spot over
+    // 5s, not finished, not the sounding talk). Rides
+    // refreshTalksQueuePreview (load / return / 1s tick), after
+    // refreshTalkRowMarks, so the played + download caches are
+    // fresh. Hidden while a search or filter narrows the list
+    // (visibleHits != null — the picked talk may be hidden);
+    // change-gated on identityUrl + pos, so steady ticks touch
+    // no view. Shows with the Play row's fade idiom (fadeIn 250
+    // / fadeOut 200). Tap shares the row tap's 700ms guard and
+    // openRoom flight (see the wiring below); the Room resumes
+    // from the saved spot (v1.56 re-entry), so this is a return,
+    // never a replay.
+    private void refreshContinueRow() {
+        int idx = -1;
+        int posMs = 0;
+        String key32 = "";
+        if (talks != null && !talks.isEmpty() && visibleHits == null) {
+            java.util.List<Prefs.HistEntry> recent = Prefs.statsRecent(TalksActivity.this);
+            java.util.List<String> pageIds = new java.util.ArrayList<String>();
+            for (Talk t : talks) pageIds.add(t == null ? null : SiteHttp.identityUrl(t.url));
+            java.util.Map<String, Integer> resumeById = new java.util.HashMap<String, Integer>();
+            if (recent != null) {
+                for (Prefs.HistEntry e : recent) {
+                    if (e == null || e.url == null || e.url.length() == 0) continue;
+                    String id = SiteHttp.identityUrl(e.url);
+                    if (id == null || resumeById.containsKey(id)) continue;
+                    int pi = pageIds.indexOf(id);
+                    if (pi < 0) continue;
+                    resumeById.put(id, Integer.valueOf(resumeMsForContinue(talks.get(pi))));
+                }
+            }
+            idx = ContinuePick.pick(recent, pageIds, resumeById, talkPlayedCache, talkPlayingUrl, talkPlayingLibUrl);
+            if (idx >= 0) {
+                String id32 = pageIds.get(idx);
+                Integer ms32 = id32 == null ? null : resumeById.get(id32);
+                posMs = ms32 == null ? 0 : ms32.intValue();
+                key32 = id32 + "|" + posMs;
+            }
+        }
+        if (key32.equals(continuePickKey)) return;
+        continuePickKey = key32;
+        continuePickIdx = idx;
+        if (talkContinueRow == null) return;
+        if (idx < 0) {
+            if (talkContinueRow.getVisibility() == android.view.View.VISIBLE) Fx.fadeOut(talkContinueRow, 200);
+            return;
+        }
+        Talk t = talks.get(idx);
+        if (talkContinueTitle != null && t != null)
+            talkContinueTitle.setText(t.title + " · " + Fx.fmtTime(posMs));
+        if (talkContinueRow.getVisibility() != android.view.View.VISIBLE) {
+            talkContinueRow.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(talkContinueRow, 250);
+        } else if (talkContinueRow.getAlpha() < 0.999f) {
+            Fx.fadeIn(talkContinueRow, 250);
+        }
+    }
+
+    // v15.43 (slice 1932): the saved spot for the Continue row —
+    // the getView ↺ rule's two legs verbatim (stream form, then
+    // the downloaded-file form when the talk is downloaded): a
+    // spot held under the downloaded form only (v5.36) must still
+    // offer the return, and the talkDlCache membership guard keeps
+    // a stale cache entry from resuming a deleted file.
+    private int resumeMsForContinue(Talk t) {
+        if (t == null || t.url == null) return 0;
+        int rp = Prefs.talkPosGet(TalksActivity.this, t.url);
+        if (rp <= 5000 && talkDlCache.contains(t.url)) {
+            String dlFn = talkDlFileCache.get(t.url);
+            if (dlFn != null) {
+                String dlPath = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + dlFn).getAbsolutePath();
+                rp = Prefs.talkPosGet(TalksActivity.this, dlPath);
+            }
+        }
+        return rp;
     }
 
     // v13.95 (slice 1090): one direct-set path for the filter mode —
@@ -3401,6 +3561,39 @@ public class TalksActivity extends Activity {
             }
         });
         if (btnTalkShuffle != null) Fx.press(btnTalkShuffle);
+        // v15.43 (slice 1931): wire the Sort button the same
+        // way — one tap reverses the shown list between the
+        // site order and oldest-first (toggleTalkSort); the
+        // button shares the Play row's GONE-until-a-list-
+        // lands gate, so a missing id simply never wires.
+        btnTalkSort = findViewById(R.id.btnTalkSort);
+        if (btnTalkSort != null) btnTalkSort.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.tap(TalksActivity.this);
+                toggleTalkSort(v);
+            }
+        });
+        if (btnTalkSort != null) Fx.press(btnTalkSort);
+        // v15.43 (slice 1932): wire the Continue row — one
+        // tap returns to this sayadaw's in-progress talk
+        // (openRoom on the picked index, the row tap's own
+        // funnel: the shared 700ms guard, Fx.tap + Fx.press,
+        // the shared-element flight). An invalid tap never
+        // consumes the guard window (index resolved first),
+        // and a missing id simply never wires.
+        talkContinueRow = findViewById(R.id.talkContinueRow);
+        talkContinueTitle = findViewById(R.id.talkContinueTitle);
+        if (talkContinueRow != null) talkContinueRow.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                if (continuePickIdx < 0 || continuePickIdx >= talks.size()) return;
+                long now32 = android.os.SystemClock.uptimeMillis();
+                if (now32 - lastRowTapOpenMs < 700) return;
+                lastRowTapOpenMs = now32;
+                Fx.tap(TalksActivity.this);
+                Fx.press(v);
+                openRoom(continuePickIdx);
+            }
+        });
         // v1.53: rotating the phone used to wipe the loaded list and
         // refetch it over the network (plus re-fire the resume
         // auto-open after back + rotate, since the intent still carries
@@ -3719,6 +3912,7 @@ public class TalksActivity extends Activity {
         // alpha (Fx.fadeIn, v3.52) and the gen guard strands
         // nothing hidden. The gate formula is untouched.
         boolean show93 = (talks != null && !talks.isEmpty());
+        paintTalkSortBtn(false); // v15.43 (slice 1931): instant stamp on create / return / theme / restore — the toggle itself melts (see toggleTalkSort)
         boolean skipFade93 = talkPlayRowSkipFirstFade;
         talkPlayRowSkipFirstFade = false;
         android.view.View row93 = talkPlayRow;
@@ -6859,6 +7053,21 @@ public class TalksActivity extends Activity {
                         if (hairFrac < 0.03f) hairFrac = 0.03f;
                     }
                 }
+                // v15.43 (slice 1928): a live download paints its
+                // own progress on this row's gold hairline — the
+                // download fraction (talkDlProgress, refreshed
+                // every 1s tick, rebind on change) wins over the
+                // listened fraction while the job is live, so the
+                // row fills beside its "⏳ 42%" mark; no percent
+                // (unknown total) leaves the listened line
+                // untouched, and the moment the file lands the ⬇
+                // mark takes over and the line returns to the
+                // listened fraction. Same gate as the listened
+                // line above: never the playing row (the strip
+                // owns its live state). The melt (v15.25) and
+                // the instant weight split below are untouched.
+                hairFrac = Fx.dlHairFrac(talkDlQueuedCache.contains(rUrl),
+                        talkDlProgress.get(SiteHttp.identityUrl(rUrl)), hairFrac);
             }
             // v13.97 (slice 1092): paint the hairline — reset on
             // every bind, like the alpha/card/wash below, so a

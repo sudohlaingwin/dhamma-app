@@ -190,6 +190,55 @@
             android:layout_marginLeft="8dp"
             android:layout_weight="1"
             android:text="🔀 ကျပန်း ဖွင့်ခြင်း" />
+        <!-- v15.43 (slice 1931): list sort — a 48dp "↕" beside Play All / Shuffle (the 1926 ● button's shape:
+             borderless selectable background, centred, @color/muted default); gold while oldest-first is on.
+             Shares the Play row's GONE-until-a-list-lands gate. -->
+        <Button
+            android:id="@+id/btnTalkSort"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginLeft="8dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="↕"
+            android:textColor="@color/muted" />
+    </LinearLayout>
+    <!-- v15.43 (slice 1932): "Continue listening" — the one-tap
+         return to this sayadaw's in-progress talk (saved spot
+         over 5s, not finished, not the sounding talk). GONE until
+         a list lands AND such a talk exists; hidden while a
+         search or filter narrows the list. The verb is the
+         resume_from Lang string's own Burmese; the title + time
+         are set in code. nav_glass is reused, no new drawable. -->
+    <LinearLayout
+        android:id="@+id/talkContinueRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/nav_glass"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:visibility="gone">
+        <TextView
+            android:id="@+id/talkContinueLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="↺ ဆက်နားထောင်ရန်"
+            android:textColor="@color/gold"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/talkContinueTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/ink"
+            android:textSize="15sp" />
     </LinearLayout>
     <TextView
         android:id="@+id/talkSearchEmpty"

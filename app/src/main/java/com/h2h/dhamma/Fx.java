@@ -3928,6 +3928,27 @@ public class Fx {
         return pct != null ? "⏳ " + pct.intValue() + "% " : "⏳ ";
     }
 
+    // v15.43 (slice 1928): the downloading row's hairline
+    // fraction — a queued download with a known live percent
+    // paints the download fraction (pct/100) on the row's
+    // gold hairline instead of the listened fraction, so the
+    // row reads as a filling bar beside its "⏳ 42%" mark
+    // (YouTube Music / Spotify download-row standard). The
+    // 3% floor is the listened line's sliver (v13.97), so a
+    // just-started download still reads as a gold dash; the
+    // 1f clamp covers a 100% job not yet pruned. Not queued,
+    // or queued with no known percent (unknown total),
+    // returns the listened fraction untouched — the row never
+    // prints a guessed number (v14.08 rule) and the listened
+    // line returns the moment the file lands (⬇ wins).
+    public static float dlHairFrac(boolean queued, Integer dlPct, float listenedFrac) {
+        if (!queued || dlPct == null) return listenedFrac;
+        float f = dlPct.intValue() / 100f;
+        if (f < 0.03f) f = 0.03f;
+        if (f > 1f) f = 1f;
+        return f;
+    }
+
     // v14.08 (slice 1103): one filtered DownloadManager query for
     // the queued talks' live percents — the stripInProgressDlFilenames
     // shape (RUNNING | PAUSED | PENDING only, same columns, same

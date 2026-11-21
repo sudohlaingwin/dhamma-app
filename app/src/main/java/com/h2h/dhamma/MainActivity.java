@@ -113,6 +113,16 @@ public class MainActivity extends Activity {
     private android.widget.LinearLayout favShelfWrap;
     private android.widget.LinearLayout favShelf;
     private String lastFavShelfKey = null;
+    // v15.43 (slice 1930): recently-played rail views + the key
+    // of the last built rail (picked identity URLs + night
+    // flag) — steady ticks return early below, only a real
+    // change rebuilds the cards. lastRailTapMs is the 700ms
+    // double-tap guard (the Talks row-tap v12.28 window).
+    private android.widget.LinearLayout recentRailWrap;
+    private android.widget.LinearLayout recentRail;
+    private android.widget.TextView recentRailLabel;
+    private String lastRecentRailKey = null;
+    private long lastRailTapMs = 0;
     // v14.50 (slice 1707): sounding-only shelf trackers — the ordered
     // favourite names + night flag + sounding name of the last built
     // shelf, so a sounding change under a visible shelf with the same
@@ -660,6 +670,7 @@ public class MainActivity extends Activity {
         mainGridBuffering = AudioService.liveBuffering; // v14.06
         mainGridPlaying = AudioService.livePlaying; // v15.33 (slice 1838)
         refreshFavShelf(); // v13.74: shelf recolour on theme return
+        refreshRecentRail(); // v15.43 (slice 1930): rail follows the shelf funnel
     }
 
     @Override
@@ -668,6 +679,15 @@ public class MainActivity extends Activity {
         // v12.95: returning from the unknown-sources Settings page —
         // if install is now allowed, continue the pending update.
         UpdateChecker.onResume(this);
+        // v15.43 (slice 1927): "What's new" — first launch after an
+        // update shows the release note once (maybeShowWhatsNew
+        // below owns the gate + dialog). Delayed 900ms so it lands
+        // after the 240ms entrance and after the update gate has
+        // usually resolved; the fire-time guard re-checks the gate,
+        // so a blocking update dialog always wins the screen.
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
+            @Override public void run() { maybeShowWhatsNew(); }
+        }, 900);
         // v1.81: count this screen as on top (see AppForeground).
         AppForeground.activityResumed();
         // v10.49: keep-screen-on was honoured on the Room, the Talks
@@ -2090,6 +2110,56 @@ public class MainActivity extends Activity {
         Fx.showStrip(strip);
     }
 
+    // v15.43 (slice 1927): "What's new" — the once-per-version
+    // release note (Spotify / YouTube Music / Apple Music all
+    // announce the new version on first launch after an update).
+    // The gate is WhatsNew.shouldShow: a stored code exists (not
+    // a fresh install — a first install seeds silently, never
+    // shows) and is older than the running build. The record lands
+    // in the dialog's dismiss listener, so a back-press, the OK
+    // button and a rotation all count as shown exactly once per
+    // version; a kill before the dialog appears leaves the code
+    // unrecorded, so the note still shows on the next launch.
+    // The update gate wins the screen: when the blocking update
+    // dialog is visible this returns without showing. The 900ms
+    // post in onResume lands after the 240ms entrance and after
+    // the update check has usually resolved; if the check is still
+    // in flight the block dialog simply appears over this one and
+    // the note waits for the next launch — the record is written
+    // only on dismiss, so nothing is lost.
+    private boolean whatsNewShowing = false;
+
+    private void maybeShowWhatsNew() {
+        if (isFinishing() || isDestroyed() || whatsNewShowing) return;
+        if (UpdateChecker.isBlockVisible()) return;
+        int current = UpdateChecker.installedCode(this);
+        if (current <= 0) return;
+        android.content.SharedPreferences sp = getSharedPreferences("dhamma", MODE_PRIVATE);
+        int stored = sp.getInt(WhatsNew.PREF_KEY, 0);
+        if (!WhatsNew.shouldShow(stored, current)) {
+            if (stored == 0) sp.edit().putInt(WhatsNew.PREF_KEY, current).apply();
+            return;
+        }
+        whatsNewShowing = true;
+        final int showCode = current;
+        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(MainActivity.this)
+                .setTitle(Lang.t(MainActivity.this, WhatsNew.TITLE_KEY))
+                .setMessage(Lang.t(MainActivity.this, WhatsNew.bodyKey(current)))
+                .setPositiveButton(Lang.t(MainActivity.this, WhatsNew.OK_KEY), new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) { d.dismiss(); }
+                })
+                .create();
+        dlg.setOnDismissListener(new android.content.DialogInterface.OnDismissListener() {
+            @Override public void onDismiss(android.content.DialogInterface d) {
+                whatsNewShowing = false;
+                try {
+                    getSharedPreferences("dhamma", MODE_PRIVATE).edit().putInt(WhatsNew.PREF_KEY, showCode).apply();
+                } catch (Exception ignored) {}
+            }
+        });
+        dlg.show();
+    }
+
     private void startMainPulseTick() {
         if (mainPulseTick != null) return;
         mainPulseTick = new Runnable() {
@@ -2151,6 +2221,7 @@ public class MainActivity extends Activity {
                         // name, so steady ticks return early there and
                         // only a real change re-pours the chips).
                         refreshFavShelf();
+                        refreshRecentRail(); // v15.43 (slice 1930): sounding flip moves the rail too
                     }
                     // v15.36 (slice 1851): the shelf chip ring breath's
                     // second driver — refreshFavShelf's change gate
@@ -2937,6 +3008,9 @@ public class MainActivity extends Activity {
         gridView = findViewById(R.id.grid);
         favShelfWrap = findViewById(R.id.favShelfWrap);
         favShelf = findViewById(R.id.favShelf);
+        recentRailWrap = findViewById(R.id.recentRailWrap);
+        recentRail = findViewById(R.id.recentRail);
+        recentRailLabel = findViewById(R.id.recentRailLabel);
         noResultsText = findViewById(R.id.noResultsText);
         // v15.33 (slice 1835): the empty-search view's first text — refreshNoResults re-sets it on every filter pass, but a first paint before any pass must never show a bare view.
         if (noResultsText != null) noResultsText.setText(Lang.t(this, "sayadaw_not_found"));
@@ -2996,6 +3070,7 @@ public class MainActivity extends Activity {
                             Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "no_fav_sayadaw"), Toast.LENGTH_SHORT).show();
                     } else { refreshGridNewDots(); adapter.notifyDataSetChanged(); }
                 refreshFavShelf(); // v13.74: star/unstar re-pours the shelf
+                refreshRecentRail(); // v15.43 (slice 1930): rail follows the shelf funnel
                 return true;
             }
         });
@@ -4684,6 +4759,155 @@ public class MainActivity extends Activity {
         syncShelfChipRingBreath();
     }
 
+    // v15.43 (slice 1930): recently-played rail — the Spotify
+    // "Jump back in" / YouTube Music "Listen again" rail: the
+    // last few talks the listener actually played, as tappable
+    // cards (sayadaw photo + name + talk title) above the grid.
+    // Prefs.statsRecent already banks them most-recent-first for
+    // the dormant History screen; Main never showed them. The
+    // resume strip (v4.60) covers ONE talk — the dead session's
+    // — this rail covers the last five across sessions, and it
+    // never repeats the strip's live talk (RecentRail.pick skips
+    // the sounding URL, the 1920 dot rule's "never on the
+    // playing row"). Same hide rule as the shelf (no search, no
+    // filter); the change gate (picked URLs + night flag) keeps
+    // steady ticks free, and a rebuild only ever follows a real
+    // change — a new listen, a sounding flip, a theme return.
+    // Label reuses the History screen's own words (hs_recent,
+    // 12 languages, no new key). Tap opens the Room at the saved
+    // spot (the Talks row-tap Intent, plain Fx.go — the 1823
+    // row-tap precedent, no shared element for a text card).
+    private void refreshRecentRail() {
+        if (recentRailWrap == null || recentRail == null) return;
+        boolean show = query != null && query.length() == 0 && !favOnly && !newOnly && all != null;
+        java.util.List<Prefs.HistEntry> picked =
+                new java.util.ArrayList<Prefs.HistEntry>();
+        if (show) {
+            java.util.Set<String> names = new java.util.HashSet<String>();
+            for (Sayadaw s : all) if (s != null && s.name != null) names.add(s.name);
+            String sounding = (AudioService.liveSession && AudioService.liveHasTrack)
+                    ? AudioService.liveUrl : null;
+            picked = RecentRail.pick(Prefs.statsRecent(this), names, sounding);
+        }
+        StringBuilder kb = new StringBuilder();
+        kb.append(cachedNight ? "N" : "D");
+        for (Prefs.HistEntry e : picked) kb.append('|').append(SiteHttp.identityUrl(e.url));
+        String key = kb.toString();
+        if (picked.isEmpty()) {
+            if (recentRailWrap.getVisibility() != android.view.View.GONE)
+                Fx.fadeOut(recentRailWrap, 200);
+            lastRecentRailKey = null;
+            return;
+        }
+        if (key.equals(lastRecentRailKey)
+                && recentRailWrap.getVisibility() == android.view.View.VISIBLE) return;
+        recentRail.removeAllViews();
+        float d = getResources().getDisplayMetrics().density;
+        int added = 0;
+        for (final Prefs.HistEntry e : picked) {
+            final Sayadaw s = sayadawByName1930(e.sayadaw);
+            if (s == null) continue;
+            android.widget.LinearLayout card = new android.widget.LinearLayout(this);
+            card.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+            card.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            card.setBackgroundResource(R.drawable.nav_glass);
+            int pad = (int) (10 * d);
+            card.setPadding(pad, (int) (8 * d), pad, (int) (8 * d));
+            android.widget.LinearLayout.LayoutParams cp =
+                    new android.widget.LinearLayout.LayoutParams((int) (220 * d),
+                            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+            cp.setMargins(0, 0, (int) (8 * d), 0);
+            card.setLayoutParams(cp);
+            CircleImageView photo = new CircleImageView(this);
+            int px = (int) (44 * d);
+            android.widget.LinearLayout.LayoutParams pp =
+                    new android.widget.LinearLayout.LayoutParams(px, px);
+            pp.setMargins(0, 0, (int) (8 * d), 0);
+            photo.setLayoutParams(pp);
+            photo.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+            ImageLoader.load(this, s.photo, s.name, photo);
+            card.addView(photo);
+            android.widget.LinearLayout col = new android.widget.LinearLayout(this);
+            col.setOrientation(android.widget.LinearLayout.VERTICAL);
+            col.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            android.widget.TextView name = new android.widget.TextView(this);
+            name.setText(s.name);
+            name.setTextColor(cachedNight ? android.graphics.Color.WHITE
+                    : android.graphics.Color.parseColor("#3B2314"));
+            name.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13);
+            name.setTypeface(null, android.graphics.Typeface.BOLD);
+            name.setMaxLines(1);
+            name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            col.addView(name);
+            android.widget.TextView title = new android.widget.TextView(this);
+            title.setText(e.title);
+            title.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
+            title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
+            title.setMaxLines(1);
+            title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            col.addView(title);
+            card.addView(col);
+            Fx.press(card);
+            card.setOnClickListener(new android.view.View.OnClickListener() {
+                @Override public void onClick(android.view.View v) {
+                    openRecentTalk1930(s, e, v);
+                }
+            });
+            recentRail.addView(card);
+            added++;
+        }
+        if (added == 0) {
+            if (recentRailWrap.getVisibility() != android.view.View.GONE)
+                Fx.fadeOut(recentRailWrap, 200);
+            lastRecentRailKey = null;
+            return;
+        }
+        lastRecentRailKey = key;
+        if (recentRailLabel != null)
+            recentRailLabel.setText("\u21BA " + Lang.t(MainActivity.this, "hs_recent"));
+        if (recentRailWrap.getVisibility() != android.view.View.VISIBLE) {
+            recentRailWrap.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(recentRailWrap, 250);
+        } else if (recentRailWrap.getAlpha() < 0.999f) {
+            Fx.fadeIn(recentRailWrap, 250);
+        }
+    }
+
+    // v15.43 (slice 1930): exact-name catalog lookup for a rail
+    // entry — the 1925 drawer resolver's rule (exact match, no
+    // fuzzy fallback): a renamed sayadaw simply has no card.
+    private Sayadaw sayadawByName1930(String name) {
+        if (name == null || all == null) return null;
+        for (Sayadaw s : all) if (s != null && name.equals(s.name)) return s;
+        return null;
+    }
+
+    // v15.43 (slice 1930): rail tap — the Talks row-tap Room
+    // Intent (name/group/url/photo/autoUrl/autoTitle) with plain
+    // Fx.go (the 1823 row-tap precedent); the Room resumes from
+    // the saved spot (v1.56 re-entry), so this is a return, never
+    // a replay. The 700ms window is the Talks row-tap v12.28
+    // double-tap guard: a rapid double-tap must never stack two
+    // Rooms, and an invalid tap never consumes the window.
+    private void openRecentTalk1930(final Sayadaw s, final Prefs.HistEntry e,
+            android.view.View v) {
+        if (s == null || e == null) return;
+        long now = android.os.SystemClock.uptimeMillis();
+        if (now - lastRailTapMs < 700) return;
+        lastRailTapMs = now;
+        Intent i = new Intent(MainActivity.this, RoomActivity.class);
+        i.putExtra("name", s.name);
+        i.putExtra("group", s.group);
+        i.putExtra("url", s.url);
+        i.putExtra("photo", s.photo == null ? "" : s.photo);
+        i.putExtra("autoUrl", e.url);
+        i.putExtra("autoTitle", e.title);
+        Fx.morph(v);
+        Fx.tap(MainActivity.this);
+        Fx.go(MainActivity.this, i);
+    }
+
     // v15.36 (slice 1851): sounding shelf chip ring breath — the
     // last static sounding ring in the app (the ring family is
     // otherwise complete: chooser v15.34, Room header + Main /
@@ -5075,6 +5299,7 @@ public class MainActivity extends Activity {
         // reset above) — silent passes never arm it.
         if (setChanged) postGridSetGlide(gridTops);
         refreshFavShelf(); // v13.74: shelf follows every filter run
+        refreshRecentRail(); // v15.43 (slice 1930): rail follows the shelf funnel
         if (allowToast && setChanged && gridView != null && gridView.getFirstVisiblePosition() > 0)
             gridView.setSelection(0);
         // v2.02: a search matching no sayadaw used to leave a

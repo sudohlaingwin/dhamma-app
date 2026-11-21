@@ -137,6 +137,39 @@
                 android:orientation="horizontal" />
         </HorizontalScrollView>
     </LinearLayout>
+    <!-- v15.43 (slice 1930): recently-played rail — the Spotify
+         "Jump back in" / YouTube Music "Listen again" rail: the
+         last few talks the listener actually played, as tappable
+         cards above the grid. Label reuses the History screen's
+         own hs_recent words (set from code, so it follows the UI
+         language); the rail hides while searching/filtering and
+         while nothing has been listened yet. -->
+    <LinearLayout
+        android:id="@+id/recentRailWrap"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+        <TextView
+            android:id="@+id/recentRailLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/gold"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:scrollbars="none">
+            <LinearLayout
+                android:id="@+id/recentRail"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
+    </LinearLayout>
     <!-- v15.33 (slice 1835): empty-search view — a search matching no sayadaw used to leave a blank grid with only a transient toast (slice 1830); every streaming app names the empty state in place. The line sits centred over the grid area (FrameLayout wrap, grid id + geometry untouched) and fades in/out with the filter (refreshNoResults in MainActivity); text comes from Lang (sayadaw_not_found / _fav), never hardcoded. -->
     <FrameLayout
         android:layout_width="match_parent"

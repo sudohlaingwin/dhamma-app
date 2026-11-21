@@ -343,6 +343,13 @@ public class UpdateChecker {
         }
     }
 
+    // v15.43 (slice 1927): the installed versionCode for the
+    // What's-new gate (MainActivity) — the private currentCode
+    // above, exposed; same SDK-33-safe read, 0 on failure.
+    public static int installedCode(Context ctx) {
+        return currentCode(ctx);
+    }
+
     // Returns the latest release's tag, .apk URL and asset size, or null.
     private static Latest fetchLatest() {
         HttpURLConnection c = null;
