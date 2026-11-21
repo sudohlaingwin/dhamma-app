@@ -182,47 +182,6 @@
         android:background="#26C9A227" />
 
     <LinearLayout
-        android:id="@+id/rowSpeed"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="?android:attr/selectableItemBackground"
-        android:clickable="true"
-        android:focusable="true"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingVertical="14dp">
-        <TextView
-            android:id="@+id/labelSpeed"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="ဖွင့်နှုန်း"
-            android:textColor="@color/ink"
-            android:textSize="16sp"
-            android:textStyle="bold" />
-        <TextView
-            android:id="@+id/speedValue"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="1x"
-            android:textColor="@color/muted"
-            android:textSize="16sp" />
-        <TextView
-            android:id="@+id/speedChevron"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingStart="8dp"
-            android:text="›"
-            android:textColor="@color/muted"
-            android:textSize="20sp" />
-    </LinearLayout>
-
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="#26C9A227" />
-
-    <LinearLayout
         android:id="@+id/rowRepeat"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

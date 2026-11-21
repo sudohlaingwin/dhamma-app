@@ -4234,23 +4234,6 @@ public class Fx {
         return t + "x";
     }
 
-    // v14.10 (slice 1106): speed picker index — the Settings speed row's
-    // single-choice dialog lists SPEED_CHOICES (Fx.speedLabel each); the
-    // stored defaultSpeed is clamped to 0.5-2.0 by Prefs but 0.5 is not in
-    // the list, so the checked index is the NEAREST list entry, never an
-    // out-of-range position (the v11.88 font-dialog class). Ties go to
-    // the lower speed (strict <, seeded at 1x).
-    public static final float[] SPEED_CHOICES = {0.75f, 1.0f, 1.25f, 1.5f, 2.0f};
-
-    public static int speedListIndex(float s) {
-        int best = 1; float bd = Math.abs(s - SPEED_CHOICES[1]);
-        for (int i = 0; i < SPEED_CHOICES.length; i++) {
-            float d = Math.abs(s - SPEED_CHOICES[i]);
-            if (d < bd) { bd = d; best = i; }
-        }
-        return best;
-    }
-
     // v7.49: resume-cue clock — the Room (v1.47), the service card
     // (v1.72) and the library row (v3.93) all read H:MM:SS once a
     // talk passes an hour, but the mini-strip resume cue on all

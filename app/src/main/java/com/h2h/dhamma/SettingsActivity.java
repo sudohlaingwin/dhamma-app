@@ -18,8 +18,8 @@ public class SettingsActivity extends Activity {
     private boolean cachedStNight = false;
     private int cachedStFont = 1;
     private TextView titleText;
-    private android.view.View rowFont, rowLanguage, rowSpeed;
-    private android.widget.TextView fontValue, langValue, speedValue;
+    private android.view.View rowFont, rowLanguage;
+    private android.widget.TextView fontValue, langValue;
     // v12.94 (his order 2026-11-06 ~22:46 +07: Settings rebuilt to the
     // worldwide streaming-app standard): the on/off toggles are Switch
     // views now (Switch extends Button, so the field type only narrows);
@@ -140,8 +140,6 @@ public class SettingsActivity extends Activity {
         fontValue = findViewById(R.id.fontValue);
         rowLanguage = findViewById(R.id.rowLanguage);
         langValue = findViewById(R.id.langValue);
-        rowSpeed = findViewById(R.id.rowSpeed);
-        speedValue = findViewById(R.id.speedValue);
         btnNoti = findViewById(R.id.btnNoti);
         btnAutoplay = findViewById(R.id.btnAutoplay);
         btnRepeat = findViewById(R.id.btnRepeat);
@@ -204,32 +202,7 @@ public class SettingsActivity extends Activity {
                 return true;
             }
         });
-        // v14.10 (slice 1106): playback speed is ONE row (label +
-        // current speed + ›) — the v9.11 font/language idiom. Speed had
-        // no control anywhere since the v12.94 rebuild removed the
-        // Settings speed card: no strip button (bans), no Room button
-        // (secondary row banned, roomSpeedBtn unbound), no Settings row,
-        // no ACTION_SPEED sender — the pref could only ever be 1.0f.
-        // Tap opens the 5-choice dialog below; long-press resets to 1x
-        // (the font/language reset gestures, moved). Both sync the live
-        // service at once (the language long-press class): a sounding
-        // talk changes speed immediately and the v5.40 card suffix
-        // follows. No strip/Room button is resurrected.
-        if (rowSpeed != null) rowSpeed.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { Fx.morph(v); showSpeedDialog(); }
-        });
-        if (rowSpeed != null) rowSpeed.setOnLongClickListener(new View.OnLongClickListener() {
-            @Override public boolean onLongClick(View v) {
-                Fx.tap(SettingsActivity.this);
-                if (Prefs.defaultSpeed(SettingsActivity.this) != 1.0f) {
-                    Prefs.setDefaultSpeed(SettingsActivity.this, 1.0f);
-                    Fx.morph(v);
-                    syncLiveService();
-                    Fx.themeDip(root, new Runnable() { @Override public void run() { refresh(); } });
-                }
-                return true;
-            }
-        });
+        // v15.39 (slice 1903, his order 2026-11-21: speed row REMOVED — keep/remove decision = REMOVE; the row returns only on his order. Playback still honours the stored defaultSpeed; Fx.speedLabel stays for the card suffix).
         // v13.34 (Settings F5): every toggle/button listener below is
         // null-guarded like rowFont/rowLanguage above — a toggle id
         // missing from the layout used to throw at the first
@@ -1139,13 +1112,12 @@ android.view.View settingsStripPrev = findViewById(R.id.nowStripPrev);
         // field, so a second rotation re-shows it again, never twice.
         if (savedInstanceState != null) {
             final String restored = savedInstanceState.getString("openPicker", null);
-            if ("font".equals(restored) || "lang".equals(restored) || "sleep".equals(restored) || "clearData".equals(restored) || "speed".equals(restored)) {
+            if ("font".equals(restored) || "lang".equals(restored) || "sleep".equals(restored) || "clearData".equals(restored)) {
                 openPicker = restored;
                 if (root != null) root.post(new Runnable() {
                     @Override public void run() {
                         if ("font".equals(openPicker)) showFontDialog();
                         else if ("lang".equals(openPicker)) showLangDialog();
-                        else if ("speed".equals(openPicker)) showSpeedDialog();
                         else if ("sleep".equals(openPicker)) showSleepDialog();
                         else if ("clearData".equals(openPicker)) showClearDataDialog();
                     }
@@ -1446,41 +1418,6 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         dlg.setOnDismissListener(new android.content.DialogInterface.OnDismissListener() {
             @Override public void onDismiss(android.content.DialogInterface d) {
                 if ("font".equals(openPicker)) openPicker = null;
-            }
-        });
-        dlg.show();
-    }
-
-    // v14.10 (slice 1106): the speed picker — same single-choice shape
-    // as the font/language pickers (v9.11: one row, picker on tap). Items
-    // are Fx.speedLabel over SPEED_CHOICES (0.75x-2x, no new strings);
-    // the checked index is the nearest list entry (Fx.speedListIndex —
-    // the v11.88 font-dialog class). A pick writes the pref and syncs
-    // the live service at once (syncLiveService -> syncSettingsFromPrefs
-    // -> setSpeed), so a sounding talk changes speed immediately; an
-    // unchanged pick just refreshes, like the font dialog. No new Lang
-    // key (speed exists), no new view.
-    private void showSpeedDialog() {
-        final String[] items = new String[Fx.SPEED_CHOICES.length];
-        for (int i = 0; i < items.length; i++) items[i] = Fx.speedLabel(Fx.SPEED_CHOICES[i]);
-        int checked = Fx.speedListIndex(Prefs.defaultSpeed(this));
-        openPicker = "speed";
-        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
-                .setTitle(Lang.t(this, "speed"))
-                .setSingleChoiceItems(items, checked, new android.content.DialogInterface.OnClickListener() {
-                    @Override public void onClick(android.content.DialogInterface d, int which) {
-                        d.dismiss();
-                        float o = Prefs.defaultSpeed(SettingsActivity.this);
-                        Prefs.setDefaultSpeed(SettingsActivity.this, Fx.SPEED_CHOICES[which]);
-                        if (o != Fx.SPEED_CHOICES[which]) { syncLiveService(); Fx.themeDip(root, new Runnable() { @Override public void run() { refresh(); } }); }
-                        else refresh();
-                    }
-                })
-                .setNegativeButton(Lang.t(this, "dlg_close"), null)
-                .create();
-        dlg.setOnDismissListener(new android.content.DialogInterface.OnDismissListener() {
-            @Override public void onDismiss(android.content.DialogInterface d) {
-                if ("speed".equals(openPicker)) openPicker = null;
             }
         });
         dlg.show();
@@ -3835,12 +3772,11 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         setLabelText(R.id.lblVersion, "version");
         if (fontValue != null) { fontValue.setText(fs == 0 ? Lang.t(this, "font_small") : fs == 1 ? Lang.t(this, "font_normal") : Lang.t(this, "font_large")); fontValue.setTextColor(muted); fontValue.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn); }
         if (langValue != null) { langValue.setText(Lang.NAMES[Lang.index(this)]); langValue.setTextColor(muted); langValue.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn); }
-        if (speedValue != null) { speedValue.setText(Fx.speedLabel(Prefs.defaultSpeed(this))); speedValue.setTextColor(muted); speedValue.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn); }
         // v11.93: the two "›" chevrons had no id, so refresh() never
         // recoloured them — they kept day muted-brown at night and
         // nearly vanished on the dark card. Same night-grey as the
         // values beside them.
-        for (int id : new int[]{R.id.fontChevron, R.id.langChevron, R.id.speedChevron, R.id.repeatChevron, R.id.sleepChevron, R.id.downloadedChevron, R.id.clearChevron, R.id.teamChevron, R.id.policyChevron, R.id.checkUpdateChevron}) { TextView cv = findViewById(id); if (cv != null) cv.setTextColor(muted); }
+        for (int id : new int[]{R.id.fontChevron, R.id.langChevron, R.id.repeatChevron, R.id.sleepChevron, R.id.downloadedChevron, R.id.clearChevron, R.id.teamChevron, R.id.policyChevron, R.id.checkUpdateChevron}) { TextView cv = findViewById(id); if (cv != null) cv.setTextColor(muted); }
         // v12.94: the long Android-rules paragraph is gone — the note
         // under the notification row appears ONLY while a block is live
         // (v10.86/v12.27), naming the fix; healthy phones see no note
