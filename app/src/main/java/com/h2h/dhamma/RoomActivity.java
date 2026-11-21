@@ -652,6 +652,11 @@ public class RoomActivity extends Activity {
     private boolean lastQueueOnly30 = false;
     private int queueBarGen30 = 0;
     private boolean queueBarClearFading30 = false;
+    // v15.46 (slice 1946): the Clean button's fade state — the same
+    // gen-guarded flip fade as Clear (see refreshQueueBar72), so the
+    // two bar buttons never fight on a mode flip or a poll tick.
+    private int queueBarCleanGen46 = 0;
+    private boolean queueBarCleanFading46 = false;
     // v14.57 (slice 1714): the drawer Up Next (▸) row's melt state —
     // the chooser's v14.55 arm restated for the Room drawer. The
     // sounding row's tile already crossfades (v14.32) when the poll
@@ -11539,6 +11544,17 @@ if (snd65s >= 0) currentIndex = snd65s;
             });
             Fx.press(qClear72);
         }
+        android.view.View qClean46 = findViewById(R.id.roomQueueClean);
+        if (qClean46 != null) {
+            qClean46.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    Fx.tap(RoomActivity.this);
+                    Fx.morph(v);
+                    cleanListenedQueue46();
+                }
+            });
+            Fx.press(qClean46);
+        }
         refreshQueueBar72();
 
         // v5.15: Previous talk — the Room had Next in the control row
@@ -12720,8 +12736,10 @@ if (snd67q >= 0) currentIndex = snd67q;
     // (the poll tick calls it every second); the toggle reads "◈ view
     // queue only · N" in the full list and "show the full list again" in
     // queue-only view; Clear shows only in queue-only view while
-    // anything waits, labelled with the existing clear verb. All labels
-    // reuse existing Lang keys — no new key. showClearQueueDialog72 is
+    // anything waits, labelled with the existing clear verb. Clean
+    // (v15.46, slice 1946) shows only in queue-only view while a
+    // finished talk waits, labelled with the new queue_clean_listened
+    // key. showClearQueueDialog72 is
     // the header long-press dialog (v4.32/v5.83/v10.92/v11.38) minus its
     // neutral "view queue only" action, meaningless from inside the
     // queue-only view itself; the header long-press keeps its own
@@ -12748,6 +12766,25 @@ if (snd67q >= 0) currentIndex = snd67q;
             android.widget.Button cl = (android.widget.Button) findViewById(R.id.roomQueueClear);
             if (tg == null || cl == null) return;
             int n = waitingQueueCount72();
+            // v15.46 (slice 1946): the listened-waiting count for the
+            // Clean button — the same deduped display lines the bar
+            // already counts, through the QueueClean gate: a finished
+            // waiting entry counts, the sounding talk never does
+            // (even when already finished — it is still playing).
+            // playedSet is the drawer's own finished set (the bind
+            // reads the same field, so the button and the check rows
+            // can never disagree); refreshMarkSets runs at most once
+            // here — the field is non-null after the first call.
+            int listenedWaiting46 = 0;
+            if (drawerQueueOnly) {
+                if (playedSet == null) refreshMarkSets();
+                java.util.Set<String> listened46 = playedSet == null ? new java.util.HashSet<String>() : playedSet;
+                String snd46 = soundingUrlForQueue();
+                String sndId46 = snd46 == null ? "" : SiteHttp.identityUrl(snd46);
+                java.util.List<String> ids46 = new java.util.ArrayList<String>();
+                for (String line46 : drawerQueueDisplayLines()) ids46.add(SiteHttp.identityUrl(queueLineUrl(line46)));
+                listenedWaiting46 = QueueClean.clean(ids46, listened46, sndId46).removed;
+            }
             // v14.30 (slice 1685): queue-bar mode-flip fade — the
             // rows have poured on every queue-only entry/exit since
             // v14.27-v14.29, but the bar above them still swapped in
@@ -12851,8 +12888,92 @@ if (snd67q >= 0) currentIndex = snd67q;
             if (cl.getVisibility() == android.view.View.VISIBLE
                     && !Lang.t(RoomActivity.this, "queue_clear_yes").equals(cl.getText().toString()))
                 cl.setText(Lang.t(RoomActivity.this, "queue_clear_yes"));
+            // v15.46 (slice 1946): the Clean button — the same
+            // visibility family as Clear (queue-only view only),
+            // shown only while a finished talk waits in the queue;
+            // the same gen-guarded flip fade, so it never pops
+            // while its siblings fade. Its label is the new
+            // queue_clean_listened key.
+            android.widget.Button cln46 = (android.widget.Button) findViewById(R.id.roomQueueClean);
+            if (cln46 != null) {
+                int wantVisClean46 = (drawerQueueOnly && listenedWaiting46 > 0) ? android.view.View.VISIBLE : android.view.View.GONE;
+                if (wantVisClean46 == android.view.View.VISIBLE) {
+                    if (cln46.getVisibility() != android.view.View.VISIBLE) {
+                        cln46.setVisibility(android.view.View.VISIBLE);
+                        if (flip30) {
+                            if (cln46.getAlpha() >= 0.999f) cln46.setAlpha(0f);
+                            cln46.animate().setListener(null);
+                            queueBarCleanFading46 = false;
+                            cln46.animate().alpha(1f).setDuration(220).setStartDelay(40)
+                                    .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+                        } else if (cln46.getAlpha() < 1f) cln46.setAlpha(1f);
+                    }
+                } else if (cln46.getVisibility() == android.view.View.VISIBLE) {
+                    if (flip30) {
+                        queueBarCleanGen46++;
+                        final int genClean46 = queueBarCleanGen46;
+                        final android.widget.Button clnClean46 = cln46;
+                        queueBarCleanFading46 = true;
+                        cln46.animate().alpha(0f).setDuration(150)
+                                .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                                .setListener(new android.animation.AnimatorListenerAdapter() {
+                                    @Override public void onAnimationEnd(android.animation.Animator a) {
+                                        if (queueBarCleanGen46 != genClean46 || !queueBarCleanFading46) return;
+                                        queueBarCleanFading46 = false;
+                                        clnClean46.setVisibility(android.view.View.GONE);
+                                        clnClean46.setAlpha(1f);
+                                        clnClean46.animate().setListener(null);
+                                    }
+                                }).start();
+                    } else if (!queueBarCleanFading46) cln46.setVisibility(android.view.View.GONE);
+                }
+                if (cln46.getVisibility() == android.view.View.VISIBLE
+                        && !Lang.t(RoomActivity.this, "queue_clean_listened").equals(cln46.getText().toString()))
+                    cln46.setText(Lang.t(RoomActivity.this, "queue_clean_listened"));
+            }
         } catch (Exception ignored) {}
     }
+
+    // v15.46 (slice 1946): remove the finished talks from the
+    // queue — the "clean up after a long listen" verb. A queue
+    // built by Play All / Play-new / queue-from-here keeps its
+    // finished talks as dimmed check rows; Clear-all would also drop
+    // the unplayed ones, and removing them one by one is a chore,
+    // so one tap drops exactly the finished waiting entries and
+    // keeps everything else: the sounding talk (even when it is
+    // already marked finished — it is still playing), every
+    // unplayed talk, every unprovable line (empty URL), and the
+    // failed head (never in the finished set). The survivors pour
+    // (the clear-confirm pour shape) and the toast names the verb;
+    // a tap with nothing finished never reaches here — the button
+    // hides while the listened-waiting count is zero.
+    private void cleanListenedQueue46() {
+        try {
+            if (playedSet == null) refreshMarkSets();
+            java.util.Set<String> listened46 = playedSet == null ? new java.util.HashSet<String>() : playedSet;
+            String snd46 = soundingUrlForQueue();
+            String sndId46 = snd46 == null ? "" : SiteHttp.identityUrl(snd46);
+            java.util.List<String> ids46 = new java.util.ArrayList<String>();
+            for (String line46 : queueUrls) ids46.add(SiteHttp.identityUrl(queueLineUrl(line46)));
+            QueueClean.Result res46 = QueueClean.clean(ids46, listened46, sndId46);
+            if (res46.removed <= 0) return;
+            int held46 = moveHeldUrl == null ? -1 : queueLineIndexForUrl(moveHeldUrl);
+            java.util.ArrayList<String> kept46 = new java.util.ArrayList<String>();
+            for (int i46 = 0; i46 < queueUrls.size(); i46++)
+                if (res46.keep.get(i46)) kept46.add(queueUrls.get(i46));
+            if (held46 >= 0 && held46 < res46.keep.size() && !res46.keep.get(held46)) moveHeldUrl = null;
+            queueUrls.clear();
+            queueUrls.addAll(kept46);
+            saveQueue(null, true);
+            if (adapter != null) adapter.notifyDataSetChanged();
+            android.view.View qPanel46 = findViewById(R.id.roomPlayListPanel);
+            if (drawerQueueOnly && isPlayListPanelOpen() && qPanel46 != null && qPanel46.getTranslationX() == 0f && roomList != null)
+                Fx.staggerChildren(roomList);
+            refreshQueueBar72();
+            android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_clean_listened"), android.widget.Toast.LENGTH_SHORT).show();
+        } catch (Exception ignored) {}
+    }
+
     private void showClearQueueDialog72() {
         String playUrl = soundingUrlForQueue();
         int waitQ = 0;

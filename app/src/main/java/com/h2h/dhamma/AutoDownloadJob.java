@@ -226,7 +226,13 @@ public class AutoDownloadJob extends JobService {
         // off Wi-Fi): nothing is fetched or enqueued unless the
         // phone is on Wi-Fi right now.
         if (!Fx.stripIsWifi(this)) return;
-        java.util.Set<String> favs = Prefs.favNames(this);
+        // v15.46 (slice 1947): the job checks only the picker's
+        // scope — all favourites while nothing is chosen (the
+        // pre-1947 behaviour), else the chosen names that are
+        // still favourites. An empty scope ends the run here
+        // through the same empty guard below.
+        java.util.Set<String> favs = new java.util.HashSet<String>(
+                AutoDlScope.scope(Prefs.favNames(this), Prefs.autoDlChosen(this)));
         long now = System.currentTimeMillis();
         if (favs == null || favs.isEmpty()) {
             Prefs.autoDlSetLastRun(this, now, 0);

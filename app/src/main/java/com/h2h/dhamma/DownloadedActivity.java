@@ -9328,6 +9328,50 @@ public class DownloadedActivity extends Activity {
         return AudioService.liveSession && AudioService.liveHasTrack;
     }
 
+    // v15.46 (slice 1944): the bundled-catalog resolver for a
+    // sayadaw NAME — the v7.08 handover's resolver, verbatim
+    // (RoomActivity.catalogEntryForSayadaw): exact-name match
+    // over assets/sayadaws.json, returning {group, page, photo}
+    // or null. A bad row never hides the rows after it (the
+    // v13.30 skip); a missing asset or a bad file reads as null,
+    // never a crash. The Downloaded row menu uses it for the
+    // "go to sayadaw's talks" verb; the Room drawer loads the
+    // new-set off the same page slot (slice 1925).
+    private String[] catalogEntryForSayadaw(String name) {
+        if (name == null || name.length() == 0) return null;
+        java.io.InputStream in = null;
+        try {
+            in = getAssets().open("sayadaws.json");
+            java.io.ByteArrayOutputStream baos =
+                    new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int read;
+            while ((read = in.read(buf)) > 0) baos.write(buf, 0, read);
+            org.json.JSONArray arr = new org.json.JSONArray(
+                    new String(baos.toByteArray(), "UTF-8"));
+            for (int i = 0; i < arr.length(); i++) {
+                // v13.30 (Catalog F3): a bad row must not hide every
+                // sayadaw after it — skip a non-object entry instead
+                // of aborting the whole loop out of getJSONObject.
+                org.json.JSONObject o;
+                try { o = arr.getJSONObject(i); } catch (Exception ignored) { continue; }
+                if (!name.equals(o.optString("name", ""))) continue;
+                String group = o.optString("group", "");
+                String page = o.isNull("page_url") ? ""
+                        : o.optString("page_url", "");
+                String photo = o.isNull("photo_url") ? ""
+                        : o.optString("photo_url", "");
+                if (photo.length() == 0 && !o.isNull("photo"))
+                    photo = o.optString("photo", "");
+                return new String[]{group, page, photo};
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (in != null) { try { in.close(); } catch (Exception ignored) {} }
+        }
+        return null;
+    }
+
     private void showLibQueueMenu(final int shownPos) {
         if (shownPos < 0 || shownPos >= libDisplayCount()) return;
         Fx.tap(DownloadedActivity.this);
@@ -9398,6 +9442,13 @@ public class DownloadedActivity extends Activity {
             shareUrl653 = u653;
             shareSayadaw653 = sd653;
         }
+        // v15.46 (slice 1944): this row's sayadaw resolved
+        // through the bundled catalog for the "go to
+        // sayadaw's talks" verb below — one asset parse per
+        // menu open, the same cost the share block above
+        // already pays for its reverse lookup. A miss reads
+        // as no-go (never a crash, never a dead tap).
+        final String[] goCat44 = catalogEntryForSayadaw(shareSayadaw653);
         refreshLibQueueCache();
         final java.util.ArrayList<String> queue = new java.util.ArrayList<String>(libQueueCache);
         boolean playing = path.equals(soundingLibPath()); // v11.24: unbound-window mirror, not bound-only
@@ -9408,6 +9459,19 @@ public class DownloadedActivity extends Activity {
         java.util.ArrayList<String> itemKeys = new java.util.ArrayList<String>();
         if (!playing && !queued) { items.add(Lang.t(DownloadedActivity.this, "menu_play_next_short")); itemKeys.add("menu_play_next_short"); items.add(Lang.t(DownloadedActivity.this, "menu_queue_add")); itemKeys.add("menu_queue_add"); }
         if (!playing) { items.add(Lang.t(DownloadedActivity.this, "menu_queue_from_here")); itemKeys.add("menu_queue_from_here"); }
+        // v15.46 (slice 1944): "go to sayadaw's talks" —
+        // the row menu's first navigation verb: a
+        // downloaded talk's sayadaw (shareSayadaw653,
+        // recorded at download time) resolved through
+        // the bundled catalog opens that sayadaw's Talks
+        // list inside the app, so a listener who liked a
+        // downloaded talk can reach the full catalogue
+        // without going back to Main and searching.
+        // Offered on any row whose sayadaw resolves to
+        // a page URL — playing or not, the navigation
+        // never touches playback — and hidden while the
+        // sayadaw is unknown or unlisted (GoSayadaw.canGo).
+        if (GoSayadaw.canGo(goCat44)) { items.add(Lang.t(DownloadedActivity.this, "menu_go_sayadaw")); itemKeys.add("menu_go_sayadaw"); }
         // v6.38: queue only the shown files — the shown-set base
         // verb the library's ⋮ menu still lacked (the Talks
         // chooser gained it as v6.26, the Room drawer as v6.14).
@@ -10748,6 +10812,36 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, added > 0
                                     ? Lang.t(DownloadedActivity.this, "queue_plain_prefix") + added + Lang.t(DownloadedActivity.this, "queue_added_suffix")
                                     : Lang.t(DownloadedActivity.this, "already_in_queue"), Toast.LENGTH_SHORT).show();
+                        } else if ("menu_go_sayadaw".equals(choiceKey)) {
+                            // v15.46 (slice 1944): go to the
+                            // sayadaw's talks — the row menu's
+                            // first navigation verb (see the
+                            // offer above): re-resolve the
+                            // catalog entry fresh at tap time
+                            // (the dialog can sit open; one
+                            // asset parse, and the offer and
+                            // the tap can never disagree),
+                            // then open this sayadaw's Talks
+                            // list inside the app with Main's
+                            // own intent extras (name/group/
+                            // url/photo). A failed re-read
+                            // toasts no_sayadaw_page — the
+                            // "no original-site page link"
+                            // words — and opens nothing.
+                            String[] cat44 = catalogEntryForSayadaw(shareSayadaw653);
+                            if (!GoSayadaw.canGo(cat44)) {
+                                android.widget.Toast.makeText(DownloadedActivity.this,
+                                        Lang.t(DownloadedActivity.this, "no_sayadaw_page"),
+                                        android.widget.Toast.LENGTH_SHORT).show();
+                            } else {
+                                android.content.Intent gi44 = new android.content.Intent(DownloadedActivity.this, TalksActivity.class);
+                                gi44.putExtra("name", shareSayadaw653);
+                                gi44.putExtra("group", GoSayadaw.group(cat44));
+                                gi44.putExtra("url", GoSayadaw.page(cat44));
+                                gi44.putExtra("photo", GoSayadaw.photo(cat44));
+                                Fx.tap(DownloadedActivity.this);
+                                Fx.go(DownloadedActivity.this, gi44);
+                            }
                         } else if ("dl_menu_queue_shown".equals(choiceKey)) {
                             // v6.38: queue the shown display in
                             // order — same skip rules as the

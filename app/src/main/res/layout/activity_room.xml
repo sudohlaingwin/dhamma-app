@@ -294,7 +294,9 @@
              toggle shows the waiting count and enters the queue-only
              view; in queue-only view it exits to the full list and the
              ✕ button clears the queue (same dialog as the header
-             long-press, minus the now-meaningless "view queue only"). -->
+             long-press, minus the now-meaningless "view queue only").
+             The ✓ button (v15.46, slice 1946) removes the finished
+             talks only, and shows only while one waits. -->
         <LinearLayout
             android:id="@+id/roomQueueBar"
             android:layout_width="match_parent"
@@ -312,6 +314,16 @@
                 android:textColor="#C9A227"
                 android:textSize="14sp"
                 android:textStyle="bold" />
+            <Button
+                android:id="@+id/roomQueueClean"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_marginRight="6dp"
+                android:background="@drawable/glass_btn_dark"
+                android:textColor="#C9A227"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
             <Button
                 android:id="@+id/roomQueueClear"
                 android:layout_width="wrap_content"

@@ -38,4 +38,15 @@ public class SayadawInfo {
     static boolean showGroup(String group) {
         return group != null && group.length() > 0;
     }
+
+    // v15.46 (slice 1943): the "original page" row shows only
+    // while this sayadaw has an original page URL — the Talks
+    // intent always sends one (Main's catalog link), a
+    // Room/notification open may carry none. The literal
+    // "null" string counts as none (the Room retry guard's
+    // shape, v4.19): a page URL is never validated here, only
+    // its presence — the tap's try/catch owns the open.
+    static boolean showPageRow(String pageUrl) {
+        return pageUrl != null && pageUrl.length() > 0 && !"null".equals(pageUrl);
+    }
 }

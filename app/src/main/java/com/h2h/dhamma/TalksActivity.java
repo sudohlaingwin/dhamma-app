@@ -2436,9 +2436,13 @@ public class TalksActivity extends Activity {
     // even under a search or filter. The header's
     // downloaded/finished/half-heard counts are deliberately
     // NOT repeated here — the sheet shows only what no
-    // surface shows. No toast, no new Lang key: the lines
-    // reuse room_count_prefix / pl_talks / dl_hint_new_prefix
-    // and the close button is dlg_close.
+    // surface shows. No toast; two new keys (open_orig_page,
+    // the page row's label, v15.46 (slice 1943), and
+    // menu_add_home, the home-screen row's label, v15.46
+    // (slice 1945) — each column a verified substring, see
+    // slices 1943/1945's notes). The other lines reuse
+    // room_count_prefix / pl_talks / dl_hint_new_prefix and
+    // the close button is dlg_close.
     private void showSayadawInfo() {
         if (talks == null || talks.isEmpty() || sayadawName == null || sayadawName.length() == 0) return;
         int total41 = talks.size();
@@ -2461,12 +2465,117 @@ public class TalksActivity extends Activity {
             if (SayadawInfo.showNewLine(new41)) newTv.setText("\u25CF " + Lang.t(TalksActivity.this, "dl_hint_new_prefix") + new41 + " " + Lang.t(TalksActivity.this, "pl_talks"));
             else newTv.setVisibility(android.view.View.GONE);
         }
+        // v15.46 (slice 1943): the original-page row — a gold
+        // tappable link under the counts; hidden while the
+        // sayadaw has no page URL (showPageRow), opening the
+        // page in the browser on tap (the retry long-press's
+        // ACTION_VIEW + toasts, v4.18).
+        android.widget.TextView pageTv = (android.widget.TextView) v.findViewById(R.id.infoPage);
+        if (pageTv != null) {
+            if (SayadawInfo.showPageRow(pageUrl)) {
+                pageTv.setText("\uD83C\uDF10 " + Lang.t(TalksActivity.this, "open_orig_page"));
+                pageTv.setOnClickListener(new android.view.View.OnClickListener() {
+                    @Override public void onClick(android.view.View pv) {
+                        Fx.tap(TalksActivity.this);
+                        Fx.morph(pv);
+                        if (pageUrl == null || pageUrl.length() == 0) {
+                            android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "no_orig_page"), android.widget.Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        try {
+                            startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(pageUrl)));
+                        } catch (Exception e) {
+                            android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "open_failed"), android.widget.Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+            } else pageTv.setVisibility(android.view.View.GONE);
+        }
+        // v15.46 (slice 1945): the "add to home screen" row —
+        // a gold tappable row under the original-page row; a
+        // launcher shortcut straight to this sayadaw's talks,
+        // so a favourite sayadaw opens in one tap without
+        // opening the app first. Hidden while pinning is
+        // impossible on this device (API < 26 or the launcher
+        // refuses pins), while the sayadaw has no page URL
+        // (the showPageRow gate, slice 1943), or while this
+        // sayadaw is already pinned. Tap re-checks the gate
+        // fresh (the sheet can sit open; offer and tap can
+        // never disagree) and asks the launcher to pin; the
+        // system confirmation dialog is the feedback, so no
+        // toast — the 1940 precedent.
+        android.widget.TextView homeTv = (android.widget.TextView) v.findViewById(R.id.infoHome);
+        if (homeTv != null) {
+            if (HomeShortcut.canShow(android.os.Build.VERSION.SDK_INT, isPinShortcutSupported45(), pageUrl)
+                    && !isSayadawPinned45()) {
+                homeTv.setText("\u2302 " + Lang.t(TalksActivity.this, "menu_add_home"));
+                homeTv.setOnClickListener(new android.view.View.OnClickListener() {
+                    @Override public void onClick(android.view.View hv) {
+                        Fx.tap(TalksActivity.this);
+                        Fx.morph(hv);
+                        pinSayadawShortcut45();
+                    }
+                });
+            } else homeTv.setVisibility(android.view.View.GONE);
+        }
         new android.app.AlertDialog.Builder(TalksActivity.this)
                 .setView(v)
                 .setPositiveButton(Lang.t(TalksActivity.this, "dlg_close"), new android.content.DialogInterface.OnClickListener() {
                     @Override public void onClick(android.content.DialogInterface d, int which) { d.dismiss(); }
                 })
                 .create().show();
+    }
+
+    // v15.46 (slice 1945): the launcher pin helpers for the
+    // info sheet's home-screen row — the ShortcutManager is
+    // read fresh at each call (the sheet can sit open while
+    // the launcher changes), and every failure fails closed
+    // to "cannot pin" instead of crashing an old device.
+    private boolean isPinShortcutSupported45() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT < 26) return false;
+            android.content.pm.ShortcutManager sm = getSystemService(android.content.pm.ShortcutManager.class);
+            return sm != null && sm.isRequestPinShortcutSupported();
+        } catch (Exception ignored) { return false; }
+    }
+
+    private boolean isSayadawPinned45() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT < 26) return false;
+            android.content.pm.ShortcutManager sm = getSystemService(android.content.pm.ShortcutManager.class);
+            if (sm == null) return false;
+            java.util.Set<String> pinned = new java.util.HashSet<String>();
+            for (android.content.pm.ShortcutInfo si : sm.getPinnedShortcuts()) {
+                if (si != null && si.getId() != null) pinned.add(si.getId());
+            }
+            return HomeShortcut.isPinned(pinned, HomeShortcut.idFor(pageUrl));
+        } catch (Exception ignored) { return false; }
+    }
+
+    private void pinSayadawShortcut45() {
+        try {
+            if (sayadawName == null || sayadawName.length() == 0) return;
+            if (android.os.Build.VERSION.SDK_INT < 26) return;
+            android.content.pm.ShortcutManager sm = getSystemService(android.content.pm.ShortcutManager.class);
+            if (sm == null) return;
+            if (!HomeShortcut.canShow(android.os.Build.VERSION.SDK_INT, sm.isRequestPinShortcutSupported(), pageUrl)) return;
+            if (isSayadawPinned45()) return;
+            android.content.Intent si45 = new android.content.Intent(TalksActivity.this, TalksActivity.class);
+            si45.putExtra("name", sayadawName);
+            si45.putExtra("group", sayadawGroup);
+            si45.putExtra("url", pageUrl);
+            si45.putExtra("photo", talkInfoPhotoUrl);
+            si45.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            android.content.pm.ShortcutInfo info45 = new android.content.pm.ShortcutInfo.Builder(TalksActivity.this, HomeShortcut.idFor(pageUrl))
+                    .setShortLabel(sayadawName)
+                    .setLongLabel(sayadawName)
+                    .setIcon(android.graphics.drawable.Icon.createWithResource(TalksActivity.this, R.mipmap.ic_launcher))
+                    .setIntent(si45)
+                    .build();
+            sm.requestPinShortcut(info45, null);
+        } catch (Exception e) {
+            android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "open_failed"), android.widget.Toast.LENGTH_SHORT).show();
+        }
     }
 
     // v15.45 (slice 1941): the sheet's new-talk count — the

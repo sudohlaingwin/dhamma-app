@@ -2831,6 +2831,22 @@ public class Prefs {
         sp(c).edit().putBoolean("autoDlEnabled", v).apply();
     }
 
+    // v15.46 (slice 1947): auto-download scope — the explicit set
+    // of favourite sayadaw names the job may check, null = unset
+    // (all favourites, the pre-1947 behaviour). A favourite added
+    // after choosing joins only when the picker checks it; a
+    // favourite removed drops out of the effective scope even
+    // while its name stays stored (AutoDlScope.scope intersects).
+    public static java.util.Set<String> autoDlChosen(Context c) {
+        java.util.Set<String> s = sp(c).getStringSet("autoDlChosen47", null);
+        return s == null ? null : new java.util.HashSet<String>(s);
+    }
+
+    public static void setAutoDlChosen(Context c, java.util.Set<String> v) {
+        if (v == null) sp(c).edit().remove("autoDlChosen47").apply();
+        else sp(c).edit().putStringSet("autoDlChosen47", new java.util.HashSet<String>(v)).apply();
+    }
+
     // Epoch ms of the last completed check, 0 when never checked.
     public static long autoDlLastRun(Context c) {
         return sp(c).getLong("autoDlLastRun", 0);

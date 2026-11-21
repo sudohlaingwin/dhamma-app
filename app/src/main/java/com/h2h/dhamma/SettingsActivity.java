@@ -25,6 +25,11 @@ public class SettingsActivity extends Activity {
     // photo, or the random word while none is fixed.
     private android.view.View rowAltar;
     private android.widget.TextView altarValue;
+    // v15.46 (slice 1947): the auto-download scope row (label +
+    // value + chevron, like altar) — its value shows how many
+    // star favourites the job may check.
+    private android.view.View rowAdChoose;
+    private android.widget.TextView adChooseValue;
     // v12.94 (his order 2026-11-06 ~22:46 +07: Settings rebuilt to the
     // worldwide streaming-app standard): the on/off toggles are Switch
     // views now (Switch extends Button, so the field type only narrows);
@@ -147,6 +152,8 @@ public class SettingsActivity extends Activity {
         langValue = findViewById(R.id.langValue);
         rowAltar = findViewById(R.id.rowAltar);
         altarValue = findViewById(R.id.altarValue);
+        rowAdChoose = findViewById(R.id.rowAdChoose);
+        adChooseValue = findViewById(R.id.adChooseValue);
         btnNoti = findViewById(R.id.btnNoti);
         btnAutoplay = findViewById(R.id.btnAutoplay);
         btnRepeat = findViewById(R.id.btnRepeat);
@@ -209,6 +216,24 @@ public class SettingsActivity extends Activity {
                 int o35 = Prefs.altarPhoto(SettingsActivity.this);
                 if (o35 < 0) { Fx.tap(SettingsActivity.this); return true; }
                 Prefs.setAltarPhoto(SettingsActivity.this, -1);
+                Fx.morph(v);
+                Fx.themeDip(root, new Runnable() { @Override public void run() { refresh(); } });
+                return true;
+            }
+        });
+        // v15.46 (slice 1947): the auto-download scope row — tap
+        // opens the multi-choice picker; long-press resets the
+        // scope to all favourites (the font/lang/altar reset
+        // family: font resets to Normal, language to Burmese,
+        // altar to random, scope to all). The reset leaves the
+        // toggle as the user set it.
+        if (rowAdChoose != null) rowAdChoose.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { Fx.morph(v); showAutoDlScopeDialog47(); }
+        });
+        if (rowAdChoose != null) rowAdChoose.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override public boolean onLongClick(View v) {
+                if (Prefs.autoDlChosen(SettingsActivity.this) == null) { Fx.tap(SettingsActivity.this); return true; }
+                Prefs.setAutoDlChosen(SettingsActivity.this, null);
                 Fx.morph(v);
                 Fx.themeDip(root, new Runnable() { @Override public void run() { refresh(); } });
                 return true;
@@ -1137,7 +1162,7 @@ android.view.View settingsStripPrev = findViewById(R.id.nowStripPrev);
         // field, so a second rotation re-shows it again, never twice.
         if (savedInstanceState != null) {
             final String restored = savedInstanceState.getString("openPicker", null);
-            if ("font".equals(restored) || "lang".equals(restored) || "sleep".equals(restored) || "clearData".equals(restored) || "altar".equals(restored)) {
+            if ("font".equals(restored) || "lang".equals(restored) || "sleep".equals(restored) || "clearData".equals(restored) || "altar".equals(restored) || "autoDl".equals(restored)) {
                 openPicker = restored;
                 if (root != null) root.post(new Runnable() {
                     @Override public void run() {
@@ -1146,6 +1171,7 @@ android.view.View settingsStripPrev = findViewById(R.id.nowStripPrev);
                         else if ("altar".equals(openPicker)) showAltarDialog();
                         else if ("sleep".equals(openPicker)) showSleepDialog();
                         else if ("clearData".equals(openPicker)) showClearDataDialog();
+                        else if ("autoDl".equals(openPicker)) showAutoDlScopeDialog47();
                     }
                 });
             }
@@ -1544,6 +1570,50 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         String[] names35 = new String[RoomView.THEMES.length];
         for (int i = 0; i < names35.length; i++) names35[i] = RoomView.THEMES[i].name;
         return AltarPick.nameForPhoto(names35, fixed35);
+    }
+
+    // v15.46 (slice 1947): the auto-download scope picker — a
+    // multi-choice dialog of the star favourites, current scope
+    // checked (all of them while nothing is chosen). Each tap
+    // saves at once (the altar dialog's apply-on-tap idiom — no
+    // OK button, Close only), so there is never an unsaved state
+    // for rotation to lose; the value line repaints on dismiss.
+    // A favourite added after choosing joins only when checked
+    // here; a favourite removed since choosing is simply not
+    // listed. No favourites at all refuses with the existing
+    // no_fav_sayadaw word. Rotation re-shows through openPicker
+    // "autoDl", like "altar".
+    private void showAutoDlScopeDialog47() {
+        java.util.Set<String> favs47 = Prefs.favNames(this);
+        if (favs47 == null || favs47.isEmpty()) {
+            android.widget.Toast.makeText(this, Lang.t(this, "no_fav_sayadaw"), android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final java.util.List<String> names47 = new java.util.ArrayList<String>(favs47);
+        java.util.Collections.sort(names47);
+        final java.util.Set<String> chosen47 = new java.util.HashSet<String>(AutoDlScope.scope(favs47, Prefs.autoDlChosen(this)));
+        boolean[] checked47 = new boolean[names47.size()];
+        for (int i47 = 0; i47 < names47.size(); i47++) checked47[i47] = chosen47.contains(names47.get(i47));
+        final String[] items47 = names47.toArray(new String[0]);
+        openPicker = "autoDl";
+        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
+                .setTitle(Lang.t(this, "ad_choose"))
+                .setMultiChoiceItems(items47, checked47, new android.content.DialogInterface.OnMultiChoiceClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which, boolean isChecked) {
+                        String name47 = names47.get(which);
+                        if (isChecked) chosen47.add(name47); else chosen47.remove(name47);
+                        Prefs.setAutoDlChosen(SettingsActivity.this, AutoDlScope.saveValue(new java.util.HashSet<String>(names47), chosen47));
+                    }
+                })
+                .setNegativeButton(Lang.t(this, "dlg_close"), null)
+                .create();
+        dlg.setOnDismissListener(new android.content.DialogInterface.OnDismissListener() {
+            @Override public void onDismiss(android.content.DialogInterface d) {
+                if ("autoDl".equals(openPicker)) openPicker = null;
+                refresh();
+            }
+        });
+        dlg.show();
     }
 
     // v1.81: count this screen as on top / schedule the background
@@ -3841,6 +3911,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         if (titleText != null) titleText.setText(Lang.t(this, "settings"));
         setLabelText(R.id.labelLanguage, "lang_label");
         setLabelText(R.id.labelAltar, "altar_photo");
+        setLabelText(R.id.labelAdChoose, "ad_choose");
         setLabelText(R.id.labelFont, "font_label");
         setLabelText(R.id.lblRepeat, "repeat");
         setLabelText(R.id.lblSleep, "sleep");
@@ -3863,11 +3934,16 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         // chosen photo's theme name, or the random word while
         // no photo is fixed.
         if (altarValue != null) { String n35 = altarPhotoName35(); altarValue.setText(n35 == null ? Lang.t(this, "altar_random") : n35); altarValue.setTextColor(muted); altarValue.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn); }
+        // v15.46 (slice 1947): the auto-download scope row's value —
+        // how many star favourites the job may check (the effective
+        // scope, all of them while nothing is chosen). Latin digits,
+        // like the app's other counts.
+        if (adChooseValue != null) { int n47 = AutoDlScope.scope(Prefs.favNames(this), Prefs.autoDlChosen(this)).size(); adChooseValue.setText(n47 + " " + Lang.t(this, "ad_sayadaws")); adChooseValue.setTextColor(muted); adChooseValue.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn); }
         // v11.93: the two "›" chevrons had no id, so refresh() never
         // recoloured them — they kept day muted-brown at night and
         // nearly vanished on the dark card. Same night-grey as the
         // values beside them.
-        for (int id : new int[]{R.id.fontChevron, R.id.langChevron, R.id.altarChevron, R.id.repeatChevron, R.id.sleepChevron, R.id.downloadedChevron, R.id.clearChevron, R.id.teamChevron, R.id.policyChevron, R.id.checkUpdateChevron}) { TextView cv = findViewById(id); if (cv != null) cv.setTextColor(muted); }
+        for (int id : new int[]{R.id.fontChevron, R.id.langChevron, R.id.altarChevron, R.id.adChooseChevron, R.id.repeatChevron, R.id.sleepChevron, R.id.downloadedChevron, R.id.clearChevron, R.id.teamChevron, R.id.policyChevron, R.id.checkUpdateChevron}) { TextView cv = findViewById(id); if (cv != null) cv.setTextColor(muted); }
         // v12.94: the long Android-rules paragraph is gone — the note
         // under the notification row appears ONLY while a block is live
         // (v10.86/v12.27), naming the fix; healthy phones see no note

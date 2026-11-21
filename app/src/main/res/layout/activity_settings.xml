@@ -532,6 +532,49 @@
             android:textColor="#C9A227"
             android:textSize="14sp"
             android:visibility="gone" />
+        <!-- v15.46 (slice 1947): "Choose which favourites
+             auto-download" — a nav row in the auto-download
+             section, same shape as the altar row above (label +
+             value + chevron); the value shows how many star
+             favourites the job may check. Always visible: the
+             scope is a setting, like language — unlike "check
+             now", which hides while off because tapping it while
+             off is meaningless. -->
+        <LinearLayout
+            android:id="@+id/rowAdChoose"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingVertical="14dp">
+            <TextView
+                android:id="@+id/labelAdChoose"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="ဆရာတော် ရွေးပါ"
+                android:textColor="@color/ink"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+            <TextView
+                android:id="@+id/adChooseValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textColor="@color/muted"
+                android:textSize="16sp" />
+            <TextView
+                android:id="@+id/adChooseChevron"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingStart="8dp"
+                android:text="›"
+                android:textColor="@color/muted"
+                android:textSize="20sp" />
+        </LinearLayout>
     </LinearLayout>
 
     <View

@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- v15.45 (slice 1941): sayadaw info sheet — the about card
      for the sayadaw whose talks this screen lists: photo, name,
-     tradition/group, total talks, and the new-talk count. The
+     tradition/group, total talks, the new-talk count, the
+     original-page link, and the home-screen shortcut. The
      counts deliberately do NOT repeat the header title's
      downloaded/finished/half-heard counts — the sheet shows
      only what no surface shows. Shown through the app's
@@ -55,6 +56,35 @@
         android:layout_marginTop="4dp"
         android:gravity="center"
         android:textColor="@color/ink"
+        android:textSize="16sp" />
+
+    <!-- v15.46 (slice 1943): the original-page link — a gold
+         tappable row under the counts; GONE while this sayadaw
+         has no page URL (the sheet's own gate, see
+         SayadawInfo.showPageRow). The label is the new
+         open_orig_page key; the globe is set in code beside it. -->
+    <TextView
+        android:id="@+id/infoPage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center"
+        android:textColor="@color/gold"
+        android:textSize="16sp" />
+
+    <!-- v15.46 (slice 1945): the home-screen shortcut — a gold
+         tappable row under the original-page row; GONE while
+         pinning is impossible on this device, while the
+         sayadaw has no page URL, or while already pinned
+         (the HomeShortcut gate). The label is the new
+         menu_add_home key; the house glyph is set in code. -->
+    <TextView
+        android:id="@+id/infoHome"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center"
+        android:textColor="@color/gold"
         android:textSize="16sp" />
 
 </LinearLayout>
