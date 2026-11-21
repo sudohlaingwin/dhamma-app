@@ -1994,6 +1994,39 @@ public class RoomActivity extends Activity {
         }
     }
 
+    // v15.49 (slice 1963): mark the pressed minute — the wave
+    // long-press twin of onBookmarkAdd. The minute comes from the
+    // finger's x on the wave, not the live position, so a mark
+    // can be dropped anywhere on the talk (ahead of the playhead
+    // included) while the talk keeps playing where it was: the
+    // view already cancelled the drag through
+    // onCancelTrackingTouch before this runs, so no seek is
+    // committed and no settle hold is armed. The guard is the
+    // onBookmarkAdd guard with the pressed ms in place of the
+    // live position (WaveLongPress.offerAdd); a near-duplicate
+    // toasts bm_exists exactly like the dialog verb, and a fresh
+    // mark fades its gold pin in via refreshBookmarkTicks (the
+    // v15.32 arrival fade). The toast wording is onBookmarkAdd's
+    // verbatim — one add verb, one voice.
+    private void onBookmarkAddAt(int ms) {
+        String url = bookmarkTalkUrl();
+        int dur = service == null ? 0 : service.getDuration();
+        if (url == null || url.length() == 0 || !WaveLongPress.offerAdd(dur, ms)) {
+            android.widget.Toast.makeText(this, Lang.t(this, "no_talk_yet"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (Prefs.bookmarkAddBoth(this, url, ms)) {
+            refreshBookmarkTicks();
+            android.widget.Toast.makeText(this,
+                    "🔖 " + formatTime(ms) + " " + Lang.t(this, "bm_added"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+        } else {
+            android.widget.Toast.makeText(this, Lang.t(this, "bm_exists"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+        }
+    }
+
     // v15.33 (slice 1834): the bookmark-list dialog's row-delete landing — the mutation + rebind + pin refresh + toast + dismiss-if-empty that used to run inline in the ✕ tap. Called from the collapse animation's end (the row melts first, the list lands after) and from the defensive immediate path (row unmeasured). Removal is by VALUE (the bookmark's ms): two rows deleting in flight can never shift each other's index, and it matches the Prefs.bookmarkRemoveBoth semantic the tap already uses. The wave pin fades out here via refreshBookmarkTicks (v15.32/1832), timed to the row finishing its leave — not at tap time, so row and pin leave together.
     private void removeBookmarkRowNow(final java.util.ArrayList<Integer> marks,
             final android.widget.BaseAdapter bmAdapter, final String url, int ms,
@@ -9528,6 +9561,13 @@ if (snd68 >= 0) currentIndex = snd68;
                                 android.widget.Toast.LENGTH_SHORT).show();
                 }
             }
+            @Override public void onWaveLongPress(WaveSeekView s, int ms) {
+                // v15.49 (slice 1963): the wave long-press — the
+                // view already cancelled the drag (bar + clocks
+                // restored from the live service, no seek), so
+                // this only marks the pressed minute.
+                onBookmarkAddAt(ms);
+            }
             @Override public void onCancelTrackingTouch(WaveSeekView s) {
                 // v7.99: a system-cancelled wave drag commits
                 // NOTHING. Before this, WaveSeekView merged CANCEL
@@ -10842,6 +10882,9 @@ if (snd67n >= 0) currentIndex = snd67n;
                         sOpts.add(Lang.t(RoomActivity.this, "dl_btn_download"));
                         sKeys.add("dl_btn_download");
                     }
+                    // v15.49 (slice 1961): bookmark verbs — premium backlog #1 (v12.64) built the store, the wave pins and the list dialog, but the clock-row add/list buttons were removed (2026-10-31–11-02) and onBookmarkAdd / showBookmarkList have had no caller since, so a listener could see pins but never add a mark or open the list. They return here on the sanctioned surface — the sounding row's long-press dialog (v11.71 shape), NOT a clock-row button, NOT a header button, no new view. "Mark this minute" only while a track sounds with a real duration and a position past 0:00 (the onBookmarkAdd guard verbatim, so the offer never promises what the tap refuses); "Bookmarks" only while this talk already has marks (otherwise the dialog would only toast bm_none). Both dispatch re-check at tap time (onBookmarkAdd / showBookmarkList read fresh), so a track change while the dialog sits open stays safe.
+                    if (service != null && BookmarkMenu.offerAdd(service.getDuration(), service.getEffectivePosition())) { sOpts.add(Lang.t(RoomActivity.this, "bm_add")); sKeys.add("bm_add"); }
+                    if (BookmarkMenu.offerList(Prefs.bookmarkListBoth(RoomActivity.this, st.url).size())) { sOpts.add(Lang.t(RoomActivity.this, "bm_list")); sKeys.add("bm_list"); }
                     final String[] sOptArr = sOpts.toArray(new String[0]);
                     final String[] sKeyArr = sKeys.toArray(new String[0]);
                     new android.app.AlertDialog.Builder(RoomActivity.this)
@@ -10880,6 +10923,12 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, added71 ? "fav_added" : "fav_removed"), Toast.LENGTH_SHORT).show();
                                     } else if ("dl_btn_download".equals(sKeyArr[which])) {
                                         enqueueRoomDownload(st);
+                                    } else if ("bm_add".equals(sKeyArr[which])) {
+                                        // v15.49 (slice 1961): mark this minute — the v12.64 add, wired for the first time since the clock-row removal. onBookmarkAdd re-checks duration/position and toasts bm_exists on a near-duplicate, so a stale offer can never mis-mark.
+                                        onBookmarkAdd();
+                                    } else if ("bm_list".equals(sKeyArr[which])) {
+                                        // v15.49 (slice 1961): open this talk's bookmark list — the v12.64 dialog (tap a row to jump, ✕ to delete, v15.33 melt). showBookmarkList re-reads the marks fresh and toasts bm_none if the last mark was deleted while the dialog sat open.
+                                        showBookmarkList();
                                     }
                                 }
                             })

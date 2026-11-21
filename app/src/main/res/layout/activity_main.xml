@@ -247,6 +247,72 @@
                 android:orientation="horizontal" />
         </HorizontalScrollView>
     </LinearLayout>
+    <!-- v15.49 (slice 1960): recently-downloaded rail — the newest
+         finished downloads, as tappable cards below the played rail
+         (the library's own latest-download-first order). Same shape
+         as the played rail above; the label is set from code (Lang
+         hs_dl_recent, so it follows the UI language); the rail hides
+         while searching/filtering and while nothing is downloaded
+         yet. -->
+    <LinearLayout
+        android:id="@+id/dlRecentRailWrap"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+        <TextView
+            android:id="@+id/dlRecentRailLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/gold"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:scrollbars="none">
+            <LinearLayout
+                android:id="@+id/dlRecentRail"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
+    </LinearLayout>
+    <!-- v15.49 (slice 1962): bookmarks rail — the listener's
+         bookmarked talks as tappable cards below the downloaded
+         rail (one tap back into the Room at the marked minute).
+         Same shape as the two rails above; the label is set from
+         code (Lang bm_list, so it follows the UI language); the
+         rail hides while searching/filtering and while no mark
+         resolves. -->
+    <LinearLayout
+        android:id="@+id/bmRailWrap"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+        <TextView
+            android:id="@+id/bmRailLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/gold"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:scrollbars="none">
+            <LinearLayout
+                android:id="@+id/bmRail"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
+    </LinearLayout>
     <!-- v15.33 (slice 1835): empty-search view — a search matching no sayadaw used to leave a blank grid with only a transient toast (slice 1830); every streaming app names the empty state in place. The line sits centred over the grid area (FrameLayout wrap, grid id + geometry untouched) and fades in/out with the filter (refreshNoResults in MainActivity); text comes from Lang (sayadaw_not_found / _fav), never hardcoded. -->
     <FrameLayout
         android:layout_width="match_parent"

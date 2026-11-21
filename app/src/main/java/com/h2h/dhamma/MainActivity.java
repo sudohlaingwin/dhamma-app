@@ -123,6 +123,24 @@ public class MainActivity extends Activity {
     private android.widget.TextView recentRailLabel;
     private String lastRecentRailKey = null;
     private long lastRailTapMs = 0;
+    // v15.49 (slice 1960): recently-downloaded rail views + the key
+    // of the last built rail (picked identity URLs in order + night
+    // flag) — steady passes return early below, only a real change
+    // rebuilds the cards. Reuses lastRailTapMs (the 700ms
+    // double-tap guard) and openRecentTalk1930 (the 1930 tap).
+    private android.widget.LinearLayout dlRecentRailWrap;
+    private android.widget.LinearLayout dlRecentRail;
+    private android.widget.TextView dlRecentRailLabel;
+    private String lastDlRecentRailKey = null;
+    // v15.49 (slice 1962): bookmarks rail views + the key of the
+    // last built rail (picked identity URLs + mark minutes in
+    // order + night flag) — steady passes return early below, only
+    // a real change rebuilds the cards. Reuses lastRailTapMs (the
+    // 700ms double-tap guard) and openRecentTalk1930 (the 1930 tap).
+    private android.widget.LinearLayout bmRailWrap;
+    private android.widget.LinearLayout bmRail;
+    private android.widget.TextView bmRailLabel;
+    private String lastBmRailKey = null;
     // v15.44 (slice 1937): recent-searches row views + the key
     // of the last built row (joined queries + night flag) —
     // steady ticks return early below, only a real change
@@ -699,6 +717,8 @@ public class MainActivity extends Activity {
         mainGridPlaying = AudioService.livePlaying; // v15.33 (slice 1838)
         refreshFavShelf(); // v13.74: shelf recolour on theme return
         refreshRecentRail(); // v15.43 (slice 1930): rail follows the shelf funnel
+        refreshDlRecentRail(); // v15.49 (slice 1960): downloaded rail follows the shelf funnel
+        refreshBmRail(); // v15.49 (slice 1962): bookmarks rail follows the shelf funnel
         refreshFavNewRow(); // v15.44 (slice 1934): fav-new row follows the shelf funnel
     }
 
@@ -867,6 +887,7 @@ public class MainActivity extends Activity {
                 mainDlCompleteReceiver = new android.content.BroadcastReceiver() {
                     @Override public void onReceive(android.content.Context c, android.content.Intent in) {
                         pruneMainQueuedAndRefreshCard1020(); // v10.20: Main prune leg
+                        refreshDlRecentRail(); // v15.49 (slice 1960): a landing moves the rail at once
                         // v12.35: a FAILED job used to die silently on
                         // this screen — the last receiver without the
                         // failed-download toast (Talks v12.29, Room +
@@ -2251,6 +2272,8 @@ public class MainActivity extends Activity {
                         // only a real change re-pours the chips).
                         refreshFavShelf();
                         refreshRecentRail(); // v15.43 (slice 1930): sounding flip moves the rail too
+                        refreshDlRecentRail(); // v15.49 (slice 1960): sounding flip moves the downloaded rail too
+                        refreshBmRail(); // v15.49 (slice 1962): sounding flip moves the bookmarks rail too
                         refreshFavNewRow(); // v15.44 (slice 1934): sounding flip moves the fav-new row too
                     }
                     // v15.36 (slice 1851): the shelf chip ring breath's
@@ -3041,6 +3064,12 @@ public class MainActivity extends Activity {
         recentRailWrap = findViewById(R.id.recentRailWrap);
         recentRail = findViewById(R.id.recentRail);
         recentRailLabel = findViewById(R.id.recentRailLabel);
+        dlRecentRailWrap = findViewById(R.id.dlRecentRailWrap);
+        dlRecentRail = findViewById(R.id.dlRecentRail);
+        dlRecentRailLabel = findViewById(R.id.dlRecentRailLabel);
+        bmRailWrap = findViewById(R.id.bmRailWrap);
+        bmRail = findViewById(R.id.bmRail);
+        bmRailLabel = findViewById(R.id.bmRailLabel);
         favNewRow = findViewById(R.id.favNewRow);
         favNewRowCount = findViewById(R.id.favNewRowCount);
         recentSearchWrap = findViewById(R.id.recentSearchWrap);
@@ -3128,6 +3157,8 @@ public class MainActivity extends Activity {
                     } else { refreshGridNewDots(); adapter.notifyDataSetChanged(); }
                 refreshFavShelf(); // v13.74: star/unstar re-pours the shelf
                 refreshRecentRail(); // v15.43 (slice 1930): rail follows the shelf funnel
+                refreshDlRecentRail(); // v15.49 (slice 1960): downloaded rail follows the shelf funnel
+                refreshBmRail(); // v15.49 (slice 1962): bookmarks rail follows the shelf funnel
                 refreshFavNewRow(); // v15.44 (slice 1934): fav-new row follows the shelf funnel
                 return true;
             }
@@ -5113,6 +5144,334 @@ public class MainActivity extends Activity {
         }
     }
 
+    // v15.49 (slice 1960): "Recently downloaded" rail — the newest
+    // finished downloads, as tappable cards below the played rail
+    // (the library's own latest-download-first order: file
+    // lastModified desc, dlSortMode 0). Until this slice the home
+    // screen showed only the recently PLAYED rail (1930); a batch
+    // downloaded for offline listening — before a trip, on Wi-Fi —
+    // was reachable only through the Downloaded screen. The pick
+    // is DlRecentRail's (finished .mp3 only, dlMap-claimed so the
+    // Room can open it by stream URL, catalog sayadaw for the
+    // photo, not still queued, not the sounding talk); the cards
+    // are the 1930 card shape, the tap is openRecentTalk1930, so
+    // the Room plays the downloaded file (v1.57) and resumes from
+    // the saved spot. Rides the shelf funnel beside
+    // refreshRecentRail, plus the download-complete receiver (a
+    // landing while Main is foreground moves the rail at once);
+    // hides while searching/filtering and while nothing is
+    // downloaded yet, like the played rail.
+    private void refreshDlRecentRail() {
+        if (dlRecentRailWrap == null || dlRecentRail == null) return;
+        boolean show = query != null && query.length() == 0 && !favOnly && !newOnly && all != null;
+        java.util.List<Prefs.HistEntry> picked =
+                new java.util.ArrayList<Prefs.HistEntry>();
+        if (show) {
+            java.util.Set<String> names = new java.util.HashSet<String>();
+            for (Sayadaw s : all) if (s != null && s.name != null) names.add(s.name);
+            String sounding = (AudioService.liveSession && AudioService.liveHasTrack)
+                    ? AudioService.liveUrl : null;
+            picked = DlRecentRail.pick(scanDlRecentFiles1960(), readDlMap1960(),
+                    readDlSayadaw1960(), readDlQueued1960(), names, sounding);
+        }
+        StringBuilder kb = new StringBuilder();
+        kb.append(cachedNight ? "N" : "D");
+        for (Prefs.HistEntry e : picked) kb.append('|').append(SiteHttp.identityUrl(e.url));
+        String key = kb.toString();
+        if (picked.isEmpty()) {
+            if (dlRecentRailWrap.getVisibility() != android.view.View.GONE)
+                Fx.fadeOut(dlRecentRailWrap, 200);
+            lastDlRecentRailKey = null;
+            return;
+        }
+        if (key.equals(lastDlRecentRailKey)
+                && dlRecentRailWrap.getVisibility() == android.view.View.VISIBLE) return;
+        dlRecentRail.removeAllViews();
+        float d = getResources().getDisplayMetrics().density;
+        int added = 0;
+        for (final Prefs.HistEntry e : picked) {
+            final Sayadaw s = sayadawByName1930(e.sayadaw);
+            if (s == null) continue;
+            android.widget.LinearLayout card = new android.widget.LinearLayout(this);
+            card.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+            card.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            card.setBackgroundResource(R.drawable.nav_glass);
+            int pad = (int) (10 * d);
+            card.setPadding(pad, (int) (8 * d), pad, (int) (8 * d));
+            android.widget.LinearLayout.LayoutParams cp =
+                    new android.widget.LinearLayout.LayoutParams((int) (220 * d),
+                            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+            cp.setMargins(0, 0, (int) (8 * d), 0);
+            card.setLayoutParams(cp);
+            CircleImageView photo = new CircleImageView(this);
+            int px = (int) (44 * d);
+            android.widget.LinearLayout.LayoutParams pp =
+                    new android.widget.LinearLayout.LayoutParams(px, px);
+            pp.setMargins(0, 0, (int) (8 * d), 0);
+            photo.setLayoutParams(pp);
+            photo.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+            ImageLoader.load(this, s.photo, s.name, photo);
+            card.addView(photo);
+            android.widget.LinearLayout col = new android.widget.LinearLayout(this);
+            col.setOrientation(android.widget.LinearLayout.VERTICAL);
+            col.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            android.widget.TextView name = new android.widget.TextView(this);
+            name.setText(s.name);
+            name.setTextColor(cachedNight ? android.graphics.Color.WHITE
+                    : android.graphics.Color.parseColor("#3B2314"));
+            name.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13);
+            name.setTypeface(null, android.graphics.Typeface.BOLD);
+            name.setMaxLines(1);
+            name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            col.addView(name);
+            android.widget.TextView title = new android.widget.TextView(this);
+            title.setText(e.title);
+            title.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
+            title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
+            title.setMaxLines(1);
+            title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            col.addView(title);
+            card.addView(col);
+            Fx.press(card);
+            card.setOnClickListener(new android.view.View.OnClickListener() {
+                @Override public void onClick(android.view.View v) {
+                    openRecentTalk1930(s, e, v);
+                }
+            });
+            dlRecentRail.addView(card);
+            added++;
+        }
+        if (added == 0) {
+            if (dlRecentRailWrap.getVisibility() != android.view.View.GONE)
+                Fx.fadeOut(dlRecentRailWrap, 200);
+            lastDlRecentRailKey = null;
+            return;
+        }
+        lastDlRecentRailKey = key;
+        if (dlRecentRailLabel != null)
+            dlRecentRailLabel.setText("\u21BA " + Lang.t(MainActivity.this, "hs_dl_recent"));
+        if (dlRecentRailWrap.getVisibility() != android.view.View.VISIBLE) {
+            dlRecentRailWrap.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(dlRecentRailWrap, 250);
+        } else if (dlRecentRailWrap.getAlpha() < 0.999f) {
+            Fx.fadeIn(dlRecentRailWrap, 250);
+        }
+    }
+
+    // v15.49 (slice 1962): "Bookmarks" rail — the listener's
+    // bookmarked talks as tappable cards below the downloaded rail
+    // (1960), one tap back into the Room at the marked minute. The
+    // pick is BmRail's (bookmarks64 most-recent-first, joined to
+    // statsRecent for title + sayadaw, catalog sayadaw for the
+    // photo, one card per talk showing its latest mark, not the
+    // sounding talk); the cards are the 1930 card shape with the
+    // mark time first ("12:34 · title", so the time never
+    // truncates), the tap is openBmTalk1962, which writes the mark
+    // as the talk's resume spot (talkPosPutBoth) and opens the Room
+    // through openRecentTalk1930 — the Room resumes from the saved
+    // spot (v1.56 re-entry), so the tap lands on the mark. Rides
+    // the shelf funnel beside refreshRecentRail /
+    // refreshDlRecentRail (a mark is added in the Room, never on
+    // Main, so the return-to-Main refresh is the update path; no
+    // download-receiver call — downloads never change marks);
+    // hides while searching/filtering and while no mark resolves.
+    private void refreshBmRail() {
+        if (bmRailWrap == null || bmRail == null) return;
+        boolean show = query != null && query.length() == 0 && !favOnly && !newOnly && all != null;
+        java.util.List<BmRail.Card> picked =
+                new java.util.ArrayList<BmRail.Card>();
+        if (show) {
+            java.util.Set<String> names = new java.util.HashSet<String>();
+            for (Sayadaw s : all) if (s != null && s.name != null) names.add(s.name);
+            String sounding = (AudioService.liveSession && AudioService.liveHasTrack)
+                    ? AudioService.liveUrl : null;
+            picked = BmRail.pick(readBookmarks1962(), Prefs.statsRecent(this), names, sounding);
+        }
+        StringBuilder kb = new StringBuilder();
+        kb.append(cachedNight ? "N" : "D");
+        for (BmRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(c.posMs);
+        String key = kb.toString();
+        if (picked.isEmpty()) {
+            if (bmRailWrap.getVisibility() != android.view.View.GONE)
+                Fx.fadeOut(bmRailWrap, 200);
+            lastBmRailKey = null;
+            return;
+        }
+        if (key.equals(lastBmRailKey)
+                && bmRailWrap.getVisibility() == android.view.View.VISIBLE) return;
+        bmRail.removeAllViews();
+        float d = getResources().getDisplayMetrics().density;
+        int added = 0;
+        for (final BmRail.Card c : picked) {
+            final Sayadaw s = sayadawByName1930(c.e.sayadaw);
+            if (s == null) continue;
+            android.widget.LinearLayout card = new android.widget.LinearLayout(this);
+            card.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+            card.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            card.setBackgroundResource(R.drawable.nav_glass);
+            int pad = (int) (10 * d);
+            card.setPadding(pad, (int) (8 * d), pad, (int) (8 * d));
+            android.widget.LinearLayout.LayoutParams cp =
+                    new android.widget.LinearLayout.LayoutParams((int) (220 * d),
+                            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+            cp.setMargins(0, 0, (int) (8 * d), 0);
+            card.setLayoutParams(cp);
+            CircleImageView photo = new CircleImageView(this);
+            int px = (int) (44 * d);
+            android.widget.LinearLayout.LayoutParams pp =
+                    new android.widget.LinearLayout.LayoutParams(px, px);
+            pp.setMargins(0, 0, (int) (8 * d), 0);
+            photo.setLayoutParams(pp);
+            photo.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+            ImageLoader.load(this, s.photo, s.name, photo);
+            card.addView(photo);
+            android.widget.LinearLayout col = new android.widget.LinearLayout(this);
+            col.setOrientation(android.widget.LinearLayout.VERTICAL);
+            col.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            android.widget.TextView name = new android.widget.TextView(this);
+            name.setText(s.name);
+            name.setTextColor(cachedNight ? android.graphics.Color.WHITE
+                    : android.graphics.Color.parseColor("#3B2314"));
+            name.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13);
+            name.setTypeface(null, android.graphics.Typeface.BOLD);
+            name.setMaxLines(1);
+            name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            col.addView(name);
+            android.widget.TextView title = new android.widget.TextView(this);
+            title.setText(BmRail.fmtTime(c.posMs) + " · " + c.e.title);
+            title.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
+            title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
+            title.setMaxLines(1);
+            title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            col.addView(title);
+            card.addView(col);
+            Fx.press(card);
+            card.setOnClickListener(new android.view.View.OnClickListener() {
+                @Override public void onClick(android.view.View v) {
+                    openBmTalk1962(s, c, v);
+                }
+            });
+            bmRail.addView(card);
+            added++;
+        }
+        if (added == 0) {
+            if (bmRailWrap.getVisibility() != android.view.View.GONE)
+                Fx.fadeOut(bmRailWrap, 200);
+            lastBmRailKey = null;
+            return;
+        }
+        lastBmRailKey = key;
+        if (bmRailLabel != null)
+            bmRailLabel.setText(Lang.t(MainActivity.this, "bm_list"));
+        if (bmRailWrap.getVisibility() != android.view.View.VISIBLE) {
+            bmRailWrap.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(bmRailWrap, 250);
+        } else if (bmRailWrap.getAlpha() < 0.999f) {
+            Fx.fadeIn(bmRailWrap, 250);
+        }
+    }
+
+    // v15.49 (slice 1962): raw bookmarks64 lines for the rail —
+    // the store's own most-recent-first order; all parsing lives
+    // in BmRail.pick. Fail closed to an empty list — a torn write
+    // is an empty rail for one pass, never a crash.
+    private java.util.List<String> readBookmarks1962() {
+        java.util.List<String> out = new java.util.ArrayList<String>();
+        try {
+            String raw = getSharedPreferences("dhamma", MODE_PRIVATE).getString("bookmarks64", "");
+            if (raw != null && raw.length() > 0) {
+                for (String line : raw.split("\n")) if (line.length() > 0) out.add(line);
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    // v15.49 (slice 1962): bookmarks-rail tap — the mark becomes
+    // the talk's resume spot (talkPosPutBoth, both forms) and the
+    // Room opens through openRecentTalk1930, which resumes from
+    // the saved spot (v1.56 re-entry), so the tap lands on the
+    // mark. The 700ms guard is peeked, not set, before the write,
+    // so a guard-blocked double-tap writes nothing and an invalid
+    // tap never consumes the window (the 1930 rule).
+    private void openBmTalk1962(final Sayadaw s, final BmRail.Card c,
+            android.view.View v) {
+        if (s == null || c == null || c.e == null) return;
+        long now = android.os.SystemClock.uptimeMillis();
+        if (now - lastRailTapMs < 700) return;
+        Prefs.talkPosPutBoth(this, c.e.url, c.posMs);
+        openRecentTalk1930(s, c.e, v);
+    }
+
+    // v15.49 (slice 1960): the Downloads/Dhamma shelf scan for the
+    // downloaded rail — the library's own file set. The in-progress
+    // exclusion is the dlQueued gate in DlRecentRail.pick, not a
+    // DownloadManager query here, so this stays cheap enough for
+    // the filter-run funnel. Fail closed to an empty list — a
+    // missing folder is an empty rail, never a crash.
+    private java.util.List<DlRecentRail.FileRow> scanDlRecentFiles1960() {
+        java.util.List<DlRecentRail.FileRow> out =
+                new java.util.ArrayList<DlRecentRail.FileRow>();
+        try {
+            java.io.File dir = new java.io.File(
+                    android.os.Environment.getExternalStoragePublicDirectory(
+                            android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+            java.io.File[] files = dir.isDirectory() ? dir.listFiles() : null;
+            if (files == null) return out;
+            for (java.io.File f : files) {
+                if (f == null || !f.isFile()) continue;
+                out.add(new DlRecentRail.FileRow(f.getName(), f.lastModified(), f.length()));
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    // v15.49 (slice 1960): dumb prefs readers for the downloaded
+    // rail — raw structures, all canonicalisation lives in
+    // DlRecentRail.pick. Fail closed to empty on any bad JSON (a
+    // torn write is an empty rail for one pass, never a crash).
+    private java.util.Map<String, String> readDlMap1960() {
+        java.util.Map<String, String> out = new java.util.HashMap<String, String>();
+        try {
+            org.json.JSONObject map = new org.json.JSONObject(
+                    getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlMap", "{}"));
+            java.util.Iterator<String> keys = map.keys();
+            while (keys.hasNext()) {
+                String u = keys.next();
+                if (u != null) out.put(u, map.optString(u, ""));
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    private java.util.Map<String, String> readDlSayadaw1960() {
+        java.util.Map<String, String> out = new java.util.HashMap<String, String>();
+        try {
+            org.json.JSONObject map = new org.json.JSONObject(
+                    getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlSayadaw", "{}"));
+            java.util.Iterator<String> keys = map.keys();
+            while (keys.hasNext()) {
+                String u = keys.next();
+                if (u != null) out.put(u, map.optString(u, ""));
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    private java.util.Set<String> readDlQueued1960() {
+        java.util.Set<String> out = new java.util.HashSet<String>();
+        try {
+            org.json.JSONArray arr = new org.json.JSONArray(
+                    getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlQueued", "[]"));
+            for (int i = 0; i < arr.length(); i++) {
+                String u = arr.optString(i);
+                if (u != null && u.length() > 0) out.add(u);
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
     // v15.43 (slice 1930): exact-name catalog lookup for a rail
     // entry — the 1925 drawer resolver's rule (exact match, no
     // fuzzy fallback): a renamed sayadaw simply has no card.
@@ -5761,6 +6120,8 @@ public class MainActivity extends Activity {
         if (setChanged) postGridSetGlide(gridTops);
         refreshFavShelf(); // v13.74: shelf follows every filter run
         refreshRecentRail(); // v15.43 (slice 1930): rail follows the shelf funnel
+        refreshDlRecentRail(); // v15.49 (slice 1960): downloaded rail follows the shelf funnel
+        refreshBmRail(); // v15.49 (slice 1962): bookmarks rail follows the shelf funnel
         refreshFavNewRow(); // v15.44 (slice 1934): fav-new row follows the shelf funnel
         if (allowToast && setChanged && gridView != null && gridView.getFirstVisiblePosition() > 0)
             gridView.setSelection(0);

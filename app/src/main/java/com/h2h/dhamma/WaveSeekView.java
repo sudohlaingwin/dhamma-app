@@ -31,6 +31,15 @@ public class WaveSeekView extends View {
         // discards the preview and restores the live position,
         // never seeking. The only implementer is RoomActivity.
         void onCancelTrackingTouch(WaveSeekView v);
+        // v15.49 (slice 1963): the wave long-press — the finger
+        // held still past the long-press timeout at a minute of
+        // the talk. The view already cancelled the drag through
+        // onCancelTrackingTouch (bar + clocks restored from the
+        // live service, no seek committed), so this callback only
+        // marks the pressed minute; the Room's onBookmarkAddAt
+        // owns the guard, the write and the toast. The only
+        // implementer is RoomActivity.
+        void onWaveLongPress(WaveSeekView v, int ms);
     }
 
     private static final int BARS = 56;
@@ -100,6 +109,42 @@ public class WaveSeekView extends View {
     // The DOWN pointer's id is tracked now; other fingers are
     // ignored, and lifting the tracked finger ends the drag.
     private int activePointerId = -1;
+    // v15.49 (slice 1963): wave long-press state — the finger's
+    // DOWN point and the minute it names, the touch-slop arm,
+    // and whether the hold already fired. The fire Runnable
+    // cancels the drag through onCancelTrackingTouch (the v7.99
+    // path — bar + clocks restored from the live service, no
+    // seek, no settle hold) and then marks the pressed minute
+    // through onWaveLongPress; the lift afterwards commits
+    // nothing because dragging is already false. A MOVE past
+    // touch slop kills the arm (a scrub, not a hold); UP /
+    // POINTER_UP / CANCEL / detach disarm it. Armed only while
+    // a listener is set and the bar has a range — a long-press
+    // on a range-less bar has no minute to mark.
+    private boolean longPressArmed = false;
+    private boolean longPressFired = false;
+    private float longPressDownX;
+    private float longPressDownY;
+    private int longPressSlop;
+    private int longPressMs = -1;
+    private final Runnable longPressFire = new Runnable() {
+        @Override public void run() {
+            if (!dragging || longPressFired) return;
+            longPressFired = true;
+            longPressArmed = false;
+            cancelPinGlide();
+            snappedBookmarkMs = -1;
+            animateSwell(1f, 200);
+            animateReadout(0f, 200);
+            performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+            dragging = false;
+            activePointerId = -1;
+            if (listener != null) {
+                listener.onCancelTrackingTouch(WaveSeekView.this);
+                listener.onWaveLongPress(WaveSeekView.this, longPressMs);
+            }
+        }
+    };
     private OnWaveSeekListener listener;
     // v2.52: living wave — the v2.50 wave seek used to sit frozen
     // while a talk played (only its gold progress crept forward),
@@ -534,6 +579,12 @@ public class WaveSeekView extends View {
     }
     @Override protected void onDetachedFromWindow() {
         removeCallbacks(waveTick);
+        // v15.49 (slice 1963): no off-screen long-press — a
+        // detach mid-hold must not strand the arm or fire the
+        // mark after the window is gone.
+        removeCallbacks(longPressFire);
+        longPressArmed = false;
+        longPressFired = false;
         // v11.80: a detach mid-drag must not strand the drag state
         // — the old code left dragging true, so a re-attached
         // instance (same view, new window) kept drawing the stale
@@ -1109,6 +1160,23 @@ public class WaveSeekView extends View {
                 }
                 if (snappedBookmarkMs >= 0) startPinGlide(snappedBookmarkMs);
                 else scrubTo(downX);
+                // v15.49 (slice 1963): arm the wave long-press —
+                // the minute under the finger (the snapped pin's
+                // minute when the DOWN landed on a pin, else the
+                // x -> ms fraction). A still finger past the
+                // long-press timeout marks it; any MOVE past
+                // touch slop disarms (a scrub, not a hold).
+                longPressFired = false;
+                longPressArmed = false;
+                if (max > 0 && listener != null) {
+                    longPressDownX = e.getX();
+                    longPressDownY = e.getY();
+                    longPressSlop = android.view.ViewConfiguration.get(getContext()).getScaledTouchSlop();
+                    longPressMs = snappedBookmarkMs >= 0 ? snappedBookmarkMs
+                            : WaveLongPress.msForX(e.getX(), getWidth(), max);
+                    longPressArmed = true;
+                    postDelayed(longPressFire, android.view.ViewConfiguration.getLongPressTimeout());
+                }
                 return true;
             case MotionEvent.ACTION_MOVE:
                 // v11.80: read the tracked finger, not index 0 —
@@ -1122,8 +1190,23 @@ public class WaveSeekView extends View {
                 snappedBookmarkMs = -1; // v12.64: a drag away from the pin is a scrub, not a bookmark tap
                 cancelPinGlide(); // v15.36 (slice 1852): the finger owns the bar from here
                 scrubTo(e.getX(moveIdx));
+                // v15.49 (slice 1963): a MOVE past touch slop is a
+                // scrub, not a hold — the pending long-press dies
+                // (the MOVE already cleared the pin snap above).
+                if (longPressArmed && WaveLongPress.movedBeyondSlop(
+                        e.getX(moveIdx) - longPressDownX, e.getY(moveIdx) - longPressDownY, longPressSlop)) {
+                    removeCallbacks(longPressFire);
+                    longPressArmed = false;
+                }
                 return true;
             case MotionEvent.ACTION_UP:
+                // v15.49 (slice 1963): the lift disarms the
+                // long-press; a fired hold already cleared
+                // dragging, so this UP commits no seek (the
+                // wasDragging guard below stays false).
+                removeCallbacks(longPressFire);
+                longPressArmed = false;
+                longPressFired = false;
                 // v11.91: the listener fires only while a drag is
                 // still open — a two-finger lift used to commit the
                 // same scrub twice: the tracked finger's
@@ -1149,6 +1232,14 @@ public class WaveSeekView extends View {
                 if (wasDragging && listener != null) listener.onStopTrackingTouch(this);
                 return true;
             case MotionEvent.ACTION_POINTER_UP:
+                // v15.49 (slice 1963): a lifting finger disarms
+                // the long-press; a fired hold already cleared
+                // dragging and the pointer id, so the early return
+                // below (tracked finger gone) or the lift path
+                // can never commit a seek after it.
+                removeCallbacks(longPressFire);
+                longPressArmed = false;
+                longPressFired = false;
                 // v11.80: lifting the tracked finger ends the drag
                 // exactly like a lift (commits at the finger's last
                 // scrub); lifting any other finger is ignored, so
@@ -1163,6 +1254,13 @@ public class WaveSeekView extends View {
                 if (listener != null) listener.onStopTrackingTouch(this);
                 return true;
             case MotionEvent.ACTION_CANCEL:
+                // v15.49 (slice 1963): a cancelled hold disarms
+                // the long-press; a fired hold already cleared
+                // dragging, so the cancel below cannot double-fire
+                // the Room's cancel path.
+                removeCallbacks(longPressFire);
+                longPressArmed = false;
+                longPressFired = false;
                 // v7.99: cancelled, not released — see the
                 // onCancelTrackingTouch contract above. Swell and
                 // readout still settle exactly like a lift, but

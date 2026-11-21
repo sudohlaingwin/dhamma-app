@@ -615,6 +615,72 @@ public class SettingsActivity extends Activity {
                 catch (Exception e) { android.widget.Toast.makeText(SettingsActivity.this, Lang.t(SettingsActivity.this, "open_failed"), android.widget.Toast.LENGTH_SHORT).show(); }
             }
         });
+        // v15.49 (slice 1959): Data -> "Restore my lists" row — the
+        // import twin of the backup row above: one tap reads the
+        // clipboard, and when it holds a backup text (the one-line
+        // JSON ListBackup.build writes) merges those lists back
+        // into the phone — favourite sayadaws, favourite talks,
+        // listened talks, recent searches — so a list copied out
+        // before clearing, or saved to Drive / notes / mail, comes
+        // back on this phone or a new one. Nothing is uploaded
+        // anywhere; the text is read only from the clipboard the
+        // listener filled, in the foreground, on their own tap.
+        // The merge is a union (existing lists keep everything
+        // they hold); searches append after the phone's own,
+        // deduped and capped at 5 by RecentSearches.save. An empty
+        // clipboard or an empty backup refuses with the
+        // restore_nothing word; clipboard text that is not a backup
+        // refuses with the restore_bad word; a good backup toasts
+        // restore_done. No new screen, no new dialog.
+        android.view.View rowRestore = findViewById(R.id.rowRestore);
+        if (rowRestore != null) rowRestore.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.morph(v);
+                android.content.ClipboardManager cm59 = (android.content.ClipboardManager) getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+                android.content.ClipData clip59 = cm59 == null ? null : cm59.getPrimaryClip();
+                CharSequence clipText59 = null;
+                if (clip59 != null && clip59.getItemCount() > 0) {
+                    android.content.ClipData.Item item59 = clip59.getItemAt(0);
+                    clipText59 = item59.getText();
+                    if (clipText59 == null) clipText59 = item59.coerceToText(SettingsActivity.this);
+                }
+                if (clipText59 == null || clipText59.toString().trim().length() == 0) {
+                    android.widget.Toast.makeText(SettingsActivity.this, Lang.t(SettingsActivity.this, "restore_nothing"), android.widget.Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                ListRestore.Parsed parsed59 = ListRestore.parse(clipText59.toString());
+                if (parsed59 == null) {
+                    android.widget.Toast.makeText(SettingsActivity.this, Lang.t(SettingsActivity.this, "restore_bad"), android.widget.Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                if (ListRestore.isEmpty(parsed59)) {
+                    android.widget.Toast.makeText(SettingsActivity.this, Lang.t(SettingsActivity.this, "restore_nothing"), android.widget.Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                android.content.SharedPreferences pp59 = getSharedPreferences("dhamma", MODE_PRIVATE);
+                java.util.Set<String> favs59 = new java.util.HashSet<String>();
+                java.util.Set<String> cur59 = pp59.getStringSet("favs", null);
+                if (cur59 != null) favs59.addAll(cur59);
+                favs59.addAll(parsed59.favs);
+                java.util.Set<String> favTalks59 = new java.util.HashSet<String>();
+                cur59 = pp59.getStringSet("favTalks", null);
+                if (cur59 != null) favTalks59.addAll(cur59);
+                favTalks59.addAll(parsed59.favTalks);
+                java.util.Set<String> played59 = new java.util.HashSet<String>();
+                cur59 = pp59.getStringSet("playedTalks", null);
+                if (cur59 != null) played59.addAll(cur59);
+                played59.addAll(parsed59.played);
+                android.content.SharedPreferences.Editor ed59 = pp59.edit();
+                ed59.putStringSet("favs", favs59);
+                ed59.putStringSet("favTalks", favTalks59);
+                ed59.putStringSet("playedTalks", played59);
+                ed59.apply();
+                java.util.List<String> merged59 = new java.util.ArrayList<String>(Prefs.recentSearches(SettingsActivity.this));
+                for (String q59 : parsed59.searches) if (!merged59.contains(q59)) merged59.add(q59);
+                Prefs.setRecentSearches(SettingsActivity.this, merged59);
+                android.widget.Toast.makeText(SettingsActivity.this, Lang.t(SettingsActivity.this, "restore_done"), android.widget.Toast.LENGTH_SHORT).show();
+            }
+        });
         // v1.36: the downloaded library lost its main-screen button in the
         // v1.25 minimal-main redesign, so it opens from Settings now
         android.view.View rowDownloaded = findViewById(R.id.rowDownloaded);
@@ -1189,7 +1255,7 @@ android.view.View settingsStripPrev = findViewById(R.id.nowStripPrev);
                 R.id.btnNoti, R.id.btnAutoplay, R.id.rowRepeat, R.id.btnShuffle, R.id.btnBackground,
                 R.id.btnKeepScreen, R.id.btnThemeAuto, R.id.rowSleep,
                 R.id.btnFx, R.id.btnDataSaver, R.id.btnAutoDl, R.id.autoDlCheckNow,
-                R.id.rowDownloaded, R.id.rowClearData, R.id.rowBackup, R.id.btnResetAll, R.id.rowTeam, R.id.rowPolicy}) {
+                R.id.rowDownloaded, R.id.rowClearData, R.id.rowBackup, R.id.rowRestore, R.id.btnResetAll, R.id.rowTeam, R.id.rowPolicy}) {
             View b = findViewById(id);
             if (b != null) Fx.press(b);
         }
@@ -3982,6 +4048,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         setLabelText(R.id.secAbout, "sec_about");
         setLabelText(R.id.lblClearData, "clear_data");
         setLabelText(R.id.lblBackup, "data_backup_lists"); // v15.48 (slice 1957)
+        setLabelText(R.id.lblRestore, "data_restore_lists"); // v15.49 (slice 1959)
         setLabelText(R.id.lblVersion, "version");
         if (fontValue != null) { fontValue.setText(fs == 0 ? Lang.t(this, "font_small") : fs == 1 ? Lang.t(this, "font_normal") : Lang.t(this, "font_large")); fontValue.setTextColor(muted); fontValue.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn); }
         if (langValue != null) { langValue.setText(Lang.NAMES[Lang.index(this)]); langValue.setTextColor(muted); langValue.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn); }
