@@ -1420,6 +1420,134 @@ public class Fx {
         v.setTextColor(color);
     }
 
+    // v15.38 (slice 1894): the filter-chip weight flip melts instead
+    // of snapping — the last snap in the filter-chip transition on
+    // the Talks chooser (All/Star/New/Downloaded) and the Library
+    // (All/Star/New): the chip colours already melt on tap (v14.39 /
+    // v14.40, 250ms crossfadeTextColor) but the selected chip's
+    // BOLD/NORMAL flip swapped in one frame, so the label jumped
+    // weight (and a few px of width, shifting its neighbours) while
+    // the colour beside it melted. The weight IS the selection state
+    // — the v14.39/v14.40 comments already say so — and the melt
+    // carries the transition now: the label dips 90ms, swaps weight
+    // at the bottom, and rises 180ms (the flipStripGlyph / 1884
+    // sleep-text rhythm, Decelerate), landing inside the same
+    // ~250ms window as the colour melt beside it. A typeface has no
+    // interpolator, so the dip masks the swap the way the sleep
+    // text's dip masks its text swap. Same WeakHashMap discipline
+    // as crossfadeTextColor: a recorded target per view makes a
+    // repeat paint a no-op (the tap handler and the apply tail
+    // repaint the chips on every pass), a mid-melt re-target
+    // cancels the in-flight dip/rise and melts from the alpha the
+    // view actually has, and a stale phase end never swaps the
+    // weight or stamps the alpha (the map entry is removed BEFORE
+    // the cancel, the v14.42 order — a cancelled ValueAnimator
+    // still fires its end listener). The melt owns the chip's alpha
+    // only while it runs: it starts only on a visible chip, and the
+    // instant writer below is the only other alpha writer on these
+    // chips (verified first-hand: no other setAlpha/animate call
+    // touches any of the seven chips), so the dip can never fight
+    // the theme dip (which dips the root, never the chip) or a press
+    // squash (scale, never alpha). Text, size and colour are
+    // untouched — the colour melt lives on textColor, a different
+    // property, and the two run side by side on every tap.
+    private static java.util.WeakHashMap<View, Boolean> chipWeightTarget =
+            new java.util.WeakHashMap<View, Boolean>();
+    private static java.util.WeakHashMap<View, android.animation.ValueAnimator> chipWeightAnim =
+            new java.util.WeakHashMap<View, android.animation.ValueAnimator>();
+    public static void meltChipWeight(final android.widget.TextView v, final boolean bold) {
+        if (v == null) return;
+        Boolean cur = chipWeightTarget.get(v);
+        if (cur != null && cur.booleanValue() == bold) return;
+        // A fresh chip seeds instantly — the first paint is the
+        // animate=false creation path anyway, and there is no
+        // previous weight to melt from.
+        if (cur == null) { setChipWeightNow(v, bold); return; }
+        chipWeightTarget.put(v, Boolean.valueOf(bold));
+        android.animation.ValueAnimator old = chipWeightAnim.remove(v);
+        if (old != null) old.cancel();
+        // Only a visible chip melts — a hidden one stamps instantly
+        // instead, so the dip can never strand a label the user
+        // cannot see. No settled-alpha guard: the chip's alpha has
+        // no foreign writer (see the header), so a mid-melt
+        // re-target simply melts from the alpha the view actually
+        // has, like crossfadeTitleDim — it never jumps.
+        if (v.getVisibility() != View.VISIBLE) { setChipWeightNow(v, bold); return; }
+        float from = v.getAlpha();
+        if (from <= 0.36f) {
+            // Already at the dip floor (a re-target landing on a
+            // deep dip) — swap at once and rise from here instead
+            // of dipping further.
+            v.setTypeface(null, bold ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+            riseChipWeight(v, bold);
+            return;
+        }
+        final android.animation.ValueAnimator dip =
+                android.animation.ValueAnimator.ofFloat(from, 0.35f);
+        dip.setDuration(90);
+        dip.setInterpolator(new DecelerateInterpolator());
+        chipWeightAnim.put(v, dip);
+        dip.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                v.setAlpha(((Float) a.getAnimatedValue()).floatValue());
+            }
+        });
+        dip.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                // cancel() fires onAnimationEnd too: only the
+                // still-current dip may swap the weight — a
+                // superseded one must never paint its stale weight
+                // over a newer melt.
+                if (chipWeightAnim.get(v) != dip) return;
+                v.setTypeface(null, bold ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+                riseChipWeight(v, bold);
+            }
+        });
+        dip.start();
+    }
+    private static void riseChipWeight(final android.widget.TextView v, final boolean bold) {
+        float from = v.getAlpha();
+        final android.animation.ValueAnimator rise =
+                android.animation.ValueAnimator.ofFloat(from, 1.0f);
+        rise.setDuration(180);
+        rise.setInterpolator(new DecelerateInterpolator());
+        chipWeightAnim.put(v, rise);
+        rise.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                v.setAlpha(((Float) a.getAnimatedValue()).floatValue());
+            }
+        });
+        rise.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                if (chipWeightAnim.get(v) == rise) {
+                    v.setAlpha(1.0f);
+                    chipWeightAnim.remove(v);
+                }
+            }
+        });
+        rise.start();
+    }
+
+    // v15.38 (slice 1894): the instant writer for a chip whose
+    // weight meltChipWeight owns — create / theme / language /
+    // rotation / clearFilter repaints must land instantly, and a
+    // bare setTypeface there would desync the helper's recorded
+    // target (map says BOLD while the view is NORMAL, so a later
+    // melt to BOLD no-ops and the chip strands unbolded while
+    // selected). This stamps the weight at once AND records it as
+    // the target, cancelling any in-flight melt first, and restores
+    // alpha 1.0 so a melt cut short mid-dip can never strand the
+    // label half-transparent. Same discipline as setTextColorNow
+    // (v14.39).
+    public static void setChipWeightNow(final android.widget.TextView v, final boolean bold) {
+        if (v == null) return;
+        chipWeightTarget.put(v, Boolean.valueOf(bold));
+        android.animation.ValueAnimator old = chipWeightAnim.remove(v);
+        if (old != null) old.cancel();
+        v.setTypeface(null, bold ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+        v.setAlpha(1.0f);
+    }
+
     // v15.37 (slice 1882): the sounding ring breath now eases out on
     // stop — the last snap in the ring family. All seven ring breaths
     // (chooser header 1845, Room header 1846, Main/Talks/Settings/
@@ -1495,10 +1623,16 @@ public class Fx {
     // animator and melts from the alpha the view actually has; the
     // end stamps the exact target only while its animator is still
     // current (the v14.42 cancel-then-end order, map entry removed
-    // BEFORE the cancel). The Room drawer rows keep their bare
-    // setAlpha — their comments record the dim as staying instant
-    // per the v14.16 settled decision, and this helper never
-    // touches them.
+    // BEFORE the cancel). v15.38 (slice 1888): the Room drawer rows
+    // melt through this helper too now — the v14.16 decision, read
+    // through its own reason (fading a label to ease a mark), never
+    // barred the dim itself, and the drawer was left instant in
+    // 1861 only because its bind stamped alpha 1.0 unconditionally
+    // before the dim line, which would restart a melt on every
+    // rebind. Those stamps are gone (RoomActivity: the foreign top
+    // reset, the pulse-recycle stamp, the v3.46 hygiene stamp); the
+    // dim line is the drawer's title-alpha sole writer, and the Up
+    // Next ▸ row goes through setTitleDimNow below.
     private static java.util.WeakHashMap<View, Float> titleDimTarget =
             new java.util.WeakHashMap<View, Float>();
     private static java.util.WeakHashMap<View, android.animation.ValueAnimator> titleDimAnim =
@@ -2620,6 +2754,27 @@ public class Fx {
     // The resume-strip one-shot writes stay instant — static setup
     // while the strip itself slides in; the live tick takes over
     // the moment a session is live.
+    // v15.38 (slice 1887): strip the live-ticking parts of a composed
+    // strip string so structural forms can be compared — the title's
+    // sleep countdown after 😴 (with optional ⏸) ticks every second,
+    // and the sub's clock suffix (" · M:SS / M:SS", or the remaining
+    // " · −M:SS") ticks every second; everything else in the
+    // composition is structure: ★/⬇ flips, sleep appearing,
+    // pausing, ending or firing, ⏳ N, · ◈ N, · ended. The sleep
+    // clock sits mid-string (⏳/◈/ended follow it), so the 1884
+    // sleep-line trailing-time strip cannot see it — the clock is cut
+    // out in place and the mark survives, so countdown <-> pause and
+    // countdown -> bare mark still read as form changes. Only the
+    // comparison uses the stripped form; the view always shows the
+    // full text, clocks included.
+    public static String stripStripLive(String s) {
+        if (s == null) return "";
+        String r = s.replaceAll("😴( ⏸)? \\d+(:\\d{2}){1,2}", "😴$1");
+        r = r.replaceFirst("\\s*\u00b7\\s*\\d+(:\\d{2}){1,2}\\s*/\\s*\\d+(:\\d{2}){1,2}$", "");
+        r = r.replaceFirst("\\s*\u00b7\\s*\u2212\\d+(:\\d{2}){1,2}$", "");
+        return r;
+    }
+
     public static void fadeStripText(android.widget.TextView v, String text, String identity) {
         if (v == null) return;
         Object lastObj = v.getTag(R.id.stripTextLast);
@@ -2627,8 +2782,29 @@ public class Fx {
         if (identity == last || (identity != null && identity.equals(last))) {
             Object aObj0 = v.getTag(R.id.stripTextAnim);
             if (aObj0 instanceof android.animation.Animator) return;
-            v.setText(text);
-            return;
+            // v15.38 (slice 1887): same talk, structural change melts
+            // — the composed title ticks every second (sleep
+            // countdown, sub clock), so this branch used to write
+            // every same-talk change instantly: a ★ flip, a ⬇
+            // landing, sleep appearing / pausing / ending / firing,
+            // a ⏳/◈ count move, the · ended line all swapped in one
+            // frame on the visible strip. Compare the structural
+            // forms (live clocks stripped, stripStripLive): a
+            // tick-only change still writes at once (the v14.95
+            // distinction — melting a ticking clock would flicker,
+            // and the Room-clock-melt rejection stands),
+            // a form change falls through to the dip/swap/rise
+            // below (last is non-null here — the identity matched a
+            // recorded one — so the first-sighting instant write
+            // below is never taken). The view's own text is the old
+            // form: the helper records identity only at the swap,
+            // so a mid-melt tick returns above and the next tick
+            // refreshes the clocks.
+            String cur = v.getText() == null ? "" : v.getText().toString();
+            if (stripStripLive(text).equals(stripStripLive(cur))) {
+                v.setText(text);
+                return;
+            }
         }
         Object aObj = v.getTag(R.id.stripTextAnim);
         if (aObj instanceof android.animation.Animator) ((android.animation.Animator) aObj).cancel();

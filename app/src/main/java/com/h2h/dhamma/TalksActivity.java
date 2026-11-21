@@ -1973,10 +1973,11 @@ public class TalksActivity extends Activity {
     // repaint even when the mode is unchanged, like the old button.
     // v14.39 (slice 1694): two rhythms, one painter — a chip tap
     // melts the colours (refreshTalkFilterChipsAnimated, 250ms
-    // Fx.crossfadeTextColor, the v14.34 sleep-text rhythm; the
-    // weight swaps at the tap, under the chip's Fx.press squash,
-    // because the weight IS the selection state and the melt carries
-    // the transition), while create / theme / language / rotation /
+    // Fx.crossfadeTextColor, the v14.34 sleep-text rhythm) and the
+    // weight beside them (v15.38, slice 1894: 90ms dip, swap, 180ms
+    // rise — the weight IS the selection state, so its flip melts
+    // with the colour instead of snapping under the chip's Fx.press
+    // squash), while create / theme / language / rotation /
     // clearFilter still land instantly through Fx.setTextColorNow,
     // which cancels any in-flight melt and records the target so
     // the helper's map can never disagree with the view.
@@ -1984,7 +1985,7 @@ public class TalksActivity extends Activity {
         paintTalkFilterChips(false);
     }
 
-    // v14.39 (slice 1694): chip-tap entry — same painter, colours melt.
+    // v14.39 (slice 1694): chip-tap entry — same painter, colours + weight melt.
     private void refreshTalkFilterChipsAnimated() {
         paintTalkFilterChips(true);
     }
@@ -2013,10 +2014,10 @@ public class TalksActivity extends Activity {
         paintChipColor(chipTalkStar, filterMode == 1 ? gold : muted, animate);
         paintChipColor(chipTalkNew, filterMode == 2 ? gold : muted, animate);
         paintChipColor(chipTalkDl, filterMode == 3 ? gold : muted, animate);
-        chipTalkAll.setTypeface(null, filterMode == 0 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
-        chipTalkStar.setTypeface(null, filterMode == 1 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
-        chipTalkNew.setTypeface(null, filterMode == 2 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
-        chipTalkDl.setTypeface(null, filterMode == 3 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+        paintChipWeight(chipTalkAll, filterMode == 0, animate);
+        paintChipWeight(chipTalkStar, filterMode == 1, animate);
+        paintChipWeight(chipTalkNew, filterMode == 2, animate);
+        paintChipWeight(chipTalkDl, filterMode == 3, animate);
     }
 
     // v14.39 (slice 1694): one writer for a chip's colour, in both
@@ -2025,6 +2026,15 @@ public class TalksActivity extends Activity {
     private void paintChipColor(android.widget.TextView chip, int color, boolean animate) {
         if (animate) Fx.crossfadeTextColor(chip, color);
         else Fx.setTextColorNow(chip, color);
+    }
+
+    // v15.38 (slice 1894): one writer for a chip's weight, in both
+    // rhythms — melt on tap, instant elsewhere (see
+    // Fx.setChipWeightNow for why the instant path must go through
+    // the helper too). Mirrors paintChipColor (v14.39).
+    private void paintChipWeight(android.widget.TextView chip, boolean bold, boolean animate) {
+        if (animate) Fx.meltChipWeight(chip, bold);
+        else Fx.setChipWeightNow(chip, bold);
     }
 
     // v14.23 (slice 1677): chooser list-change pour — the first
@@ -2117,7 +2127,7 @@ public class TalksActivity extends Activity {
     private void setTalkFilterMode(int mode) {
         if (mode == filterMode) return;
         filterMode = mode;
-        refreshTalkFilterChipsAnimated(); // v14.39 (slice 1694): chip tap melts the colours — the rows pour below (v14.23) while the tapped chip warms to gold; the instant painter stays for create/theme/restore/clearFilter.
+        refreshTalkFilterChipsAnimated(); // v14.39 (slice 1694): chip tap melts the colours + weight — the rows pour below (v14.23) while the tapped chip warms to gold and firms to bold; the instant painter stays for create/theme/restore/clearFilter.
         // v15.18 (slice 1781): capture BEFORE rebuildFilter + the rebind below move the rows — the posted glide after the notify parks each moved survivor at its old top (see captureTalkSetGlide).
         final java.util.HashMap<Integer, Integer> tops82 = captureTalkSetGlide();
         rebuildFilter();

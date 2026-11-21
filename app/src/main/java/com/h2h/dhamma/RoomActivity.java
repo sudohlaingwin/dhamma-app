@@ -289,6 +289,13 @@ public class RoomActivity extends Activity {
     // without swapping text.
     private android.animation.ObjectAnimator playGlyphFade;
     private int playGlyphGen = 0;
+    // v15.38 (slice 1884): the Room sleep line's structural text melt
+    // — the dip/rise animator + generation guard, the playGlyphFade
+    // shape (v3.20): null whenever no melt is running; the gen is
+    // bumped BEFORE every cancel (v3.19 lesson), so a stale end
+    // action returns without swapping text or starting a rise.
+    private android.animation.ObjectAnimator sleepTextMelt;
+    private int sleepTextMeltGen = 0;
     // v3.35: morph generation guard, same v3.19 lesson as the glyph
     // gen above — the Room play morph's dip end action must not
     // fire a stale spring-back over a newer dip.
@@ -976,6 +983,102 @@ public class RoomActivity extends Activity {
         String t = s.replaceFirst("⏳ [0-9]+% ", "");
         t = t.replaceFirst("⏳ ", "");
         return t;
+    }
+    // v15.38 (slice 1884): strip the sleep line's live leg before
+    // deciding whether a text change melts — the v14.95 now-playing
+    // idiom, restated for this line. The countdown ticks every
+    // second ("😴 4:32" -> "😴 4:31"), so a bare text comparison
+    // would melt on every tick; only the trailing time is live.
+    // The structural forms survive the strip: countdown "😴",
+    // pause-suspended "😴 ⏸", fading "😴 ရပ်တော့မယ်" and the
+    // end-of-talk line keep their words, so a form change still
+    // reads as a change. formatTime prints M:SS, or H:MM:SS past
+    // the hour — the regex strips either, one trailing time only.
+    private static String stripSleepLive(String s) {
+        if (s == null) return "";
+        return s.replaceFirst("\\s*\\d+(:\\d{2}){1,2}$", "");
+    }
+    // v15.38 (slice 1884): the Room sleep line's structural text
+    // melt — the last snap on this line. The line already fades in
+    // on appear (v4.25) and out on hide (v14.33), and its gold
+    // flip already melts (v14.34), but a structural change while
+    // the line stays visible — countdown -> fading "😴 ရပ်တော့မယ်"
+    // when the timer fires, countdown <-> "😴 ⏸ …" on pause/resume,
+    // end-of-talk -> countdown on re-arm — swapped the text in one
+    // frame, because the poll wrote it bare. The text now dips
+    // 90ms, swaps at the bottom and rises 180ms (the flipStripGlyph
+    // rhythm, Decelerate), so the state change reads as one
+    // transition beside the moon's own tint melt (v14.64). The
+    // per-second countdown ticks stay instant: stripSleepLive
+    // compares the structural forms, and a tick-only change writes
+    // at once, the v14.95 distinction — melting a ticking clock
+    // would flicker, and the Room-clock-melt rejection stands.
+    // The melt owns the alpha channel only while it runs: it starts
+    // only on a settled line (VISIBLE, alpha >= 0.999), the appear
+    // gate below skips Fx.fadeIn while a melt is in flight, and the
+    // hide paths cancel a melt before fading out — so the dip and
+    // the fades can never fight per frame. The gold colour melt
+    // (v14.34) lives on textColor, a different property. Gen is
+    // bumped BEFORE every cancel (v3.19): a cancelled dip still
+    // fires its end action, so a stale end returns without swapping
+    // text or starting a rise, and a stale cancel handler returns
+    // without restoring alpha.
+    private void meltSleepText(final String want) {
+        if (sleepText == null || want == null) return;
+        String cur = sleepText.getText().toString();
+        if (want.equals(cur)) return;
+        if (stripSleepLive(want).equals(stripSleepLive(cur))) {
+            sleepText.setText(want);
+            return;
+        }
+        if (sleepText.getVisibility() != android.view.View.VISIBLE
+                || sleepText.getAlpha() < 0.999f) {
+            sleepText.setText(want);
+            return;
+        }
+        final int gen = ++sleepTextMeltGen;
+        if (sleepTextMelt != null) { sleepTextMelt.cancel(); sleepTextMelt = null; }
+        sleepTextMelt = android.animation.ObjectAnimator.ofFloat(sleepText, "alpha", sleepText.getAlpha(), 0f);
+        sleepTextMelt.setDuration(90);
+        sleepTextMelt.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        sleepTextMelt.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                if (gen != sleepTextMeltGen) return;
+                sleepText.setText(want);
+                sleepTextMelt = android.animation.ObjectAnimator.ofFloat(sleepText, "alpha", 0f, 1f);
+                sleepTextMelt.setDuration(180);
+                sleepTextMelt.setInterpolator(new android.view.animation.DecelerateInterpolator());
+                sleepTextMelt.addListener(new android.animation.AnimatorListenerAdapter() {
+                    @Override public void onAnimationEnd(android.animation.Animator b) {
+                        if (gen != sleepTextMeltGen) return;
+                        sleepTextMelt = null;
+                        sleepText.setAlpha(1f);
+                    }
+                    @Override public void onAnimationCancel(android.animation.Animator b) {
+                        if (gen != sleepTextMeltGen) return;
+                        sleepTextMelt = null;
+                        sleepText.setAlpha(1f);
+                    }
+                });
+                sleepTextMelt.start();
+            }
+            @Override public void onAnimationCancel(android.animation.Animator a) {
+                if (gen != sleepTextMeltGen) return;
+                sleepTextMelt = null;
+                sleepText.setAlpha(1f);
+            }
+        });
+        sleepTextMelt.start();
+    }
+    // v15.38 (slice 1884): cancel an in-flight sleep-line melt —
+    // both hide paths call this before Fx.fadeOut, so a melt's rise
+    // end can never set alpha 1 under a fade-out. Gen bumped BEFORE
+    // the cancel (v3.19), so the stale end/cancel handlers return
+    // without touching text or alpha; the fade-out owns alpha from
+    // wherever the melt left it.
+    private void cancelSleepTextMelt() {
+        sleepTextMeltGen++;
+        if (sleepTextMelt != null) { sleepTextMelt.cancel(); sleepTextMelt = null; }
     }
     // v14.57 (slice 1714): melt the new Up Next row in at its display
     // position — the fadeDroppedQueueRow shape above, restated for
@@ -5624,6 +5727,8 @@ if (snd65 >= 0) currentIndex = snd65;
                             sleepWant = "😴 ⏸ " + formatTime((int) sleepSusp);
                         }
                         if (sleepWant == null) {
+                            // v15.38 (slice 1884): cancel an in-flight melt first — see cancelSleepTextMelt.
+                            cancelSleepTextMelt();
                             // v14.33 (slice 1688): the countdown fades out
                             // instead of vanishing — Fx.fadeOut (200ms,
                             // GONE at the end, gen-guarded v3.62), the
@@ -5639,8 +5744,11 @@ if (snd65 >= 0) currentIndex = snd65;
                         } else {
                             boolean wasGone = sleepText.getVisibility() == android.view.View.GONE;
                             if (wasGone) sleepText.setVisibility(android.view.View.VISIBLE);
-                            if (!sleepWant.equals(sleepText.getText().toString()))
-                                sleepText.setText(sleepWant);
+                            if (!sleepWant.equals(sleepText.getText().toString())) {
+                                // v15.38 (slice 1884): the appear tick writes instantly — Fx.fadeIn below owns that entrance. A structural change melts inside the helper; a tick-only change writes instantly there too.
+                                if (wasGone) sleepText.setText(sleepWant);
+                                else meltSleepText(sleepWant);
+                            }
                             int wantColor = sleepGold
                                     ? android.graphics.Color.parseColor("#C9A227")
                                     : android.graphics.Color.parseColor("#AAAAAA");
@@ -5662,7 +5770,8 @@ if (snd65 >= 0) currentIndex = snd65;
                             // back to full instead of stranding
                             // half-transparent. A steady tick (alpha 1)
                             // still never re-fades.
-                            if (wasGone || sleepText.getAlpha() < 0.999f) Fx.fadeIn(sleepText, 250);
+                            // v15.38 (slice 1884): skip the fade-in while a melt owns alpha — the melt's own rise returns it to 1 (270ms < the 500ms poll gap, so the gate re-fires on a later tick if still needed). Without this the gate would start a ViewPropertyAnimator fade under the melt's ObjectAnimator dip.
+                            if ((wasGone || sleepText.getAlpha() < 0.999f) && sleepTextMelt == null) Fx.fadeIn(sleepText, 250);
                             // v14.64 (slice 1721): the moon carries the armed state too — gold while a timer is armed, white when off, melting over 250ms like the shuffle tint (v14.41). Same armed predicate as the line above (sleepWant != null), so the button and the line can never disagree: countdown, end-of-talk, fading and pause-suspended all count as armed, exactly the states that keep the line visible. The v4.25 "button needs no state" note predates the v14.41 tint-melt idiom; the line still names the countdown, the button now names it at a glance. First poll tick stamps instantly (crossfadeImageTint's no-recorded-tint path), steady ticks no-op, morph/press are scale-only so no channel fight.
                             applySleepTint(roomSleepBtn, sleepWant != null);
                         }
@@ -8852,6 +8961,8 @@ if (snd68 >= 0) currentIndex = snd68;
                     try { if (service != null) service.setSleepMinutes(0); } catch (Exception ignored) {}
                     // v14.33 (slice 1688): same dissolve as the poll's
                     // fade-out — see the poll sleep block.
+                    // v15.38 (slice 1884): cancel an in-flight melt first — see cancelSleepTextMelt.
+                    cancelSleepTextMelt();
                     Fx.fadeOut(sleepText, 200);
                     android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "sleep_off"), android.widget.Toast.LENGTH_SHORT).show();
                     return true;
@@ -14496,7 +14607,15 @@ if (snd67q >= 0) currentIndex = snd67q;
                     }
                     // v13.43: row views are looked up per bind — a missing row id skips the bind, never kills the list.
                     TextView fTitle = v.findViewById(R.id.talkTitle);
-                    if (fTitle != null) { fTitle.animate().cancel(); fTitle.setAlpha(1f); }
+                    // v15.38 (slice 1888): the stamp is gone — the
+                    // dim line below (crossfadeTitleDim) is now the
+                    // title's sole alpha writer, so an unconditional
+                    // 1.0 here would restart its melt on every
+                    // rebind. The cancel stays: it kills a stale
+                    // stop-fade ViewPropertyAnimator (the v3.46
+                    // hygiene), and the dim line melts from the
+                    // alpha the view actually has.
+                    if (fTitle != null) { fTitle.animate().cancel(); }
                     int tf = Prefs.fontSize(RoomActivity.this);
                     TextView fIdx = (TextView) v.findViewById(R.id.index);
                     if (fIdx != null) fIdx.setText(
@@ -14599,9 +14718,28 @@ if (snd67q >= 0) currentIndex = snd67q;
                     if (fRowCard != null) Fx.crossfadeCardTile(fRowCard, fSounding ? R.drawable.drawer_row_playing : R.drawable.drawer_row);
                     // v15.29 (slice 1808): the held wash melts in/out through Fx.crossfadeHeldWash instead of snapping — the ✋ prefix above stays instant per the v14.16 settled decision.
                     Fx.crossfadeHeldWash(v, fHeld);
-                    if (fPlayed && !fSounding && fTitle != null) fTitle.setAlpha(0.6f);
+                    // v15.38 (slice 1888): the listened dim melts
+                    // (Fx.crossfadeTitleDim, 250ms Decelerate) — the
+                    // last snap in the listened-flip transition on
+                    // this surface (chooser/Library melted in
+                    // v15.36, slice 1861). The v14.16 settled
+                    // decision does NOT bar this — its reason was
+                    // that fading the whole label to ease a 2-char
+                    // mark would flash the row; here the dim IS the
+                    // state change, so the row cannot flash — the
+                    // same distinction slice 1820 drew for the
+                    // colour melt and slice 1861 drew for the
+                    // chooser/Library dim melt. Called
+                    // unconditionally:
+                    // a sounding foreign row melts to 1.0 (its pulse
+                    // was just cancelled above), a played one to
+                    // 0.6, an unplayed one stays 1.0, and a repeat
+                    // bind is a no-op, so the 500ms poll rebind can
+                    // never restart it. The ✓/★/⬇ marks and the
+                    // title text stay instant per v14.16.
+                    if (fTitle != null) Fx.crossfadeTitleDim(fTitle, fPlayed && !fSounding);
                     // v13.98 (slice 1093): paint the hairline — the track is GONE unless this bind set a fraction above. Weight-split fill / spacer, no measuring, no post-layout pass.
-                    // v15.26 (slice 1789): the hairline melts in/out instead of popping — the v14.31 card-crossfade fix, now on the drawer's gold line: the 500ms poll rebinds the drawer on a resync and every open/queue/download rebind re-painted in one frame (setVisibility), so a talk advancing, ending or handing over with the drawer open flashed its line in while the gold card beside it crossfades (v14.32) and the strip and clock melt. Fx.crossfadeHairline (250ms, DecelerateInterpolator, recorded shown state, instant seed on a fresh view) owns the track from here; the fill/space weight split below stays an instant layout update (a progress value, not an appearance change), and the ▶/✓ marks + title dim stay instant per the v14.16 settled decision. No top-of-bind reset any more (the v13.98 reset moved to the stale-slot return below) — the paint is the sole writer on a content bind.
+                    // v15.26 (slice 1789): the hairline melts in/out instead of popping — the v14.31 card-crossfade fix, now on the drawer's gold line: the 500ms poll rebinds the drawer on a resync and every open/queue/download rebind re-painted in one frame (setVisibility), so a talk advancing, ending or handing over with the drawer open flashed its line in while the gold card beside it crossfades (v14.32) and the strip and clock melt. Fx.crossfadeHairline (250ms, DecelerateInterpolator, recorded shown state, instant seed on a fresh view) owns the track from here; the fill/space weight split below stays an instant layout update (a progress value, not an appearance change), and the ▶/✓ marks stay instant per the v14.16 settled decision (the title dim now melts, v15.38 slice 1888). No top-of-bind reset any more (the v13.98 reset moved to the stale-slot return below) — the paint is the sole writer on a content bind.
                     android.view.View hairTrack = v.findViewById(R.id.hairTrack);
                     android.view.View hairFill = v.findViewById(R.id.hairFill);
                     android.view.View hairSpace = v.findViewById(R.id.hairSpace);
@@ -14706,7 +14844,12 @@ if (snd67q >= 0) currentIndex = snd67q;
                 // its end action must not start a loop later.
                 roomPulseSettling = false;
                 roomPulseView = null;
-                titleView.setAlpha(1f);
+                // v15.38 (slice 1888): no 1.0 stamp here any more —
+                // the dim line below (crossfadeTitleDim) owns the
+                // title's alpha now and melts it to the right
+                // target from wherever the cancelled pulse left
+                // it. A stamp would desync the helper's recorded
+                // target and restart the melt on the next rebind.
             }
             // v3.46: premium drawer recycled-title fade hygiene,
             // extending the delivered v3.45 row hygiene to the
@@ -14733,9 +14876,18 @@ if (snd67q >= 0) currentIndex = snd67q;
             // cancelling it is clean. Visual only; the row
             // motion, marks, colours and font sizes are untouched.
             // v7.71: playing identity here is playIdx71 too (see above).
+            // v15.38 (slice 1888): the 1.0 stamp is gone — the
+            // dim line below (crossfadeTitleDim) is now the
+            // title's sole alpha writer. The stamp used to run on
+            // EVERY rebind of a non-playing row, so a melt after
+            // it would restart on the next poll rebind and the row
+            // would breathe 1.0 -> 0.6 forever. The cancel stays:
+            // it kills a stale stop-fade (v3.13) on a recycled
+            // title, and the dim line melts from the alpha the
+            // view actually has. The playing row is skipped here
+            // as before, so the pulse keeps owning its title.
             if (talkIdx != playIdx71 && titleView != null) {
                 titleView.animate().cancel();
-                titleView.setAlpha(1f);
             }
             // (talk resolved above, v4.55)
             // v1.53: Room rows follow the Settings font size, like the
@@ -14871,7 +15023,7 @@ if (snd67q >= 0) currentIndex = snd67q;
             // playIdx71 untouched, as v11.15 did elsewhere.
             boolean rowPlaying116 = talkIdx == playIdx71 && !AudioService.liveEnded;
             if (titleView != null) titleView.setText((held ? "✋ " : "") + Fx.soundingRowMark(rowPlaying116, AudioService.liveTrackError, service != null && service.isBuffering() && !service.isHoldPaused() ? Lang.t(RoomActivity.this, "notif_state_buffering") : "", "\u23F8") + handMark + (fav ? "★ " : "") + (downloaded ? "⬇ " : "") + queueMark + (played && !rowPlaying116 ? "✓ " : "") + t.title + resumeMark);
-            // v15.30 (slice 1820): the sounding-row title colour melts on the flip instead of snapping — the last snap in the sounding-row transition (card v14.32, hairline v15.26, clock v15.26, held wash v15.29): the 500ms poll rebinds the drawer on a resync, and getView swapped the title colour in one frame (bare setTextColor), so a talk advancing, ending or handing over with the drawer open flashed the gold name in or out while the card beside it crossfades. Fx.crossfadeTextColor (v14.34 helper: 250ms ValueAnimator.ofArgb, recorded target, no-op when unchanged) owns the colour from here. The v14.16 settled decision does NOT bar this — its reason was that fading the whole label to ease a 2-char mark would flash the row; here no label is faded, only the text colour is interpolated (alpha stays 1, text unchanged), so the row cannot flash — the same distinction v14.34 drew for the sleep text and v14.62 for the nav tint. The ▶/★/✓/⬇ marks + title text stay instant; the listened dim (alpha, below) is untouched.
+            // v15.30 (slice 1820): the sounding-row title colour melts on the flip instead of snapping — the last snap in the sounding-row transition (card v14.32, hairline v15.26, clock v15.26, held wash v15.29): the 500ms poll rebinds the drawer on a resync, and getView swapped the title colour in one frame (bare setTextColor), so a talk advancing, ending or handing over with the drawer open flashed the gold name in or out while the card beside it crossfades. Fx.crossfadeTextColor (v14.34 helper: 250ms ValueAnimator.ofArgb, recorded target, no-op when unchanged) owns the colour from here. The v14.16 settled decision does NOT bar this — its reason was that fading the whole label to ease a 2-char mark would flash the row; here no label is faded, only the text colour is interpolated (alpha stays 1, text unchanged), so the row cannot flash — the same distinction v14.34 drew for the sleep text and v14.62 for the nav tint. The ▶/★/✓/⬇ marks + title text stay instant; the listened dim (alpha, below) now melts (v15.38, slice 1888).
             if (titleView != null) Fx.crossfadeTextColor(titleView, rowPlaying116
                     ? android.graphics.Color.parseColor("#C9A227")
                     : android.graphics.Color.WHITE);
@@ -14889,7 +15041,17 @@ if (snd67q >= 0) currentIndex = snd67q;
             // alpha — and the ✓ mark stays, so this adds a second
             // cue, never a replacement; a recycled row rebinds its
             // alpha here, so a dim never leaks onto another talk.
-            if (played && !rowPlaying116 && titleView != null) titleView.setAlpha(0.6f);
+            // v15.38 (slice 1888): the listened dim melts
+            // (Fx.crossfadeTitleDim, 250ms Decelerate) — the last
+            // snap in the listened-flip transition on this surface
+            // (chooser/Library melted in v15.36, slice 1861).
+            // Called unconditionally: the sounding row melts to
+            // 1.0 (its pulse owns the alpha and is never touched
+            // here), a played row to 0.6, an unplayed row stays
+            // 1.0, and a repeat bind is a no-op, so the 500ms poll
+            // rebind can never restart it. The ▶/★/✓/⬇ marks and
+            // the title text stay instant per v14.16.
+            if (titleView != null) Fx.crossfadeTitleDim(titleView, played && !rowPlaying116);
             // v4.13: Up Next row mark — the row after the playing
             // one (wrapping like a Next tap) carries a ▸ prefix at
             // full alpha, even when already listened: it is the
@@ -14912,8 +15074,14 @@ if (snd67q >= 0) currentIndex = snd67q;
             if (titleView != null && playIdx71 >= 0 && playIdx71 < talks.size() && talks.size() > 1
                     && firstWaitingForeignEntry() == null
                     && talkIdx == peekNextIndex()) { // v4.32: ▸ follows the queued head, not the list-next
-                titleView.setText("▸ " + titleView.getText().toString());
-                titleView.setAlpha(1f);
+                titleView.setText("\u25B8 " + titleView.getText().toString());
+                // v15.38 (slice 1888): the ▸ row stays full-bright
+                // through the instant writer — a bare setAlpha(1f)
+                // here would desync crossfadeTitleDim's recorded
+                // target (map 0.6, view 1.0), so a later melt to
+                // 0.6 would no-op and strand the row undimmed
+                // while listened (the 1861 ▸ exemption, same shape).
+                Fx.setTitleDimNow(titleView, false);
                 // v14.57 (slice 1714): record the ▸ URL the rows are
                 // bound against — the resync branch snapshots this
                 // field before its rebind, so a ▸ move it discovers
@@ -14926,7 +15094,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                 drawerUpNextUrl57 = t.url;
             }
             // v13.98 (slice 1093): paint the hairline — the track is GONE unless this bind set a fraction above. Weight-split fill / spacer, no measuring, no post-layout pass.
-            // v15.26 (slice 1789): the hairline melts in/out instead of popping — the v14.31 card-crossfade fix, now on the drawer's gold line: the 500ms poll rebinds the drawer on a resync and every open/queue/download rebind re-painted in one frame (setVisibility), so a talk advancing, ending or handing over with the drawer open flashed its line in while the gold card beside it crossfades (v14.32) and the strip and clock melt. Fx.crossfadeHairline (250ms, DecelerateInterpolator, recorded shown state, instant seed on a fresh view) owns the track from here; the fill/space weight split below stays an instant layout update (a progress value, not an appearance change), and the ▶/✓ marks + title dim stay instant per the v14.16 settled decision. No top-of-bind reset any more (the v13.98 reset moved to the stale-slot return above) — the paint is the sole writer on a content bind.
+            // v15.26 (slice 1789): the hairline melts in/out instead of popping — the v14.31 card-crossfade fix, now on the drawer's gold line: the 500ms poll rebinds the drawer on a resync and every open/queue/download rebind re-painted in one frame (setVisibility), so a talk advancing, ending or handing over with the drawer open flashed its line in while the gold card beside it crossfades (v14.32) and the strip and clock melt. Fx.crossfadeHairline (250ms, DecelerateInterpolator, recorded shown state, instant seed on a fresh view) owns the track from here; the fill/space weight split below stays an instant layout update (a progress value, not an appearance change), and the ▶/✓ marks stay instant per the v14.16 settled decision (the title dim now melts, v15.38 slice 1888). No top-of-bind reset any more (the v13.98 reset moved to the stale-slot return above) — the paint is the sole writer on a content bind.
             android.view.View hairTrack = v.findViewById(R.id.hairTrack);
             android.view.View hairFill = v.findViewById(R.id.hairFill);
             android.view.View hairSpace = v.findViewById(R.id.hairSpace);

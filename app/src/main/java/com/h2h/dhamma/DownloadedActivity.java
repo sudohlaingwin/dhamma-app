@@ -7523,9 +7523,10 @@ public class DownloadedActivity extends Activity {
     // (or the search long-press cycle, the same body) melts the
     // colours (refreshDlFilterChipsAnimated, 250ms
     // Fx.crossfadeTextColor, the v14.34 sleep-text rhythm, the
-    // chooser chips' v14.39 melt; the weight swaps at the tap,
-    // under the chip's Fx.press squash, because the weight IS the
-    // selection state and the melt carries the transition), while
+    // chooser chips' v14.39 melt) and the weight beside them
+    // (v15.38, slice 1894: 90ms dip, swap, 180ms rise — the weight
+    // IS the selection state, so its flip melts with the colour
+    // instead of snapping under the chip's Fx.press squash), while
     // create / theme / language / rotation / clear-button reset
     // still land instantly through Fx.setTextColorNow, which
     // cancels any in-flight melt and records the target so the
@@ -7537,7 +7538,7 @@ public class DownloadedActivity extends Activity {
         paintDlFilterChips(false);
     }
 
-    // v14.40 (slice 1695): chip-tap entry — same painter, colours melt.
+    // v14.40 (slice 1695): chip-tap entry — same painter, colours + weight melt.
     private void refreshDlFilterChipsAnimated() {
         paintDlFilterChips(true);
     }
@@ -7558,9 +7559,9 @@ public class DownloadedActivity extends Activity {
         paintDlChipColor(chipDlAll, dlFilterMode == 0 ? gold : muted, animate);
         paintDlChipColor(chipDlStar, dlFilterMode == 1 ? gold : muted, animate);
         paintDlChipColor(chipDlNew, dlFilterMode == 2 ? gold : muted, animate);
-        chipDlAll.setTypeface(null, dlFilterMode == 0 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
-        chipDlStar.setTypeface(null, dlFilterMode == 1 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
-        chipDlNew.setTypeface(null, dlFilterMode == 2 ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+        paintDlChipWeight(chipDlAll, dlFilterMode == 0, animate);
+        paintDlChipWeight(chipDlStar, dlFilterMode == 1, animate);
+        paintDlChipWeight(chipDlNew, dlFilterMode == 2, animate);
     }
 
     // v14.40 (slice 1695): one writer for a library chip's colour,
@@ -7570,6 +7571,15 @@ public class DownloadedActivity extends Activity {
     private void paintDlChipColor(android.widget.TextView chip, int color, boolean animate) {
         if (animate) Fx.crossfadeTextColor(chip, color);
         else Fx.setTextColorNow(chip, color);
+    }
+
+    // v15.38 (slice 1894): one writer for a library chip's weight,
+    // in both rhythms — melt on tap, instant elsewhere (see
+    // Fx.setChipWeightNow for why the instant path must go through
+    // the helper too). Mirrors the chooser's paintChipWeight.
+    private void paintDlChipWeight(android.widget.TextView chip, boolean bold, boolean animate) {
+        if (animate) Fx.meltChipWeight(chip, bold);
+        else Fx.setChipWeightNow(chip, bold);
     }
 
     // v13.75 (slice 1066): one direct-set path for the filter mode —

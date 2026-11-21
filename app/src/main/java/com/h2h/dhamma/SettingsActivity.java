@@ -116,6 +116,14 @@ public class SettingsActivity extends Activity {
     // a network flip after that melts, 250ms via Fx.fadeIn, and a
     // connection loss fades the note out 200ms via Fx.fadeOut.
     private boolean dataSaverNoteKnown68 = false;
+    // v15.38 (slice 1902): whether refreshDownloadedButton53() has
+    // drawn the downloaded-size note once yet — the first fill on
+    // create / rotation just appears, never fades in on top of the
+    // entrance (the dataSaverNoteKnown68 first-read adoption above);
+    // a first download landing after that fades the note in, 250ms
+    // via Fx.fadeIn, and the last file leaving fades it out, 200ms
+    // via Fx.fadeOut.
+    private boolean sizeNoteKnown66 = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -3255,6 +3263,8 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
             // on every device locale, like the app's timers.
             android.widget.TextView sizeNote = findViewById(R.id.downloadedSizeNote);
             if (sizeNote != null) {
+                boolean wasVisible66 = sizeNote.getVisibility() == android.view.View.VISIBLE;
+                boolean settled66 = sizeNote.getAlpha() >= 0.999f;
                 if (n81 > 0) {
                     String sizeLine = Lang.t(this, "dl_total_prefix")
                             + String.format(java.util.Locale.US, "%.1f MB", totalBytes81 / 1048576.0);
@@ -3279,9 +3289,10 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                         // steady passes never touch the view.
                         // Fx.fadeIn is restart-safe (v3.52), so a
                         // second landing inside 250ms restarts the
-                        // fade instead of stranding it; the visibility
-                        // flip below still owns show/hide, and
-                        // refresh()'s colour/size repaint never writes
+                        // fade instead of stranding it; the show/hide
+                        // below fades the same way (v15.38, slice
+                        // 1902), and refresh()'s colour/size repaint
+                        // never writes
                         // text, so no channel fight. The button label
                         // above is untouched — its "· ⏳ M" ticks while
                         // a download runs, so it must never melt.
@@ -3291,10 +3302,43 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                         sizeNote.setText(sizeLine);
                         if (melt66) Fx.fadeIn(sizeNote, 250);
                     }
-                    if (sizeNote.getVisibility() != android.view.View.VISIBLE) sizeNote.setVisibility(android.view.View.VISIBLE);
-                } else if (sizeNote.getVisibility() != android.view.View.GONE) {
-                    sizeNote.setVisibility(android.view.View.GONE);
+                    // v15.38 (slice 1902): the note's appear now
+                    // fades in instead of snapping — the text already
+                    // melted (v14.66) but the show/hide still stamped:
+                    // the first download landing while Settings sits
+                    // open popped the note in under the Downloaded row
+                    // in one frame, and the last file leaving popped
+                    // it out. The v14.68 data-saver note already fades
+                    // all three edges; this is the same idiom on the
+                    // one note that never got it: appear fades in
+                    // 250ms via Fx.fadeIn (including a landing
+                    // mid-fadeOut, where fadeIn cancels the fade and
+                    // bumps the gen so the stale end-action can never
+                    // GONE the re-shown view — the v14.14 strip-slide
+                    // family guarantee), vanish fades out 200ms via
+                    // Fx.fadeOut. Tick-only (melt94): refresh()
+                    // adopts instantly — create rides the entrance
+                    // cascade, a return rides the enter transition, a
+                    // choice tap rides the theme dip. The known flag
+                    // is the v14.68 first-read adoption: the first
+                    // fill on create / rotation just appears.
+                    boolean appear66 = melt94 && sizeNoteKnown66
+                            && (!wasVisible66 || !settled66);
+                    if (appear66) {
+                        if (!wasVisible66) sizeNote.setVisibility(android.view.View.VISIBLE);
+                        Fx.fadeIn(sizeNote, 250);
+                    } else if (!wasVisible66) {
+                        sizeNote.setVisibility(android.view.View.VISIBLE);
+                    }
+                } else if (wasVisible66) {
+                    // v15.38 (slice 1902): the last file leaving
+                    // fades the note out 200ms via Fx.fadeOut (see
+                    // the appear comment above); refresh() adopts
+                    // instantly, as before.
+                    if (melt94 && sizeNoteKnown66) Fx.fadeOut(sizeNote, 200);
+                    else sizeNote.setVisibility(android.view.View.GONE);
                 }
+                sizeNoteKnown66 = true;
             }
         } catch (Exception ignored) {}
     }
