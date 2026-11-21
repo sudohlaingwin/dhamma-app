@@ -30,6 +30,10 @@ public class SettingsActivity extends Activity {
     // star favourites the job may check.
     private android.view.View rowAdChoose;
     private android.widget.TextView adChooseValue;
+    // v15.51 (slice 1970): the "add widget to Home screen" row — its
+    // label names the widget (the v12.67 home-screen player); the row
+    // hides while pinning is impossible (see the wiring below).
+    private android.view.View rowWidget;
     // v12.94 (his order 2026-11-06 ~22:46 +07: Settings rebuilt to the
     // worldwide streaming-app standard): the on/off toggles are Switch
     // views now (Switch extends Button, so the field type only narrows);
@@ -154,6 +158,7 @@ public class SettingsActivity extends Activity {
         altarValue = findViewById(R.id.altarValue);
         rowAdChoose = findViewById(R.id.rowAdChoose);
         adChooseValue = findViewById(R.id.adChooseValue);
+        rowWidget = findViewById(R.id.rowWidget);
         btnNoti = findViewById(R.id.btnNoti);
         btnAutoplay = findViewById(R.id.btnAutoplay);
         btnRepeat = findViewById(R.id.btnRepeat);
@@ -219,6 +224,25 @@ public class SettingsActivity extends Activity {
                 Fx.morph(v);
                 Fx.themeDip(root, new Runnable() { @Override public void run() { refresh(); } });
                 return true;
+            }
+        });
+        // v15.51 (slice 1970): the "add widget to Home screen" row — one tap asks the launcher to pin the Dhamma widget (Play/Pause/Next + current talk, v12.67) to the home screen, so the listener never has to hunt the widget picker. The row is the Settings twin of the 1945 shortcut pin in shape only — different object (a live AppWidget, not a ShortcutManager shortcut), different API (AppWidgetManager.requestPinAppWidget, not requestPinShortcut), different surface (Settings Appearance, not the Talks info sheet). The row hides while pinning is impossible (API < 26, or a launcher that does not support pinned widgets — the 1945 gate idiom); the tap re-checks the gate fresh and the system pin dialog is the feedback, so no toast — a failed pin toasts open_failed, the shipped generic failure word.
+        boolean widgetPin70 = WidgetPin.canPin(android.os.Build.VERSION.SDK_INT, android.os.Build.VERSION.SDK_INT >= 26 && android.appwidget.AppWidgetManager.getInstance(SettingsActivity.this) != null && android.appwidget.AppWidgetManager.getInstance(SettingsActivity.this).isRequestPinAppWidgetSupported());
+        if (rowWidget != null) rowWidget.setVisibility(widgetPin70 ? android.view.View.VISIBLE : android.view.View.GONE);
+        if (rowWidget != null) rowWidget.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.morph(v);
+                try {
+                    android.appwidget.AppWidgetManager awm70 = android.appwidget.AppWidgetManager.getInstance(SettingsActivity.this);
+                    boolean supported70 = android.os.Build.VERSION.SDK_INT >= 26 && awm70 != null && awm70.isRequestPinAppWidgetSupported();
+                    if (!WidgetPin.canPin(android.os.Build.VERSION.SDK_INT, supported70)) {
+                        android.widget.Toast.makeText(SettingsActivity.this, Lang.t(SettingsActivity.this, "open_failed"), android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    awm70.requestPinAppWidget(new android.content.ComponentName(SettingsActivity.this, DhammaWidgetProvider.class), null, null);
+                } catch (Exception e) {
+                    android.widget.Toast.makeText(SettingsActivity.this, Lang.t(SettingsActivity.this, "open_failed"), android.widget.Toast.LENGTH_SHORT).show();
+                }
             }
         });
         // v15.46 (slice 1947): the auto-download scope row — tap
@@ -1255,7 +1279,7 @@ android.view.View settingsStripPrev = findViewById(R.id.nowStripPrev);
                 R.id.btnNoti, R.id.btnAutoplay, R.id.rowRepeat, R.id.btnShuffle, R.id.btnBackground,
                 R.id.btnKeepScreen, R.id.btnThemeAuto, R.id.rowSleep,
                 R.id.btnFx, R.id.btnDataSaver, R.id.btnAutoDl, R.id.autoDlCheckNow,
-                R.id.rowDownloaded, R.id.rowClearData, R.id.rowBackup, R.id.rowRestore, R.id.btnResetAll, R.id.rowTeam, R.id.rowPolicy}) {
+                R.id.rowDownloaded, R.id.rowClearData, R.id.rowBackup, R.id.rowRestore, R.id.btnResetAll, R.id.rowTeam, R.id.rowPolicy, R.id.rowWidget}) {
             View b = findViewById(id);
             if (b != null) Fx.press(b);
         }
@@ -4082,6 +4106,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         setBtnText(R.id.btnPolicy, "policy_btn");
         setBtnText(R.id.btnCheckUpdate, "upd_check");
         setBtnText(R.id.btnShareApp, "about_share_app"); // v15.47 (slice 1948)
+        setBtnText(R.id.btnWidget, "settings_add_widget"); // v15.51 (slice 1970)
         TextView vv2 = findViewById(R.id.versionValue);
         if (vv2 != null) {
             String vn = "";

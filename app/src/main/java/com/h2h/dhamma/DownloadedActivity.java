@@ -10666,6 +10666,9 @@ public class DownloadedActivity extends Activity {
         // the handler below can never disagree.
         if (!libQueueOnly && ((dlQuery != null && !dlQuery.isEmpty()) || dlFilterMode != 0)) {
             int linkedFav90 = 0, linkedNew90 = 0;
+            // v15.51 (slice 1972): "Share shown listened talks" — the shown names collected for the listened share pick below (the fourth member of the share-shown family: v6.46 shares the whole shown set, v6.90 shares the shown star / shown unlistened subsets). Declared here so the count survives the try; the v6.90 lines stay untouched.
+            java.util.List<String> names72 = new java.util.ArrayList<String>();
+            int linkedListened72 = 0;
             try {
                 android.content.SharedPreferences sp90 =
                         getSharedPreferences("dhamma", MODE_PRIVATE);
@@ -10682,13 +10685,17 @@ public class DownloadedActivity extends Activity {
                 for (String k90 : cnt90.keySet()) if (cnt90.get(k90) > 1) names90.remove(k90);
                 for (int i = 0; i < libDisplayCount(); i++) {
                     Entry se90 = libEntryAtDisplay(i);
+                    if (se90 != null) names72.add(se90.file.getName());
                     if (se90 == null || !names90.contains(se90.file.getName())) continue;
                     if (libFavFiles.contains(se90.file.getName())) linkedFav90++;
                     if (!libListenedFiles.contains(se90.file.getName())) linkedNew90++;
                 }
+                // v15.51 (slice 1972): the listened share count, read through the shared DlShareListened.pick core — the same call the handler below makes — so the offer and the handler can never disagree. A file counts when it sits in the rows' listened cache (libListenedFiles, the v6.94 rule) AND resolves through the dlMap to exactly one source URL (names90, the v8.48 exactly-one-claimant set); the playing file stays in the set on purpose, like v6.46 — a share list is not a play order.
+                linkedListened72 = DlShareListened.pick(names72, libListenedFiles, names90).size();
             } catch (Exception ignored) {}
             if (linkedFav90 >= 2) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_share_shown_star")); itemKeys.add("dl_menu_share_shown_star"); }
             if (linkedNew90 >= 2) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_share_shown_new")); itemKeys.add("dl_menu_share_shown_new"); }
+            if (linkedListened72 >= 2) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_share_shown_listened")); itemKeys.add("dl_menu_share_shown_listened"); }
         }
         // v6.92: copy only the shown subset's links (starred, or
         // not-yet-heard) — the library mirrors of the Talks
@@ -10712,6 +10719,9 @@ public class DownloadedActivity extends Activity {
         // offer and the handler below can never disagree.
         if (!libQueueOnly && ((dlQuery != null && !dlQuery.isEmpty()) || dlFilterMode != 0)) {
             int linkedFav92 = 0, linkedNew92 = 0;
+            // v15.51 (slice 1973): "Copy shown listened links" — the shown names collected for the listened copy pick below (the fourth member of the copy-shown family: v6.49 copies the whole shown set, v6.92 copies the shown star / shown unlistened subsets). Declared here so the count survives the try; the v6.92 lines stay untouched.
+            java.util.List<String> names73 = new java.util.ArrayList<String>();
+            int linkedListened73 = 0;
             try {
                 android.content.SharedPreferences sp92 =
                         getSharedPreferences("dhamma", MODE_PRIVATE);
@@ -10728,13 +10738,17 @@ public class DownloadedActivity extends Activity {
                 for (String k92 : cnt92.keySet()) if (cnt92.get(k92) > 1) names92.remove(k92);
                 for (int i = 0; i < libDisplayCount(); i++) {
                     Entry se92 = libEntryAtDisplay(i);
+                    if (se92 != null) names73.add(se92.file.getName());
                     if (se92 == null || !names92.contains(se92.file.getName())) continue;
                     if (libFavFiles.contains(se92.file.getName())) linkedFav92++;
                     if (!libListenedFiles.contains(se92.file.getName())) linkedNew92++;
                 }
+                // v15.51 (slice 1973): the listened copy count, read through the shared DlCopyListened.pick core — the same call the handler below makes — so the offer and the handler can never disagree. A file counts when it sits in the rows' listened cache (libListenedFiles, the v6.94 rule) AND resolves through the dlMap to exactly one source URL (names92, the v8.48 exactly-one-claimant set); the playing file stays in the set on purpose, like v6.46 — a link list is not a play order.
+                linkedListened73 = DlCopyListened.pick(names73, libListenedFiles, names92).size();
             } catch (Exception ignored) {}
             if (linkedFav92 >= 2) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_copy_shown_star")); itemKeys.add("dl_menu_copy_shown_star"); }
             if (linkedNew92 >= 2) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_copy_shown_new")); itemKeys.add("dl_menu_copy_shown_new"); }
+            if (linkedListened73 >= 2) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_copy_shown_listened")); itemKeys.add("dl_menu_copy_shown_listened"); }
         }
         // v6.47: play only the shown files from the start —
         // the shown-set play verb the library's ⋮ menu still
@@ -10959,9 +10973,14 @@ public class DownloadedActivity extends Activity {
             String cur679g = soundingLibPath(); // v13.17: unbound-window mirror (was bound-only)
             int fav679g = 0, new679g = 0;
             boolean favNonPlaying679g = false, newNonPlaying679g = false;
+            // v15.51 (slice 1974): "Shuffle-play shown listened talks" — the shown names/paths collected for the listened shuffle pick below (the listened member of the shuffle-shown family: v6.48 shuffles the whole shown set, v6.79 shuffles the shown star / shown unlistened subsets). Declared here so the pick survives the loop; the v6.79 lines stay untouched.
+            java.util.List<String> names74 = new java.util.ArrayList<String>();
+            java.util.List<String> paths74 = new java.util.ArrayList<String>();
             for (int i = 0; i < libDisplayCount(); i++) {
                 Entry se679g = libEntryAtDisplay(i);
                 if (se679g == null) continue;
+                names74.add(se679g.file.getName());
+                paths74.add(se679g.file.getAbsolutePath());
                 boolean playing679g = se679g.file.getAbsolutePath().equals(cur679g);
                 if (libFavFiles.contains(se679g.file.getName())) {
                     fav679g++;
@@ -10972,8 +10991,11 @@ public class DownloadedActivity extends Activity {
                     if (!playing679g) newNonPlaying679g = true;
                 }
             }
+            // v15.51 (slice 1974): the listened shuffle count, read through the shared DlShuffleListened.pick core — the same call the handler below makes — so the offer and the handler can never disagree. A file counts when it sits in the rows' listened cache (libListenedFiles, the v6.94 rule); the playing file stays in the set on purpose, like v6.48/v6.79 — a shuffle landing on it does not reopen the Room.
+            java.util.List<String> picked74 = DlShuffleListened.pick(names74, paths74, libListenedFiles);
             if (fav679g >= 2 && favNonPlaying679g) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_shuffle_shown_star")); itemKeys.add("dl_menu_shuffle_shown_star"); }
             if (new679g >= 2 && newNonPlaying679g) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_shuffle_shown_new")); itemKeys.add("dl_menu_shuffle_shown_new"); }
+            if (picked74.size() >= 2 && DlShuffleListened.hasPlayable(names74, paths74, libListenedFiles, cur679g)) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_shuffle_shown_listened")); itemKeys.add("dl_menu_shuffle_shown_listened"); }
         }
         // v6.82: reverse-play only the shown favourites /
         // shown not-yet-listened files — the library mirror
@@ -12637,6 +12659,63 @@ public class DownloadedActivity extends Activity {
                                     Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "share_link_missing"), Toast.LENGTH_SHORT).show();
                                 }
                             } catch (Exception ignored) {}
+                        } else if ("dl_menu_share_shown_listened".equals(choiceKey)) {
+                            // v15.51 (slice 1972): share only the shown LISTENED subset as one message — the fourth member of the share-shown family (v6.46 shares the whole shown set, v6.90 shares the shown star / shown unlistened subsets, this shares the shown listened subset). Same display positions the offer gate reads (libEntryAtDisplay over libDisplayCount), in display order, each subset file contributing its numbered decoded title + original link through the dlMap reverse lookup (the v6.42 map); files with no dlMap entry are skipped rather than shared as bare titles, and nothing is sent unless at least 2 link-bearing subset files survive, so a narrowed subset whose links mostly predate the dlMap never sends a header promising more talks than follow. The header names the library with the surviving subset size (counted first, like the chooser's v6.89, not the full shown size), plus the dhammadownload.com credit. The playing file stays in the set on purpose, like v6.46 — a share list is not a play order. Membership is the shared DlShareListened.pick core — the same call the offer gate makes — so the offer and the handler can never disagree; the body loop below re-walks the display positions and keeps only the picked names, so the sent order is display order. A share mutates nothing, so the shared save + rebind tail below is a no-op rewrite; the mini-player share (v4.78) already opens a sheet from this screen with no pause guard, so none is added here.
+                            try {
+                                android.content.SharedPreferences sp72 =
+                                        getSharedPreferences("dhamma", MODE_PRIVATE);
+                                org.json.JSONObject map72 =
+                                        new org.json.JSONObject(sp72.getString("dlMap", "{}"));
+                                // v8.48: exactly-one claimant only (v8.41/v8.43 rule) — a dual-claimed
+                                // filename resolves to no URL, never the first claimant, so a
+                                // shared/copied list never names the wrong talk's link.
+                                java.util.HashMap<String, String> fn72 = new java.util.HashMap<String, String>();
+                                java.util.HashMap<String, Integer> cnt72 = new java.util.HashMap<String, Integer>();
+                                java.util.Iterator<String> keys72 = map72.keys();
+                                while (keys72.hasNext()) {
+                                    String u72 = keys72.next();
+                                    String f72 = map72.optString(u72, "");
+                                    if (f72.length() > 0) { fn72.put(f72, u72); Integer cc72 = cnt72.get(f72); cnt72.put(f72, cc72 == null ? 1 : cc72 + 1); }
+                                }
+                                for (String k72 : cnt72.keySet()) if (cnt72.get(k72) > 1) fn72.remove(k72);
+                                java.util.List<String> names72 = new java.util.ArrayList<String>();
+                                for (int i = 0; i < libDisplayCount(); i++) {
+                                    Entry de72 = libEntryAtDisplay(i);
+                                    if (de72 != null) names72.add(de72.file.getName());
+                                }
+                                java.util.List<String> picked72 = DlShareListened.pick(names72, libListenedFiles, fn72.keySet());
+                                int c72 = picked72.size();
+                                if (c72 >= 2) {
+                                    java.util.HashSet<String> pickedSet72 = new java.util.HashSet<String>(picked72);
+                                    StringBuilder sb72 = new StringBuilder();
+                                    sb72.append(Lang.t(DownloadedActivity.this, "dl_footer_downloaded")).append(Lang.t(DownloadedActivity.this, "dl_tag_shown_listened")).append(" ").append(c72).append(Lang.t(DownloadedActivity.this, "notif_queue_suffix") + "\n");
+                                    int n72 = 0;
+                                    for (int i = 0; i < libDisplayCount(); i++) {
+                                        Entry de72 = libEntryAtDisplay(i);
+                                        if (de72 == null) continue;
+                                        if (!pickedSet72.contains(de72.file.getName())) continue;
+                                        String u72 = fn72.get(de72.file.getName());
+                                        if (u72 == null) continue;
+                                        n72++;
+                                        sb72.append("\n").append(n72).append(". ")
+                                                .append(de72.title == null ? "" : de72.title)
+                                                .append("\n").append(u72);
+                                    }
+                                    if (n72 >= 2) {
+                                        sb72.append(Lang.t(DownloadedActivity.this, "share_source"));
+                                        Intent send72 = new Intent(Intent.ACTION_SEND);
+                                        send72.setType("text/plain");
+                                        send72.putExtra(Intent.EXTRA_TEXT, sb72.toString());
+                                        // v8.55: share chooser — suppress the background-off pause.
+                                        suppressDlSharePause = true;
+                                        startActivity(Intent.createChooser(send72, Lang.t(DownloadedActivity.this, "share_shown_listened")));
+                                    } else {
+                                        Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "share_link_missing"), Toast.LENGTH_SHORT).show();
+                                    }
+                                } else {
+                                    Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "share_link_missing"), Toast.LENGTH_SHORT).show();
+                                }
+                            } catch (Exception ignored) {}
                         } else if ("dl_menu_copy_shown_star".equals(choiceKey)) {
                             // v6.92: copy only the shown ★ subset's links as one
                             // text — the copy twin of v6.90's subset share, run
@@ -12784,6 +12863,68 @@ public class DownloadedActivity extends Activity {
                                                         Lang.t(DownloadedActivity.this, "clip_shown_new"), sb92.toString()));
                                             Toast.makeText(DownloadedActivity.this,
                                                     Lang.t(DownloadedActivity.this, "dl_shown_new_prefix") + n92 + Lang.t(DownloadedActivity.this, "dl_copy_count_suffix"),
+                                                    Toast.LENGTH_SHORT).show();
+                                        } catch (Exception ignored) {}
+                                    } else {
+                                        Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "copy_link_missing"), Toast.LENGTH_SHORT).show();
+                                    }
+                                } else {
+                                    Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "copy_link_missing"), Toast.LENGTH_SHORT).show();
+                                }
+                            } catch (Exception ignored) {}
+                        } else if ("dl_menu_copy_shown_listened".equals(choiceKey)) {
+                            // v15.51 (slice 1973): copy only the shown LISTENED subset's links as one text — the fourth member of the copy-shown family (v6.49 copies the whole shown set, v6.92 copies the shown star / shown unlistened subsets, this copies the shown listened subset). Same display positions the offer gate reads (libEntryAtDisplay over libDisplayCount), in display order, each subset file contributing its numbered decoded title + original link through the dlMap reverse lookup (the v6.42 map); files with no dlMap entry are skipped rather than copied as bare titles, and nothing is copied unless at least 2 link-bearing subset files survive, so a narrowed subset whose links mostly predate the dlMap never copies a header promising more talks than follow. The header names the library with the surviving subset size (counted first, like the chooser's v6.89), plus the dhammadownload.com credit. The playing file stays in the set on purpose, like v6.46 — a link list is not a play order. Membership is the shared DlCopyListened.pick core — the same call the offer gate makes — so the offer and the handler can never disagree; the body loop below re-walks the display positions and keeps only the picked names, so the copied order is display order. A copy mutates nothing, so the shared save + rebind tail below is a no-op rewrite; it does not set any pause guard (no sheet is left to return from).
+                            int c73 = 0;
+                            try {
+                                android.content.SharedPreferences sp73 =
+                                        getSharedPreferences("dhamma", MODE_PRIVATE);
+                                org.json.JSONObject map73 =
+                                        new org.json.JSONObject(sp73.getString("dlMap", "{}"));
+                                // v8.48: exactly-one claimant only (v8.41/v8.43 rule) — a dual-claimed
+                                // filename resolves to no URL, never the first claimant, so a
+                                // shared/copied list never names the wrong talk's link.
+                                java.util.HashMap<String, String> fn73 = new java.util.HashMap<String, String>();
+                                java.util.HashMap<String, Integer> cnt73 = new java.util.HashMap<String, Integer>();
+                                java.util.Iterator<String> keys73 = map73.keys();
+                                while (keys73.hasNext()) {
+                                    String u73 = keys73.next();
+                                    String f73 = map73.optString(u73, "");
+                                    if (f73.length() > 0) { fn73.put(f73, u73); Integer cc73 = cnt73.get(f73); cnt73.put(f73, cc73 == null ? 1 : cc73 + 1); }
+                                }
+                                for (String k73 : cnt73.keySet()) if (cnt73.get(k73) > 1) fn73.remove(k73);
+                                java.util.List<String> names73 = new java.util.ArrayList<String>();
+                                for (int i = 0; i < libDisplayCount(); i++) {
+                                    Entry de73 = libEntryAtDisplay(i);
+                                    if (de73 != null) names73.add(de73.file.getName());
+                                }
+                                java.util.List<String> picked73 = DlCopyListened.pick(names73, libListenedFiles, fn73.keySet());
+                                c73 = picked73.size();
+                                if (c73 >= 2) {
+                                    java.util.HashSet<String> pickedSet73 = new java.util.HashSet<String>(picked73);
+                                    StringBuilder sb73 = new StringBuilder();
+                                    sb73.append(Lang.t(DownloadedActivity.this, "dl_footer_downloaded")).append(Lang.t(DownloadedActivity.this, "dl_tag_shown_listened")).append(" ").append(c73).append(Lang.t(DownloadedActivity.this, "notif_queue_suffix") + "\n");
+                                    int n73 = 0;
+                                    for (int i = 0; i < libDisplayCount(); i++) {
+                                        Entry de73 = libEntryAtDisplay(i);
+                                        if (de73 == null) continue;
+                                        if (!pickedSet73.contains(de73.file.getName())) continue;
+                                        String u73 = fn73.get(de73.file.getName());
+                                        if (u73 == null) continue;
+                                        n73++;
+                                        sb73.append("\n").append(n73).append(". ")
+                                                .append(de73.title == null ? "" : de73.title)
+                                                .append("\n").append(u73);
+                                    }
+                                    if (n73 >= 2) {
+                                        sb73.append(Lang.t(DownloadedActivity.this, "share_source"));
+                                        try {
+                                            android.content.ClipboardManager cm73 =
+                                                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                                            if (cm73 != null)
+                                                cm73.setPrimaryClip(android.content.ClipData.newPlainText(
+                                                        Lang.t(DownloadedActivity.this, "clip_shown_listened"), sb73.toString()));
+                                            Toast.makeText(DownloadedActivity.this,
+                                                    Lang.t(DownloadedActivity.this, "dl_shown_listened_prefix") + n73 + Lang.t(DownloadedActivity.this, "dl_copy_count_suffix"),
                                                     Toast.LENGTH_SHORT).show();
                                         } catch (Exception ignored) {}
                                     } else {
@@ -13382,7 +13523,9 @@ public class DownloadedActivity extends Activity {
                                 }
                             }
                         } else if ("dl_menu_shuffle_shown_star".equals(choiceKey)
-                                || "dl_menu_shuffle_shown_new".equals(choiceKey)) {
+                                || "dl_menu_shuffle_shown_new".equals(choiceKey)
+                                || "dl_menu_shuffle_shown_listened".equals(choiceKey)) {
+                            // v15.51 (slice 1974): shuffle-play only the shown LISTENED subset — the listened member of the shuffle-shown family (v6.48 shuffles the whole shown set, v6.79 shuffles the shown star / shown unlistened subsets). Same shared body as the star/new twins below (shuffle, first file plays with row-tap semantics, rest head-queue shuffled, same toasts) — only the subset filter and the tag change, so the v6.79 body stays byte-identical.
                             // v6.79: shuffle-play only the shown
                             // favourite / shown unlistened subset
                             // — v6.48's shuffle handler run on the
@@ -13414,12 +13557,25 @@ public class DownloadedActivity extends Activity {
                             // positions are untouched, and the play
                             // toast counts playable files only.
                             boolean fav679 = "dl_menu_shuffle_shown_star".equals(choiceKey);
-                            String tag679 = fav679 ? Lang.t(DownloadedActivity.this, "dl_tag_shown_star") : Lang.t(DownloadedActivity.this, "dl_tag_shown_new");
+                            boolean lis679 = "dl_menu_shuffle_shown_listened".equals(choiceKey);
+                            String tag679 = lis679 ? Lang.t(DownloadedActivity.this, "dl_tag_shown_listened") : (fav679 ? Lang.t(DownloadedActivity.this, "dl_tag_shown_star") : Lang.t(DownloadedActivity.this, "dl_tag_shown_new"));
                             java.util.ArrayList<Entry> subset679 = new java.util.ArrayList<Entry>();
+                            java.util.List<String> names74 = new java.util.ArrayList<String>();
+                            java.util.List<String> paths74 = new java.util.ArrayList<String>();
+                            for (int i = 0; i < libDisplayCount(); i++) {
+                                Entry de74 = libEntryAtDisplay(i);
+                                if (de74 == null) continue;
+                                names74.add(de74.file.getName());
+                                paths74.add(de74.file.getAbsolutePath());
+                            }
+                            java.util.List<String> picked74 = DlShuffleListened.pick(names74, paths74, libListenedFiles);
+                            java.util.HashSet<String> pickedSet74 = new java.util.HashSet<String>(picked74);
                             for (int i = 0; i < libDisplayCount(); i++) {
                                 Entry de679 = libEntryAtDisplay(i);
                                 if (de679 == null) continue;
-                                if (fav679) {
+                                if (lis679) {
+                                    if (pickedSet74.contains(de679.file.getAbsolutePath())) subset679.add(de679);
+                                } else if (fav679) {
                                     if (libFavFiles.contains(de679.file.getName())) subset679.add(de679);
                                 } else {
                                     if (!libListenedFiles.contains(de679.file.getName())) subset679.add(de679);

@@ -3698,6 +3698,10 @@ public class TalksActivity extends Activity {
                     } catch (Exception ignored) {}
                     dOpts.add(dFav ? Lang.t(TalksActivity.this, "menu_fav_remove") : Lang.t(TalksActivity.this, "menu_fav_add"));
                     dKeys.add(dFav ? "menu_fav_remove" : "menu_fav_add");
+                    // v15.51 (slice 1969): mark this one talk listened / unlistened — the Talks chooser's first mark verb: the library had per-row (v15.47, slice 1949) and shown-set (v6.44/v6.45 + star/new twins) mark verbs, but a streamed talk in the browsing list could only earn its listened mark by playing to the end, and a talk heard elsewhere (or a re-download of one already finished) could not be cleared from the unlistened view without opening the library. The verb sits in the existing dialog (no new view, no row menu resurrected), right after the favourite toggle — the other per-talk state toggle — and reuses the 1949 pure core (DlMark) and its keys (dl_menu_mark_one / dl_menu_unmark_one), so 0 new Lang keys. The label reads the row's own cache (talkPlayedCache, the same set the row's tick renders from), so it can never disagree with the visible mark; the sounding talk keeps its direct share below (it earns its mark by finishing, like the 1949 sounding exclusion), and the tap-time re-check in the handler below guards the auto-advance window while the dialog sits open.
+                    boolean dPlaying69 = (talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(dt.url, talkPlayingUrl))
+                            || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(dt.url, talkPlayingLibUrl));
+                    if (DlMark.canOffer(dt.url, dPlaying69)) { String markKey69 = DlMark.labelKey(DlMark.isMarked(talkPlayedCache, SiteHttp.identityUrl(dt.url))); dOpts.add(Lang.t(TalksActivity.this, markKey69)); dKeys.add(markKey69); }
                     final boolean dQueued = talkQueueHas(dt.url);
                     if (dQueued) { dOpts.add(Lang.t(TalksActivity.this, "menu_queue_remove")); dKeys.add("menu_queue_remove"); }
                     else { dOpts.add(Lang.t(TalksActivity.this, "menu_queue_add")); dKeys.add("menu_queue_add"); }
@@ -3865,6 +3869,48 @@ public class TalksActivity extends Activity {
                                         if (adapter != null) adapter.notifyDataSetChanged();
                                         if (dt != null && dt.url != null) { menuMarkFadeUrl75 = dt.url; menuMarkBurstFav41 = Boolean.valueOf(added88); fadeMenuMarkedTalkRow(); }
                                         android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, added88 ? "fav_added" : "fav_removed"), android.widget.Toast.LENGTH_SHORT).show();
+                                    } else if ("dl_menu_mark_one".equals(dKeyArr[which])) {
+                                        // v15.51 (slice 1969): mark this one talk listened — the Talks chooser's first mark verb, reusing the 1949 pure core (DlMark) and the library's playedTalks key, so the mark lands in the same set the library, the rails, the header new-count and the filters all read. The tap-time sounding re-check (the v11.14 rule): the dialog can sit open across an auto-advance, so this talk can BE sounding by tap time — it earns its mark by finishing, never by this verb. talkPlayedCache grows in step so the row rebinds with its tick at once; refreshTalkRowMarks reloads the caches synchronously (the v10.88/v14.75 idiom, so the 1s tick snapshots the new state and sees no change), refreshFavHeader drops the header new-count, and rebuildFilter drops the row from an unlistened-only view at once. Neither the queue, the shelf order nor any saved resume position is mutated. The toast is the verb (the 1946 idiom); an already-marked tap toasts already_listened, never a false count.
+                                        if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(dt.url, talkPlayingUrl))
+                                                || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(dt.url, talkPlayingLibUrl))) {
+                                            android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+                                            return;
+                                        }
+                                        DlMark.Result marked69 = null;
+                                        try {
+                                            android.content.SharedPreferences sp69 = getSharedPreferences("dhamma", MODE_PRIVATE);
+                                            java.util.Set<String> cur69 = sp69.getStringSet("playedTalks", new java.util.HashSet<String>());
+                                            marked69 = DlMark.mark(cur69, SiteHttp.identityUrl(dt.url));
+                                            sp69.edit().putStringSet("playedTalks", marked69.set).apply();
+                                        } catch (Exception ignored) {}
+                                        if (marked69 != null && marked69.changed) talkPlayedCache.add(SiteHttp.identityUrl(dt.url));
+                                        refreshTalkRowMarks(true);
+                                        if (!talks.isEmpty() && sayadawName != null) refreshFavHeader();
+                                        if (filterMode != 0) rebuildFilter();
+                                        if (adapter != null) adapter.notifyDataSetChanged();
+                                        if (dt != null && dt.url != null) { menuMarkFadeUrl75 = dt.url; fadeMenuMarkedTalkRow(); }
+                                        android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, (marked69 != null && marked69.changed) ? "dl_menu_mark_one" : "already_listened"), android.widget.Toast.LENGTH_SHORT).show();
+                                    } else if ("dl_menu_unmark_one".equals(dKeyArr[which])) {
+                                        // v15.51 (slice 1969): un-mark this one talk listened — the mark leg's mirror: the same identityUrl, the same tap-time sounding re-check (a sounding talk keeps its mark while it plays), and the v14.85 both-forms removal, so a legacy http twin banked by the old raw verb goes too. talkPlayedCache drops in step so the row rebinds without its tick at once, and rebuildFilter returns the row to an unlistened-only view at once. The toast is the verb; a not-marked tap toasts nothing_to_unmark, never a false count.
+                                        if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(dt.url, talkPlayingUrl))
+                                                || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(dt.url, talkPlayingLibUrl))) {
+                                            android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+                                            return;
+                                        }
+                                        DlMark.Result unmarked69 = null;
+                                        try {
+                                            android.content.SharedPreferences sp69 = getSharedPreferences("dhamma", MODE_PRIVATE);
+                                            java.util.Set<String> cur69 = sp69.getStringSet("playedTalks", new java.util.HashSet<String>());
+                                            unmarked69 = DlMark.unmark(cur69, SiteHttp.identityUrl(dt.url), dt.url);
+                                            sp69.edit().putStringSet("playedTalks", unmarked69.set).apply();
+                                        } catch (Exception ignored) {}
+                                        if (unmarked69 != null && unmarked69.changed) { talkPlayedCache.remove(SiteHttp.identityUrl(dt.url)); talkPlayedCache.remove(dt.url); }
+                                        refreshTalkRowMarks(true);
+                                        if (!talks.isEmpty() && sayadawName != null) refreshFavHeader();
+                                        if (filterMode != 0) rebuildFilter();
+                                        if (adapter != null) adapter.notifyDataSetChanged();
+                                        if (dt != null && dt.url != null) { menuMarkFadeUrl75 = dt.url; fadeMenuMarkedTalkRow(); }
+                                        android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, (unmarked69 != null && unmarked69.changed) ? "dl_menu_unmark_one" : "nothing_to_unmark"), android.widget.Toast.LENGTH_SHORT).show();
                                     } else if ("menu_queue_remove".equals(dKeyArr[which])) {
                                         if (!talkQueueHas(dt.url)) {
                                             android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();

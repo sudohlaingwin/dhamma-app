@@ -194,6 +194,47 @@
                 android:textSize="20sp" />
         </LinearLayout>
 
+    <!-- v15.51 (slice 1970): "Add widget to Home screen" — a nav row
+         in Appearance, after the altar row: one tap asks the launcher
+         to pin the Dhamma widget (Play/Pause/Next + current talk,
+         v12.67) to the home screen. Same shape as the share-app row
+         (label + chevron, no value — the system pin dialog is the
+         feedback). The row is GONE while pinning is impossible
+         (API < 26 or an unsupported launcher). -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#26C9A227" />
+
+    <LinearLayout
+        android:id="@+id/rowWidget"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingVertical="14dp">
+        <TextView
+            android:id="@+id/btnWidget"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="ပင်မမျက်နှာပြင် တရားတော် ထားမယ်"
+            android:textColor="@color/ink"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/widgetChevron"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="8dp"
+            android:text="›"
+            android:textColor="@color/muted"
+            android:textSize="20sp" />
+    </LinearLayout>
+
     <TextView
         android:id="@+id/secPlayback"
         android:layout_width="match_parent"
