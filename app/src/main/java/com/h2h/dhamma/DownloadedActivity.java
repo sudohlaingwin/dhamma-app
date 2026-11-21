@@ -117,6 +117,14 @@ public class DownloadedActivity extends Activity {
     private android.widget.TextView chipDlStar = null;
     private android.widget.TextView chipDlNew = null;
 
+    // v15.45 (slice 1938): empty-library Browse button — null
+    // until onCreate wires it; refreshDlEmptyCta re-finds it
+    // if null, like the chip painters null-guard. dlBrowseShown
+    // is the change gate: only a real show/hide flip touches
+    // the view, so steady reloads stay free.
+    private android.widget.Button dlBrowseBtn = null;
+    private boolean dlBrowseShown = false;
+
     // v4.95: true when every shelf file is fully listened — the
     // loadList guard and the cycle toast share it, so a mode-2
     // view with nothing to show falls back / says so instead of
@@ -6292,6 +6300,21 @@ public class DownloadedActivity extends Activity {
                 }
             });
         }
+        // v15.45 (slice 1938): empty-library Browse button — the
+        // empty word itself only re-asks a missing permission; a
+        // truly empty library had no way forward in-screen. The
+        // button finishes back to the catalogue (Main's grid, or
+        // the sayadaw's talks when opened from there); its
+        // visibility is owned by refreshDlEmptyCta, so this bind
+        // is tap-only and never shows it.
+        dlBrowseBtn = findViewById(R.id.btnDlBrowse);
+        if (dlBrowseBtn != null) dlBrowseBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.tap(DownloadedActivity.this);
+                Fx.morph(v);
+                finish();
+            }
+        });
         // v1.38: one-tap clear for the library search
         android.view.View clearBtn = findViewById(R.id.btnClearDlSearch);
         dlClearBtn = clearBtn; // v15.33 (slice 1837): the ✕ melts with the query
@@ -8186,6 +8209,11 @@ public class DownloadedActivity extends Activity {
             // setDlFilterMode); the condition below ORs it in.
             // Visual only; no new element, text unchanged.
             boolean wasGone = empty.getVisibility() != android.view.View.VISIBLE;
+            // v15.45 (slice 1938): the Browse button's verdict,
+            // armed by the truly-empty branch below, consumed by
+            // the single tail call after the chain.
+            boolean wantBrowse38 = false;
+            boolean fadeBrowse38 = false;
             if (entries.isEmpty()) {
                 // v11.73: a missing audio permission is not an empty library — the denial
                 // branch above sets this text, but the next loadList used to overwrite it
@@ -8199,6 +8227,14 @@ public class DownloadedActivity extends Activity {
                         : dlProgCount > 0
                         ? "⏳ " + dlProgCount + Lang.t(DownloadedActivity.this, "dl_downloading_suffix")
                         : origEmptyText);
+                // v15.45 (slice 1938): arm the Browse button —
+                // the library is truly empty here (the permission
+                // and in-progress sub-texts above are the same
+                // facts the core reads), so the button shows only
+                // when nothing is downloading and the permission
+                // is held; the fade rides the empty word's own.
+                wantBrowse38 = DlEmptyCta.visible(entries.isEmpty(), hasReadPermission(), dlProgCount > 0);
+                fadeBrowse38 = wasGone && (dlSearchKeystroke || fadeEmpty || filterEmptyFade) && dlListLoaded;
                 if (wasGone && (dlSearchKeystroke || fadeEmpty || filterEmptyFade) && dlListLoaded) {
                     empty.setVisibility(android.view.View.VISIBLE);
                     Fx.fadeIn(empty, 250);
@@ -8300,6 +8336,11 @@ public class DownloadedActivity extends Activity {
                     empty.setVisibility(android.view.View.GONE);
                 }
             }
+            // v15.45 (slice 1938): the Browse button follows the
+            // empty word's verdict — one call for all three
+            // branches (want/fade set above; false/false unless
+            // the truly-empty branch armed them).
+            refreshDlEmptyCta(wantBrowse38, fadeBrowse38);
         }
         // v14.40 (slice 1695): consume the chip-melt flag here —
         // the tail is the only repaint on the setDlFilterMode path
@@ -8319,6 +8360,33 @@ public class DownloadedActivity extends Activity {
         if (tops84 != null) postDlSetGlide(tops84);
         // v15.33 (slice 1837): the ✕ follows the query on every filter pass — a watcher keystroke animates (dlSearchKeystroke is set only by the search watcher), sort/delete/loadList/rotation passes land instantly.
         refreshDlClear(dlSearchKeystroke);
+    }
+
+    // v15.45 (slice 1938): empty-library Browse button — show it
+    // only for a truly empty library (DlEmptyCta.visible: library
+    // empty, permission held, nothing downloading); a no-match
+    // search or an empty filter set keeps it hidden, like the
+    // empty word keeps its own text. Change-gated on
+    // dlBrowseShown, so steady reloads never re-touch it; the
+    // show fades 250ms with the empty word when it just
+    // appeared, else instant; the hide fades 200ms with the
+    // empty word's own fade-out, else instant GONE. The tap
+    // (wired in onCreate beside emptyTap73) finishes back to
+    // the catalogue — the button's label is the shipped "back"
+    // key, set from Lang in applyTheme like the other buttons.
+    private void refreshDlEmptyCta(boolean show, boolean fadeIn) {
+        if (show == dlBrowseShown) return;
+        dlBrowseShown = show;
+        if (dlBrowseBtn == null) dlBrowseBtn = findViewById(R.id.btnDlBrowse);
+        if (dlBrowseBtn == null) return;
+        if (show) {
+            dlBrowseBtn.setVisibility(android.view.View.VISIBLE);
+            if (fadeIn) Fx.fadeIn(dlBrowseBtn, 250);
+            else { dlBrowseBtn.animate().cancel(); dlBrowseBtn.setAlpha(1f); }
+        } else {
+            if (dlBrowseBtn.getVisibility() == android.view.View.VISIBLE) Fx.fadeOut(dlBrowseBtn, 200);
+            else { dlBrowseBtn.animate().cancel(); dlBrowseBtn.setAlpha(1f); dlBrowseBtn.setVisibility(android.view.View.GONE); }
+        }
     }
 
     // v1.19: footer total — count + combined size of the offline library
@@ -8886,7 +8954,7 @@ public class DownloadedActivity extends Activity {
         if (dlList != null) dlList.setDivider(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
         float btn = f == 0 ? 14 : (f == 1 ? 16 : 18);
         for (int id : new int[]{R.id.btnDlSort, R.id.btnDlRandom, R.id.btnDlPlayAll,
-                R.id.btnDlDeleteAll, R.id.btnClearDlSearch}) {
+                R.id.btnDlDeleteAll, R.id.btnClearDlSearch, R.id.btnDlBrowse}) {
             android.widget.Button b = findViewById(id);
             if (b != null) {
                 b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn);
@@ -8922,6 +8990,12 @@ public class DownloadedActivity extends Activity {
         if (pb != null) pb.setText(Lang.t(this, "dl_play_all_btn"));
         android.widget.Button db = findViewById(R.id.btnDlDeleteAll);
         if (db != null) db.setText(Lang.t(this, "dl_delete_all_btn"));
+        // v15.45 (slice 1938): the empty-library Browse button
+        // says "back" — it finishes to the catalogue. Reuses the
+        // shipped key (no new Lang key); the layout text is the
+        // same shipped Burmese, asserted by the patch.
+        android.widget.Button bb38 = findViewById(R.id.btnDlBrowse);
+        if (bb38 != null) bb38.setText(Lang.t(this, "back"));
         // v9.96: the sort button was set only at onCreate, on sort
         // tap and on clear/reset -- never by applyTheme(), so a
         // language picked in Settings while this screen sat in the

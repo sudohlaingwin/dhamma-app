@@ -135,6 +135,19 @@
         android:textColor="@color/muted"
         android:textSize="15sp"
         android:visibility="gone" />
+    <!-- v15.45 (slice 1938): empty-library Browse button — the
+         empty word explains downloads but offers no way forward;
+         this finishes back to the catalogue. Hidden unless the
+         library is truly empty (refreshDlEmptyCta owns it); the
+         text is the shipped "back" key's Burmese, set from Lang
+         in applyTheme like the other buttons. -->
+    <Button
+        android:id="@+id/btnDlBrowse"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="◀ ပြန်သွားမယ်"
+        android:visibility="gone" />
     <ListView
         android:id="@+id/list"
         android:layout_width="match_parent"

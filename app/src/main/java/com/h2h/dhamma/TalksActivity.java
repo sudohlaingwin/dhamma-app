@@ -215,6 +215,12 @@ public class TalksActivity extends Activity {
     // v12.28 row-tap shape, so a double-tap cannot stack a second
     // Room while the first is still starting.
     private long lastPlayAllMs = 0;
+    // v15.45 (slice 1942): Play-from-here double-tap guard
+    // — uptime of the last Play-from-here tap; a second tap
+    // inside 700ms is dropped, the v12.28 row-tap shape, so
+    // a double-tap cannot stack a second Room while the
+    // first is still starting.
+    private long lastPlayFromHereMs = 0;
     private void talkRefreshInProgressDlNames(boolean force) {
         try {
             long now = android.os.SystemClock.uptimeMillis();
@@ -1954,6 +1960,33 @@ public class TalksActivity extends Activity {
     // order and oldest-first. Shares the Play row's
     // GONE-until-a-list-lands gate.
     private android.widget.Button btnTalkSort = null;
+    // v15.45 (slice 1939): Talks header star — the
+    // sayadaw-favourite toggle for this screen. The set
+    // is the shared "favs" string set Main owns; the
+    // button is the 48dp star at the header row's end;
+    // talkHeaderFav is the last-painted state for the
+    // painter's change gate.
+    private android.widget.TextView talkFavBtn = null;
+    private java.util.Set<String> talkFavSet = new java.util.HashSet<String>();
+    private boolean talkHeaderFav = false;
+    // v15.45 (slice 1941): Talks header info button — the
+    // info glyph at the header row's end beside the star,
+    // opening the sayadaw info sheet. talkInfoShown is
+    // the last-painted visibility for the painter's change
+    // gate; talkInfoPhotoUrl is the header's resolved
+    // photo URL, reused by the sheet; sayadawGroup is the
+    // intent's group extra, empty when the opener did not
+    // send one.
+    private android.widget.TextView talkInfoBtn = null;
+    private boolean talkInfoShown = false;
+    private String talkInfoPhotoUrl = "";
+    private String sayadawGroup = "";
+    // v15.45 (slice 1940): Talks back-to-top button — the
+    // floating gold ↑ over the list's bottom-end corner;
+    // talkTopShown is the last-painted state for the
+    // painter's change gate.
+    private android.view.View talkTopBtn = null;
+    private boolean talkTopShown = false;
     // v15.43 (slice 1932): "Continue listening" row — the
     // one-tap return to this sayadaw's in-progress talk.
     // Shares no gate with the Play row: it hides while a
@@ -2070,6 +2103,10 @@ public class TalksActivity extends Activity {
                 Fx.fadeOut(empty, 200);
             }
         }
+        // v15.45 (slice 1940): a rebuild can land the list deep
+        // without a scroll event (load / search / filter / sort)
+        // — repaint the back-to-top button from the new position.
+        paintTalkTopBtnFromList();
     }
     private void rebuildFilter() {
         if (filterMode == 0) {
@@ -2308,6 +2345,214 @@ public class TalksActivity extends Activity {
         else Fx.setTextColorNow(btnTalkSort, color);
     }
 
+    // v15.45 (slice 1939): the header star toggle — favourites
+    // THIS sayadaw (the name in the header), not a talk: the
+    // Talks long-press dialog's fav verb is per-talk (favTalks),
+    // while this flips the shared "favs" string set Main reads
+    // (v1.53 reload, v7.29 staleness guard) and the shelf /
+    // auto-download / fav-new row read, so the toggle lands
+    // everywhere at once on return. The set is re-read fresh
+    // from prefs before mutating (the v12.45 lesson: a stale
+    // in-memory copy would re-poison a set Settings cleared
+    // while this screen sat paused). Fx.tap beat at the click
+    // site, morph + the fav_added/fav_removed toast here — the
+    // Main long-press beat, with the same keys.
+    private void toggleTalkFav(android.view.View v) {
+        if (sayadawName == null || sayadawName.length() == 0) return;
+        try {
+            java.util.Set<String> f = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favs", null);
+            talkFavSet = f == null ? new java.util.HashSet<String>() : new java.util.HashSet<String>(f);
+        } catch (Exception ignored) {}
+        boolean nowFav = SayadawFav.toggle(talkFavSet, sayadawName);
+        getSharedPreferences("dhamma", MODE_PRIVATE).edit()
+                .putStringSet("favs", new java.util.HashSet<String>(talkFavSet)).apply();
+        if (v != null) Fx.morph(v);
+        android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, nowFav ? "fav_added" : "fav_removed"), android.widget.Toast.LENGTH_SHORT).show();
+        paintTalkFavBtn(true);
+    }
+
+    // v15.45 (slice 1939): the header star's state — gold
+    // #C9A227 while this sayadaw is favourited, the night-aware
+    // muted pair (#AAAAAA night / #7A6A58 day) while not: the
+    // paintTalkSortBtn language above. The state is re-read
+    // fresh from prefs (like refreshFavHeader's own favTalks
+    // read), so an external change heals on the next header
+    // refresh; the change gate (last-painted state + glyph)
+    // keeps steady load/return/tick refreshes from re-touching
+    // the star. Animated melt on the toggle, instant stamp
+    // everywhere else (create / return / theme / restore, via
+    // refreshFavHeader below).
+    private void paintTalkFavBtn(boolean animate) {
+        if (talkFavBtn == null) return;
+        boolean fav = false;
+        try {
+            java.util.Set<String> f = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favs", null);
+            fav = SayadawFav.isFav(f, sayadawName);
+        } catch (Exception ignored) {}
+        String glyph = SayadawFav.glyph(fav);
+        CharSequence cur = talkFavBtn.getText();
+        if (fav == talkHeaderFav && glyph.equals(cur == null ? "" : cur.toString())) return;
+        talkHeaderFav = fav;
+        talkFavBtn.setText(glyph);
+        int color = fav ? android.graphics.Color.parseColor("#C9A227")
+                : (cachedNight ? android.graphics.Color.parseColor("#AAAAAA") : android.graphics.Color.parseColor("#7A6A58"));
+        if (animate) Fx.crossfadeTextColor(talkFavBtn, color);
+        else Fx.setTextColorNow(talkFavBtn, color);
+    }
+
+    // v15.45 (slice 1941): the info button's visibility —
+    // GONE until a list lands, VISIBLE after. The counts the
+    // sheet shows need the loaded list (total) and the
+    // new-set (new count), so a loading/failed screen never
+    // grows a button that would open a zero-count sheet; the
+    // search row gates on the same landing. Change-gated on
+    // talkInfoShown, with the 180ms melt the back-to-top
+    // button uses (slice 1940), so steady load/return/tick
+    // refreshes never re-touch it.
+    private void paintTalkInfoBtn() {
+        if (talkInfoBtn == null) return;
+        boolean want = talks != null && !talks.isEmpty()
+                && sayadawName != null && sayadawName.length() > 0;
+        if (want == talkInfoShown) return;
+        talkInfoShown = want;
+        if (want) {
+            talkInfoBtn.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(talkInfoBtn, 180);
+        } else {
+            Fx.fadeOut(talkInfoBtn, 180);
+        }
+    }
+
+    // v15.45 (slice 1941): the sayadaw info sheet — the
+    // about card for the sayadaw in this header: photo, name,
+    // group, total talks, and the new-talk count. The photo
+    // is the header's own resolved URL (talkInfoPhotoUrl),
+    // so the sheet's portrait can never disagree with the
+    // header's; the group is the intent's group extra (Main
+    // always sends it) and hides when empty; the total is
+    // the full loaded list (never the filtered view); the new
+    // count is the Play-new gate over the full list (see
+    // computeInfoNewCount), so it counts the whole sayadaw
+    // even under a search or filter. The header's
+    // downloaded/finished/half-heard counts are deliberately
+    // NOT repeated here — the sheet shows only what no
+    // surface shows. No toast, no new Lang key: the lines
+    // reuse room_count_prefix / pl_talks / dl_hint_new_prefix
+    // and the close button is dlg_close.
+    private void showSayadawInfo() {
+        if (talks == null || talks.isEmpty() || sayadawName == null || sayadawName.length() == 0) return;
+        int total41 = talks.size();
+        int new41 = computeInfoNewCount();
+        android.view.View v = getLayoutInflater().inflate(R.layout.dialog_sayadaw_info, null);
+        com.h2h.dhamma.CircleImageView pv = (com.h2h.dhamma.CircleImageView) v.findViewById(R.id.infoPhoto);
+        if (pv != null) ImageLoader.load(TalksActivity.this,
+                talkInfoPhotoUrl == null ? "" : talkInfoPhotoUrl, sayadawName, pv);
+        android.widget.TextView nameTv = (android.widget.TextView) v.findViewById(R.id.infoName);
+        if (nameTv != null) nameTv.setText(sayadawName);
+        android.widget.TextView groupTv = (android.widget.TextView) v.findViewById(R.id.infoGroup);
+        if (groupTv != null) {
+            if (SayadawInfo.showGroup(sayadawGroup)) groupTv.setText(sayadawGroup);
+            else groupTv.setVisibility(android.view.View.GONE);
+        }
+        android.widget.TextView totalTv = (android.widget.TextView) v.findViewById(R.id.infoTotal);
+        if (totalTv != null) totalTv.setText(Lang.t(TalksActivity.this, "room_count_prefix") + total41 + " " + Lang.t(TalksActivity.this, "pl_talks"));
+        android.widget.TextView newTv = (android.widget.TextView) v.findViewById(R.id.infoNew);
+        if (newTv != null) {
+            if (SayadawInfo.showNewLine(new41)) newTv.setText("\u25CF " + Lang.t(TalksActivity.this, "dl_hint_new_prefix") + new41 + " " + Lang.t(TalksActivity.this, "pl_talks"));
+            else newTv.setVisibility(android.view.View.GONE);
+        }
+        new android.app.AlertDialog.Builder(TalksActivity.this)
+                .setView(v)
+                .setPositiveButton(Lang.t(TalksActivity.this, "dlg_close"), new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) { d.dismiss(); }
+                })
+                .create().show();
+    }
+
+    // v15.45 (slice 1941): the sheet's new-talk count — the
+    // Play-new gate (slice 1933) over the FULL loaded list,
+    // not the shown/filtered view: computePlayNewIdxs returns
+    // empty under a search or filter (visibleHits != null),
+    // but the sheet counts the whole sayadaw either way, so
+    // it rebuilds the id list + resume map here in list
+    // order. Same inputs as the Play-new row (new-set,
+    // played cache, resume spots via resumeMsForContinue,
+    // both sounding URLs), so the count, the dots and the
+    // Play-new row always agree.
+    private int computeInfoNewCount() {
+        if (talks == null || talks.isEmpty()) return 0;
+        java.util.List<String> ids41 = new java.util.ArrayList<String>();
+        for (Talk t : talks) ids41.add(t == null ? null : SiteHttp.identityUrl(t.url));
+        java.util.Map<String, Integer> resumeById41 = new java.util.HashMap<String, Integer>();
+        if (newTalkUrls != null) {
+            for (int i = 0; i < talks.size(); i++) {
+                String id41 = ids41.get(i);
+                if (id41 == null || !newTalkUrls.contains(id41) || resumeById41.containsKey(id41)) continue;
+                resumeById41.put(id41, Integer.valueOf(resumeMsForContinue(talks.get(i))));
+            }
+        }
+        return SayadawInfo.unseenNewCount(ids41, newTalkUrls, talkPlayedCache, resumeById41, talkPlayingUrl, talkPlayingLibUrl);
+    }
+
+    // v15.45 (slice 1940): wire the back-to-top button — the
+    // scroll listener paints on every scroll, the tap blips +
+    // morphs + glides to the top (the same v4.12 glide the
+    // title tap already uses). A missing list or button simply
+    // never wires; the pull-to-refresh touch listener owns a
+    // different callback, so the two never fight.
+    private void wireTalkTopBtn() {
+        talkTopBtn = findViewById(R.id.talkTopBtn);
+        if (talkTopBtn != null) talkTopBtn.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                Fx.tap(TalksActivity.this);
+                Fx.morph(v);
+                if (talkList != null) talkList.smoothScrollToPosition(0);
+            }
+        });
+        if (talkList != null) talkList.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
+            @Override public void onScrollStateChanged(android.widget.AbsListView v, int state) {}
+            @Override public void onScroll(android.widget.AbsListView v, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
+                paintTalkTopBtn(firstVisibleItem);
+            }
+        });
+    }
+
+    // v15.45 (slice 1940): the back-to-top state — shown once
+    // the first visible row passes ScrollTop's threshold, hidden
+    // at the top. The change gate keeps steady scrolls and the
+    // rebuild/restore repaints from re-touching the button; the
+    // show/hide melts (Fx.fadeIn/fadeOut, 180ms) instead of
+    // snapping, and a cancelled fade never strands it
+    // half-transparent (the v2.62 gen guard).
+    private void paintTalkTopBtn(int firstVisible) {
+        if (talkTopBtn == null) return;
+        boolean want = ScrollTop.visible(firstVisible);
+        if (want == talkTopShown) return;
+        talkTopShown = want;
+        if (want) {
+            talkTopBtn.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(talkTopBtn, 180);
+        } else {
+            Fx.fadeOut(talkTopBtn, 180);
+        }
+    }
+
+    // v15.45 (slice 1940): repaint from the list's own position
+    // after a scroll-less change — a rebuild (load / search /
+    // filter / sort) or a rotation restore can land the list
+    // deep without a scroll event, so read the position after
+    // layout and paint from it. Posted, because the first
+    // visible row is only valid once the list has laid out.
+    private void paintTalkTopBtnFromList() {
+        if (talkList == null) return;
+        talkList.post(new Runnable() {
+            @Override public void run() {
+                if (talkList == null) return;
+                paintTalkTopBtn(talkList.getFirstVisiblePosition());
+            }
+        });
+    }
+
     // v15.43 (slice 1932): Continue row refresh + resume-spot
     // helper — the refresh body sits beside the filter-mode
     // setter because it reads the same visibleHits gate.
@@ -2539,6 +2784,111 @@ public class TalksActivity extends Activity {
                 : Lang.t(TalksActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
         Fx.morph(v);
         if (!firstSounds33) openRoom(firstTi33);
+    }
+
+    // v15.45 (slice 1942): play from here — the row menu's first
+    // play verb. Queue-from-here (v13.04) queues this talk and
+    // every shown talk below it but never starts playback, and a
+    // row tap plays one talk without queueing the run below it,
+    // so starting a run mid-list took two gestures in two places
+    // (long-press, queue, dismiss, find the row again and tap)
+    // — in a 3,101-talk list the row is gone by the time the
+    // dialog closes. One tap here queues the run AND opens the
+    // Room on the anchor talk, so the run plays from here
+    // onward. The playAllShown shape: same guards (empty list /
+    // no shown talk refuse with the same words), same 700ms
+    // debounce on its own clock (an invalid tap never consumes
+    // the window, v12.28 rule), same skips (sounding +
+    // already-queued, via the PlayFromHere pick), same keep-set
+    // through the funnel, same count toast, same openRoom(anchor)
+    // unless it already sounds. The anchor index is re-resolved
+    // from dt at tap time (the v13.13 rule — the dialog can sit
+    // open across a filter rebuild, so the captured position may
+    // have moved); an anchor filtered out while the dialog sat
+    // open falls back to the anchor alone (the v13.04 fallback
+    // shape), never a stale range. Works under search/filter
+    // (the queue-from-here visibleHits mapping), unlike the
+    // Play-new row, which refuses under visibleHits.
+    private void playFromHere(Talk dt) {
+        if (talks == null || talks.isEmpty() || dt == null || dt.url == null || dt.url.length() == 0) {
+            android.widget.Toast.makeText(TalksActivity.this,
+                    Lang.t(TalksActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        int dispCount42 = visibleHits != null ? visibleHits.size() : talks.size();
+        if (dispCount42 <= 0) {
+            android.widget.Toast.makeText(TalksActivity.this,
+                    Lang.t(TalksActivity.this, "no_search_match"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // The anchor's talk index, re-resolved from dt (never
+        // the captured long-press position — v13.13).
+        int anchorTi42 = -1;
+        for (int i42 = 0; i42 < talks.size(); i42++) {
+            Talk t42 = talks.get(i42);
+            if (t42 != null && t42.url != null && SiteHttp.sameTalk(t42.url, dt.url)) { anchorTi42 = i42; break; }
+        }
+        if (anchorTi42 < 0 || anchorTi42 >= talks.size()) {
+            android.widget.Toast.makeText(TalksActivity.this,
+                    Lang.t(TalksActivity.this, "no_search_match"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Talk anchor42 = talks.get(anchorTi42);
+        boolean anchorSounds42 = anchor42 != null && anchor42.url != null
+                && ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(anchor42.url, talkPlayingUrl))
+                        || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(anchor42.url, talkPlayingLibUrl)));
+        long now42 = android.os.SystemClock.uptimeMillis();
+        if (now42 - lastPlayFromHereMs < 700) return;
+        lastPlayFromHereMs = now42;
+        // Display-order identity list (the queue-from-here
+        // mapping — visibleHits when a search/filter is active,
+        // else the full list), the queued set as identities, and
+        // the pick: the run from the anchor onward, minus the
+        // sounding talk and minus already-queued talks.
+        java.util.List<String> dispIds42 = new java.util.ArrayList<String>();
+        for (int d42 = 0; d42 < dispCount42; d42++) {
+            int ti42 = talkIndexAtDisplay(d42);
+            Talk t42 = (ti42 < 0 || ti42 >= talks.size()) ? null : talks.get(ti42);
+            dispIds42.add(t42 == null ? null : SiteHttp.identityUrl(t42.url));
+        }
+        java.util.Set<String> queuedIds42 = new java.util.HashSet<String>();
+        for (String q42 : talkQueue) queuedIds42.add(SiteHttp.identityUrl(q42));
+        java.util.List<Integer> picked42 = PlayFromHere.pick(dispIds42,
+                SiteHttp.identityUrl(dt.url), queuedIds42, talkPlayingUrl, talkPlayingLibUrl);
+        int start42 = PlayFromHere.anchorIndex(dispIds42, SiteHttp.identityUrl(dt.url));
+        int added42 = 0;
+        java.util.Set<String> keep42 = new java.util.HashSet<String>();
+        if (start42 < 0) {
+            // Anchor filtered out while the dialog sat open:
+            // queue just the anchor itself, never a stale range
+            // (the v13.04 fallback shape).
+            if (!anchorSounds42 && !talkQueueHas(dt.url)) {
+                talkQueue.add(dt.url);
+                keep42.add(dt.url);
+                added42++;
+            }
+        } else for (Integer dpBox42 : picked42) {
+            int dp42 = dpBox42.intValue();
+            int ti42 = talkIndexAtDisplay(dp42);
+            if (ti42 < 0 || ti42 >= talks.size()) continue;
+            Talk t42 = talks.get(ti42);
+            if (t42 == null || t42.url == null || t42.url.length() == 0) continue;
+            if (talkQueueHas(t42.url)) continue;
+            talkQueue.add(t42.url);
+            keep42.add(t42.url);
+            added42++;
+        }
+        saveTalkQueueKeepingForeign(talkQueue, keep42);
+        refreshQueueMarks();
+        if (!talks.isEmpty() && sayadawName != null) refreshFavHeader();
+        if (adapter != null) adapter.notifyDataSetChanged();
+        android.widget.Toast.makeText(TalksActivity.this, added42 > 0
+                ? Lang.t(TalksActivity.this, "queue_plain_prefix") + added42 + Lang.t(TalksActivity.this, "queue_added_suffix")
+                : Lang.t(TalksActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
+        if (!anchorSounds42) openRoom(anchorTi42);
     }
 
     // v13.95 (slice 1090): one direct-set path for the filter mode —
@@ -2775,6 +3125,13 @@ public class TalksActivity extends Activity {
         if (Prefs.keepScreenOn(this))
             getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         sayadawName = getIntent().getStringExtra("name");
+        // v15.45 (slice 1941): the sayadaw's group rides
+        // the same intent Main sends (name/group/url/photo)
+        // — the info sheet names the tradition; an open
+        // without the extra (Room/notification) leaves it
+        // empty and the sheet simply hides the group line.
+        String g41 = getIntent().getStringExtra("group");
+        sayadawGroup = g41 == null ? "" : g41;
         pageUrl = getIntent().getStringExtra("url");
         // v15.41 (slice 1920): newly-added talks — the dot set
         // for this sayadaw (prefs-backed, so the restore path
@@ -2789,6 +3146,36 @@ public class TalksActivity extends Activity {
         // uses below; a missing title simply never wires.
         android.widget.TextView titleTv = (android.widget.TextView) findViewById(R.id.title);
         if (titleTv != null) titleTv.setText(sayadawName);
+        // v15.45 (slice 1939): the header star binds beside
+        // the title — the sayadaw-favourite toggle for this
+        // screen (see toggleTalkFav below). The set loads
+        // here and is re-read fresh on every toggle (the
+        // v12.45 lesson); the painter below reads prefs
+        // fresh too. Fx.tap beat at the click site, body
+        // in toggleTalkFav.
+        try {
+            java.util.Set<String> f39 = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favs", null);
+            talkFavSet = f39 == null ? new java.util.HashSet<String>() : new java.util.HashSet<String>(f39);
+        } catch (Exception ignored) {}
+        talkFavBtn = (android.widget.TextView) findViewById(R.id.talkFavBtn);
+        if (talkFavBtn != null) talkFavBtn.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                Fx.tap(TalksActivity.this);
+                toggleTalkFav(v);
+            }
+        });
+        // v15.45 (slice 1941): the header info button binds
+        // beside the star — the sayadaw info sheet for this
+        // screen (see showSayadawInfo below). Fx.tap beat at
+        // the click site, morph + sheet in the body.
+        talkInfoBtn = (android.widget.TextView) findViewById(R.id.talkInfoBtn);
+        if (talkInfoBtn != null) talkInfoBtn.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                Fx.tap(TalksActivity.this);
+                Fx.morph(v);
+                showSayadawInfo();
+            }
+        });
         // v6.04: chooser header portrait — Main passes this sayadaw's
         // photo in the intent (same extra Room gets), so no new
         // parse; a missing/empty extra falls back to the catalog
@@ -2805,6 +3192,12 @@ public class TalksActivity extends Activity {
             if (hp != null) ImageLoader.load(TalksActivity.this,
                     headerPhoto == null ? "" : headerPhoto, sayadawName,
                     (CircleImageView) hp);
+            // v15.45 (slice 1941): keep the resolved header
+            // photo URL for the info sheet — the same
+            // resolution (intent extra, else the catalog
+            // map), so the sheet's portrait can never
+            // disagree with the header's.
+            talkInfoPhotoUrl = headerPhoto == null ? "" : headerPhoto;
         } catch (Exception ignored) {}
         // v13.89 (slice 1081): bind the header photo ring frame (see the
         // field comment) — background only, set by updateChooserHeaderRing
@@ -2923,6 +3316,7 @@ public class TalksActivity extends Activity {
         // list simply never wires, the search box still does.
         if (list != null) list.setAdapter(adapter);
         wirePullRefresh(); // v15.34 (slice 1841): pull-to-refresh on this list
+        wireTalkTopBtn(); // v15.45 (slice 1940): back-to-top button on this list
         wireSearchBox(); // v4.93: talk title search under the header
         if (list != null) list.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
@@ -3210,6 +3604,16 @@ public class TalksActivity extends Activity {
                     // handler, like the library verb.
                     dOpts.add(Lang.t(TalksActivity.this, "menu_queue_from_here"));
                     dKeys.add("menu_queue_from_here");
+                    // v15.45 (slice 1942): "play from here"
+                    // — the dialog's first play verb: queue
+                    // this talk and every shown talk below
+                    // it (the v13.04 range) AND open the Room
+                    // on it, so the run plays from here
+                    // onward in one tap. After its sibling
+                    // (same range, no playback); share stays
+                    // first, muscle memory preserved.
+                    dOpts.add(Lang.t(TalksActivity.this, "menu_play_from_here"));
+                    dKeys.add("menu_play_from_here");
                     // v7.83: re-arm the dead pick-up/drop move — the
                     // chooser ⋮ removal deleted its only setter, so
                     // Talks moveHeldUrl could only ever be restored
@@ -3441,6 +3845,13 @@ public class TalksActivity extends Activity {
                                         android.widget.Toast.makeText(TalksActivity.this, added04 > 0
                                                 ? Lang.t(TalksActivity.this, "queue_plain_prefix") + added04 + Lang.t(TalksActivity.this, "queue_added_suffix")
                                                 : Lang.t(TalksActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
+                                    } else if ("menu_play_from_here".equals(dKeyArr[which])) {
+                                        // v15.45 (slice 1942): play from here
+                                        // — the dialog's first play verb (see
+                                        // playFromHere below): queue the run
+                                        // from the long-pressed talk onward
+                                        // and open the Room on it in one tap.
+                                        playFromHere(dt);
                                     } else if ("dl_btn_download".equals(dKeyArr[which])) {
                                         // v11.70: tap-time re-checks, the v11.14/v11.12
                                         // pattern -- the offer gate ran at dialog-build
@@ -3888,6 +4299,10 @@ public class TalksActivity extends Activity {
                 // the v13.36 T5 guard protects at setAdapter — the
                 // restore-branch setSelection below it was bare.
                 if (list != null && searchQuery.length() == 0 && filterMode == 0 && scrollPos > 0 && scrollPos < scrollLimit) list.setSelection(scrollPos);
+                // v15.45 (slice 1940): a restored scroll position
+                // lands deep with no scroll event — repaint the
+                // back-to-top button from the restored position.
+                paintTalkTopBtnFromList();
                 restored = true;
                 // v12.54: restore the return-scroll anchor saved above,
                 // so a rotation does not re-glide to the same talk.
@@ -5048,6 +5463,20 @@ public class TalksActivity extends Activity {
 
     private void refreshFavHeader() {
         updateChooserHeaderRing(); // v13.89 (slice 1081): the ring rides the header refresh, never a steady tick
+        // v15.45 (slice 1939): the header star paints on
+        // every header refresh (load / return / change-only
+        // tick) — before the early returns below, so an
+        // empty list or a missing title never strands a
+        // stale star, and a Settings clear heals on return.
+        // The painter is change-gated, so steady refreshes
+        // never re-touch it.
+        paintTalkFavBtn(false);
+        // v15.45 (slice 1941): the info button paints on
+        // every header refresh too — before the early returns
+        // below, so an empty list hides it and a landed list
+        // shows it; the painter is change-gated, so steady
+        // refreshes never re-touch it.
+        paintTalkInfoBtn();
         // v13.85 (slice 1077): clear the Up Next row mark first — this method's two early returns below (empty list / no sayadaw / no header view) must not leave a stale upNextRowUrl crowning a row from a dead session.
         upNextRowUrl = "";
         talkRefreshInProgressDlNames(false); // v11.57: header ⬇ count reads isTalkDownloaded fresh

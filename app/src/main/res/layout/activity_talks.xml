@@ -50,6 +50,45 @@
             android:textColor="@color/maroon"
             android:textSize="20sp"
             android:textStyle="bold" />
+        <!-- v15.45 (slice 1939): header star — the
+             sayadaw-favourite toggle for this screen: 48dp,
+             22sp glyph, gold while this sayadaw is
+             favourited, muted while not. This is NOT the
+             v6.07 download-all below — that button is
+             banned and stays gone; this star favourites
+             the sayadaw, which no Talks surface could do
+             before (Main's grid long-press was the only
+             entry). -->
+        <TextView
+            android:id="@+id/talkFavBtn"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="☆"
+            android:textColor="@color/muted"
+            android:textSize="22sp" />
+        <!-- v15.45 (slice 1941): header info — the info glyph
+             at the header row's end beside the star, opening
+             the sayadaw info sheet (name, group, total talks,
+             new talks). 48dp, 22sp glyph, borderless, muted
+             like the star; GONE until a list lands, painted
+             by paintTalkInfoBtn. This is NOT a favourite
+             control and NOT the v6.07 download-all below. -->
+        <TextView
+            android:id="@+id/talkInfoBtn"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="ⓘ"
+            android:textColor="@color/muted"
+            android:textSize="22sp"
+            android:visibility="gone" />
         <!-- v6.07: header download-all — the chooser could queue a
              whole sayadaw in one tap (v4.49–v4.52 bulk queue verbs)
              but downloading one meant opening each talk in the Room
@@ -330,15 +369,42 @@
             android:textColor="@color/muted"
             android:textSize="14sp" />
     </LinearLayout>
-    <ListView
-        android:id="@+id/list"
+    <!-- v15.45 (slice 1940): back-to-top frame — the list now
+         sits in a FrameLayout so a floating gold ↑ can ride
+         over its bottom-end corner: the title tap (v4.12)
+         already jumps to the top, but the title is off-screen
+         exactly when the jump is needed. The frame carries the
+         old ListView geometry (8dp top margin, weight 1) so
+         the list itself does not move; the button is GONE
+         until the list has scrolled past eight rows. -->
+    <FrameLayout
+        android:id="@+id/talkListFrame"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_marginTop="8dp"
-        android:layout_weight="1"
-        android:divider="@color/surface"
-        android:dividerHeight="1dp"
-        android:fastScrollEnabled="true" />
+        android:layout_weight="1">
+        <ListView
+            android:id="@+id/list"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:divider="@color/surface"
+            android:dividerHeight="1dp"
+            android:fastScrollEnabled="true" />
+        <TextView
+            android:id="@+id/talkTopBtn"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/top_btn_bg"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="↑"
+            android:textColor="@color/maroon"
+            android:textSize="24sp"
+            android:visibility="gone" />
+    </FrameLayout>
     <!-- v7.32 (user order 2026-11-01 ~19:36 +07): queue preview removed — no preview block above the strip. -->
     <!-- v4.31: real mini-player, same strip as Main's (v4.15/v4.30) —
          GONE while nothing plays, so the list-only chooser stays

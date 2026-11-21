@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v15.45 (slice 1941): sayadaw info sheet — the about card
+     for the sayadaw whose talks this screen lists: photo, name,
+     tradition/group, total talks, and the new-talk count. The
+     counts deliberately do NOT repeat the header title's
+     downloaded/finished/half-heard counts — the sheet shows
+     only what no surface shows. Shown through the app's
+     standard AlertDialog.Builder (v15.29 entrance); the
+     positive button is the shipped dlg_close key. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <com.h2h.dhamma.CircleImageView
+        android:id="@+id/infoPhoto"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:layout_gravity="center_horizontal"
+        android:scaleType="centerCrop" />
+
+    <TextView
+        android:id="@+id/infoName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:gravity="center"
+        android:textColor="@color/maroon"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/infoGroup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:gravity="center"
+        android:textColor="@color/muted"
+        android:textSize="15sp" />
+
+    <TextView
+        android:id="@+id/infoTotal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:gravity="center"
+        android:textColor="@color/ink"
+        android:textSize="16sp" />
+
+    <TextView
+        android:id="@+id/infoNew"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:gravity="center"
+        android:textColor="@color/ink"
+        android:textSize="16sp" />
+
+</LinearLayout>

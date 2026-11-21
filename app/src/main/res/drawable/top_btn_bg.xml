@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v15.45 (slice 1940): solid gold disc behind the Talks
+     back-to-top ↑ — the same #C9A227 as the sounding rings
+     and the gold states, so the button reads as the app's
+     accent on parchment and on dark alike; the maroon glyph
+     sits on it. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="#C9A227" />
+</shape>
