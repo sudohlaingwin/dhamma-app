@@ -5443,6 +5443,24 @@ if (snd65 >= 0) currentIndex = snd65;
     // rollThemeForTalk can record the owning talk only on a real
     // roll (autoTheme-off and the one-photo guard roll nothing).
     private boolean pickTheme() {
+        // v15.44 (slice 1935): a chosen altar photo wins over
+        // the per-talk roll — the Room keeps showing the photo
+        // the listener picked in Settings. A fixed photo
+        // already showing rolls nothing (the same-theme re-set
+        // would start no melt, v14.17 — and this skips even
+        // the snapshot); a different fixed photo melts in
+        // through setPhoto and adopts the theme actually
+        // showing (v12.49). autoTheme-off never reaches here:
+        // fixed wins over the freeze too, because the pick
+        // itself names the photo.
+        int fixed35 = Prefs.altarPhoto(this);
+        if (AltarPick.isFixed(fixed35)) {
+            if (fixed35 == themeIndex) return false;
+            if (roomView == null) return false;
+            int before35 = themeIndex;
+            themeIndex = roomView.setPhoto(fixed35);
+            return themeIndex != before35;
+        }
         if (!Prefs.autoTheme(this)) return false;
         // v1.89: the re-roll loop never exits when there is only one
         // photo to pick from — today there are 4, but a future photo
@@ -9002,7 +9020,12 @@ if (snd68 >= 0) currentIndex = snd68;
             // (pickTheme returns early); per-talk switching stays
             // the random different-theme rule. No new UI element,
             // no new setting.
-            themeIndex = themeRandom.nextInt(RoomView.PHOTO_COUNT);
+            // v15.44 (slice 1935): a chosen altar photo opens
+            // with it instead of a fresh roll (effectivePhoto:
+            // a fixed 0..5 wins, anything else keeps the
+            // roll). Rotation still restores the pre-rotation
+            // photo above.
+            themeIndex = AltarPick.effectivePhoto(Prefs.altarPhoto(this), themeRandom.nextInt(RoomView.PHOTO_COUNT));
         // v12.49: adopt the theme actually showing (see
         // RoomView.setPhoto) — the saved bundle value may name a
         // theme whose decode failed, so recording the request let a

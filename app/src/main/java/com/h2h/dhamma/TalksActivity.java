@@ -1683,6 +1683,7 @@ public class TalksActivity extends Activity {
         refreshQueueMarks();
         refreshTalkRowMarks(false);
         refreshContinueRow(); // v15.43 (slice 1932): the Continue row follows the row marks (load / return / 1s tick), with the played + download caches fresh
+        refreshPlayNewRow(); // v15.44 (slice 1933): the Play-new row follows the same funnel (load / return / 1s tick), with the played + download caches fresh
     }
     // v4.71: offline check for the chooser header's Up Next mark —
     // the Room's isDownloadedFile (v1.90 map + v1.82 candidates +
@@ -1962,6 +1963,19 @@ public class TalksActivity extends Activity {
     private android.widget.TextView talkContinueTitle = null;
     private String continuePickKey = "";
     private int continuePickIdx = -1;
+    // v15.44 (slice 1933): "Play new" row — one tap queues +
+    // plays only this sayadaw's new (●-dotted) talks. Shares
+    // no gate with the Play row: it hides while a search or
+    // filter narrows the list, and it appears only when such
+    // talks exist. Its own 700ms debounce clock (Play All's
+    // lastPlayAllMs stays untouched); the count word is parsed
+    // once from queue_added_suffix (see
+    // playNewCountWordFromSuffix).
+    private android.view.View talkPlayNewRow = null;
+    private android.widget.TextView talkPlayNewTitle = null;
+    private String playNewPickKey = "";
+    private String playNewCountWord = null;
+    private long lastPlayNewMs = 0;
     private android.view.View talkPlayRow = null;
     // v14.45 (slice 1700): skip-first-fade flag — a rotation
     // restore must snap the Play All row back (the v1.53 rule,
@@ -2375,6 +2389,156 @@ public class TalksActivity extends Activity {
             }
         }
         return rp;
+    }
+
+
+    // v15.44 (slice 1933): "Play new" row — one tap queues +
+    // plays only this sayadaw's new (●-dotted) talks, in shown
+    // order. Rides refreshTalksQueuePreview (load / return / 1s
+    // tick), after refreshContinueRow, so the played + download
+    // caches are fresh. Hidden while a search or filter narrows
+    // the list (visibleHits != null — a picked talk may be
+    // hidden); change-gated on the joined picked identities, so
+    // steady ticks touch no view. Shows with the Play row's fade
+    // idiom (fadeIn 250 / fadeOut 200). The title names the
+    // count ("N <word>") from queue_added_suffix's own word,
+    // parsed at runtime (see playNewCountWordFromSuffix); the
+    // tap re-resolves the pick fresh (see playNewShown), so a
+    // state shift between refresh and tap can never queue a
+    // stale set.
+    private java.util.List<Integer> computePlayNewIdxs() {
+        java.util.List<Integer> out = new java.util.ArrayList<Integer>();
+        if (talks == null || talks.isEmpty() || visibleHits != null) return out;
+        int dispCount33 = talks.size();
+        java.util.List<String> dispIds33 = new java.util.ArrayList<String>();
+        for (int d33 = 0; d33 < dispCount33; d33++) {
+            int ti33 = talkIndexAtDisplay(d33);
+            Talk t33 = (ti33 < 0 || ti33 >= talks.size()) ? null : talks.get(ti33);
+            dispIds33.add(t33 == null ? null : SiteHttp.identityUrl(t33.url));
+        }
+        java.util.Map<String, Integer> resumeById33 = new java.util.HashMap<String, Integer>();
+        if (newTalkUrls != null) {
+            for (int d33 = 0; d33 < dispCount33; d33++) {
+                String id33 = dispIds33.get(d33);
+                if (id33 == null || !newTalkUrls.contains(id33)
+                        || resumeById33.containsKey(id33)) continue;
+                int ti33 = talkIndexAtDisplay(d33);
+                if (ti33 < 0 || ti33 >= talks.size()) continue;
+                resumeById33.put(id33, Integer.valueOf(resumeMsForContinue(talks.get(ti33))));
+            }
+        }
+        java.util.List<Integer> dispPicked33 = PlayNewPick.pick(dispIds33, newTalkUrls,
+                talkPlayedCache, resumeById33, talkPlayingUrl, talkPlayingLibUrl);
+        for (Integer dp33 : dispPicked33) {
+            int ti33 = talkIndexAtDisplay(dp33.intValue());
+            if (ti33 >= 0 && ti33 < talks.size()) out.add(Integer.valueOf(ti33));
+        }
+        return out;
+    }
+
+    private void refreshPlayNewRow() {
+        java.util.List<Integer> picked = computePlayNewIdxs();
+        StringBuilder kb33 = new StringBuilder();
+        for (Integer ti33 : picked) {
+            Talk t33 = talks.get(ti33.intValue());
+            if (kb33.length() > 0) kb33.append(",");
+            kb33.append(t33 == null ? "?" : SiteHttp.identityUrl(t33.url));
+        }
+        String key33 = kb33.toString();
+        if (key33.equals(playNewPickKey)) return;
+        playNewPickKey = key33;
+        if (talkPlayNewRow == null) return;
+        if (picked.isEmpty()) {
+            if (talkPlayNewRow.getVisibility() == android.view.View.VISIBLE) Fx.fadeOut(talkPlayNewRow, 200);
+            return;
+        }
+        if (playNewCountWord == null) playNewCountWord = playNewCountWordFromSuffix();
+        if (talkPlayNewTitle != null)
+            talkPlayNewTitle.setText(picked.size() + " " + playNewCountWord);
+        if (talkPlayNewRow.getVisibility() != android.view.View.VISIBLE) {
+            talkPlayNewRow.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(talkPlayNewRow, 250);
+        } else if (talkPlayNewRow.getAlpha() < 0.999f) {
+            Fx.fadeIn(talkPlayNewRow, 250);
+        }
+    }
+
+    // v15.44 (slice 1933): the count word for the Play-new title
+    // — queue_added_suffix's own Burmese (" <word> <word>")
+    // parsed at runtime: the middle space-separated token.
+    // Never hand-typed; a suffix that does not parse yields ""
+    // (the title shows a bare number). Parsed once and cached.
+    private String playNewCountWordFromSuffix() {
+        try {
+            String s = Lang.t(TalksActivity.this, "queue_added_suffix");
+            if (s == null) return "";
+            String[] parts = s.split(" ");
+            if (parts.length == 3 && parts[1] != null && parts[1].length() > 0) return parts[1];
+        } catch (Exception ignored) {}
+        return "";
+    }
+
+    // v15.44 (slice 1933): play the picked new talks — the
+    // playAllShown shape (v13.76) restricted to the pick: same
+    // guards (empty list / no shown talk refuse with the same
+    // words), same 700ms debounce on its own clock (an invalid
+    // tap never consumes the window, v12.28 rule), same skips
+    // (sounding + already-queued), same keep-set through the
+    // funnel, same count toast, same openRoom(first picked)
+    // unless it already sounds. The pick is re-resolved fresh
+    // here (see refreshPlayNewRow), so the tap never trusts a
+    // stale refresh.
+    private void playNewShown(android.view.View v) {
+        if (talks == null || talks.isEmpty()) {
+            android.widget.Toast.makeText(TalksActivity.this,
+                    Lang.t(TalksActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        java.util.List<Integer> picked33 = computePlayNewIdxs();
+        if (picked33.isEmpty()) {
+            android.widget.Toast.makeText(TalksActivity.this,
+                    Lang.t(TalksActivity.this, "all_listened"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        int firstTi33 = picked33.get(0).intValue();
+        if (firstTi33 < 0 || firstTi33 >= talks.size()) {
+            android.widget.Toast.makeText(TalksActivity.this,
+                    Lang.t(TalksActivity.this, "no_search_match"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Talk first33 = talks.get(firstTi33);
+        boolean firstSounds33 = first33 != null && first33.url != null
+                && ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(first33.url, talkPlayingUrl))
+                        || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(first33.url, talkPlayingLibUrl)));
+        long now33 = android.os.SystemClock.uptimeMillis();
+        if (now33 - lastPlayNewMs < 700) return;
+        lastPlayNewMs = now33;
+        int added33 = 0;
+        java.util.Set<String> keep33 = new java.util.HashSet<String>();
+        for (Integer tiBox33 : picked33) {
+            int ti33 = tiBox33.intValue();
+            if (ti33 < 0 || ti33 >= talks.size()) continue;
+            Talk t33 = talks.get(ti33);
+            if (t33 == null || t33.url == null || t33.url.length() == 0) continue;
+            if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(t33.url, talkPlayingUrl))
+                    || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(t33.url, talkPlayingLibUrl))) continue;
+            if (talkQueueHas(t33.url)) continue;
+            talkQueue.add(t33.url);
+            keep33.add(t33.url);
+            added33++;
+        }
+        saveTalkQueueKeepingForeign(talkQueue, keep33);
+        refreshQueueMarks();
+        if (!talks.isEmpty() && sayadawName != null) refreshFavHeader();
+        if (adapter != null) adapter.notifyDataSetChanged();
+        android.widget.Toast.makeText(TalksActivity.this, added33 > 0
+                ? Lang.t(TalksActivity.this, "queue_plain_prefix") + added33 + Lang.t(TalksActivity.this, "queue_added_suffix")
+                : Lang.t(TalksActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
+        Fx.morph(v);
+        if (!firstSounds33) openRoom(firstTi33);
     }
 
     // v13.95 (slice 1090): one direct-set path for the filter mode —
@@ -3592,6 +3756,20 @@ public class TalksActivity extends Activity {
                 Fx.tap(TalksActivity.this);
                 Fx.press(v);
                 openRoom(continuePickIdx);
+            }
+        });
+        // v15.44 (slice 1933): wire the Play-new row — one tap
+        // queues + plays only this sayadaw's new talks
+        // (playNewShown; the pick is re-resolved fresh at tap
+        // time, the empty case refuses with the all_listened
+        // toast and never consumes the 700ms guard). A missing
+        // id simply never wires.
+        talkPlayNewRow = findViewById(R.id.talkPlayNewRow);
+        talkPlayNewTitle = findViewById(R.id.talkPlayNewTitle);
+        if (talkPlayNewRow != null) talkPlayNewRow.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.tap(TalksActivity.this);
+                playNewShown(v);
             }
         });
         // v1.53: rotating the phone used to wipe the loaded list and

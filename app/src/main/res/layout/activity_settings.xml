@@ -147,6 +147,53 @@
         android:textOn=""
         android:textSize="16sp" />
 
+    <!-- v15.44 (slice 1935): "Choose your altar" — a nav row
+         beside the shrine-auto toggle: tap opens a
+         single-choice dialog naming the six shipped altar
+         photos (RoomView theme names) plus the random
+         option; the value shows the chosen photo, or the
+         random word while none is fixed. Same shape as the
+         language row above (label + value + chevron). -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#26C9A227" />
+<LinearLayout
+            android:id="@+id/rowAltar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingVertical="14dp">
+            <TextView
+                android:id="@+id/labelAltar"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="ဘုရားစင်ပုံ"
+                android:textColor="@color/ink"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+            <TextView
+                android:id="@+id/altarValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ကျပန်း"
+                android:textColor="@color/muted"
+                android:textSize="16sp" />
+            <TextView
+                android:id="@+id/altarChevron"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingStart="8dp"
+                android:text="›"
+                android:textColor="@color/muted"
+                android:textSize="20sp" />
+        </LinearLayout>
+
     <TextView
         android:id="@+id/secPlayback"
         android:layout_width="match_parent"

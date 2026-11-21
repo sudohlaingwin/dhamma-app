@@ -123,6 +123,24 @@ public class MainActivity extends Activity {
     private android.widget.TextView recentRailLabel;
     private String lastRecentRailKey = null;
     private long lastRailTapMs = 0;
+    // v15.44 (slice 1937): recent-searches row views + the key
+    // of the last built row (joined queries + night flag) —
+    // steady ticks return early below, only a real change
+    // rebuilds the chips.
+    private android.widget.LinearLayout recentSearchWrap;
+    private android.widget.LinearLayout recentSearchRow;
+    private String lastRecentSearchKey = null;
+    // v15.44 (slice 1934): "Play new from favourites" row —
+    // one tap queues + plays the newest unseen talk from
+    // each starred sayadaw. Its own 700ms debounce clock
+    // (the rail's lastRailTapMs stays untouched); the count
+    // word is parsed once from queue_added_suffix (see
+    // favNewCountWordFromSuffix).
+    private android.widget.LinearLayout favNewRow;
+    private android.widget.TextView favNewRowCount;
+    private String favNewPickKey = "";
+    private String favNewCountWord = null;
+    private long lastFavNewMs = 0;
     // v14.50 (slice 1707): sounding-only shelf trackers — the ordered
     // favourite names + night flag + sounding name of the last built
     // shelf, so a sounding change under a visible shelf with the same
@@ -203,6 +221,16 @@ public class MainActivity extends Activity {
     // v15.42 (slice 1926): ● new-only filter button beside the
     // search field — the ★ button's twin (see the layout).
     private android.widget.TextView newFilterBtn;
+    // v15.44 (slice 1936): list-view toggle beside the search
+    // field — the ★/● buttons' twin: same 48dp, same
+    // borderless background, same 22sp glyph. Gold while the
+    // grid shows list rows, muted while it shows photo cards.
+    private android.widget.TextView listViewBtn;
+    // v15.44 (slice 1936): the grid's current shape — false
+    // is the 4-column photo grid, true is the one-column
+    // list. Read from Prefs in onCreate; the toggle below
+    // persists it.
+    private boolean gridListMode = false;
     // v15.33 (slice 1836): search clear ✕ beside the search field — a direct tap to clear the query (was a hidden long-press on the field, v4.17); the Talks chooser (v5.57) and the Library (v2.41) both carry one.
     private android.widget.TextView searchClearBtn;
     private GridView gridView;
@@ -671,6 +699,7 @@ public class MainActivity extends Activity {
         mainGridPlaying = AudioService.livePlaying; // v15.33 (slice 1838)
         refreshFavShelf(); // v13.74: shelf recolour on theme return
         refreshRecentRail(); // v15.43 (slice 1930): rail follows the shelf funnel
+        refreshFavNewRow(); // v15.44 (slice 1934): fav-new row follows the shelf funnel
     }
 
     @Override
@@ -2222,6 +2251,7 @@ public class MainActivity extends Activity {
                         // only a real change re-pours the chips).
                         refreshFavShelf();
                         refreshRecentRail(); // v15.43 (slice 1930): sounding flip moves the rail too
+                        refreshFavNewRow(); // v15.44 (slice 1934): sounding flip moves the fav-new row too
                     }
                     // v15.36 (slice 1851): the shelf chip ring breath's
                     // second driver — refreshFavShelf's change gate
@@ -3011,14 +3041,41 @@ public class MainActivity extends Activity {
         recentRailWrap = findViewById(R.id.recentRailWrap);
         recentRail = findViewById(R.id.recentRail);
         recentRailLabel = findViewById(R.id.recentRailLabel);
+        favNewRow = findViewById(R.id.favNewRow);
+        favNewRowCount = findViewById(R.id.favNewRowCount);
+        recentSearchWrap = findViewById(R.id.recentSearchWrap);
+        recentSearchRow = findViewById(R.id.recentSearchRow);
+        // v15.44 (slice 1934): wire the fav-new row — one tap
+        // queues + plays the newest unseen talk from each
+        // starred sayadaw (playFavNewShown; the pick is
+        // re-resolved fresh at tap time, the empty case refuses
+        // with the all_listened toast and never consumes the
+        // 700ms guard). A missing id simply never wires.
+        if (favNewRow != null) favNewRow.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                Fx.tap(MainActivity.this);
+                playFavNewShown(v);
+            }
+        });
         noResultsText = findViewById(R.id.noResultsText);
         // v15.33 (slice 1835): the empty-search view's first text — refreshNoResults re-sets it on every filter pass, but a first paint before any pass must never show a bare view.
         if (noResultsText != null) noResultsText.setText(Lang.t(this, "sayadaw_not_found"));
         adapter = new SayadawAdapter();
         if (gridView != null) gridView.setAdapter(adapter);
+        // v15.44 (slice 1936): restore the grid's shape — the
+        // stored list/grid mode (default grid). Columns +
+        // spacings only; the button paints later through
+        // paintFavHint, once it is bound below.
+        gridListMode = Prefs.mainGridList(this);
+        applyGridMode();
         if (gridView != null) gridView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
                 if (pos < 0 || pos >= shown.size()) return;
+                // v15.44 (slice 1937): a grid tap under a query
+                // is a search that led somewhere — record it
+                // before opening the card.
+                if (query != null && query.trim().length() > 0)
+                    Prefs.addRecentSearch(MainActivity.this, query);
                 openSayadawCard(shown.get(pos), v);
             }
         });
@@ -3071,6 +3128,7 @@ public class MainActivity extends Activity {
                     } else { refreshGridNewDots(); adapter.notifyDataSetChanged(); }
                 refreshFavShelf(); // v13.74: star/unstar re-pours the shelf
                 refreshRecentRail(); // v15.43 (slice 1930): rail follows the shelf funnel
+                refreshFavNewRow(); // v15.44 (slice 1934): fav-new row follows the shelf funnel
                 return true;
             }
         });
@@ -3113,6 +3171,17 @@ public class MainActivity extends Activity {
             @Override public void onClick(android.view.View v) {
                 Fx.tap(MainActivity.this);
                 toggleNewOnly(v);
+            }
+        });
+        // v15.44 (slice 1936): the ☰ button runs the
+        // list/grid toggle — same shape as the ★/●
+        // buttons above (Fx.tap beat at the click site, body
+        // in toggleListMode below).
+        listViewBtn = findViewById(R.id.listViewBtn);
+        if (listViewBtn != null) listViewBtn.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                Fx.tap(MainActivity.this);
+                toggleListMode(v);
             }
         });
         searchClearBtn = findViewById(R.id.searchClear);
@@ -3183,9 +3252,28 @@ public class MainActivity extends Activity {
                         || actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
                     android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
                     if (imm != null) imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                    // v15.44 (slice 1937): a committed search with
+                    // results joins the recent searches — the
+                    // keyboard Search key is the commit; a
+                    // no-match query is never recorded.
+                    if (query != null && query.trim().length() > 0
+                            && shown != null && !shown.isEmpty())
+                        Prefs.addRecentSearch(MainActivity.this, query);
                     return true;
                 }
                 return false;
+            }
+        });
+        // v15.44 (slice 1937): the recent-searches row lives on
+        // focus — it appears when the listener taps the field
+        // with an empty query (their last searches, one tap
+        // away) and leaves on blur or on the first keystroke
+        // (applyFilter's tail re-runs it). No focus listener
+        // existed before; a missing field simply never shows
+        // the row.
+        if (searchField != null) searchField.setOnFocusChangeListener(new android.view.View.OnFocusChangeListener() {
+            @Override public void onFocusChange(android.view.View v, boolean hasFocus) {
+                refreshRecentSearches();
             }
         });
         if (searchField != null && query.length() > 0) {
@@ -3630,6 +3718,67 @@ public class MainActivity extends Activity {
         refreshFavHintAnimated();
     }
 
+    // v15.44 (slice 1936): the list/grid toggle — the grid flips
+    // between photo cards and list rows (GridViewMode). The scroll
+    // anchor is saved first and restored after the flip, so the
+    // same sayadaw stays at the top — the mode changes the shape,
+    // never the place. No toast: the whole screen visibly changes
+    // shape, which is the feedback (and no new Lang key is needed
+    // for it). No re-pour: the rows re-inflate in the new layout
+    // at once, and resetting lastGridAnimPos for a pour would
+    // re-pour on the next tick rebind too. The toggle is
+    // idempotent, so a fast double-tap just flips twice and lands
+    // back where it started — no guard is consumed.
+    private void toggleListMode(android.view.View v) {
+        int first36 = -1;
+        int top36 = 0;
+        if (gridView != null) {
+            first36 = gridView.getFirstVisiblePosition();
+            android.view.View child36 = gridView.getChildAt(0);
+            if (child36 != null) top36 = child36.getTop();
+        }
+        gridListMode = !gridListMode;
+        Prefs.setMainGridList(this, gridListMode);
+        hideKeyboard(v);
+        applyGridMode();
+        if (gridView != null && first36 >= 0) gridView.setSelectionFromTop(first36, top36);
+        if (v != null) Fx.morph(v);
+        paintListBtnColor(true);
+    }
+
+    // v15.44 (slice 1936): the grid's shape for the current mode
+    // — columns + spacings from the pure core, then a rebind so
+    // the adapter re-inflates rows in the new layout (view types
+    // keep recycling inside one layout). The button paints
+    // through paintFavHint, never here: onCreate calls this
+    // before the button is bound, and the toggle paints it
+    // animated above.
+    private void applyGridMode() {
+        if (gridView != null) {
+            gridView.setNumColumns(GridViewMode.columns(gridListMode));
+            float density36 = getResources().getDisplayMetrics().density;
+            gridView.setHorizontalSpacing((int) (GridViewMode.hSpacingDp(gridListMode) * density36 + 0.5f));
+            gridView.setVerticalSpacing((int) (GridViewMode.vSpacingDp(gridListMode) * density36 + 0.5f));
+        }
+        if (adapter != null) adapter.notifyDataSetChanged();
+    }
+
+    // v15.44 (slice 1936): the list/grid button's colour twin of
+    // paintFavBtnColor / paintNewBtnColor — gold #C9A227 while
+    // list rows are on, the same night-aware muted pair while
+    // the photo grid is on. Null-guarded: paintFavHint runs
+    // before onCreate binds the button. No contentDescription:
+    // no shipped Lang key names the two view modes, and a new
+    // key would need 12 verified columns for an accessibility
+    // label alone (the glyph + gold state carry it visually).
+    private void paintListBtnColor(boolean animate) {
+        if (listViewBtn == null) return;
+        int color36 = gridListMode ? android.graphics.Color.parseColor("#C9A227")
+                : (cachedNight ? android.graphics.Color.parseColor("#AAAAAA") : android.graphics.Color.parseColor("#7A6A58"));
+        if (animate) Fx.crossfadeTextColor(listViewBtn, color36);
+        else Fx.setTextColorNow(listViewBtn, color36);
+    }
+
     private void refreshFavHint() {
         paintFavHint(false);
     }
@@ -3685,6 +3834,12 @@ public class MainActivity extends Activity {
             paintNewBtnColor(animate);
             newFilterBtn.setContentDescription(Lang.t(this, newOnly ? "filter_new_only" : "fav_only_off"));
         }
+        // v15.44 (slice 1936): the ☰ button wears the same
+        // state as the ★/● buttons above — gold while
+        // list rows are on, the card-group muted pair while
+        // the photo grid is on. Same null guard: paintFavHint
+        // runs before onCreate binds the button.
+        if (listViewBtn != null) paintListBtnColor(animate);
     }
 
     private void paintFavBtnColor(boolean animate) {
@@ -4777,6 +4932,90 @@ public class MainActivity extends Activity {
     // 12 languages, no new key). Tap opens the Room at the saved
     // spot (the Talks row-tap Intent, plain Fx.go — the 1823
     // row-tap precedent, no shared element for a text card).
+    // v15.44 (slice 1937): recent searches — the YouTube Music /
+    // Spotify search habit, in this app's chip language: the last
+    // five committed sayadaw searches as tappable text chips in
+    // the shelf's scroll row, shown only while the search field
+    // is focused and the query is empty (a fresh Main open never
+    // shows them — the field is unfocused — and a typed query
+    // hides them, since the results are the answer then). Tap
+    // fills the field (the watcher runs the filter, the row
+    // leaves on the query); long-press drops that one entry.
+    // No new Lang key (the chips show the listener's own words)
+    // and no header label (no shipped key names the row — the
+    // chips appear only inside an active search, where their
+    // meaning is the context). Recorded only on commit (IME
+    // Search with results, grid tap under a query) — never per
+    // keystroke. Change gate (joined queries + night) keeps
+    // steady ticks free; night-aware text like the rail cards;
+    // fades follow the rail rhythm (in 250, out 200).
+    private void refreshRecentSearches() {
+        if (recentSearchWrap == null || recentSearchRow == null) return;
+        boolean focused = searchField != null && searchField.hasFocus();
+        java.util.List<String> recents = Prefs.recentSearches(this);
+        boolean show = focused && query != null && query.length() == 0
+                && recents != null && !recents.isEmpty();
+        if (!show) {
+            if (recentSearchWrap.getVisibility() != android.view.View.GONE)
+                Fx.fadeOut(recentSearchWrap, 200);
+            lastRecentSearchKey = null;
+            return;
+        }
+        StringBuilder kb = new StringBuilder();
+        kb.append(cachedNight ? "N" : "D");
+        for (String q : recents) kb.append('|').append(q);
+        String key = kb.toString();
+        if (key.equals(lastRecentSearchKey)
+                && recentSearchWrap.getVisibility() == android.view.View.VISIBLE) return;
+        lastRecentSearchKey = key;
+        recentSearchRow.removeAllViews();
+        float d = getResources().getDisplayMetrics().density;
+        for (final String q : recents) {
+            android.widget.TextView chip = new android.widget.TextView(this);
+            chip.setText(q);
+            chip.setTextColor(cachedNight ? android.graphics.Color.WHITE
+                    : android.graphics.Color.parseColor("#3B2314"));
+            chip.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13);
+            chip.setMaxLines(1);
+            chip.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            chip.setMaxWidth((int) (240 * d));
+            chip.setBackgroundResource(R.drawable.nav_glass);
+            int padH = (int) (12 * d);
+            int padV = (int) (8 * d);
+            chip.setPadding(padH, padV, padH, padV);
+            android.widget.LinearLayout.LayoutParams lp =
+                    new android.widget.LinearLayout.LayoutParams(
+                            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.setMargins(0, 0, (int) (8 * d), 0);
+            chip.setLayoutParams(lp);
+            Fx.press(chip);
+            chip.setOnClickListener(new android.view.View.OnClickListener() {
+                @Override public void onClick(android.view.View v) {
+                    if (searchField == null) return;
+                    Fx.tap(MainActivity.this);
+                    searchField.setText(q);
+                    searchField.setSelection(q.length());
+                }
+            });
+            chip.setOnLongClickListener(new android.view.View.OnLongClickListener() {
+                @Override public boolean onLongClick(android.view.View v) {
+                    Fx.tap(MainActivity.this);
+                    Prefs.removeRecentSearch(MainActivity.this, q);
+                    refreshRecentSearches();
+                    return true;
+                }
+            });
+            recentSearchRow.addView(chip);
+        }
+        if (recentSearchWrap.getVisibility() != android.view.View.VISIBLE) {
+            recentSearchWrap.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(recentSearchWrap, 250);
+        } else if (recentSearchWrap.getAlpha() < 0.999f) {
+            Fx.fadeIn(recentSearchWrap, 250);
+        }
+    }
+
     private void refreshRecentRail() {
         if (recentRailWrap == null || recentRail == null) return;
         boolean show = query != null && query.length() == 0 && !favOnly && !newOnly && all != null;
@@ -4938,6 +5177,228 @@ public class MainActivity extends Activity {
     // breath, and the 1s tick tail re-arms it on return (the
     // change gate in refreshFavShelf cannot — a steady tick
     // returns early there and never reaches the arm).
+
+    // v15.44 (slice 1934): "Play new from favourites" row —
+    // one tap queues + plays the newest unseen talk from each
+    // starred sayadaw, in shelf order, opening the Room on
+    // the first. Rides the shelf funnel (onResume / sounding
+    // flip / fav toggle / filter run), beside
+    // refreshRecentRail, so the played + resume caches are
+    // fresh; hidden while a search or filter narrows the grid,
+    // like the rail. The pick is FavNewPick's (one per
+    // favourite, the 1920 gate verbatim); a favourite with no
+    // unseen-new talk costs no file read — the hasUnseenNew
+    // gate runs first and only dotted favourites open their
+    // cached list (the 1924 jank rule: no per-run scan of
+    // quiet sayadaws). The new-set and the cached list are
+    // saved on the same Talks load, so a non-empty new-set
+    // always has a list behind it. Change-gated on the joined
+    // picked identities, so steady ticks touch no view; shows
+    // with the Talks rows' fade idiom (fadeIn 250 / fadeOut
+    // 200). The count ("N <word>") comes from
+    // queue_added_suffix's own word, parsed at runtime (see
+    // favNewCountWordFromSuffix); the tap re-resolves the pick
+    // fresh (see playFavNewShown), so a state shift between
+    // refresh and tap can never queue a stale set.
+    private java.util.List<FavNewPick.Pick> computeFavNewPicks() {
+        java.util.List<FavNewPick.Pick> out = new java.util.ArrayList<FavNewPick.Pick>();
+        if (query == null || query.length() != 0 || favOnly || newOnly
+                || all == null || favs == null || favs.isEmpty()) return out;
+        java.util.List<String> names34 = new java.util.ArrayList<String>();
+        java.util.List<java.util.List<String[]>> lists34 = new java.util.ArrayList<java.util.List<String[]>>();
+        java.util.List<java.util.Set<String>> news34 = new java.util.ArrayList<java.util.Set<String>>();
+        java.util.Set<String> played34 = getSharedPreferences("dhamma", MODE_PRIVATE)
+                .getStringSet("playedTalks", null);
+        java.util.Set<String> resume34 = Prefs.talkPosKeysOver(this, FavNewPick.MIN_RESUME_MS);
+        for (Sayadaw s : all) {
+            if (s == null || s.name == null || !favs.contains(s.name)
+                    || s.url == null || s.url.length() == 0) continue;
+            java.util.Set<String> news = TalkListCache.loadNewSet(this, s.url);
+            if (!TalkListCache.hasUnseenNew(news, played34, resume34)) continue;
+            java.util.List<String[]> cached = TalkListCache.load(this, s.url);
+            if (cached == null || cached.isEmpty()) continue;
+            names34.add(s.name);
+            lists34.add(cached);
+            news34.add(news);
+        }
+        if (names34.isEmpty()) return out;
+        String sounding34 = (AudioService.liveSession && AudioService.liveHasTrack)
+                ? AudioService.liveUrl : null;
+        return FavNewPick.pick(names34, lists34, news34, played34, resume34,
+                sounding34, soundingLibUrl1934());
+    }
+
+    private void refreshFavNewRow() {
+        java.util.List<FavNewPick.Pick> picked = computeFavNewPicks();
+        StringBuilder kb34 = new StringBuilder();
+        for (FavNewPick.Pick p34 : picked) {
+            if (kb34.length() > 0) kb34.append(",");
+            kb34.append(p34 == null ? "?" : p34.sayadaw + "|" + SiteHttp.identityUrl(p34.url));
+        }
+        String key34 = kb34.toString();
+        if (key34.equals(favNewPickKey)) return;
+        favNewPickKey = key34;
+        if (favNewRow == null) return;
+        if (picked.isEmpty()) {
+            if (favNewRow.getVisibility() == android.view.View.VISIBLE) Fx.fadeOut(favNewRow, 200);
+            return;
+        }
+        if (favNewCountWord == null) favNewCountWord = favNewCountWordFromSuffix();
+        if (favNewRowCount != null)
+            favNewRowCount.setText(picked.size() + " " + favNewCountWord);
+        if (favNewRow.getVisibility() != android.view.View.VISIBLE) {
+            favNewRow.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(favNewRow, 250);
+        } else if (favNewRow.getAlpha() < 0.999f) {
+            Fx.fadeIn(favNewRow, 250);
+        }
+    }
+
+    // v15.44 (slice 1934): the count word for the fav-new
+    // title — queue_added_suffix's own Burmese (" <word>
+    // <word>") parsed at runtime: the middle space-separated
+    // token. Never hand-typed; a suffix that does not parse
+    // yields "" (the title shows a bare number). Parsed once
+    // and cached.
+    private String favNewCountWordFromSuffix() {
+        try {
+            String s = Lang.t(MainActivity.this, "queue_added_suffix");
+            if (s == null) return "";
+            String[] parts = s.split(" ");
+            if (parts.length == 3 && parts[1] != null && parts[1].length() > 0) return parts[1];
+        } catch (Exception ignored) {}
+        return "";
+    }
+
+    // v15.44 (slice 1934): play the picked fav-new talks —
+    // the Play All shape (v13.76) lifted across sayadaws:
+    // same guards (empty pick refuses with the all_listened
+    // toast), same 700ms debounce on its own clock (an
+    // invalid tap never consumes the window, v12.28 rule),
+    // same count toast, same Room open on the first pick.
+    // The queue is REBUILT, not appended: the picks head it
+    // in order (the first as a bare v1 line under the anchor
+    // sayadaw's key, the rest as v2 foreign lines), and the
+    // anchor's existing foreign lines are carried after them
+    // (deduped by identity, never the sounding talk, never a
+    // line naming the anchor itself); the anchor's old in-list
+    // lines are replaced, like Play All replaces the shown
+    // list. The pick is re-resolved fresh here, so the tap
+    // never trusts a stale refresh.
+    private void playFavNewShown(android.view.View v) {
+        java.util.List<FavNewPick.Pick> picked34 = computeFavNewPicks();
+        if (picked34.isEmpty()) {
+            android.widget.Toast.makeText(MainActivity.this,
+                    Lang.t(MainActivity.this, "all_listened"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        FavNewPick.Pick first34 = picked34.get(0);
+        if (first34 == null) {
+            android.widget.Toast.makeText(MainActivity.this,
+                    Lang.t(MainActivity.this, "all_listened"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Sayadaw anchor34 = sayadawByName1930(first34.sayadaw);
+        if (anchor34 == null) {
+            android.widget.Toast.makeText(MainActivity.this,
+                    Lang.t(MainActivity.this, "no_search_match"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        long now34 = android.os.SystemClock.uptimeMillis();
+        if (now34 - lastFavNewMs < 700) return;
+        lastFavNewMs = now34;
+        String sounding34 = (AudioService.liveSession && AudioService.liveHasTrack)
+                ? AudioService.liveUrl : null;
+        String soundingLib34 = soundingLibUrl1934();
+        java.util.ArrayList<String> lines34 = new java.util.ArrayList<String>();
+        java.util.Set<String> seen34 = new java.util.HashSet<String>();
+        for (int i34 = 0; i34 < picked34.size(); i34++) {
+            FavNewPick.Pick p34 = picked34.get(i34);
+            if (p34 == null || p34.url == null || p34.url.length() == 0) continue;
+            String id34 = SiteHttp.identityUrl(p34.url);
+            if (id34 != null) {
+                if (seen34.contains(id34)) continue;
+                seen34.add(id34);
+            }
+            lines34.add(QueueEntry.format(new QueueEntry(p34.url,
+                    i34 == 0 ? "" : p34.sayadaw, p34.title)));
+        }
+        try {
+            String saved34 = Prefs.savedQueue(this, anchor34.name);
+            if (saved34 != null && saved34.length() > 0) {
+                for (String line34 : saved34.split("\n")) {
+                    QueueEntry e34 = QueueEntry.parse(line34);
+                    if (e34 == null || e34.url == null || e34.url.length() == 0) continue;
+                    if (!e34.isV2()) continue;
+                    if (e34.sayadaw == null || e34.sayadaw.length() == 0
+                            || e34.sayadaw.equals(anchor34.name)) continue;
+                    String id34 = SiteHttp.identityUrl(e34.url);
+                    if (id34 != null && seen34.contains(id34)) continue;
+                    if (sounding34 != null && sounding34.length() > 0
+                            && SiteHttp.sameTalk(e34.url, sounding34)) continue;
+                    if (soundingLib34 != null && soundingLib34.length() > 0
+                            && SiteHttp.sameTalk(e34.url, soundingLib34)) continue;
+                    if (id34 != null) seen34.add(id34);
+                    lines34.add(line34);
+                }
+            }
+        } catch (Exception ignored) {}
+        Prefs.saveQueue(this, anchor34.name, lines34);
+        android.widget.Toast.makeText(MainActivity.this,
+                Lang.t(MainActivity.this, "queue_plain_prefix") + picked34.size()
+                        + Lang.t(MainActivity.this, "queue_added_suffix"),
+                android.widget.Toast.LENGTH_SHORT).show();
+        Fx.morph(v);
+        openFavNew1934(anchor34, first34);
+    }
+
+    // v15.44 (slice 1934): fav-new tap — the Talks row-tap
+    // Room Intent (name/group/url/photo/autoUrl/autoTitle)
+    // with plain Fx.go (the 1823 row-tap precedent, the 1930
+    // rail shape); the Room resumes from the saved spot, and
+    // the rebuilt queue (see playFavNewShown) is already
+    // saved under the anchor's key, so auto-advance walks
+    // the mix. The listener owns the tap beat and the tap
+    // method owns the morph and the 700ms guard, so this
+    // opens with Fx.go only — no second morph, no second
+    // guard.
+    private void openFavNew1934(final Sayadaw s, final FavNewPick.Pick p) {
+        if (s == null || p == null) return;
+        Intent i = new Intent(MainActivity.this, RoomActivity.class);
+        i.putExtra("name", s.name);
+        i.putExtra("group", s.group);
+        i.putExtra("url", s.url);
+        i.putExtra("photo", s.photo == null ? "" : s.photo);
+        i.putExtra("autoUrl", p.url);
+        i.putExtra("autoTitle", p.title);
+        Fx.go(MainActivity.this, i);
+    }
+
+    // v15.44 (slice 1934): the library session's sounding
+    // talk as its mp3 URL — the TalksActivity v11.06 rule,
+    // lifted to Main so the fav-new pick can skip a
+    // downloaded talk that is sounding right now (its liveUrl
+    // is the file path, never the mp3 URL, so the pick's
+    // sameTalk skip would miss it and the mix would re-queue
+    // it mid-play). Only a live lib session reads the dlMap,
+    // and only an exactly-one claimant counts (the v8.44
+    // rule); anything else yields null, never a guess.
+    private String soundingLibUrl1934() {
+        try {
+            if (!AudioService.liveSession || !AudioService.liveHasTrack) return null;
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            if (!"lib".equals(sp.getString("lastKind", ""))) return null;
+            String libPath = sp.getString("lastLibPath", "");
+            if (libPath == null || libPath.length() == 0) return null;
+            return FavNewPick.libUrlForPath(sp.getString("dlMap", "{}"), libPath);
+        } catch (Exception ignored) {}
+        return null;
+    }
+
     private void armShelfChipRingBreath() {
         if (shelfChipRingBreath != null || shelfChipRingBreathPending) return;
         String snd = AudioService.liveEnded ? null : soundingSayadawNameVisual();
@@ -5300,6 +5761,7 @@ public class MainActivity extends Activity {
         if (setChanged) postGridSetGlide(gridTops);
         refreshFavShelf(); // v13.74: shelf follows every filter run
         refreshRecentRail(); // v15.43 (slice 1930): rail follows the shelf funnel
+        refreshFavNewRow(); // v15.44 (slice 1934): fav-new row follows the shelf funnel
         if (allowToast && setChanged && gridView != null && gridView.getFirstVisiblePosition() > 0)
             gridView.setSelection(0);
         // v2.02: a search matching no sayadaw used to leave a
@@ -5352,6 +5814,10 @@ public class MainActivity extends Activity {
         refreshNoResults(allowToast || favToggleChange || newToggleChange, noResultsKey);
         // v15.33 (slice 1836): the search clear ✕ follows every filter pass — same animate rule as the empty-search view beside it (gesture passes animate, silent passes land instantly, the v1.53 rule).
         refreshSearchClear(allowToast || favToggleChange || newToggleChange);
+        // v15.44 (slice 1937): the row follows every filter pass
+        // — a keystroke hides it (query non-empty), a cleared
+        // query re-shows it (focused + empty + recents).
+        refreshRecentSearches();
     }
 
     // v15.41 (slice 1921): recompute the Main-grid dot set — one
@@ -5439,12 +5905,22 @@ public class MainActivity extends Activity {
     }
 
     private class SayadawAdapter extends BaseAdapter {
+        // v15.44 (slice 1936): two row layouts — grid cards
+        // and list rows. Distinct view types keep GridView
+        // recycling inside one layout across a mode flip.
+        @Override public int getViewTypeCount() { return GridViewMode.TYPE_COUNT; }
+        @Override public int getItemViewType(int pos) { return GridViewMode.viewType(gridListMode); }
         @Override public int getCount() { return shown.size(); }
         @Override public Object getItem(int p) { return shown.get(p); }
         @Override public long getItemId(int p) { return p; }
         @Override public View getView(int pos, View v, ViewGroup parent) {
             if (v == null) {
-                v = LayoutInflater.from(MainActivity.this).inflate(R.layout.row_sayadaw_h, parent, false);
+                // v15.44 (slice 1936): list rows inflate the
+                // horizontal row, grid cards the photo card —
+                // the view type guarantees a recycled v already
+                // has the current mode's layout.
+                v = LayoutInflater.from(MainActivity.this).inflate(
+                        gridListMode ? R.layout.row_sayadaw_list : R.layout.row_sayadaw_h, parent, false);
                 Fx.press(v); // v2.08: press feedback on grid cards
             }
             // v3.47: premium recycled-card squash hygiene, the one
@@ -5553,7 +6029,7 @@ public class MainActivity extends Activity {
             // sounding state.
             if (nameView != null) Fx.crossfadeTextColor(nameView, gridPlaying ? Color.parseColor("#C9A227")
                     : (night ? Color.WHITE : Color.parseColor("#3B2314")));
-            if (nameView != null) nameView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, cachedNameSize);
+            if (nameView != null) nameView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, GridViewMode.nameSizeSp(gridListMode, cachedNameSize));
             if (nameView != null) armMainPulseFor(nameView, s.name);
             // v15.33 (slice 1838): live EQ badge on the sounding card's photo — the last now-playing surface with a static mark: the chooser rows dance their bars (v15.29/15.30), the drawer rows dance theirs, the Library row pulses (v2.25) and the Room breathes (v3.99), but the grid card only ever wore a static "▶ " prefix + gold name. The badge is the same EqBarsView (gold, 3 bars, 180ms ramp in, 180ms ease-down on pause — v15.32) in a dark pill on the photo's bottom-right corner, like the playing indicator on album art: it dances while the talk sounds, rests low and equal while paused, and melts in/out with the sounding flip through Fx.crossfadeEqBadge (the v15.25 crossfadeEqSlot record pattern, single view — no number to swap here). setPlaying is idempotent, so a tick rebind of the same sounding card never restarts the dance; the badge owns only its own alpha/visibility, so the entrance pour (alpha+scale on the card), the press squash (scale on the card root) and the tile crossfade (background) never fight it. A recycled card rebinds its badge on every bind, so the badge can never leak onto another sayadaw.
             android.view.View eqBadge = v.findViewById(R.id.eqBadge);
@@ -5569,7 +6045,7 @@ public class MainActivity extends Activity {
             TextView groupView = v.findViewById(R.id.group);
             if (groupView != null) groupView.setText(g);
             if (groupView != null) groupView.setTextColor(night ? Color.parseColor("#AAAAAA") : Color.parseColor("#7A6A58"));
-            if (groupView != null) groupView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, cachedGroupSize);
+            if (groupView != null) groupView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, GridViewMode.groupSizeSp(gridListMode, cachedGroupSize));
             // v2.07: staggered grid entrance — portraits fade + grow
             // in one after another, cascading across the grid.
             if (pos > lastGridAnimPos) {

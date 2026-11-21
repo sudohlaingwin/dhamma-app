@@ -204,6 +204,44 @@
             android:text="↕"
             android:textColor="@color/muted" />
     </LinearLayout>
+    <!-- v15.44 (slice 1933): "Play new" — one tap queues +
+         plays only this sayadaw's new (●-dotted) talks, in
+         shown order. GONE until a list lands AND such talks
+         exist; hidden while a search or filter narrows the
+         list. The verb is Lang.java's own attested tokens
+         ("new" + "play", extracted by the patch, never
+         hand-typed); the count ("N <word>") is set in code
+         from queue_added_suffix's own word. nav_glass is
+         reused, no new drawable. -->
+    <LinearLayout
+        android:id="@+id/talkPlayNewRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/nav_glass"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:visibility="gone">
+        <TextView
+            android:id="@+id/talkPlayNewLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="▶ အသစ် ဖွင့်မယ်"
+            android:textColor="@color/gold"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/talkPlayNewTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/ink"
+            android:textSize="15sp" />
+    </LinearLayout>
     <!-- v15.43 (slice 1932): "Continue listening" — the one-tap
          return to this sayadaw's in-progress talk (saved spot
          over 5s, not finished, not the sounding talk). GONE until

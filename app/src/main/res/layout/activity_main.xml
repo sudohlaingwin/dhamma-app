@@ -102,6 +102,21 @@
             android:text="●"
             android:textColor="@color/muted"
             android:textSize="22sp" />
+        <!-- v15.44 (slice 1936): list-view toggle — the star/dot
+             buttons' twin: same 48dp, same borderless
+             background, same 22sp glyph. Gold while list rows
+             are on, muted while the photo grid is on. -->
+        <TextView
+            android:id="@+id/listViewBtn"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="☰"
+            android:textColor="@color/muted"
+            android:textSize="22sp" />
     </LinearLayout>
     <!-- v13.74 (slice 1065): ★ favourites shelf — the ★ set (long-press a
          card to star; drives Wi-Fi auto-download) had no visible home on
@@ -111,6 +126,29 @@
          favourites exist and no search/filter is active; empty state
          leaves Main exactly as before. Label is Burmese chrome like
          the app title above (titleText is hardcoded Burmese too). -->
+    <!-- v15.44 (slice 1937): recent searches — the last five
+         committed sayadaw searches as tappable chips, shown
+         only while the search field is focused and empty.
+         No label (no shipped Lang key names the row); the
+         chips carry the listener's own words. -->
+    <LinearLayout
+        android:id="@+id/recentSearchWrap"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none">
+            <LinearLayout
+                android:id="@+id/recentSearchRow"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
+    </LinearLayout>
     <LinearLayout
         android:id="@+id/favShelfWrap"
         android:layout_width="match_parent"
@@ -136,6 +174,45 @@
                 android:layout_height="wrap_content"
                 android:orientation="horizontal" />
         </HorizontalScrollView>
+    </LinearLayout>
+    <!-- v15.44 (slice 1934): "Play new from favourites" —
+         one tap queues + plays the newest unseen talk from
+         each starred sayadaw, in shelf order, opening the
+         Room on the first. GONE until favourites exist AND
+         such talks exist; hidden while a search or filter
+         narrows the grid, like the rail. The verb is
+         Lang.java's own attested tokens ("new" + "play",
+         extracted by the patch, never hand-typed); the count
+         ("N <word>") is set in code from queue_added_suffix's
+         own word. nav_glass is reused, no new drawable. -->
+    <LinearLayout
+        android:id="@+id/favNewRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/nav_glass"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:visibility="gone">
+        <TextView
+            android:id="@+id/favNewRowLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="★ အသစ် ဖွင့်မယ်"
+            android:textColor="@color/gold"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/favNewRowCount"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/ink"
+            android:textSize="15sp" />
     </LinearLayout>
     <!-- v15.43 (slice 1930): recently-played rail — the Spotify
          "Jump back in" / YouTube Music "Listen again" rail: the

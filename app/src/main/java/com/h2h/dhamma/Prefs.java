@@ -1457,6 +1457,18 @@ public class Prefs {
         sp(c).edit().putBoolean("autoplay", v).apply();
     }
 
+    // v15.44 (slice 1936): the Main grid's shape — true is
+    // the one-column list, false the 4-column photo grid
+    // (default). Stored raw; the GridViewMode core is the
+    // single gate for what the shape means.
+    public static boolean mainGridList(Context c) {
+        return sp(c).getBoolean("mainGridList", false);
+    }
+
+    public static void setMainGridList(Context c, boolean v) {
+        sp(c).edit().putBoolean("mainGridList", v).apply();
+    }
+
     public static boolean backgroundEnabled(Context c) {
         return sp(c).getBoolean("backgroundEnabled", true);
     }
@@ -1492,6 +1504,18 @@ public class Prefs {
 
     public static void setAutoTheme(Context c, boolean v) {
         sp(c).edit().putBoolean("autoTheme", v).apply();
+    }
+
+    // v15.44 (slice 1935): the chosen altar photo (0..5) or
+    // -1 for random (the v12.91 behaviour). Stored raw — the
+    // AltarPick core is the single gate, and out-of-range
+    // values fail closed to random there, never to a guess.
+    public static int altarPhoto(Context c) {
+        return sp(c).getInt("altarPhoto", -1);
+    }
+
+    public static void setAltarPhoto(Context c, int v) {
+        sp(c).edit().putInt("altarPhoto", v).apply();
     }
 
     // v1.30: keep the screen on while a talk is playing (older users)
@@ -2699,6 +2723,40 @@ public class Prefs {
     public static java.util.List<HistEntry> statsRecent(Context c) {
         try { return statsRecentPure(statsRaw(c)); }
         catch (Exception ignored) { return new java.util.ArrayList<HistEntry>(); }
+    }
+
+    // v15.44 (slice 1937): recent Main searches — the last five
+    // committed sayadaw searches, most-recent-first, one string
+    // pref ("recentSearches", \n-joined; the RecentSearches pure
+    // core owns the shape, Prefs only reads/writes the string).
+    // Recorded only on a commit (keyboard Search key with
+    // results, or a grid tap under a query) — never per
+    // keystroke — so the row shows searches that actually led
+    // somewhere. add/remove write only when the list changes.
+    public static java.util.List<String> recentSearches(Context c) {
+        try { return RecentSearches.load(sp(c).getString("recentSearches", "")); }
+        catch (Exception ignored) { return new java.util.ArrayList<String>(); }
+    }
+
+    public static void setRecentSearches(Context c, java.util.List<String> list) {
+        try { sp(c).edit().putString("recentSearches", RecentSearches.save(list)).apply(); }
+        catch (Exception ignored) {}
+    }
+
+    public static void addRecentSearch(Context c, String q) {
+        try {
+            java.util.List<String> cur = recentSearches(c);
+            java.util.List<String> next = RecentSearches.record(cur, q);
+            if (!next.equals(cur)) setRecentSearches(c, next);
+        } catch (Exception ignored) {}
+    }
+
+    public static void removeRecentSearch(Context c, String q) {
+        try {
+            java.util.List<String> cur = recentSearches(c);
+            java.util.List<String> next = RecentSearches.remove(cur, q);
+            if (!next.equals(cur)) setRecentSearches(c, next);
+        } catch (Exception ignored) {}
     }
 
     public static void statsClear(Context c) {

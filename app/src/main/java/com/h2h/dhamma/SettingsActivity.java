@@ -20,6 +20,11 @@ public class SettingsActivity extends Activity {
     private TextView titleText;
     private android.view.View rowFont, rowLanguage;
     private android.widget.TextView fontValue, langValue;
+    // v15.44 (slice 1935): the altar-picker row (label + value
+    // + chevron, like language) — its value names the chosen
+    // photo, or the random word while none is fixed.
+    private android.view.View rowAltar;
+    private android.widget.TextView altarValue;
     // v12.94 (his order 2026-11-06 ~22:46 +07: Settings rebuilt to the
     // worldwide streaming-app standard): the on/off toggles are Switch
     // views now (Switch extends Button, so the field type only narrows);
@@ -140,6 +145,8 @@ public class SettingsActivity extends Activity {
         fontValue = findViewById(R.id.fontValue);
         rowLanguage = findViewById(R.id.rowLanguage);
         langValue = findViewById(R.id.langValue);
+        rowAltar = findViewById(R.id.rowAltar);
+        altarValue = findViewById(R.id.altarValue);
         btnNoti = findViewById(R.id.btnNoti);
         btnAutoplay = findViewById(R.id.btnAutoplay);
         btnRepeat = findViewById(R.id.btnRepeat);
@@ -188,6 +195,24 @@ public class SettingsActivity extends Activity {
         // to Burmese (v4.21 gesture, moved from the buttons).
         if (rowLanguage != null) rowLanguage.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { Fx.morph(v); showLangDialog(); }
+        });
+        // v15.44 (slice 1935): the altar row — tap opens the
+        // six-photo picker; long-press resets to random (the
+        // v9.11/v4.19 gesture family: font resets to Normal,
+        // language to Burmese, altar to random). The reset
+        // leaves the auto-change toggle as the user set it.
+        if (rowAltar != null) rowAltar.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { Fx.morph(v); showAltarDialog(); }
+        });
+        if (rowAltar != null) rowAltar.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override public boolean onLongClick(View v) {
+                int o35 = Prefs.altarPhoto(SettingsActivity.this);
+                if (o35 < 0) { Fx.tap(SettingsActivity.this); return true; }
+                Prefs.setAltarPhoto(SettingsActivity.this, -1);
+                Fx.morph(v);
+                Fx.themeDip(root, new Runnable() { @Override public void run() { refresh(); } });
+                return true;
+            }
         });
         if (rowLanguage != null) rowLanguage.setOnLongClickListener(new View.OnLongClickListener() {
             @Override public boolean onLongClick(View v) {
@@ -1081,7 +1106,7 @@ android.view.View settingsStripPrev = findViewById(R.id.nowStripPrev);
         // reached. Visual only; clicks still work (Fx.press
         // returns false), and refresh() restyles colours only.
         for (int id : new int[]{
-                R.id.rowFont, R.id.rowLanguage,
+                R.id.rowFont, R.id.rowLanguage, R.id.rowAltar,
                 R.id.btnNoti, R.id.btnAutoplay, R.id.rowRepeat, R.id.btnShuffle, R.id.btnBackground,
                 R.id.btnKeepScreen, R.id.btnThemeAuto, R.id.rowSleep,
                 R.id.btnFx, R.id.btnDataSaver, R.id.btnAutoDl, R.id.autoDlCheckNow,
@@ -1112,12 +1137,13 @@ android.view.View settingsStripPrev = findViewById(R.id.nowStripPrev);
         // field, so a second rotation re-shows it again, never twice.
         if (savedInstanceState != null) {
             final String restored = savedInstanceState.getString("openPicker", null);
-            if ("font".equals(restored) || "lang".equals(restored) || "sleep".equals(restored) || "clearData".equals(restored)) {
+            if ("font".equals(restored) || "lang".equals(restored) || "sleep".equals(restored) || "clearData".equals(restored) || "altar".equals(restored)) {
                 openPicker = restored;
                 if (root != null) root.post(new Runnable() {
                     @Override public void run() {
                         if ("font".equals(openPicker)) showFontDialog();
                         else if ("lang".equals(openPicker)) showLangDialog();
+                        else if ("altar".equals(openPicker)) showAltarDialog();
                         else if ("sleep".equals(openPicker)) showSleepDialog();
                         else if ("clearData".equals(openPicker)) showClearDataDialog();
                     }
@@ -1458,6 +1484,66 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
             }
         });
         dlg.show();
+    }
+
+    // v15.44 (slice 1935): "Choose your altar" — the Room's shrine
+    // photo was a fresh random roll on every open and every talk
+    // change (v12.91), so a listener who loved one altar could
+    // never keep it. This picker names the six shipped photos
+    // with RoomView's own theme names (AltarPick.PHOTO_THEMES,
+    // visually matched to the assets this slice) plus the random
+    // option; a fixed pick opens with that photo and holds it
+    // across talk changes (RoomActivity pickTheme + open path),
+    // and turns the per-talk auto-change off so its toggle tells
+    // the truth. The six names are content (Burmese in every
+    // language, like sayadaw names — Lang.java header); the row
+    // label + random option read from Lang (altar_photo /
+    // altar_random, both verified substrings of auto_theme /
+    // shuffle). Rotation re-shows through openPicker "altar",
+    // like "lang".
+    private void showAltarDialog() {
+        String[] names35 = new String[RoomView.THEMES.length];
+        for (int i = 0; i < names35.length; i++) names35[i] = RoomView.THEMES[i].name;
+        final String[] items35 = new String[1 + RoomView.PHOTO_COUNT];
+        items35[0] = Lang.t(this, "altar_random");
+        for (int p = 0; p < RoomView.PHOTO_COUNT; p++) {
+            String n35 = AltarPick.nameForPhoto(names35, p);
+            items35[p + 1] = n35 == null ? "" : n35;
+        }
+        final int checked35 = AltarPick.choiceForFixed(Prefs.altarPhoto(this));
+        openPicker = "altar";
+        android.app.AlertDialog dlg = new android.app.AlertDialog.Builder(this)
+                .setTitle(Lang.t(this, "altar_photo"))
+                .setSingleChoiceItems(items35, checked35, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        d.dismiss();
+                        int old35 = Prefs.altarPhoto(SettingsActivity.this);
+                        int fixed35 = AltarPick.photoForChoice(which);
+                        Prefs.setAltarPhoto(SettingsActivity.this, fixed35);
+                        if (AltarPick.isFixed(fixed35)) Prefs.setAutoTheme(SettingsActivity.this, false);
+                        if (old35 != fixed35) Fx.themeDip(root, new Runnable() { @Override public void run() { refresh(); } });
+                        else refresh();
+                    }
+                })
+                .setNegativeButton(Lang.t(this, "dlg_close"), null)
+                .create();
+        dlg.setOnDismissListener(new android.content.DialogInterface.OnDismissListener() {
+            @Override public void onDismiss(android.content.DialogInterface d) {
+                if ("altar".equals(openPicker)) openPicker = null;
+            }
+        });
+        dlg.show();
+    }
+
+    // v15.44 (slice 1935): the chosen photo's theme name for the
+    // picker row's value (null when no photo is fixed or the
+    // mapping cannot name it — the row then shows the random word).
+    private String altarPhotoName35() {
+        int fixed35 = Prefs.altarPhoto(this);
+        if (!AltarPick.isFixed(fixed35)) return null;
+        String[] names35 = new String[RoomView.THEMES.length];
+        for (int i = 0; i < names35.length; i++) names35[i] = RoomView.THEMES[i].name;
+        return AltarPick.nameForPhoto(names35, fixed35);
     }
 
     // v1.81: count this screen as on top / schedule the background
@@ -3672,7 +3758,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         float note = fs == 0 ? 12 : (fs == 1 ? 13 : 16);
         float btn = fs == 0 ? 14 : (fs == 1 ? 16 : 18);
         if (titleText != null) titleText.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, fs == 0 ? 22 : (fs == 1 ? 26 : 32));
-        int[] labelIds = {R.id.labelLanguage, R.id.labelFont, R.id.lblRepeat, R.id.lblSleep, R.id.lblClearData, R.id.lblVersion, R.id.btnDownloaded, R.id.btnTeam, R.id.btnPolicy};
+        int[] labelIds = {R.id.labelLanguage, R.id.labelFont, R.id.labelAltar, R.id.lblRepeat, R.id.lblSleep, R.id.lblClearData, R.id.lblVersion, R.id.btnDownloaded, R.id.btnTeam, R.id.btnPolicy};
         for (int id : labelIds) { TextView lv = findViewById(id); if (lv != null) { lv.setTextColor(ink); lv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, lbl); } }
         // v12.94: section headers — small muted caps, not card titles.
         for (int id : new int[]{R.id.secAppearance, R.id.secPlayback, R.id.secNoti, R.id.secData, R.id.secAbout}) { TextView hv = findViewById(id); if (hv != null) { hv.setTextColor(muted); hv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, note); } }
@@ -3754,6 +3840,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         // and are deliberately untouched by Lang.
         if (titleText != null) titleText.setText(Lang.t(this, "settings"));
         setLabelText(R.id.labelLanguage, "lang_label");
+        setLabelText(R.id.labelAltar, "altar_photo");
         setLabelText(R.id.labelFont, "font_label");
         setLabelText(R.id.lblRepeat, "repeat");
         setLabelText(R.id.lblSleep, "sleep");
@@ -3772,11 +3859,15 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         setLabelText(R.id.lblVersion, "version");
         if (fontValue != null) { fontValue.setText(fs == 0 ? Lang.t(this, "font_small") : fs == 1 ? Lang.t(this, "font_normal") : Lang.t(this, "font_large")); fontValue.setTextColor(muted); fontValue.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn); }
         if (langValue != null) { langValue.setText(Lang.NAMES[Lang.index(this)]); langValue.setTextColor(muted); langValue.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn); }
+        // v15.44 (slice 1935): the altar row's value — the
+        // chosen photo's theme name, or the random word while
+        // no photo is fixed.
+        if (altarValue != null) { String n35 = altarPhotoName35(); altarValue.setText(n35 == null ? Lang.t(this, "altar_random") : n35); altarValue.setTextColor(muted); altarValue.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn); }
         // v11.93: the two "›" chevrons had no id, so refresh() never
         // recoloured them — they kept day muted-brown at night and
         // nearly vanished on the dark card. Same night-grey as the
         // values beside them.
-        for (int id : new int[]{R.id.fontChevron, R.id.langChevron, R.id.repeatChevron, R.id.sleepChevron, R.id.downloadedChevron, R.id.clearChevron, R.id.teamChevron, R.id.policyChevron, R.id.checkUpdateChevron}) { TextView cv = findViewById(id); if (cv != null) cv.setTextColor(muted); }
+        for (int id : new int[]{R.id.fontChevron, R.id.langChevron, R.id.altarChevron, R.id.repeatChevron, R.id.sleepChevron, R.id.downloadedChevron, R.id.clearChevron, R.id.teamChevron, R.id.policyChevron, R.id.checkUpdateChevron}) { TextView cv = findViewById(id); if (cv != null) cv.setTextColor(muted); }
         // v12.94: the long Android-rules paragraph is gone — the note
         // under the notification row appears ONLY while a block is live
         // (v10.86/v12.27), naming the fix; healthy phones see no note
