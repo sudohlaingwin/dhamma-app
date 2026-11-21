@@ -2635,6 +2635,24 @@ public class RoomActivity extends Activity {
         }
         return null;
     }
+    // v15.42 (slice 1925): the new-set for a foreign sayadaw,
+    // resolved by name through the bundled catalog (page at
+    // index 1) and loaded from the same TalkListCache store
+    // the Talks list writes. Cached by name for the Room
+    // session (see the field above); null/empty names and
+    // catalog misses read as no new talks, never a crash,
+    // never a dot.
+    private java.util.Set<String> foreignNewSetForSayadaw(String name) {
+        if (name == null || name.length() == 0) return new java.util.HashSet<String>();
+        java.util.Set<String> hit = foreignNewSetsByName.get(name);
+        if (hit != null) return hit;
+        java.util.Set<String> set = new java.util.HashSet<String>();
+        String[] cat = catalogEntryForSayadaw(name);
+        if (cat != null && cat[1] != null && cat[1].length() > 0)
+            set = TalkListCache.loadNewSet(RoomActivity.this, cat[1]);
+        foreignNewSetsByName.put(name, set);
+        return set;
+    }
     // v7.08: (b) session handover. When Next / auto-advance
     // reaches a foreign queue head, the Room does NOT index into
     // this list (there is no index for a foreign talk). It
@@ -3212,6 +3230,31 @@ public class RoomActivity extends Activity {
     // getStringSet() twice for every row on every scroll bind.
     private java.util.Set<String> playedSet = new java.util.HashSet<String>();
     private java.util.Set<String> favSet = new java.util.HashSet<String>();
+    // v15.42 (slice 1922): newly-added talks — the identity URLs
+    // that arrived since the previous Talks load of this
+    // sayadaw (TalkListCache new-set, replaced per load). The
+    // drawer in-list bind paints a ● before the title while the
+    // talk is still unstarted and unlistened — the third surface
+    // of the 1920 dot family (Talks list, Main grid, drawer).
+    // Loaded in refreshMarkSets below, so drawer-open + onResume
+    // + fav/played changes all refresh it with the other marks.
+    private java.util.Set<String> drawerNewTalkUrls = new java.util.HashSet<String>();
+    // v15.42 (slice 1925): foreign-row new-sets — one cached
+    // new-set per foreign sayadaw NAME (the drawer queue line
+    // carries the name, not the page), filled lazily on the
+    // first bind of that sayadaw and kept for the Room
+    // session. The page resolves through
+    // catalogEntryForSayadaw below (the v7.08 handover's
+    // resolver, same bundled asset + exact-name match, so a
+    // name the handover accepts resolves here too); a name
+    // with no catalog entry caches the empty set, so a miss
+    // never re-parses the asset on every bind. Session
+    // lifetime is exact: a sayadaw's new-set only changes
+    // on a Talks load, which happens outside this Room (a
+    // handover opens a new session), and the dot itself
+    // clears through the live fResume/fPlayed gates, never
+    // through this cache.
+    private java.util.Map<String, java.util.Set<String>> foreignNewSetsByName = new java.util.HashMap<String, java.util.Set<String>>();
     // v14.78 (slice 1736): READ the set in canonical form —
     // every write funnel banks the https identity (togglePlayingFav
     // v13.66, Fx.toggleFavTalk v13.65, the v13.66 lazy-once
@@ -3376,6 +3419,11 @@ public class RoomActivity extends Activity {
             favSet = new java.util.HashSet<String>(
                     getSharedPreferences("dhamma", MODE_PRIVATE)
                             .getStringSet("favTalks", new java.util.HashSet<String>()));
+            // v15.42 (slice 1922): newly-added talks — the dot set
+            // for this sayadaw's page; empty when the Room was
+            // opened without a page URL (loadNewSet is null-safe),
+            // so the drawer simply shows no dots.
+            drawerNewTalkUrls = TalkListCache.loadNewSet(RoomActivity.this, pageUrl);
         } catch (Exception ignored) {}
         // v13.98 (slice 1093): durations for the drawer hairline
         // — one parse with the other row-mark caches (drawer-open
@@ -14808,9 +14856,24 @@ if (snd67q >= 0) currentIndex = snd67q;
                     // recycled row.
                     boolean fHeld = moveHeldUrl != null && moveHeldUrl.equals(fe.url)
                             && queueLineIndexForUrl(fe.url) >= 0;
+                    // v15.42 (slice 1925): newly-added talk dot — the 1920
+                    // Talks gate on foreign rows: a queued talk from
+                    // another sayadaw wears a ● before its title while
+                    // it arrived since that sayadaw's last Talks load
+                    // and is still unstarted (fResume empty — a saved
+                    // spot over 5s means started, same gate as the
+                    // in-list bind below) and unlistened (fPlayed);
+                    // never on the sounding row, whose ⏸ already owns
+                    // its emphasis. The set resolves by sayadaw name
+                    // through foreignNewSetForSayadaw above; a name
+                    // with no catalog entry simply never dots.
+                    // Title-coloured like every other mark (v14.16
+                    // idiom — no colour interpolation, no label fade).
+                    String fNewMark = (!fSounding && !fPlayed && fResume.length() == 0
+                            && foreignNewSetForSayadaw(fe.sayadaw).contains(SiteHttp.identityUrl(fe.url))) ? "● " : "";
                     if (fTitle != null) fTitle.setText((fHeld ? "✋ " : "") + Fx.soundingRowMark(fSounding, AudioService.liveTrackError, service != null && service.isBuffering() && !service.isHoldPaused() ? Lang.t(RoomActivity.this, "notif_state_buffering") : "", "\u23F8") + fHand + (fFav ? "★ " : "")
                             + (fDownloaded ? "⬇ " : "") + fQueueMark
-                            + (fPlayed && !fSounding ? "✓ " : "")
+                            + (fPlayed && !fSounding ? "✓ " : "") + fNewMark
                             + (fe.title.length() > 0 ? fe.title : fe.url)
                             + fResume + " · " + fe.sayadaw);
                     // v15.30 (slice 1820): the foreign-head row's title colour melts on the flip instead of snapping — the same last snap as the main drawer branch below (card v14.32, held wash v15.29): the 500ms poll rebinds the drawer on a resync, and this branch swapped the title colour in one frame (bare setTextColor) while the card beside it crossfades. Fx.crossfadeTextColor (v14.34 helper: 250ms ValueAnimator.ofArgb, recorded target, no-op when unchanged) owns the colour from here. The v14.16 settled decision does NOT bar this — no label is faded, only the text colour is interpolated (alpha stays 1, text unchanged), so the row cannot flash — the same distinction v14.34 drew for the sleep text and v14.62 for the nav tint. The ▸/★/✓/⬇ marks + title text stay instant.
@@ -15127,7 +15190,21 @@ if (snd67q >= 0) currentIndex = snd67q;
             // ended state; pulse, ◈, ▸, ✋ and ↺ keep
             // playIdx71 untouched, as v11.15 did elsewhere.
             boolean rowPlaying116 = talkIdx == playIdx71 && !AudioService.liveEnded;
-            if (titleView != null) titleView.setText((held ? "✋ " : "") + Fx.soundingRowMark(rowPlaying116, AudioService.liveTrackError, service != null && service.isBuffering() && !service.isHoldPaused() ? Lang.t(RoomActivity.this, "notif_state_buffering") : "", "\u23F8") + handMark + (fav ? "★ " : "") + (downloaded ? "⬇ " : "") + queueMark + (played && !rowPlaying116 ? "✓ " : "") + t.title + resumeMark);
+            // v15.42 (slice 1922): newly-added talk dot — the 1920
+            // Talks gate on this surface: a talk that arrived since
+            // the last Talks load wears a ● before its title until
+            // it is started (resumeMark non-empty means a saved spot
+            // exists — starting a talk clears its dot on the next
+            // tick rebind) or finished (played); never on the playing
+            // row, whose ⏸ already owns its emphasis. Foreign rows
+            // dot through their own set (slice 1925,
+            // foreignNewSetForSayadaw) — their sayadaw's page
+            // resolves through the bundled catalog. Title-coloured like every
+            // other mark (v14.16 idiom — no colour interpolation,
+            // no label fade).
+            String newMark41 = (!rowPlaying116 && !played && resumeMark.length() == 0
+                    && drawerNewTalkUrls != null && drawerNewTalkUrls.contains(SiteHttp.identityUrl(t.url))) ? "● " : "";
+            if (titleView != null) titleView.setText((held ? "✋ " : "") + Fx.soundingRowMark(rowPlaying116, AudioService.liveTrackError, service != null && service.isBuffering() && !service.isHoldPaused() ? Lang.t(RoomActivity.this, "notif_state_buffering") : "", "\u23F8") + handMark + (fav ? "★ " : "") + (downloaded ? "⬇ " : "") + queueMark + (played && !rowPlaying116 ? "✓ " : "") + newMark41 + t.title + resumeMark);
             // v15.30 (slice 1820): the sounding-row title colour melts on the flip instead of snapping — the last snap in the sounding-row transition (card v14.32, hairline v15.26, clock v15.26, held wash v15.29): the 500ms poll rebinds the drawer on a resync, and getView swapped the title colour in one frame (bare setTextColor), so a talk advancing, ending or handing over with the drawer open flashed the gold name in or out while the card beside it crossfades. Fx.crossfadeTextColor (v14.34 helper: 250ms ValueAnimator.ofArgb, recorded target, no-op when unchanged) owns the colour from here. The v14.16 settled decision does NOT bar this — its reason was that fading the whole label to ease a 2-char mark would flash the row; here no label is faded, only the text colour is interpolated (alpha stays 1, text unchanged), so the row cannot flash — the same distinction v14.34 drew for the sleep text and v14.62 for the nav tint. The ▶/★/✓/⬇ marks + title text stay instant; the listened dim (alpha, below) now melts (v15.38, slice 1888).
             if (titleView != null) Fx.crossfadeTextColor(titleView, rowPlaying116
                     ? android.graphics.Color.parseColor("#C9A227")

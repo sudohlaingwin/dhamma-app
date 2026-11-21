@@ -44,6 +44,12 @@ public class MainActivity extends Activity {
     // long-press toggles it, and the Home-nav long-press reset
     // clears it along with the query.
     private boolean favOnly = false;
+    // v15.42 (slice 1926): ● new-only grid filter — the ★
+    // favourites-only filter's twin: narrows the grid to sayadaws
+    // with unseen new talks (the 1921 dot set). Toggled by the ●
+    // button beside the search field; cleared by the Home
+    // long-press reset beside ★; saved/restored beside favOnly.
+    private boolean newOnly = false;
     // v2.03: restoring the pre-rotation query into the search box
     // fires the watcher, which used to run applyFilter(true) and
     // re-toast a no-match search on every rotation — the v2.02
@@ -95,6 +101,10 @@ public class MainActivity extends Activity {
     // restore or return (onResume staleness guard), and consumed
     // on every applyFilter pass below.
     private boolean mainFavToggleChange = false;
+    // v15.42 (slice 1926): ● filter-toggle pour arm — the ★ arm's
+    // twin (same v14.26 rule: armed only at gesture sites, never
+    // on rotation, restore or return, consumed on every pass).
+    private boolean mainNewToggleChange = false;
     private Set<String> favs = new HashSet<String>();
     // v13.74 (slice 1065): ★ favourites shelf views + the key of the
     // last poured shelf (favourite names + night flag) — a rebuild
@@ -180,6 +190,9 @@ public class MainActivity extends Activity {
     // search field — a direct tap for the favourites-only filter
     // (was a hidden long-press on an empty search, v4.19).
     private android.widget.TextView favFilterBtn;
+    // v15.42 (slice 1926): ● new-only filter button beside the
+    // search field — the ★ button's twin (see the layout).
+    private android.widget.TextView newFilterBtn;
     // v15.33 (slice 1836): search clear ✕ beside the search field — a direct tap to clear the query (was a hidden long-press on the field, v4.17); the Talks chooser (v5.57) and the Library (v2.41) both carry one.
     private android.widget.TextView searchClearBtn;
     private GridView gridView;
@@ -255,6 +268,16 @@ public class MainActivity extends Activity {
     // every grid rebind, so getView reads it in O(1) and does
     // no prefs work per card (v1.57/v5.69 one-parse rule).
     private java.util.Set<String> gridNewSayadawUrls = new java.util.HashSet<String>();
+    // v15.42 (slice 1924): favourites-shelf new-talk dot — the
+    // pageUrls whose shelf chip wears a ● before the name: sayadaws
+    // with new talks since the last visit that nobody started or
+    // finished (TalkListCache new-set, gated by hasUnseenNew).
+    // Recomputed by refreshShelfNewDots() at the top of every
+    // refreshFavShelf, so both chip-text sites below read it
+    // fresh and the pour key below carries it — a dot gained or
+    // lost re-runs the shelf instead of hitting the change
+    // gate's early return.
+    private java.util.Set<String> shelfNewSayadawUrls = new java.util.HashSet<String>();
     // v4.60: is the mini strip currently showing the resume mode
     // (dead session + saved spot) instead of a live session? The
     // strip's toggle and long-press read it, so a resume tap
@@ -705,6 +728,30 @@ public class MainActivity extends Activity {
             }
             if (stale) {
                 if (favs == null || favs.isEmpty()) favOnly = false;
+                applyFilter();
+                refreshFavHint();
+            }
+        }
+        // v15.42 (slice 1926): ●-only grid goes stale on return —
+        // the same v7.29 shape as the ★ block above. A Talks visit
+        // stores a fresh new-set and can start the last new talk,
+        // so a card in the filtered grid may have lost its dot
+        // while Main sat in the back stack; re-run the silent
+        // filter when the shown set no longer matches the fresh
+        // dot set. An emptied set drops the filter entirely, the
+        // rotation guard's "never a blank filtered grid" rule.
+        // Untouched when newOnly is off or the set still matches,
+        // so ordinary returns never re-filter or re-scroll.
+        if (newOnly && shown != null) {
+            java.util.Set<String> freshDots1926 = computeNewDotUrls(all);
+            boolean stale1926 = freshDots1926.isEmpty();
+            if (!stale1926) {
+                for (Sayadaw s : shown) {
+                    if (s == null || s.url == null || !freshDots1926.contains(s.url)) { stale1926 = true; break; }
+                }
+            }
+            if (stale1926) {
+                if (freshDots1926.isEmpty()) newOnly = false;
                 applyFilter();
                 refreshFavHint();
             }
@@ -2079,8 +2126,26 @@ public class MainActivity extends Activity {
                         mainGridFailed = AudioService.liveTrackError;
                         mainGridBuffering = AudioService.liveBuffering;
                         mainGridPlaying = AudioService.livePlaying;
+                        // v15.42 (slice 1926): a finished new talk
+                        // drops its sayadaw from the dot set — under
+                        // the ● filter the card must drop from the
+                        // grid too, not just lose its dot (the
+                        // onResume stale guard's rule, live). Only
+                        // when the set actually changed, so a
+                        // play/pause flip never re-filters; an
+                        // emptied set drops the filter entirely
+                        // (the last-favourite exit's rule), so the
+                        // grid restores to full, never blank.
+                        java.util.Set<String> dotsBefore1926 = new java.util.HashSet<String>(gridNewSayadawUrls);
                         refreshGridNewDots(); // v15.41 (slice 1921): a finished new talk clears its card dot
-                        if (adapter != null) adapter.notifyDataSetChanged();
+                        if (newOnly && !dotsBefore1926.equals(gridNewSayadawUrls)) {
+                            if (gridNewSayadawUrls.isEmpty()) {
+                                newOnly = false; mainNewToggleChange = true;
+                                Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "all_listened"), Toast.LENGTH_SHORT).show();
+                            }
+                            applyFilter();
+                            refreshFavHint();
+                        } else if (adapter != null) adapter.notifyDataSetChanged();
                         // v13.87: the same change moves the shelf ring
                         // (refreshFavShelf's key carries the sounding
                         // name, so steady ticks return early there and
@@ -2193,6 +2258,9 @@ public class MainActivity extends Activity {
         // rotation - only the query and scroll survived, so a
         // rotated filtered grid silently showed every sayadaw.
         outState.putBoolean("favOnly", favOnly);
+        // v15.42 (slice 1926): the ● filter survives rotation
+        // beside ★ (restored below, guarded the same way).
+        outState.putBoolean("newOnly", newOnly);
         // v1.55: rotation dropped the grid back to the top (the Talks
         // list got its scroll saved in v1.54, the main grid never did).
         if (gridView != null) outState.putInt("scrollPos", gridView.getFirstVisiblePosition());
@@ -2492,7 +2560,14 @@ public class MainActivity extends Activity {
                     // filtered view the listener forgot was on.
                     // v14.26: the reset clears the ★ filter, so the
                     // restored full grid pours like a toggle-off.
-                    if (favOnly) { favOnly = false; mainFavToggleChange = true; applyFilter(); refreshFavHint(); }
+                    // v15.42 (slice 1926): the reset clears the ●
+                    // filter too — one applyFilter for both, both
+                    // pour arms set.
+                    if (favOnly || newOnly) {
+                        if (favOnly) { favOnly = false; mainFavToggleChange = true; }
+                        if (newOnly) { newOnly = false; mainNewToggleChange = true; }
+                        applyFilter(); refreshFavHint();
+                    }
                     if (gridView != null) gridView.smoothScrollToPosition(0);
                     return true;
                 }
@@ -2955,6 +3030,16 @@ public class MainActivity extends Activity {
                 toggleFavOnly(v);
             }
         });
+        // v15.42 (slice 1926): the ● button runs the new-only
+        // toggle — same shape as the ★ button above (Fx.tap beat
+        // at the click site, body in toggleNewOnly below).
+        newFilterBtn = findViewById(R.id.newFilterBtn);
+        if (newFilterBtn != null) newFilterBtn.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                Fx.tap(MainActivity.this);
+                toggleNewOnly(v);
+            }
+        });
         searchClearBtn = findViewById(R.id.searchClear);
         // v15.33 (slice 1836): the clear ✕ morphs on tap (Fx.morph, the v15.28 chooser idiom — the tap leaves Main open while the grid re-pours, unlike the dev-profile ✕ which dismisses its dialog, Fx.press) and clears through setText("") so the watcher re-runs the filter exactly like the long-press path. No non-empty guard: the ✕ is GONE with an empty query, so a tap can only land on a real query. The morph animates scale only; the ✕ fade-out (refreshSearchClear, alpha only) runs on a separate channel, so the ✕ squashes away as it fades.
         if (searchClearBtn != null) searchClearBtn.setOnClickListener(new android.view.View.OnClickListener() {
@@ -2975,6 +3060,13 @@ public class MainActivity extends Activity {
         // picks it up, and its hint refresh follows it.
         if (savedInstanceState != null && savedInstanceState.getBoolean("favOnly", false)
                 && favs != null && !favs.isEmpty()) favOnly = true;
+        // v15.42 (slice 1926): restore the ● filter with the query
+        // (guarded like the ★ restore above: an emptied new-set
+        // restores to the full grid, never a blank filtered one).
+        // The catalog loads synchronously (see the scroll restore
+        // below), so the dot set over `all` is valid here.
+        if (savedInstanceState != null && savedInstanceState.getBoolean("newOnly", false)
+                && !computeNewDotUrls(all).isEmpty()) newOnly = true;
         // v2.07: a rotated grid must not replay its entrance.
         if (savedInstanceState != null) lastGridAnimPos = Integer.MAX_VALUE;
         // v14.15 (slice 1669): same rule for the ★ shelf — a
@@ -3432,6 +3524,37 @@ public class MainActivity extends Activity {
         refreshFavHintAnimated();
     }
 
+    // v15.42 (slice 1926): ● new-only toggle — the Main mirror of
+    // the ★ favourites-only toggle above (toggleFavOnly, v13.82):
+    // one method, two gestures — the ● button beside the search
+    // field calls this, and the grid narrows to sayadaws with
+    // unseen new talks (the 1921 dot set, recomputed over the full
+    // catalogue for the filter). Composes with ★ and the query
+    // (all three AND in applyFilter), so a typed name still
+    // narrows within the new-only set. Refusal mirrors the ★
+    // no-favourites rule (v7.29): entering with an empty new-set
+    // would show a blank grid with no word, so the toggle flips
+    // back and the toast says so ("all_listened" — the Talks
+    // unlistened filter's empty word, the shipped vocabulary for
+    // "nothing new to show"). The on/off toasts reuse shipped
+    // strings too ("filter_new_only" / "fav_only_off" — the off
+    // word is "Showing all sayadaws", exactly what leaving the
+    // filter does), so no new Lang key and no hand-typed Burmese.
+    private void toggleNewOnly(android.view.View v) {
+        boolean wasNewOnly = newOnly;
+        newOnly = !newOnly;
+        if (newOnly && computeNewDotUrls(all).isEmpty()) {
+            newOnly = false;
+            Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "all_listened"), Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, newOnly ? "filter_new_only" : "fav_only_off"), Toast.LENGTH_SHORT).show();
+        }
+        hideKeyboard(v);
+        if (newOnly != wasNewOnly) mainNewToggleChange = true;
+        applyFilter();
+        refreshFavHintAnimated();
+    }
+
     private void refreshFavHint() {
         paintFavHint(false);
     }
@@ -3456,8 +3579,13 @@ public class MainActivity extends Activity {
     }
 
     private void paintFavHint(boolean animate) {
-        if (searchField != null)
-            searchField.setHint(favOnly ? "★ " + Lang.t(this, "search_hint") : Lang.t(this, "search_hint"));
+        if (searchField != null) {
+            // v15.42 (slice 1926): the hint carries both active
+            // filters — "★ ● " when both are on, one mark when
+            // one is, none when neither.
+            String filterPrefix = (favOnly ? "★ " : "") + (newOnly ? "● " : "");
+            searchField.setHint(filterPrefix + Lang.t(this, "search_hint"));
+        }
         // v13.82 (slice 1074): the ★ filter button wears the same
         // state as the hint prefix — gold while favourites-only is
         // on, the card-group muted pair while off (night-aware, the
@@ -3470,6 +3598,18 @@ public class MainActivity extends Activity {
             paintFavBtnColor(animate);
             favFilterBtn.setContentDescription(Lang.t(this, favOnly ? "fav_only_on" : "fav_only_off"));
         }
+        // v15.42 (slice 1926): the ● filter button wears the same
+        // state as the ★ button above — gold while new-only is on,
+        // the card-group muted pair while off. Same painter shape
+        // (animated melt on toggle, instant stamp everywhere else)
+        // and the same null guard: paintFavHint runs before
+        // onCreate binds the button. The description reuses shipped
+        // strings ("filter_new_only" on, "fav_only_off" off — the
+        // off word is "Showing all sayadaws"), so no new Lang key.
+        if (newFilterBtn != null) {
+            paintNewBtnColor(animate);
+            newFilterBtn.setContentDescription(Lang.t(this, newOnly ? "filter_new_only" : "fav_only_off"));
+        }
     }
 
     private void paintFavBtnColor(boolean animate) {
@@ -3477,6 +3617,16 @@ public class MainActivity extends Activity {
                 : (cachedNight ? android.graphics.Color.parseColor("#AAAAAA") : android.graphics.Color.parseColor("#7A6A58"));
         if (animate) Fx.crossfadeTextColor(favFilterBtn, color);
         else Fx.setTextColorNow(favFilterBtn, color);
+    }
+
+    // v15.42 (slice 1926): the ● button's colour twin of
+    // paintFavBtnColor above — gold #C9A227 while new-only is on,
+    // the same night-aware muted pair while off.
+    private void paintNewBtnColor(boolean animate) {
+        int color = newOnly ? android.graphics.Color.parseColor("#C9A227")
+                : (cachedNight ? android.graphics.Color.parseColor("#AAAAAA") : android.graphics.Color.parseColor("#7A6A58"));
+        if (animate) Fx.crossfadeTextColor(newFilterBtn, color);
+        else Fx.setTextColorNow(newFilterBtn, color);
     }
 
     // v15.06 (slice 1764): the park delay for a chip whose home index
@@ -3582,15 +3732,25 @@ public class MainActivity extends Activity {
     private void refreshFavShelf() {
         if (favShelfWrap == null || favShelf == null) return;
         java.util.List<Sayadaw> favList = new java.util.ArrayList<Sayadaw>();
-        if (query != null && query.length() == 0 && !favOnly
+        if (query != null && query.length() == 0 && !favOnly && !newOnly
                 && favs != null && !favs.isEmpty() && all != null) {
             for (Sayadaw s : all) if (favs.contains(s.name)) favList.add(s);
         }
+        // v15.42 (slice 1924): shelf dots fresh before the pour
+        // key below is built — the key carries them, so a dot
+        // gained or lost re-runs the shelf (in place when the
+        // names match) instead of hitting the early return.
+        // Runs on every shelf call (onResume, sounding flip,
+        // fav toggle, filter rebuild); the pass is over the
+        // favourites only, so it costs one prefs read per
+        // favourite, never per shown sayadaw.
+        refreshShelfNewDots(favList);
         if (favList.isEmpty()) {
             // v14.38 (slice 1693): the shelf fades out instead of
             // vanishing — its appearance pours (v14.15 stagger
             // cascade) but the last favourite un-starred (or a
-            // search keystroke / favOnly toggle emptying the shelf)
+            // search keystroke / favOnly / newOnly toggle emptying
+            // the shelf)
             // used to snap the whole wrap to GONE in one frame.
             // Fx.fadeOut (200ms, the v14.33 sleep-line rhythm),
             // GONE at the end, gen-guarded (v3.62) so a re-appear
@@ -3614,7 +3774,14 @@ public class MainActivity extends Activity {
         String soundingShelf = soundingSayadawNameVisual();
         StringBuilder kb = new StringBuilder();
         kb.append(cachedNight ? "N" : "D");
-        for (Sayadaw s : favList) kb.append('|').append(s.name);
+        // v15.42 (slice 1924): the dot joins the pour key — a
+        // dot gained or lost changes the key, so the shelf
+        // re-runs (in place, same names) and the chip text
+        // below picks the new dot up; a steady dot state keeps
+        // the key, so steady ticks still return early.
+        for (Sayadaw s : favList) kb.append('|').append(s.name)
+                .append(shelfNewSayadawUrls != null && s.url != null
+                        && shelfNewSayadawUrls.contains(s.url) ? "●" : "");
         kb.append('|').append(soundingShelf == null ? "∅" : soundingShelf);
         // v14.07 (slice 1102): the failure + loading bits join the
         // pour key — a stream failing (or starting to load) under
@@ -3707,7 +3874,15 @@ public class MainActivity extends Activity {
                 android.view.View nameV = ((android.view.ViewGroup) chip).getChildAt(1);
                 if (nameV instanceof TextView) {
                     TextView name = (TextView) nameV;
-                    name.setText(Fx.soundingRowMark(shelfPlaying, AudioService.liveTrackError, AudioService.liveBuffering ? Lang.t(MainActivity.this, "notif_state_buffering") : "", "\u25B6") + s.name);
+                    // v15.42 (slice 1924): the chip wears the
+                    // new-talk ● before the name while its
+                    // sayadaw has unseen new talks (the 1921
+                    // grid dot, one row up); title-coloured
+                    // like every other text mark (v14.16
+                    // idiom), rebound on every in-place
+                    // update, so a stale dot can never stick.
+                    String shelfDot = shelfNewSayadawUrls != null && s.url != null && shelfNewSayadawUrls.contains(s.url) ? "● " : "";
+                    name.setText(Fx.soundingRowMark(shelfPlaying, AudioService.liveTrackError, AudioService.liveBuffering ? Lang.t(MainActivity.this, "notif_state_buffering") : "", "\u25B6") + shelfDot + s.name);
                     // v15.31 (slice 1821): the chip name colour
                     // melts gold<->plain through Fx.crossfadeTextColor
                     // (250ms, v14.34 helper) instead of snapping —
@@ -4003,7 +4178,15 @@ public class MainActivity extends Activity {
             // the loading word, in the glyph's own slot (the Main mirror
             // rule, like the grid card); the gold colour below stays —
             // gold says sounding, the mark says failed.
-            name.setText(Fx.soundingRowMark(shelfPlaying, AudioService.liveTrackError, AudioService.liveBuffering ? Lang.t(MainActivity.this, "notif_state_buffering") : "", "\u25B6") + s.name);
+            // v15.42 (slice 1924): the chip wears the new-talk
+            // ● before the name while its sayadaw has unseen
+            // new talks (the 1921 grid dot, one row up);
+            // title-coloured like every other text mark
+            // (v14.16 idiom), rebound on every rebuild, so a
+            // recycled chip can never carry the dot onto
+            // another sayadaw.
+            String shelfDot = shelfNewSayadawUrls != null && s.url != null && shelfNewSayadawUrls.contains(s.url) ? "● " : "";
+            name.setText(Fx.soundingRowMark(shelfPlaying, AudioService.liveTrackError, AudioService.liveBuffering ? Lang.t(MainActivity.this, "notif_state_buffering") : "", "\u25B6") + shelfDot + s.name);
             name.setTextColor(shelfPlaying ? android.graphics.Color.parseColor("#C9A227")
                     : (cachedNight ? android.graphics.Color.WHITE
                     : android.graphics.Color.parseColor("#3B2314")));
@@ -4800,8 +4983,16 @@ public class MainActivity extends Activity {
         String qz = Fx.foldDigits(java.text.Normalizer.normalize(Fx.zawgyiToUnicode(query.trim()),
                 java.text.Normalizer.Form.NFC).toLowerCase());
         String qzFlat = Fx.stripWhitespace(qz);
+        // v15.42 (slice 1926): the ●-only filter's input — the dot
+        // set over the FULL catalogue, not the shown list (which is
+        // what this loop is about to rebuild). Only when the filter
+        // is on; off costs nothing. The tail refreshGridNewDots
+        // below still recomputes over the rebuilt shown set for
+        // the card paint.
+        java.util.Set<String> newOnlyUrls = newOnly ? computeNewDotUrls(all) : null;
         for (Sayadaw s : all) {
             if (favOnly && (favs == null || !favs.contains(s.name))) continue;
+            if (newOnly && (newOnlyUrls == null || !newOnlyUrls.contains(s.url))) continue;
             if (q.length() > 0) {
                 String n = Fx.foldDigits(java.text.Normalizer.normalize(s.name,
                         java.text.Normalizer.Form.NFC).toLowerCase());
@@ -4850,9 +5041,13 @@ public class MainActivity extends Activity {
         // v14.26: consume the ★ toggle arm on every pass, so a
         // gesture that armed it always pours on this pass and never
         // leaks into a later silent filter (rotation, return).
+        // v15.42 (slice 1926): the ● toggle arm rides the same
+        // rule — one arm per filter, both consumed here.
         boolean favToggleChange = mainFavToggleChange;
         mainFavToggleChange = false;
-        if (allowToast || favToggleChange) {
+        boolean newToggleChange = mainNewToggleChange;
+        mainNewToggleChange = false;
+        if (allowToast || favToggleChange || newToggleChange) {
             // v11.69: the key covers EVERY shown name, not just the
             // first three -- a query replacement that swaps a tail
             // item while keeping the size and the first three names
@@ -4929,9 +5124,9 @@ public class MainActivity extends Activity {
             lastEmptyToastQuery = null;
         }
         // v15.33 (slice 1835): the empty-search view follows every filter pass — it fades in on a gesture-driven pass (keystroke / ★ toggle) and lands instantly on silent passes (rotation / restore, the v1.53 rule).
-        refreshNoResults(allowToast || favToggleChange, noResultsKey);
+        refreshNoResults(allowToast || favToggleChange || newToggleChange, noResultsKey);
         // v15.33 (slice 1836): the search clear ✕ follows every filter pass — same animate rule as the empty-search view beside it (gesture passes animate, silent passes land instantly, the v1.53 rule).
-        refreshSearchClear(allowToast || favToggleChange);
+        refreshSearchClear(allowToast || favToggleChange || newToggleChange);
     }
 
     // v15.41 (slice 1921): recompute the Main-grid dot set — one
@@ -4952,19 +5147,70 @@ public class MainActivity extends Activity {
     // a talk keeps its card dot until finished or the next
     // Talks load replaces the set. Streaming-started talks
     // clear on the next rebind.
-    private void refreshGridNewDots() {
+    // v15.42 (slice 1926): the dot-set pass, lifted out of
+    // refreshGridNewDots below so the ●-only filter can run the
+    // same pass over the FULL catalogue (applyFilter's input)
+    // while the rebind sites keep their shown-only pass. Same
+    // body, same cost per call — one prefs read per sayadaw in
+    // the passed list, never per row.
+    private java.util.Set<String> computeNewDotUrls(java.util.List<Sayadaw> list) {
         java.util.Set<String> dots = new java.util.HashSet<String>();
         try {
             java.util.Set<String> played = getSharedPreferences("dhamma", MODE_PRIVATE)
                     .getStringSet("playedTalks", null);
             java.util.Set<String> resumeKeys = Prefs.talkPosKeysOver(this, 5000);
-            for (Sayadaw s : shown) {
-                if (s == null || s.url == null || s.url.length() == 0) continue;
-                java.util.Set<String> news = TalkListCache.loadNewSet(this, s.url);
-                if (TalkListCache.hasUnseenNew(news, played, resumeKeys)) dots.add(s.url);
+            if (list != null) {
+                for (Sayadaw s : list) {
+                    if (s == null || s.url == null || s.url.length() == 0) continue;
+                    java.util.Set<String> news = TalkListCache.loadNewSet(this, s.url);
+                    if (TalkListCache.hasUnseenNew(news, played, resumeKeys)) dots.add(s.url);
+                }
             }
         } catch (Exception ignored) {}
-        gridNewSayadawUrls = dots;
+        return dots;
+    }
+
+    private void refreshGridNewDots() {
+        gridNewSayadawUrls = computeNewDotUrls(shown);
+    }
+
+    // v15.42 (slice 1924): favourites-shelf new-talk dot —
+    // the shelf twin of refreshGridNewDots above: one pass over
+    // the favourites only (a handful, never the whole shown
+    // list), playedTalks loaded once, talkPosKeysOver parsed
+    // once (the v1.57/v5.69 one-parse rule), then loadNewSet
+    // per favourite, gated by hasUnseenNew (the 1921 gate
+    // verbatim — some new talk neither finished nor started).
+    // Called at the top of every refreshFavShelf, so the dot
+    // set is fresh at every shelf run: on return from Talks
+    // (the visit that stored the set), on a sounding flip (a
+    // finished new talk clears its chip), on a fav toggle, on
+    // a filter rebuild. The playing exclusion is per-talk and
+    // has no chip-level meaning, so the shelf does not apply
+    // it — the resume gate clears the dot once the talk is
+    // started, exactly like the grid card (1921).
+    // Known edge, same as the grid card (1921): a talk started
+    // ONLY from the library holds its spot under the
+    // downloaded-path form (v5.59), which the shelf cannot
+    // know without a per-run filesystem scan — the v1.57 jank
+    // class bars exactly that — so such a talk keeps its chip
+    // dot until finished or the next Talks load replaces the
+    // set. Streaming-started talks clear on the next run.
+    private void refreshShelfNewDots(java.util.List<Sayadaw> favList) {
+        java.util.Set<String> dots = new java.util.HashSet<String>();
+        try {
+            java.util.Set<String> played = getSharedPreferences("dhamma", MODE_PRIVATE)
+                    .getStringSet("playedTalks", null);
+            java.util.Set<String> resumeKeys = Prefs.talkPosKeysOver(this, 5000);
+            if (favList != null) {
+                for (Sayadaw s : favList) {
+                    if (s == null || s.url == null || s.url.length() == 0) continue;
+                    java.util.Set<String> news = TalkListCache.loadNewSet(this, s.url);
+                    if (TalkListCache.hasUnseenNew(news, played, resumeKeys)) dots.add(s.url);
+                }
+            }
+        } catch (Exception ignored) {}
+        shelfNewSayadawUrls = dots;
     }
 
     private class SayadawAdapter extends BaseAdapter {

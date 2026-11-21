@@ -198,6 +198,26 @@ public class TalkListCache {
         return false;
     }
 
+    // v15.42 (slice 1923): Downloaded new-file diff — pure
+    // core: the current scan's paths minus the saved seen-set.
+    // A null seen set is a first visit, so nothing is new (the
+    // whole shelf is a first sight, not an arrival); a null
+    // current list is empty. Paths are compared exactly —
+    // absolute file paths, no URL identity: a re-download
+    // lands on the same path, so it is not new; a deleted-
+    // then-redownloaded file left the seen-set when its leave
+    // saved, so it dots again. Null members are skipped, so a
+    // corrupt entry can never dot or crash the diff.
+    static java.util.Set<String> diffDlNew(java.util.Set<String> seen,
+            java.util.Set<String> current) {
+        java.util.Set<String> out = new java.util.HashSet<String>();
+        if (seen == null || current == null) return out;
+        for (String p : current) {
+            if (p != null && !seen.contains(p)) out.add(p);
+        }
+        return out;
+    }
+
     public static void saveNewSet(Context c, String pageUrl, java.util.Set<String> ids) {
         if (c == null || pageUrl == null) return;
         try {

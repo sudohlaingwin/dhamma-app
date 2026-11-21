@@ -86,6 +86,22 @@
             android:text="★"
             android:textColor="@color/muted"
             android:textSize="22sp" />
+        <!-- v15.42 (slice 1926): ● new-only filter button — the ★
+             button's twin beside it: same 48dp, same borderless
+             background, same 22sp glyph. Tapping narrows the grid
+             to sayadaws with unseen new talks (the 1921 dot set);
+             gold while the filter is on, muted while off. -->
+        <TextView
+            android:id="@+id/newFilterBtn"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="●"
+            android:textColor="@color/muted"
+            android:textSize="22sp" />
     </LinearLayout>
     <!-- v13.74 (slice 1065): ★ favourites shelf — the ★ set (long-press a
          card to star; drives Wi-Fi auto-download) had no visible home on

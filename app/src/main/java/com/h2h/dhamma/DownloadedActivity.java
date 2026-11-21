@@ -174,6 +174,18 @@ public class DownloadedActivity extends Activity {
     // above stay raw copies for the same stored-vs-stored reason.
     private java.util.Set<String> libFavFiles = new java.util.HashSet<String>();
     private java.util.Set<String> libListenedFiles = new java.util.HashSet<String>();
+    // v15.42 (slice 1923): newly-downloaded talks — the
+    // absolute paths in this scan that were not in the saved
+    // seen-set (TalkListCache.diffDlNew), i.e. files that
+    // landed since the last Downloaded visit. Recomputed in
+    // refreshLibMarkCache below, so every loadList (open,
+    // live arrival, delete, filter change) refreshes it with
+    // the other mark caches, and the 1s tick rebinds only, so
+    // the set is stable across ticks. Empty on a first visit
+    // (no saved seen-set yet) and on a failed load (the old
+    // set survives — refreshLibMarkCache never clears it
+    // except by recomputing from a fresh scan).
+    private java.util.Set<String> dlNewFiles = new java.util.HashSet<String>();
     // v7.45: tick snapshots of the fav/played URL sets behind the
     // mark cache above (null = not yet adopted). The cache is
     // rebuilt only on loadList, while the 1s tick rebinds only
@@ -390,6 +402,20 @@ public class DownloadedActivity extends Activity {
                     if (d != null) libDurMap.put(p, d);
                 }
             }
+            // v15.42 (slice 1923): newly-downloaded dot — the
+            // files in this scan that were not in the saved
+            // seen-set (prefs "dlSeenFiles", written in
+            // onPause below). A null seen set is a first visit,
+            // so diffDlNew returns empty and nothing dots;
+            // a live arrival lands here on the next loadList
+            // (it is not in the saved set) and stays dotted
+            // until the leave saves it. Paths, not names:
+            // two same-named files from different sayadaws
+            // are distinct rows.
+            java.util.Set<String> seenDl42 = pp.getStringSet("dlSeenFiles", null);
+            java.util.Set<String> curDl42 = new java.util.HashSet<String>();
+            for (Entry e : entries) curDl42.add(e.file.getAbsolutePath());
+            dlNewFiles = TalkListCache.diffDlNew(seenDl42, curDl42);
         } catch (Exception ignored) {}
     }
 
@@ -7208,6 +7234,22 @@ public class DownloadedActivity extends Activity {
                 && !isFinishing() && !isChangingConfigurations()) {
             service.pause();
         }
+        // v15.42 (slice 1923): save the seen-set for the dot —
+        // the paths on the shelf as this visit leaves, so the
+        // next visit dots only files that landed since. Written
+        // on every pause (rotation included — the new instance
+        // recomputes against it, so nothing re-dots); a failed
+        // load never touches it, and a file landing between
+        // the last scan and this pause is not in `entries`, so
+        // it is not saved as seen and still dots on return.
+        // Bounded by the library size (exactly the current
+        // entries, never growing).
+        try {
+            java.util.Set<String> seenDl42 = new java.util.HashSet<String>();
+            for (Entry e : entries) seenDl42.add(e.file.getAbsolutePath());
+            getSharedPreferences("dhamma", MODE_PRIVATE).edit()
+                    .putStringSet("dlSeenFiles", seenDl42).apply();
+        } catch (Exception ignored) {}
     }
 
     // v1.94: system Back faded nowhere on this screen, while Talks
@@ -13232,9 +13274,22 @@ public class DownloadedActivity extends Activity {
             // both playing and finished at once. ★ stays, like
             // both mirrors; the 1s tick already rebinds on a
             // track change, so the mark moves with the ▶.
+            // v15.42 (slice 1923): newly-downloaded dot — the
+            // 1920 Talks gate in file-identity form: a file
+            // that landed since the last Downloaded visit wears
+            // a ● before its title until it is started (a saved
+            // resume spot in libResumeMap) or finished
+            // (rowListened); never on the playing row, whose ▶
+            // already owns its emphasis. Title-coloured like
+            // every other mark (v14.16 idiom — no colour
+            // interpolation, no label fade).
+            String newMark42 = (!rowPlaying && !rowListened
+                    && libResumeMap.get(e.file.getAbsolutePath()) == null
+                    && dlNewFiles != null && dlNewFiles.contains(e.file.getAbsolutePath())) ? "● " : "";
             if (title != null) title.setText(Fx.soundingRowMark(rowPlaying, AudioService.liveTrackError, service != null && service.isBuffering() && !service.isHoldPaused() ? Lang.t(DownloadedActivity.this, "notif_state_buffering") : "", "\u25B6")
                     + (libFavFiles.contains(e.file.getName()) ? "★ " : "")
                     + (rowListened ? "✓ " : "")
+                    + newMark42
                     // v4.57: hand-queue position mark, the Talks
                     // chooser's ◈N (v4.48) mirrored here — the
                     // playing file never shows one (v5.82: the
