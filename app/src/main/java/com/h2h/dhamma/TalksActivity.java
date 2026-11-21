@@ -3676,6 +3676,8 @@ public class TalksActivity extends Activity {
                     dKeys.add("menu_share");
                     // v15.48 (slice 1956): share this one FILE itself — right after the menu_share text share above, so the two share verbs sit together: the text share sends the talk's title + link, this one sends the actual downloaded .mp3 through the TalkFileProvider content:// URI. Gated on the chooser's own isTalkDownloaded (mapped name + basename candidates, the same gate the download verb below reads in reverse), so a streamed-only talk never offers it; the tap-time resolve re-checks the file on disk. The menu_share offer above stays byte-identical.
                     if (isTalkDownloaded(dt.url)) { dOpts.add(Lang.t(TalksActivity.this, "dl_menu_share_file")); dKeys.add("dl_menu_share_file"); }
+                    // v15.52 (slice 1977): copy this one talk's LINK — the chooser dialog's clipboard verb: the dialog could share the talk's text (menu_share) and its file (dl_menu_share_file, v15.48 slice 1956) but never copy the link — a listener who wanted just the link pasted elsewhere had to share it through the sheet and copy from there. Same verb the library per-row menu has had since v6.56 and the Room drawer gained in slice 1975, through the same RoomCopyLink core (same rule, so the three surfaces can never disagree); the offer gate is blank-url-only, so a streamed-only talk still offers it. Sits right after the file-share offer, so the share/copy trio sits together, like the drawer's.
+                    if (RoomCopyLink.canOffer(dt.url)) { dOpts.add(Lang.t(TalksActivity.this, "dl_menu_copy_link")); dKeys.add("dl_menu_copy_link"); }
                     // v7.88: per-talk favourite from the browsing screen — the
                     // same builder gap as the v7.81/v7.82 queue builders:
                     // favTalks could only ever be toggled for the SOUNDING
@@ -3808,6 +3810,20 @@ public class TalksActivity extends Activity {
                                             send56.putExtra(Intent.EXTRA_STREAM, android.net.Uri.parse(uri56));
                                             send56.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                                             startActivity(Intent.createChooser(send56, Lang.t(TalksActivity.this, "share_talk")));
+                                        }
+                                    } else if ("dl_menu_copy_link".equals(dKeyArr[which])) {
+                                        // v15.52 (slice 1977): "Copy this talk's link" — the chooser dialog's clipboard verb (see the offer above for the rule). Copies the talk's own original link verbatim (the v6.56 rule — never a bare title, never a guessed link) with the v6.56 clipboard label + toast, through the RoomCopyLink core: the tap-time gate re-checks the offer, so the two can never disagree. No pause guard (no sheet is left to return from) and no file gate (a link is not a file — a streamed-only talk copies too). The sounding talk keeps its direct text share below (no dialog to host a second verb; the Room drawer already serves its copy, slice 1975). A copy mutates nothing.
+                                        if (RoomCopyLink.canOffer(dt.url)) {
+                                            try {
+                                                android.content.ClipboardManager cm77 =
+                                                        (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                                                if (cm77 != null)
+                                                    cm77.setPrimaryClip(android.content.ClipData.newPlainText(
+                                                            Lang.t(TalksActivity.this, "clip_talk"), RoomCopyLink.clipText(dt.url)));
+                                                android.widget.Toast.makeText(TalksActivity.this,
+                                                        RoomCopyLink.toastText(Lang.t(TalksActivity.this, "link_copied_prefix"), dt.title, dt.url),
+                                                        android.widget.Toast.LENGTH_SHORT).show();
+                                            } catch (Exception ignored) {}
                                         }
                                     } else if ("menu_fav_add".equals(dKeyArr[which]) || "menu_fav_remove".equals(dKeyArr[which])) {
                                         // v7.88: toggle by URL, not by the label built

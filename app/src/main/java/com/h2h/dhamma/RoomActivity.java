@@ -10263,6 +10263,8 @@ if (snd67n >= 0) currentIndex = snd67n;
                         fKeys.add("menu_share");
                         // v15.48 (slice 1955): share this one FILE itself — right after the menu_share text share above, so the two share verbs sit together: the text share sends the talk's title + link, this one sends the actual downloaded .mp3 through the TalkFileProvider content:// URI. Gated on the Room's own downloadedFileName (the cache-only dlMap + basename rule the download gates already read, v1.57 — a name outside the set is not downloaded, whatever the disk holds right now), so a streamed-only talk never offers it; the tap-time resolve re-checks the file on disk. The menu_share offer above stays byte-identical.
                         if (downloadedFileName(ffe.url) != null) { fOptList.add(Lang.t(RoomActivity.this, "dl_menu_share_file")); fKeys.add("dl_menu_share_file"); }
+                        // v15.52 (slice 1975): "Copy this talk's link" — the clipboard twin of the two share verbs above: the text share sends title + link through the sheet, the file share sends the .mp3, and this one copies just the talk's own original link for pasting elsewhere. A streamed-only talk still offers it (a link is not a file); only a blank url hides it.
+                        if (RoomCopyLink.canOffer(ffe.url)) { fOptList.add(Lang.t(RoomActivity.this, "dl_menu_copy_link")); fKeys.add("dl_menu_copy_link"); }
                         // v7.89: same favourite verb as the full-list
                         // dialog above — a foreign row could only be
                         // shared, removed or moved, never favourited,
@@ -10276,6 +10278,8 @@ if (snd67n >= 0) currentIndex = snd67n;
                         } catch (Exception ignored) {}
                         fOptList.add(fFav89 ? Lang.t(RoomActivity.this, "menu_fav_remove") : Lang.t(RoomActivity.this, "menu_fav_add"));
                         fKeys.add(fFav89 ? "menu_fav_remove" : "menu_fav_add");
+                        // v15.52 (slice 1979): mark this one talk listened / unlistened — the drawer foreign dialog's first mark verb: the queue dialog gained it in slice 1978, but a queued talk of ANOTHER sayadaw could only earn its listened mark by playing to the end in its own Room, and a talk heard elsewhere could not be cleared from the drawer's unlistened view without opening the library. The verb sits in the existing dialog (no new view, no row menu resurrected), right after the favourite toggle — the other per-talk state toggle — and reuses the 1949 pure core (DlMark) and its keys (dl_menu_mark_one / dl_menu_unmark_one), so 0 new Lang keys. The label reads playedSet (the same cache the foreign rows render their tick from — fPlayed in the bind), so it can never disagree with the visible mark; the sounding foreign talk is excluded by the DlMark gate through isSoundingForeignTalk (the v11.32 mirror, the same one the move/play-next gates in this dialog read), and the tap-time re-check in the handler below guards the auto-advance window while the dialog sits open.
+                        if (DlMark.canOffer(ffe.url, isSoundingForeignTalk(ffe.url, ffe.sayadaw))) { String markKey79 = DlMark.labelKey(DlMark.isMarked(playedSet, SiteHttp.identityUrl(ffe.url))); fOptList.add(Lang.t(RoomActivity.this, markKey79)); fKeys.add(markKey79); }
                         fOptList.add(Lang.t(RoomActivity.this, "menu_queue_remove"));
                         fKeys.add("menu_queue_remove");
                         final boolean fHeldRow = ffe.url.equals(moveHeldUrl)
@@ -10352,6 +10356,54 @@ if (snd67n >= 0) currentIndex = snd67n;
                                                 suppressBgPause = true;
                                                 startActivity(Intent.createChooser(send55, Lang.t(RoomActivity.this, "share_talk")));
                                             }
+                                        } else if ("dl_menu_copy_link".equals(fKeyArr[which])) {
+                                            // v15.52 (slice 1975): "Copy this talk's link" — the drawer's clipboard verb: the listener who wanted just this talk's link pasted elsewhere had to share it through the sheet and copy from there. Copies the talk's own original link verbatim (the v6.56 rule — never a bare title, never a guessed link) with the v6.56 clipboard label + toast, through the RoomCopyLink core: the tap-time gate re-checks the offer, so the two can never disagree. No pause guard (no sheet is left to return from) and no file gate (a link is not a file — a streamed-only talk copies too). A copy mutates nothing.
+                                            if (RoomCopyLink.canOffer(ffe.url)) {
+                                                try {
+                                                    android.content.ClipboardManager cm75 =
+                                                            (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                                                    if (cm75 != null)
+                                                        cm75.setPrimaryClip(android.content.ClipData.newPlainText(
+                                                                Lang.t(RoomActivity.this, "clip_talk"), RoomCopyLink.clipText(ffe.url)));
+                                                    Toast.makeText(RoomActivity.this,
+                                                            RoomCopyLink.toastText(Lang.t(RoomActivity.this, "link_copied_prefix"), ffe.title, ffe.url),
+                                                            Toast.LENGTH_SHORT).show();
+                                                } catch (Exception ignored) {}
+                                            }
+                                        } else if ("dl_menu_mark_one".equals(fKeyArr[which])) {
+                                            // v15.52 (slice 1979): mark this one foreign talk listened — the drawer foreign dialog's first mark verb, reusing the 1949 pure core (DlMark) and the library's playedTalks key, so the mark lands in the same set the library, the rails, the chooser and the drawer rows all read. The tap-time sounding re-check (the v11.22 class, same as the move arm in this dialog) reads the v11.32 foreign mirror: the dialog can sit open across an auto-advance in the talk's own Room, so this talk can BE sounding by tap time — it earns its mark by finishing, never by this verb. refreshMarkSets reloads the drawer caches synchronously (the v10.88/v14.75 idiom, so the 1s tick snapshots the new state and sees no change), the row melts in through the v15.41 menu fade (burst null — no star burst, just the fade), and the drawer needs no filter rebuild (the sync path rebinds played changes the same way). Neither the queue, the shelf order nor any saved resume position is mutated. The toast is the verb (the 1946 idiom); an already-marked tap toasts already_listened, never a false count.
+                                            if (isSoundingForeignTalk(ffe.url, ffe.sayadaw)) {
+                                                android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+                                                return;
+                                            }
+                                            DlMark.Result marked79 = null;
+                                            try {
+                                                android.content.SharedPreferences sp79 = getSharedPreferences("dhamma", MODE_PRIVATE);
+                                                java.util.Set<String> cur79 = sp79.getStringSet("playedTalks", new java.util.HashSet<String>());
+                                                marked79 = DlMark.mark(cur79, SiteHttp.identityUrl(ffe.url));
+                                                sp79.edit().putStringSet("playedTalks", marked79.set).apply();
+                                            } catch (Exception ignored) {}
+                                            refreshMarkSets();
+                                            if (adapter != null) adapter.notifyDataSetChanged();
+                                            if (ffe != null && ffe.url != null) { menuMarkFadeUrl77 = ffe.url; menuMarkBurstFav41 = null; fadeMenuMarkedDrawerRow77(); }
+                                            android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, (marked79 != null && marked79.changed) ? "dl_menu_mark_one" : "already_listened"), android.widget.Toast.LENGTH_SHORT).show();
+                                        } else if ("dl_menu_unmark_one".equals(fKeyArr[which])) {
+                                            // v15.52 (slice 1979): un-mark this one foreign talk listened — the mark leg's mirror: the same identityUrl, the same tap-time sounding re-check through the v11.32 foreign mirror (a sounding foreign talk keeps its mark while it plays), and the v14.85 both-forms removal, so a legacy http twin banked by the old raw verb goes too. refreshMarkSets reloads the drawer caches in step so the row rebinds without its tick at once, and the v15.41 menu fade melts it in. The toast is the verb; a not-marked tap toasts nothing_to_unmark, never a false count.
+                                            if (isSoundingForeignTalk(ffe.url, ffe.sayadaw)) {
+                                                android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+                                                return;
+                                            }
+                                            DlMark.Result unmarked79 = null;
+                                            try {
+                                                android.content.SharedPreferences sp79 = getSharedPreferences("dhamma", MODE_PRIVATE);
+                                                java.util.Set<String> cur79 = sp79.getStringSet("playedTalks", new java.util.HashSet<String>());
+                                                unmarked79 = DlMark.unmark(cur79, SiteHttp.identityUrl(ffe.url), ffe.url);
+                                                sp79.edit().putStringSet("playedTalks", unmarked79.set).apply();
+                                            } catch (Exception ignored) {}
+                                            refreshMarkSets();
+                                            if (adapter != null) adapter.notifyDataSetChanged();
+                                            if (ffe != null && ffe.url != null) { menuMarkFadeUrl77 = ffe.url; menuMarkBurstFav41 = null; fadeMenuMarkedDrawerRow77(); }
+                                            android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, (unmarked79 != null && unmarked79.changed) ? "dl_menu_unmark_one" : "nothing_to_unmark"), android.widget.Toast.LENGTH_SHORT).show();
                                         } else if ("menu_fav_add".equals(fKeyArr[which]) || "menu_fav_remove".equals(fKeyArr[which])) {
                                             // v7.89: same as the full-list dialog —
                                             // refreshMarkSets reloads favSet so the
@@ -10581,6 +10633,8 @@ if (snd67n >= 0) currentIndex = snd67n;
                     qKeys.add("menu_share");
                     // v15.48 (slice 1955): share this one FILE itself — right after the menu_share text share above, so the two share verbs sit together: the text share sends the talk's title + link, this one sends the actual downloaded .mp3 through the TalkFileProvider content:// URI. Gated on the Room's own downloadedFileName (the cache-only dlMap + basename rule the download gates already read, v1.57 — a name outside the set is not downloaded, whatever the disk holds right now), so a streamed-only talk never offers it; the tap-time resolve re-checks the file on disk. The menu_share offer above stays byte-identical.
                     if (downloadedFileName(qt.url) != null) { qOptList.add(Lang.t(RoomActivity.this, "dl_menu_share_file")); qKeys.add("dl_menu_share_file"); }
+                    // v15.52 (slice 1975): "Copy this talk's link" — the clipboard twin of the two share verbs above (see the f-list offer for the rule).
+                    if (RoomCopyLink.canOffer(qt.url)) { qOptList.add(Lang.t(RoomActivity.this, "dl_menu_copy_link")); qKeys.add("dl_menu_copy_link"); }
                     boolean qFav91 = false;
                     try {
                         java.util.Set<String> ft91 = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favTalks", null);
@@ -10588,6 +10642,8 @@ if (snd67n >= 0) currentIndex = snd67n;
                     } catch (Exception ignored) {}
                     qOptList.add(qFav91 ? Lang.t(RoomActivity.this, "menu_fav_remove") : Lang.t(RoomActivity.this, "menu_fav_add"));
                     qKeys.add(qFav91 ? "menu_fav_remove" : "menu_fav_add");
+                    // v15.52 (slice 1978): mark this one talk listened / unlistened — the drawer queue dialog's first mark verb: the library had per-row (v15.47, slice 1949) and the Talks chooser (v15.51, slice 1969), but a queued talk in the Room drawer could only earn its listened mark by playing to the end, and a talk heard elsewhere could not be cleared from the drawer's unlistened view without opening the library. The verb sits in the existing dialog (no new view, no row menu resurrected), right after the favourite toggle — the other per-talk state toggle — and reuses the 1949 pure core (DlMark) and its keys (dl_menu_mark_one / dl_menu_unmark_one), so 0 new Lang keys. The label reads playedSet (the same cache the drawer rows render their tick from), so it can never disagree with the visible mark; the sounding talk is excluded by the DlMark gate (it earns its mark by finishing, like the 1949 sounding exclusion), and the tap-time re-check in the handler below guards the auto-advance window while the dialog sits open.
+                    if (DlMark.canOffer(qt.url, isSoundingTalk(qt.url))) { String markKey78 = DlMark.labelKey(DlMark.isMarked(playedSet, SiteHttp.identityUrl(qt.url))); qOptList.add(Lang.t(RoomActivity.this, markKey78)); qKeys.add(markKey78); }
                     qOptList.add(Lang.t(RoomActivity.this, "menu_queue_remove"));
                     qKeys.add("menu_queue_remove");
                     // v11.71: Download for the sounding row in this
@@ -10667,6 +10723,54 @@ if (snd67n >= 0) currentIndex = snd67n;
                                             suppressBgPause = true;
                                             startActivity(Intent.createChooser(send55, Lang.t(RoomActivity.this, "share_talk")));
                                         }
+                                    } else if ("dl_menu_copy_link".equals(qKeyArr[which])) {
+                                        // v15.52 (slice 1975): "Copy this talk's link" — the drawer's clipboard verb (see the f-list branch for the rule).
+                                        if (RoomCopyLink.canOffer(qt.url)) {
+                                            try {
+                                                android.content.ClipboardManager cm75 =
+                                                        (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                                                if (cm75 != null)
+                                                    cm75.setPrimaryClip(android.content.ClipData.newPlainText(
+                                                            Lang.t(RoomActivity.this, "clip_talk"), RoomCopyLink.clipText(qt.url)));
+                                                Toast.makeText(RoomActivity.this,
+                                                        RoomCopyLink.toastText(Lang.t(RoomActivity.this, "link_copied_prefix"), qt.title, qt.url),
+                                                        Toast.LENGTH_SHORT).show();
+                                            } catch (Exception ignored) {}
+                                        }
+                                    } else if ("dl_menu_mark_one".equals(qKeyArr[which])) {
+                                        // v15.52 (slice 1978): mark this one queued talk listened — the drawer queue dialog's first mark verb, reusing the 1949 pure core (DlMark) and the library's playedTalks key, so the mark lands in the same set the library, the rails, the chooser and the drawer rows all read. The tap-time sounding re-check (the v11.22 class, same as the move arm in this dialog): the dialog can sit open across an auto-advance, so this talk can BE sounding by tap time — it earns its mark by finishing, never by this verb. refreshMarkSets reloads the drawer caches synchronously (the v10.88/v14.75 idiom, so the 1s tick snapshots the new state and sees no change), the row melts in through the v15.41 menu fade (burst null — no star burst, just the fade), and the drawer needs no filter rebuild (the sync path rebinds played changes the same way). Neither the queue, the shelf order nor any saved resume position is mutated. The toast is the verb (the 1946 idiom); an already-marked tap toasts already_listened, never a false count.
+                                        if (isSoundingTalk(qt.url)) {
+                                            android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+                                            return;
+                                        }
+                                        DlMark.Result marked78 = null;
+                                        try {
+                                            android.content.SharedPreferences sp78 = getSharedPreferences("dhamma", MODE_PRIVATE);
+                                            java.util.Set<String> cur78 = sp78.getStringSet("playedTalks", new java.util.HashSet<String>());
+                                            marked78 = DlMark.mark(cur78, SiteHttp.identityUrl(qt.url));
+                                            sp78.edit().putStringSet("playedTalks", marked78.set).apply();
+                                        } catch (Exception ignored) {}
+                                        refreshMarkSets();
+                                        if (adapter != null) adapter.notifyDataSetChanged();
+                                        if (qt != null && qt.url != null) { menuMarkFadeUrl77 = qt.url; menuMarkBurstFav41 = null; fadeMenuMarkedDrawerRow77(); }
+                                        android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, (marked78 != null && marked78.changed) ? "dl_menu_mark_one" : "already_listened"), android.widget.Toast.LENGTH_SHORT).show();
+                                    } else if ("dl_menu_unmark_one".equals(qKeyArr[which])) {
+                                        // v15.52 (slice 1978): un-mark this one queued talk listened — the mark leg's mirror: the same identityUrl, the same tap-time sounding re-check (a sounding talk keeps its mark while it plays), and the v14.85 both-forms removal, so a legacy http twin banked by the old raw verb goes too. refreshMarkSets reloads the drawer caches in step so the row rebinds without its tick at once, and the v15.41 menu fade melts it in. The toast is the verb; a not-marked tap toasts nothing_to_unmark, never a false count.
+                                        if (isSoundingTalk(qt.url)) {
+                                            android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+                                            return;
+                                        }
+                                        DlMark.Result unmarked78 = null;
+                                        try {
+                                            android.content.SharedPreferences sp78 = getSharedPreferences("dhamma", MODE_PRIVATE);
+                                            java.util.Set<String> cur78 = sp78.getStringSet("playedTalks", new java.util.HashSet<String>());
+                                            unmarked78 = DlMark.unmark(cur78, SiteHttp.identityUrl(qt.url), qt.url);
+                                            sp78.edit().putStringSet("playedTalks", unmarked78.set).apply();
+                                        } catch (Exception ignored) {}
+                                        refreshMarkSets();
+                                        if (adapter != null) adapter.notifyDataSetChanged();
+                                        if (qt != null && qt.url != null) { menuMarkFadeUrl77 = qt.url; menuMarkBurstFav41 = null; fadeMenuMarkedDrawerRow77(); }
+                                        android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, (unmarked78 != null && unmarked78.changed) ? "dl_menu_unmark_one" : "nothing_to_unmark"), android.widget.Toast.LENGTH_SHORT).show();
                                     } else if ("menu_fav_add".equals(qKeyArr[which]) || "menu_fav_remove".equals(qKeyArr[which])) {
                                         boolean added91 = Fx.toggleFavTalk(RoomActivity.this, qt.url);
                                         // v10.02: same paused-card star sync as the foreign-row branch above.
@@ -10871,6 +10975,8 @@ if (snd67n >= 0) currentIndex = snd67n;
                     sKeys.add("menu_share");
                     // v15.48 (slice 1955): share this one FILE itself — right after the menu_share text share above, so the two share verbs sit together: the text share sends the talk's title + link, this one sends the actual downloaded .mp3 through the TalkFileProvider content:// URI. Gated on the Room's own downloadedFileName (the cache-only dlMap + basename rule the download gates already read, v1.57 — a name outside the set is not downloaded, whatever the disk holds right now), so a streamed-only talk never offers it; the tap-time resolve re-checks the file on disk. The menu_share offer above stays byte-identical.
                     if (downloadedFileName(st.url) != null) { sOpts.add(Lang.t(RoomActivity.this, "dl_menu_share_file")); sKeys.add("dl_menu_share_file"); }
+                    // v15.52 (slice 1975): "Copy this talk's link" — the clipboard twin of the two share verbs above (see the f-list offer for the rule).
+                    if (RoomCopyLink.canOffer(st.url)) { sOpts.add(Lang.t(RoomActivity.this, "dl_menu_copy_link")); sKeys.add("dl_menu_copy_link"); }
                     boolean sFav71 = false;
                     try {
                         java.util.Set<String> ft71 = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favTalks", null);
@@ -10912,6 +11018,20 @@ if (snd67n >= 0) currentIndex = snd67n;
                                             suppressBgPause = true;
                                             startActivity(Intent.createChooser(send55, Lang.t(RoomActivity.this, "share_talk")));
                                         }
+                                    } else if ("dl_menu_copy_link".equals(sKeyArr[which])) {
+                                        // v15.52 (slice 1975): "Copy this talk's link" — the drawer's clipboard verb (see the f-list branch for the rule).
+                                        if (RoomCopyLink.canOffer(st.url)) {
+                                            try {
+                                                android.content.ClipboardManager cm75 =
+                                                        (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                                                if (cm75 != null)
+                                                    cm75.setPrimaryClip(android.content.ClipData.newPlainText(
+                                                            Lang.t(RoomActivity.this, "clip_talk"), RoomCopyLink.clipText(st.url)));
+                                                Toast.makeText(RoomActivity.this,
+                                                        RoomCopyLink.toastText(Lang.t(RoomActivity.this, "link_copied_prefix"), st.title, st.url),
+                                                        Toast.LENGTH_SHORT).show();
+                                            } catch (Exception ignored) {}
+                                        }
                                     } else if ("menu_fav_add".equals(sKeyArr[which]) || "menu_fav_remove".equals(sKeyArr[which])) {
                                         // v7.89 shape: refreshMarkSets reloads favSet
                                         // so the star mark rebinds at once.
@@ -10951,6 +11071,8 @@ if (snd67n >= 0) currentIndex = snd67n;
                     dKeys.add("menu_share");
                     // v15.48 (slice 1955): share this one FILE itself — right after the menu_share text share above, so the two share verbs sit together: the text share sends the talk's title + link, this one sends the actual downloaded .mp3 through the TalkFileProvider content:// URI. Gated on the Room's own downloadedFileName (the cache-only dlMap + basename rule the download gates already read, v1.57 — a name outside the set is not downloaded, whatever the disk holds right now), so a streamed-only talk never offers it; the tap-time resolve re-checks the file on disk. The menu_share offer above stays byte-identical.
                     if (downloadedFileName(dt.url) != null) { dOpts.add(Lang.t(RoomActivity.this, "dl_menu_share_file")); dKeys.add("dl_menu_share_file"); }
+                    // v15.52 (slice 1975): "Copy this talk's link" — the clipboard twin of the two share verbs above (see the f-list offer for the rule).
+                    if (RoomCopyLink.canOffer(dt.url)) { dOpts.add(Lang.t(RoomActivity.this, "dl_menu_copy_link")); dKeys.add("dl_menu_copy_link"); }
                     // v7.89: per-talk favourite from the Room drawer — the
                     // v7.88 chooser verb's Room-side mirror. Before this
                     // the drawer could only toggle a favourite for the
@@ -10971,6 +11093,8 @@ if (snd67n >= 0) currentIndex = snd67n;
                     } catch (Exception ignored) {}
                     dOpts.add(dFav89 ? Lang.t(RoomActivity.this, "menu_fav_remove") : Lang.t(RoomActivity.this, "menu_fav_add"));
                     dKeys.add(dFav89 ? "menu_fav_remove" : "menu_fav_add");
+                    // v15.52 (slice 1979): mark this one talk listened / unlistened — the drawer in-list dialog's first mark verb: the queue dialog gained it in slice 1978 and the foreign dialog in this slice, but a talk in this sayadaw's own list shown in the drawer could only earn its listened mark by playing to the end, and a talk heard elsewhere could not be cleared from the drawer's unlistened view without opening the library. The verb sits in the existing dialog (no new view, no row menu resurrected), right after the favourite toggle — the other per-talk state toggle — and reuses the 1949 pure core (DlMark) and its keys (dl_menu_mark_one / dl_menu_unmark_one), so 0 new Lang keys. The label reads playedSet (the same cache the in-list rows render their tick from), so it can never disagree with the visible mark; the dialog gate already excludes the sounding talk, and the offer keeps the isSoundingTalk mirror for the auto-advance window while the dialog sits open.
+                    if (DlMark.canOffer(dt.url, isSoundingTalk(dt.url))) { String markKey79 = DlMark.labelKey(DlMark.isMarked(playedSet, SiteHttp.identityUrl(dt.url))); dOpts.add(Lang.t(RoomActivity.this, markKey79)); dKeys.add(markKey79); }
                     final boolean dQueued = queueLineIndexForUrl(dt.url) >= 0;
                     if (dQueued) { dOpts.add(Lang.t(RoomActivity.this, "menu_queue_remove")); dKeys.add("menu_queue_remove"); }
                     else { dOpts.add(Lang.t(RoomActivity.this, "menu_queue_add")); dKeys.add("menu_queue_add"); }
@@ -11023,6 +11147,54 @@ if (snd67n >= 0) currentIndex = snd67n;
                                             suppressBgPause = true;
                                             startActivity(Intent.createChooser(send55, Lang.t(RoomActivity.this, "share_talk")));
                                         }
+                                    } else if ("dl_menu_copy_link".equals(dKeyArr[which])) {
+                                        // v15.52 (slice 1975): "Copy this talk's link" — the drawer's clipboard verb (see the f-list branch for the rule).
+                                        if (RoomCopyLink.canOffer(dt.url)) {
+                                            try {
+                                                android.content.ClipboardManager cm75 =
+                                                        (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                                                if (cm75 != null)
+                                                    cm75.setPrimaryClip(android.content.ClipData.newPlainText(
+                                                            Lang.t(RoomActivity.this, "clip_talk"), RoomCopyLink.clipText(dt.url)));
+                                                Toast.makeText(RoomActivity.this,
+                                                        RoomCopyLink.toastText(Lang.t(RoomActivity.this, "link_copied_prefix"), dt.title, dt.url),
+                                                        Toast.LENGTH_SHORT).show();
+                                            } catch (Exception ignored) {}
+                                        }
+                                    } else if ("dl_menu_mark_one".equals(dKeyArr[which])) {
+                                        // v15.52 (slice 1979): mark this one in-list talk listened — the drawer in-list dialog's first mark verb, reusing the 1949 pure core (DlMark) and the library's playedTalks key, so the mark lands in the same set the library, the rails, the chooser and the drawer rows all read. The tap-time sounding re-check (the v11.22 class): the dialog gate excludes the sounding talk at open, but the dialog can sit open across an auto-advance, so this talk can BE sounding by tap time — it earns its mark by finishing, never by this verb. refreshMarkSets reloads the drawer caches synchronously (the v10.88/v14.75 idiom, so the 1s tick snapshots the new state and sees no change), the row melts in through the v15.41 menu fade (burst null — no star burst, just the fade), and the drawer needs no filter rebuild (the sync path rebinds played changes the same way). Neither the queue, the shelf order nor any saved resume position is mutated. The toast is the verb (the 1946 idiom); an already-marked tap toasts already_listened, never a false count.
+                                        if (isSoundingTalk(dt.url)) {
+                                            android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+                                            return;
+                                        }
+                                        DlMark.Result marked79 = null;
+                                        try {
+                                            android.content.SharedPreferences sp79 = getSharedPreferences("dhamma", MODE_PRIVATE);
+                                            java.util.Set<String> cur79 = sp79.getStringSet("playedTalks", new java.util.HashSet<String>());
+                                            marked79 = DlMark.mark(cur79, SiteHttp.identityUrl(dt.url));
+                                            sp79.edit().putStringSet("playedTalks", marked79.set).apply();
+                                        } catch (Exception ignored) {}
+                                        refreshMarkSets();
+                                        if (adapter != null) adapter.notifyDataSetChanged();
+                                        if (dt != null && dt.url != null) { menuMarkFadeUrl77 = dt.url; menuMarkBurstFav41 = null; fadeMenuMarkedDrawerRow77(); }
+                                        android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, (marked79 != null && marked79.changed) ? "dl_menu_mark_one" : "already_listened"), android.widget.Toast.LENGTH_SHORT).show();
+                                    } else if ("dl_menu_unmark_one".equals(dKeyArr[which])) {
+                                        // v15.52 (slice 1979): un-mark this one in-list talk listened — the mark leg's mirror: the same identityUrl, the same tap-time sounding re-check (a sounding talk keeps its mark while it plays), and the v14.85 both-forms removal, so a legacy http twin banked by the old raw verb goes too. refreshMarkSets reloads the drawer caches in step so the row rebinds without its tick at once, and the v15.41 menu fade melts it in. The toast is the verb; a not-marked tap toasts nothing_to_unmark, never a false count.
+                                        if (isSoundingTalk(dt.url)) {
+                                            android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+                                            return;
+                                        }
+                                        DlMark.Result unmarked79 = null;
+                                        try {
+                                            android.content.SharedPreferences sp79 = getSharedPreferences("dhamma", MODE_PRIVATE);
+                                            java.util.Set<String> cur79 = sp79.getStringSet("playedTalks", new java.util.HashSet<String>());
+                                            unmarked79 = DlMark.unmark(cur79, SiteHttp.identityUrl(dt.url), dt.url);
+                                            sp79.edit().putStringSet("playedTalks", unmarked79.set).apply();
+                                        } catch (Exception ignored) {}
+                                        refreshMarkSets();
+                                        if (adapter != null) adapter.notifyDataSetChanged();
+                                        if (dt != null && dt.url != null) { menuMarkFadeUrl77 = dt.url; menuMarkBurstFav41 = null; fadeMenuMarkedDrawerRow77(); }
+                                        android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, (unmarked79 != null && unmarked79.changed) ? "dl_menu_unmark_one" : "nothing_to_unmark"), android.widget.Toast.LENGTH_SHORT).show();
                                     } else if ("menu_fav_add".equals(dKeyArr[which]) || "menu_fav_remove".equals(dKeyArr[which])) {
                                         // v7.89: refreshMarkSets reloads favSet from
                                         // prefs, so the ★ marks in these rows

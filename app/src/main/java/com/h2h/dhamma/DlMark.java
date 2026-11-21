@@ -10,6 +10,13 @@ package com.h2h.dhamma;
 // the unlistened view at all. Pure set math only: the Activity
 // owns the prefs read/write, the menu offer and the row rebind;
 // the core never touches Android, prefs, or the dlMap.
+// v15.52 (slice 1978): the Room drawer queue dialog reuses this core
+// too — same verb on the queue surface, same rule, so the drawer,
+// the chooser and the library can never disagree about a mark.
+// v15.52 (slice 1979): the Room drawer foreign + in-list dialogs
+// reuse it too — the mark family is now complete on every
+// per-talk dialog in the drawer (queue 1978 + foreign/in-list
+// 1979; the sounding row is excluded by the gate itself).
 public class DlMark {
     // One mutation result: the new played set (a copy — the input
     // is never mutated) and whether the set actually changed.

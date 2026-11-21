@@ -11025,9 +11025,14 @@ public class DownloadedActivity extends Activity {
             String cur682g = soundingLibPath(); // v11.24: unbound-window mirror
             int fav682g = 0, new682g = 0;
             boolean favNonPlaying682g = false, newNonPlaying682g = false;
+            // v15.52 (slice 1976): "Reverse-play shown listened talks" — the shown names/paths collected for the listened reverse pick below (the listened member of the reverse-shown family: v6.48 reverses the whole shown set, v6.82 reverses the shown star / shown unlistened subsets). Declared here so the pick survives the loop; the v6.82 lines stay untouched.
+            java.util.List<String> names82 = new java.util.ArrayList<String>();
+            java.util.List<String> paths82 = new java.util.ArrayList<String>();
             for (int i = 0; i < libDisplayCount(); i++) {
                 Entry se682g = libEntryAtDisplay(i);
                 if (se682g == null) continue;
+                names82.add(se682g.file.getName());
+                paths82.add(se682g.file.getAbsolutePath());
                 boolean playing682g = se682g.file.getAbsolutePath().equals(cur682g);
                 if (libFavFiles.contains(se682g.file.getName())) {
                     fav682g++;
@@ -11038,8 +11043,11 @@ public class DownloadedActivity extends Activity {
                     if (!playing682g) newNonPlaying682g = true;
                 }
             }
+            // v15.52 (slice 1976): the listened reverse count, read through the shared DlReverseListened.pickReversed core — the same call the handler below makes — so the offer and the handler can never disagree. A file counts when it sits in the rows' listened cache (libListenedFiles, the v6.94 rule); the playing file stays in the set on purpose, like v6.48/v6.82 — a reverse landing on it does not reopen the Room.
+            java.util.List<String> picked82 = DlReverseListened.pickReversed(names82, paths82, libListenedFiles);
             if (fav682g >= 2 && favNonPlaying682g) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_reverse_shown_star")); itemKeys.add("dl_menu_reverse_shown_star"); }
             if (new682g >= 2 && newNonPlaying682g) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_reverse_shown_new")); itemKeys.add("dl_menu_reverse_shown_new"); }
+            if (picked82.size() >= 2 && DlReverseListened.hasPlayable(names82, paths82, libListenedFiles, cur682g)) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_reverse_shown_listened")); itemKeys.add("dl_menu_reverse_shown_listened"); }
         }
         // v6.49: copy only the shown files' links — the library
         // mirror of the Talks chooser's v6.36 and the Room
@@ -13621,7 +13629,9 @@ public class DownloadedActivity extends Activity {
                                 }
                             }
                         } else if ("dl_menu_reverse_shown_star".equals(choiceKey)
-                                || "dl_menu_reverse_shown_new".equals(choiceKey)) {
+                                || "dl_menu_reverse_shown_new".equals(choiceKey)
+                                || "dl_menu_reverse_shown_listened".equals(choiceKey)) {
+                            // v15.52 (slice 1976): reverse-play only the shown LISTENED subset — the listened member of the reverse-shown family (v6.48 reverses the whole shown set, v6.82 reverses the shown star / shown unlistened subsets). Same shared body as the star/new twins below (reverse, first file plays with row-tap semantics, rest head-queue in reversed order, same toasts) — only the subset filter and the tag change, so the v6.82 body stays byte-identical.
                             // v6.82: reverse-play only the shown
                             // favourite / shown unlistened subset
                             // — v6.48's reverse handler run on the
@@ -13653,12 +13663,25 @@ public class DownloadedActivity extends Activity {
                             // positions are untouched, and the play
                             // toast counts playable files only.
                             boolean fav682 = "dl_menu_reverse_shown_star".equals(choiceKey);
-                            String tag682 = fav682 ? Lang.t(DownloadedActivity.this, "dl_tag_shown_star") : Lang.t(DownloadedActivity.this, "dl_tag_shown_new");
+                            boolean lis682 = "dl_menu_reverse_shown_listened".equals(choiceKey);
+                            String tag682 = lis682 ? Lang.t(DownloadedActivity.this, "dl_tag_shown_listened") : (fav682 ? Lang.t(DownloadedActivity.this, "dl_tag_shown_star") : Lang.t(DownloadedActivity.this, "dl_tag_shown_new"));
                             java.util.ArrayList<Entry> subset682 = new java.util.ArrayList<Entry>();
+                            java.util.List<String> names82 = new java.util.ArrayList<String>();
+                            java.util.List<String> paths82 = new java.util.ArrayList<String>();
+                            for (int i = 0; i < libDisplayCount(); i++) {
+                                Entry de82 = libEntryAtDisplay(i);
+                                if (de82 == null) continue;
+                                names82.add(de82.file.getName());
+                                paths82.add(de82.file.getAbsolutePath());
+                            }
+                            java.util.List<String> picked82 = DlReverseListened.pickReversed(names82, paths82, libListenedFiles);
+                            java.util.HashSet<String> pickedSet82 = new java.util.HashSet<String>(picked82);
                             for (int i = 0; i < libDisplayCount(); i++) {
                                 Entry de682 = libEntryAtDisplay(i);
                                 if (de682 == null) continue;
-                                if (fav682) {
+                                if (lis682) {
+                                    if (pickedSet82.contains(de682.file.getAbsolutePath())) subset682.add(de682);
+                                } else if (fav682) {
                                     if (libFavFiles.contains(de682.file.getName())) subset682.add(de682);
                                 } else {
                                     if (!libListenedFiles.contains(de682.file.getName())) subset682.add(de682);
