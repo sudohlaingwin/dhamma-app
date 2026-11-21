@@ -89,6 +89,29 @@
             android:textColor="@color/muted"
             android:textSize="22sp"
             android:visibility="gone" />
+        <!-- v15.53 (slice 1980): header share — the
+             sayadaw-share verb for this screen: 48dp,
+             22sp glyph, borderless, muted like the star
+             and the info glyph; GONE until a list lands
+             and the sayadaw has a page (paintTalkShareBtn).
+             The Room header long-press (v4.16) shares the
+             same text, but a hidden gesture is not a
+             visible verb — this button is the chooser's
+             first share. NOT the banned v6.07 download-all
+             below — this shares the page link, it never
+             downloads anything. -->
+        <TextView
+            android:id="@+id/talkShareBtn"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="↗"
+            android:textColor="@color/muted"
+            android:textSize="22sp"
+            android:visibility="gone" />
         <!-- v6.07: header download-all — the chooser could queue a
              whole sayadaw in one tap (v4.49–v4.52 bulk queue verbs)
              but downloading one meant opening each talk in the Room

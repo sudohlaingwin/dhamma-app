@@ -1981,6 +1981,15 @@ public class TalksActivity extends Activity {
     private boolean talkInfoShown = false;
     private String talkInfoPhotoUrl = "";
     private String sayadawGroup = "";
+    // v15.53 (slice 1980): Talks header share button — the
+    // visible sayadaw-share verb for this screen (the Room
+    // header long-press, v4.16, shares the same text, but a
+    // hidden gesture is not a visible verb). The button is
+    // the 48dp ↗ at the header row's end beside the info
+    // glyph; talkShareShown is the last-painted visibility
+    // for the painter's change gate.
+    private android.widget.TextView talkShareBtn = null;
+    private boolean talkShareShown = false;
     // v15.45 (slice 1940): Talks back-to-top button — the
     // floating gold ↑ over the list's bottom-end corner;
     // talkTopShown is the last-painted state for the
@@ -2421,6 +2430,53 @@ public class TalksActivity extends Activity {
         } else {
             Fx.fadeOut(talkInfoBtn, 180);
         }
+    }
+
+    // v15.53 (slice 1980): the share button's visibility —
+    // GONE until a list lands AND the sayadaw has an original
+    // page to share (the SayadawShare gate — the same rule the
+    // info sheet's original-page row reads, so the button and
+    // the sheet can never disagree about whether a page exists).
+    // Change-gated on talkShareShown, with the 180ms melt the
+    // info button uses (slice 1941), so steady load/return/tick
+    // refreshes never re-touch it.
+    private void paintTalkShareBtn() {
+        if (talkShareBtn == null) return;
+        boolean want = talks != null && !talks.isEmpty()
+                && sayadawName != null && sayadawName.length() > 0
+                && SayadawShare.canOffer(pageUrl);
+        if (want == talkShareShown) return;
+        talkShareShown = want;
+        if (want) {
+            talkShareBtn.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(talkShareBtn, 180);
+        } else {
+            Fx.fadeOut(talkShareBtn, 180);
+        }
+    }
+
+    // v15.53 (slice 1980): share this sayadaw — the Talks
+    // header's first share verb: the sayadaw's name + original
+    // dhammadownload.com page + credit through the system share
+    // sheet, the Room header long-press's (v4.16) text through
+    // the SayadawShare core. The tap-time gate re-check (the
+    // 1952 lesson) reads the page fresh — a Room/notification
+    // open can carry no page, and the painter's gate is a
+    // snapshot from the last refresh, not a promise. No page
+    // toasts no_sayadaw_page (LONG, the v4.16 shape); a share
+    // mutates nothing, and suppressSharePause mirrors the row
+    // share: opening the chooser must not count as leaving
+    // under background-off.
+    private void shareSayadaw() {
+        if (!SayadawShare.canOffer(pageUrl)) {
+            android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "no_sayadaw_page"), android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        suppressSharePause = true;
+        Intent send = new Intent(Intent.ACTION_SEND);
+        send.setType("text/plain");
+        send.putExtra(Intent.EXTRA_TEXT, SayadawShare.shareText(sayadawName, pageUrl, Lang.t(TalksActivity.this, "share_source")));
+        startActivity(Intent.createChooser(send, Lang.t(TalksActivity.this, "share_sayadaw")));
     }
 
     // v15.45 (slice 1941): the sayadaw info sheet — the
@@ -3285,6 +3341,17 @@ public class TalksActivity extends Activity {
                 showSayadawInfo();
             }
         });
+        // v15.53 (slice 1980): the header share button binds
+        // beside the info glyph — the sayadaw share for this
+        // screen (see shareSayadaw below). Fx.tap beat at the
+        // click site, share sheet in the body.
+        talkShareBtn = (android.widget.TextView) findViewById(R.id.talkShareBtn);
+        if (talkShareBtn != null) talkShareBtn.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                Fx.tap(TalksActivity.this);
+                shareSayadaw();
+            }
+        });
         // v6.04: chooser header portrait — Main passes this sayadaw's
         // photo in the intent (same extra Room gets), so no new
         // parse; a missing/empty extra falls back to the catalog
@@ -3783,6 +3850,8 @@ public class TalksActivity extends Activity {
                         dOpts.add(Lang.t(TalksActivity.this, "dl_btn_download"));
                         dKeys.add("dl_btn_download");
                     }
+                    // v15.53 (slice 1984): delete this DOWNLOADED FILE — the chooser dialog's delete verb: the browsing screen could download a talk (v11.70) but never delete its file, so a listener who had finished a downloaded talk and wanted the storage back had to leave the browsing screen, open the library and find the row again. Offered only while downloaded (the chooser's own isTalkDownloaded, through the slice core's canOffer) — the download verb above is offered exactly when this is not, so the two never share a row. The label reuses the library single delete's del_one_btn ("Delete"); the confirm + toasts below reuse its keys too, so 0 new Lang keys.
+                    if (ChooserDelete.canOffer(isTalkDownloaded(dt.url))) { dOpts.add(Lang.t(TalksActivity.this, "del_one_btn")); dKeys.add("del_one_btn"); }
                     final String[] dOptArr = dOpts.toArray(new String[0]);
                     final String[] dKeyArr = dKeys.toArray(new String[0]);
                     new android.app.AlertDialog.Builder(TalksActivity.this)
@@ -4112,6 +4181,58 @@ public class TalksActivity extends Activity {
                                         else
                                             android.widget.Toast.makeText(TalksActivity.this,
                                                     Lang.t(TalksActivity.this, "dl_room_wifi_queued"), android.widget.Toast.LENGTH_LONG).show();
+                                    } else if ("del_one_btn".equals(dKeyArr[which])) {
+                                        // v15.53 (slice 1984): delete this downloaded file — the library's single-row delete (doDelete) in chooser form: the confirm is the library's own (del_one_title + the talk title + del_one_btn / del_btn_no), and the positive button mirrors its rules. Tap-time re-checks, the v11.70/v11.14 pattern: a file deleted externally while the dialog sat open refreshes the marks and toasts dl_file_gone, never a guessed delete; the file resolves through TalkFileShare.resolve (the 1956 gate — canonical-path containment + isFile), so a name that no longer resolves to a file on disk toasts dl_file_gone too. Sounding by tap time (the v11.12 window) stops the session first with the ACTION_STOP intent (the library v1.56/v11.73 rule; Talks never binds, so the stop goes as the intent, the 7442 pattern). A queued URL is pruned from the hand queue first (the library v4.58 rule). On a successful delete the dlMap rows for this talk are pruned — all three key forms (the slice core's pruneKeys, the v14.88 rule) under DlLock like recordTalkDownload, one apply — then the marks refresh, the header and the row melt (the v15.28 melt), and the toast is dl_deleted_done; a failed delete toasts delete_failed and changes nothing.
+                                        new android.app.AlertDialog.Builder(TalksActivity.this)
+                                                .setTitle(Lang.t(TalksActivity.this, "del_one_title"))
+                                                .setMessage(dt.title)
+                                                .setPositiveButton(Lang.t(TalksActivity.this, "del_one_btn"), new android.content.DialogInterface.OnClickListener() {
+                                                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                                                        if (!isTalkDownloaded(dt.url)) {
+                                                            refreshTalkRowMarks(true);
+                                                            if (adapter != null) adapter.notifyDataSetChanged();
+                                                            android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "dl_file_gone"), android.widget.Toast.LENGTH_SHORT).show();
+                                                            return;
+                                                        }
+                                                        java.io.File dir84 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+                                                        java.io.File f84 = TalkFileShare.resolve(dir84, talkDlFileCache.get(dt.url));
+                                                        if (f84 == null) {
+                                                            refreshTalkRowMarks(true);
+                                                            if (adapter != null) adapter.notifyDataSetChanged();
+                                                            android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "dl_file_gone"), android.widget.Toast.LENGTH_SHORT).show();
+                                                            return;
+                                                        }
+                                                        if (ChooserDelete.isSounding(dt.url, talkPlayingUrl, talkPlayingLibUrl)) {
+                                                            android.content.Intent stop84 = new android.content.Intent(TalksActivity.this, AudioService.class);
+                                                            stop84.setAction(AudioService.ACTION_STOP);
+                                                            startService(stop84);
+                                                        }
+                                                        if (talkQueueHas(dt.url)) {
+                                                            talkQueueRemove(dt.url);
+                                                            saveTalkQueueKeepingForeign(talkQueue, (String) null);
+                                                            refreshQueueMarks();
+                                                        }
+                                                        if (f84.delete()) {
+                                                            synchronized (DlLock.LOCK) {
+                                                                try {
+                                                                    android.content.SharedPreferences sp84 = getSharedPreferences("dhamma", MODE_PRIVATE);
+                                                                    org.json.JSONObject map84 = new org.json.JSONObject(sp84.getString("dlMap", "{}"));
+                                                                    for (String k84 : ChooserDelete.pruneKeys(dt.url)) map84.remove(k84);
+                                                                    sp84.edit().putString("dlMap", map84.toString()).apply();
+                                                                } catch (Exception ignored) {}
+                                                            }
+                                                            refreshTalkRowMarks(true);
+                                                            if (!talks.isEmpty() && sayadawName != null) refreshFavHeader();
+                                                            if (adapter != null) adapter.notifyDataSetChanged();
+                                                            if (dt != null && dt.url != null) { menuMarkFadeUrl75 = dt.url; fadeMenuMarkedTalkRow(); }
+                                                            android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "dl_deleted_done"), android.widget.Toast.LENGTH_SHORT).show();
+                                                        } else {
+                                                            android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "delete_failed"), android.widget.Toast.LENGTH_SHORT).show();
+                                                        }
+                                                    }
+                                                })
+                                                .setNegativeButton(Lang.t(TalksActivity.this, "del_btn_no"), null)
+                                                .show();
                                     } else if ("menu_move".equals(dKeyArr[which])) {
                                         // v11.22: tap-time sounding re-check, the
                                         // move branch's missing v11.12/v11.14 leg —
@@ -5665,6 +5786,13 @@ public class TalksActivity extends Activity {
         // shows it; the painter is change-gated, so steady
         // refreshes never re-touch it.
         paintTalkInfoBtn();
+        // v15.53 (slice 1980): the share button paints on
+        // every header refresh too — same funnel as the info
+        // button above, so an empty list or a page-less
+        // sayadaw hides it and a landed list with a page
+        // shows it; the painter is change-gated, so steady
+        // refreshes never re-touch it.
+        paintTalkShareBtn();
         // v13.85 (slice 1077): clear the Up Next row mark first — this method's two early returns below (empty list / no sayadaw / no header view) must not leave a stale upNextRowUrl crowning a row from a dead session.
         upNextRowUrl = "";
         talkRefreshInProgressDlNames(false); // v11.57: header ⬇ count reads isTalkDownloaded fresh

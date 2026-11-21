@@ -10315,6 +10315,68 @@ public class DownloadedActivity extends Activity {
             if (hasNonFavNew705) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_fav_shown_new")); itemKeys.add("dl_menu_fav_shown_new"); }
             if (hasFavNew705) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_unfav_shown_new")); itemKeys.add("dl_menu_unfav_shown_new"); }
         }
+        // v15.53 (slice 1983): star / un-star only the shown LISTENED
+        // files — the listened member of the v7.05 new-subset fav pair
+        // (star stars the starred, new stars the unlistened, this
+        // stars the listened): the library could star a narrowed set
+        // (v6.42), clear just its shown stars (v6.43), and star just
+        // its fresh files (v7.05), but starring just the FINISHED
+        // files of a mixed heard + fresh view meant starring the
+        // whole shown set (also starring the fresh files, polluting
+        // the star filter) or starring file by file in the Room/
+        // chooser; clearing just the finished stars back meant
+        // un-starring the whole shown set or file by file. Same
+        // gates as v7.05, applied per subset: offered from ANY row
+        // only while narrowed (a search, or any filter mode) and
+        // never in queue-only view (a play order, not a shelf to
+        // star), and only when at least one shown file is listened
+        // (in libListenedFiles, the rows' own tick cache) AND
+        // carries the slice's mark — star needs a dlMap source URL
+        // not already in favTalks (v6.42's resolvability rule, so a
+        // file with no dlMap entry never offers a no-op), un-star
+        // needs the star mark itself (libFavFiles, v6.43's rule).
+        // No playing-file skip, like the chooser's v7.04 pair
+        // (starring the sounding file is what the strip star does).
+        // Membership is the rows' own caches through the shared
+        // DlFavListened core (the same core the handlers below
+        // call), so the offer and the handlers can never disagree
+        // about a file marked, starred or un-starred since the menu
+        // opened. The unmark-listened member is NOT built: an unmark
+        // only ever touches played files, so it would be a true
+        // twin of unmark_shown.
+        if (!libQueueOnly && ((dlQuery != null && !dlQuery.isEmpty()) || dlFilterMode != 0)) {
+            boolean hasNonFavListened83 = false, hasFavListened83 = false;
+            try {
+                android.content.SharedPreferences sp83 =
+                        getSharedPreferences("dhamma", MODE_PRIVATE);
+                java.util.Set<String> ft83 = sp83.getStringSet("favTalks", null);
+                org.json.JSONObject map83 =
+                        new org.json.JSONObject(sp83.getString("dlMap", "{}"));
+                // v8.47: exactly-one claimant only (v8.41/v8.43 rule) — a dual-claimed
+                // filename resolves to no URL, never the first claimant.
+                java.util.HashMap<String, String> fn83 = new java.util.HashMap<String, String>();
+                java.util.HashMap<String, Integer> cnt83 = new java.util.HashMap<String, Integer>();
+                java.util.Iterator<String> keys83 = map83.keys();
+                while (keys83.hasNext()) {
+                    String u83 = keys83.next();
+                    String f83 = map83.optString(u83, "");
+                    if (f83.length() > 0) { fn83.put(f83, u83); Integer c83 = cnt83.get(f83); cnt83.put(f83, c83 == null ? 1 : c83 + 1); }
+                }
+                for (String k83 : cnt83.keySet()) if (cnt83.get(k83) > 1) fn83.remove(k83);
+                java.util.List<String> names83 = new java.util.ArrayList<String>();
+                for (int i = 0; i < libDisplayCount(); i++) {
+                    Entry se83 = libEntryAtDisplay(i);
+                    if (se83 == null) continue;
+                    names83.add(se83.file.getName());
+                }
+                java.util.Set<String> ftCanon83 = new java.util.HashSet<String>();
+                if (ft83 != null) for (String u83 : ft83) ftCanon83.add(SiteHttp.identityUrl(u83));
+                hasNonFavListened83 = !DlFavListened.pickFav(names83, libListenedFiles, fn83, ftCanon83).isEmpty();
+                hasFavListened83 = !DlFavListened.pickUnfav(names83, libListenedFiles, libFavFiles).isEmpty();
+            } catch (Exception ignored) {}
+            if (hasNonFavListened83) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_fav_shown_listened")); itemKeys.add("dl_menu_fav_shown_listened"); }
+            if (hasFavListened83) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_unfav_shown_listened")); itemKeys.add("dl_menu_unfav_shown_listened"); }
+        }
         // v6.44: mark only the shown files listened — the
         // shown-set mark verb the library's ⋮ menu still
         // lacked (the Talks chooser gained it as v6.30, the
@@ -12131,6 +12193,102 @@ public class DownloadedActivity extends Activity {
                             applyDlFilter();
                             Toast.makeText(DownloadedActivity.this, removed705 > 0
                                     ? Lang.t(DownloadedActivity.this, "fav_remove_shown_new_prefix") + removed705 + Lang.t(DownloadedActivity.this, "removed_suffix")
+                                    : Lang.t(DownloadedActivity.this, "not_in_fav"), Toast.LENGTH_SHORT).show();
+                        } else if ("dl_menu_fav_shown_listened".equals(choiceKey)) {
+                            // v15.53 (slice 1983): star only the shown listened files, in display order — the v7.05 new-subset verb's listened twin: the same display positions the offer gate reads (libEntryAtDisplay over libDisplayCount), resolved through the dlMap; a file with no dlMap entry is skipped and already-starred URLs are skipped, so the count is newly starred finished files only. No playing-file skip, like v7.04/v7.05 and v6.42 (starring the sounding file is what the strip star does). libFavFiles grows in step so the rows rebind with their star marks at once via the shared tail below; neither the queue nor the shelf order is mutated. The offer gate and this handler both call the shared DlFavListened.pickFav core, so they can never disagree about a file marked, starred or un-starred since the menu opened.
+                            int added83 = 0;
+                            java.util.Set<String> flippedUrls1023 = new java.util.HashSet<String>();
+                            java.util.Set<String> flippedPaths1023 = new java.util.HashSet<String>();
+                            try {
+                                android.content.SharedPreferences sp83 =
+                                        getSharedPreferences("dhamma", MODE_PRIVATE);
+                                java.util.Set<String> cur83 = sp83.getStringSet("favTalks", new java.util.HashSet<String>());
+                                java.util.Set<String> next83 = new java.util.HashSet<String>(cur83);
+                                org.json.JSONObject map83 =
+                                        new org.json.JSONObject(sp83.getString("dlMap", "{}"));
+                                // v8.47: exactly-one claimant only (v8.41/v8.43 rule) — a dual-claimed
+                                // filename resolves to no URL, never the first claimant.
+                                java.util.HashMap<String, String> fn83 = new java.util.HashMap<String, String>();
+                                java.util.HashMap<String, Integer> cnt83 = new java.util.HashMap<String, Integer>();
+                                java.util.Iterator<String> keys83 = map83.keys();
+                                while (keys83.hasNext()) {
+                                    String u83 = keys83.next();
+                                    String f83 = map83.optString(u83, "");
+                                    if (f83.length() > 0) { fn83.put(f83, u83); Integer c83 = cnt83.get(f83); cnt83.put(f83, c83 == null ? 1 : c83 + 1); }
+                                }
+                                for (String k83 : cnt83.keySet()) if (cnt83.get(k83) > 1) fn83.remove(k83);
+                                java.util.List<String> names83 = new java.util.ArrayList<String>();
+                                java.util.HashMap<String, String> paths83 = new java.util.HashMap<String, String>();
+                                for (int i = 0; i < libDisplayCount(); i++) {
+                                    Entry de83 = libEntryAtDisplay(i);
+                                    if (de83 == null) continue;
+                                    names83.add(de83.file.getName());
+                                    paths83.put(de83.file.getName(), de83.file.getAbsolutePath());
+                                }
+                                java.util.Set<String> ftCanon83 = new java.util.HashSet<String>();
+                                for (String u83 : cur83) ftCanon83.add(SiteHttp.identityUrl(u83));
+                                for (String n83 : DlFavListened.pickFav(names83, libListenedFiles, fn83, ftCanon83)) {
+                                    String u83 = fn83.get(n83);
+                                    // v14.80 (slice 1738): bank the canonical form — the old raw add planted an http twin the row cache (canonical read) missed on the next loadList, so the star evaporated on reload.
+                                    String c83 = SiteHttp.identityUrl(u83);
+                                    if (u83 != null && next83.add(c83)) { added83++; libFavFiles.add(n83); flippedUrls1023.add(c83); flippedPaths1023.add(paths83.get(n83)); }
+                                }
+                                sp83.edit().putStringSet("favTalks", next83).apply();
+                            } catch (Exception ignored) {}
+                            // v10.23: bulk star-listened leg — rebuild the paused card at once if the sounding file was starred.
+                            refreshCardIfFlipped1023(flippedUrls1023, flippedPaths1023);
+                            Toast.makeText(DownloadedActivity.this, added83 > 0
+                                    ? Lang.t(DownloadedActivity.this, "fav_shown_listened_prefix") + added83 + Lang.t(DownloadedActivity.this, "queue_added_suffix")
+                                    : Lang.t(DownloadedActivity.this, "fav_already_starred"), Toast.LENGTH_SHORT).show();
+                        } else if ("dl_menu_unfav_shown_listened".equals(choiceKey)) {
+                            // v15.53 (slice 1983): un-star only the shown starred listened files, in display order — the v7.05 new-subset verb's listened twin, v6.43's shape with the listened filter (in libListenedFiles) added. Files resolve through the dlMap; a file with no dlMap entry is skipped and already-unstarred URLs are skipped, so the count is newly un-starred finished files only. libFavFiles drops in step and applyDlFilter re-pours before the toast, so a star-only view drops the un-starred rows at once (its empty view explains itself) and the shared tail below moves the footer star count; neither the queue nor the shelf order is mutated. The offer gate and this handler both call the shared DlFavListened.pickUnfav core, so they can never disagree about a file marked, starred or un-starred since the menu opened.
+                            int removed83 = 0;
+                            java.util.Set<String> flippedUrls1023 = new java.util.HashSet<String>();
+                            java.util.Set<String> flippedPaths1023 = new java.util.HashSet<String>();
+                            try {
+                                android.content.SharedPreferences sp83b =
+                                        getSharedPreferences("dhamma", MODE_PRIVATE);
+                                java.util.Set<String> cur83b = sp83b.getStringSet("favTalks", new java.util.HashSet<String>());
+                                java.util.Set<String> next83b = new java.util.HashSet<String>(cur83b);
+                                org.json.JSONObject map83b =
+                                        new org.json.JSONObject(sp83b.getString("dlMap", "{}"));
+                                // v8.47: exactly-one claimant only (v8.41/v8.43 rule) — a dual-claimed
+                                // filename resolves to no URL, never the first claimant.
+                                java.util.HashMap<String, String> fn83b = new java.util.HashMap<String, String>();
+                                java.util.HashMap<String, Integer> cnt83b = new java.util.HashMap<String, Integer>();
+                                java.util.Iterator<String> keys83b = map83b.keys();
+                                while (keys83b.hasNext()) {
+                                    String u83b = keys83b.next();
+                                    String f83b = map83b.optString(u83b, "");
+                                    if (f83b.length() > 0) { fn83b.put(f83b, u83b); Integer c83b = cnt83b.get(f83b); cnt83b.put(f83b, c83b == null ? 1 : c83b + 1); }
+                                }
+                                for (String k83b : cnt83b.keySet()) if (cnt83b.get(k83b) > 1) fn83b.remove(k83b);
+                                java.util.List<String> names83b = new java.util.ArrayList<String>();
+                                java.util.HashMap<String, String> paths83b = new java.util.HashMap<String, String>();
+                                for (int i = 0; i < libDisplayCount(); i++) {
+                                    Entry de83b = libEntryAtDisplay(i);
+                                    if (de83b == null) continue;
+                                    names83b.add(de83b.file.getName());
+                                    paths83b.put(de83b.file.getName(), de83b.file.getAbsolutePath());
+                                }
+                                for (String n83b : DlFavListened.pickUnfav(names83b, libListenedFiles, libFavFiles)) {
+                                    String u83b = fn83b.get(n83b);
+                                    // v14.80 (slice 1738): remove BOTH forms — a legacy http twin banked by the old raw verb must go too, or the star survives the un-star while the toast says it is gone.
+                                    String c83b = SiteHttp.identityUrl(u83b);
+                                    boolean took83b = false;
+                                    if (u83b != null) {
+                                        if (next83b.remove(c83b)) took83b = true;
+                                        if (next83b.remove(u83b)) took83b = true;
+                                    }
+                                    if (took83b) { removed83++; libFavFiles.remove(n83b); flippedUrls1023.add(c83b); flippedPaths1023.add(paths83b.get(n83b)); }
+                                }
+                                sp83b.edit().putStringSet("favTalks", next83b).apply();
+                            } catch (Exception ignored) {}
+                            // v10.23: bulk un-star-listened leg — rebuild the paused card at once if the sounding file was unstarred.
+                            refreshCardIfFlipped1023(flippedUrls1023, flippedPaths1023);
+                            applyDlFilter();
+                            Toast.makeText(DownloadedActivity.this, removed83 > 0
+                                    ? Lang.t(DownloadedActivity.this, "fav_remove_shown_listened_prefix") + removed83 + Lang.t(DownloadedActivity.this, "removed_suffix")
                                     : Lang.t(DownloadedActivity.this, "not_in_fav"), Toast.LENGTH_SHORT).show();
                         } else if ("dl_menu_mark_shown".equals(choiceKey)) {
                             // v6.44: mark only the shown files

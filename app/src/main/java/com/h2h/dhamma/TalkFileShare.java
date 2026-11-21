@@ -111,6 +111,10 @@ public class TalkFileShare {
     // containment + isFile, the 1954 gate) then uriStringFor of
     // the resolved file's own name. A null dir or name reads as
     // nothing to serve, never a crash and never a guessed URI.
+    // v15.53 (slice 1982): the History row menu reuses this core
+    // too — same verb on the screen that lists what was heard, same
+    // rule, so the library, the drawer, the chooser and the history
+    // can never disagree about what file share serves.
     public static String shareUriFor(java.io.File dir, String name) {
         java.io.File f = resolve(dir, name);
         if (f == null) return null;

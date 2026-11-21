@@ -13,6 +13,10 @@ package com.h2h.dhamma;
 // v15.52 (slice 1977): the Talks chooser dialog reuses this core
 // too — same verb on the browsing screen, same rule, so the drawer
 // and the chooser can never disagree about what copies.
+// v15.53 (slice 1981): the History row menu reuses this core
+// too — same verb on the screen that lists what was heard, same
+// rule, so the drawer, the chooser and the history can never
+// disagree about what copies.
 public class RoomCopyLink {
     // A drawer talk offers the copy verb when it has a link worth
     // copying: a non-blank url. The text share beside it is offered

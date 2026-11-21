@@ -732,6 +732,10 @@ public class HistoryActivity extends Activity {
         if (streamUrl.length() > 0) {
             opts.add(Lang.t(this, "menu_share"));
             keys.add("menu_share");
+            // v15.53 (slice 1981): copy this one talk's LINK — the History row menu's clipboard verb: the menu could share the talk's text (menu_share above) but never copy the link — a listener who had just heard a talk and wanted just the link pasted elsewhere had to share it through the sheet and copy from there. Same verb the library per-row menu has had since v6.56, the Room drawer gained in slice 1975 and the Talks chooser in slice 1977, through the same RoomCopyLink core (same rule, so the four surfaces can never disagree); the offer gate is blank-url-only, so a streamed-only talk still offers it. Sits right after the text share, so the share/copy pair sits together, like the chooser's trio. The sounding row keeps it (it touches neither playback nor the queue, like the share beside it); a row with no resolvable stream URL never reaches this block, so it offers remove only.
+            if (RoomCopyLink.canOffer(streamUrl)) { opts.add(Lang.t(this, "dl_menu_copy_link")); keys.add("dl_menu_copy_link"); }
+            // v15.53 (slice 1982): share this one DOWNLOADED FILE — the History row menu's file-share verb: the menu could share the talk's text (menu_share above) and copy its link (dl_menu_copy_link, slice 1981) but never send the actual .mp3 — a listener who had just heard a talk and wanted the file itself in another app had to find it in Downloads/Dhamma by hand. Same verb the library per-row menu has had since v15.48 (slice 1954), the Room drawer since slice 1955 and the Talks chooser since slice 1956, through the same TalkFileShare core (same rule, so the four surfaces can never disagree); the offer gate is History's own histIsDownloaded (v13.77 — dlMap mapped file + length gate, plus the basename leg), so a streamed-only talk never offers it. Sits right after the copy-link offer, so the share/copy/file trio sits together, like the chooser's. The sounding row keeps it (it touches neither playback nor the queue, like the share beside it); a row with no resolvable stream URL never reaches this block, so it offers remove only. The 1956 note's "share family complete on every surface that has a text share" is corrected here — History had a text share all along and was the one surface still missing its file share.
+            if (histIsDownloaded(streamUrl)) { opts.add(Lang.t(this, "dl_menu_share_file")); keys.add("dl_menu_share_file"); }
             boolean fav = false;
             try {
                 java.util.Set<String> ft = getSharedPreferences("dhamma", MODE_PRIVATE)
@@ -766,6 +770,34 @@ public class HistoryActivity extends Activity {
                                     + (e.title != null ? e.title : "")
                                     + "\n" + streamUrl + Lang.t(HistoryActivity.this, "share_source"));
                             startActivity(Intent.createChooser(send, Lang.t(HistoryActivity.this, "share_talk")));
+                        } else if ("dl_menu_copy_link".equals(keyArr[which])) {
+                            // v15.53 (slice 1981): "Copy this talk's link" — the History row menu's clipboard verb (see the offer above for the rule). Copies the talk's own original link verbatim (the v6.56 rule — never a bare title, never a guessed link) with the v6.56 clipboard label + toast, through the RoomCopyLink core: the tap-time gate re-checks the offer, so the two can never disagree. No pause guard (no sheet is left to return from) and no file gate (a link is not a file — a streamed-only talk copies too). The sounding talk keeps it (neither share nor copy touches playback). A copy mutates nothing — the history line stays, the lifetime totals stay.
+                            if (RoomCopyLink.canOffer(streamUrl)) {
+                                try {
+                                    android.content.ClipboardManager cm81 =
+                                            (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                                    if (cm81 != null)
+                                        cm81.setPrimaryClip(android.content.ClipData.newPlainText(
+                                                Lang.t(HistoryActivity.this, "clip_talk"), RoomCopyLink.clipText(streamUrl)));
+                                    android.widget.Toast.makeText(HistoryActivity.this,
+                                            RoomCopyLink.toastText(Lang.t(HistoryActivity.this, "link_copied_prefix"), e.title, streamUrl),
+                                            android.widget.Toast.LENGTH_SHORT).show();
+                                } catch (Exception ignored) {}
+                            }
+                        } else if ("dl_menu_share_file".equals(keyArr[which])) {
+                            // v15.53 (slice 1982): "Share the audio file" — the History row menu's file-share verb (see the offer above for the rule). The menu_share branch above sends the talk's text (title + original dhammadownload.com link + credit); a listener who wanted the actual .mp3 in another app had no way to send it from History — the file sits in Downloads/Dhamma and a file:// URI is refused on API 24+. The file crosses as a TalkFileProvider content:// URI with a one-shot read grant, type audio/mpeg, same chooser title as every other share. The name comes from History's own histIsDownloaded + histDownloadFileNameFor (v13.77 — dlMap name wins, else the basename leg), re-checked fresh at tap time, and the URI is built through TalkFileShare.shareUriFor (resolve + uriStringFor), so a name that no longer resolves to a file on disk toasts the existing talk_no_longer_in_list, never a guessed URI. No pause guard (History's onPause only stops the strip tick; the text share beside it sets none). A share mutates nothing — the history line stays, the lifetime totals stay.
+                            java.io.File dir82 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+                            String fn82 = histIsDownloaded(streamUrl) ? histDownloadFileNameFor(streamUrl) : null;
+                            String uri82 = TalkFileShare.shareUriFor(dir82, fn82);
+                            if (uri82 == null) {
+                                android.widget.Toast.makeText(HistoryActivity.this, Lang.t(HistoryActivity.this, "talk_no_longer_in_list"), android.widget.Toast.LENGTH_SHORT).show();
+                            } else {
+                                Intent send82 = new Intent(Intent.ACTION_SEND);
+                                send82.setType("audio/mpeg");
+                                send82.putExtra(Intent.EXTRA_STREAM, android.net.Uri.parse(uri82));
+                                send82.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                startActivity(Intent.createChooser(send82, Lang.t(HistoryActivity.this, "share_talk")));
+                            }
                         } else if ("menu_fav_add".equals(keyArr[which]) || "menu_fav_remove".equals(keyArr[which])) {
                             boolean added = Fx.toggleFavTalk(HistoryActivity.this, streamUrl);
                             // Talks v10.03: a flip for the sounding talk refreshes the card star.
