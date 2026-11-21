@@ -752,6 +752,43 @@
         android:layout_height="1dp"
         android:background="#26C9A227" />
 
+    <!-- v15.47 (slice 1948): Settings → About → "Share this app"
+         row, directly under the check-updates row. Same shape as
+         rowCheckUpdate above (label + chevron, 14dp padding). -->
+    <LinearLayout
+        android:id="@+id/rowShareApp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingVertical="14dp">
+        <TextView
+            android:id="@+id/btnShareApp"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="↗ တရားတော် မျှဝေမယ်"
+            android:textColor="@color/ink"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/shareAppChevron"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="8dp"
+            android:text="›"
+            android:textColor="@color/muted"
+            android:textSize="20sp" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#26C9A227" />
+
     <LinearLayout
         android:id="@+id/rowTeam"
         android:layout_width="match_parent"

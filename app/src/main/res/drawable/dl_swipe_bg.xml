@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v15.47 (slice 1950): swipe underlay — solid gold, 24dp radius
+     like card_bg.xml, so the revealed action strip keeps the
+     library card's exact geometry while the card travels. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#C9A227" />
+    <corners android:radius="24dp" />
+</shape>

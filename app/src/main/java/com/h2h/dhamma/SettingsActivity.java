@@ -809,6 +809,27 @@ public class SettingsActivity extends Activity {
                 UpdateChecker.checkManual(SettingsActivity.this);
             }
         });
+        // v15.47 (slice 1948): About → "Share this app" row — one
+        // tap shares the app's public home (the GitHub repo, where
+        // the in-app updater reads releases) through the system
+        // share sheet, so the listener can hand the app to a friend.
+        // Same shape as the check-updates row above (Fx.morph on
+        // tap); the chooser title is the row's own label, and the
+        // display name is the manifest label — never a hardcoded
+        // string, so a renamed app still shares its own name.
+        android.view.View rowShareApp = findViewById(R.id.rowShareApp);
+        if (rowShareApp != null) rowShareApp.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.morph(v);
+                String appName48 = "";
+                try { appName48 = String.valueOf(getApplicationInfo().loadLabel(getPackageManager())); } catch (Exception e) { appName48 = ""; }
+                Intent send48 = new Intent(Intent.ACTION_SEND);
+                send48.setType("text/plain");
+                send48.putExtra(Intent.EXTRA_TEXT, ShareApp.shareText(appName48));
+                try { startActivity(Intent.createChooser(send48, Lang.t(SettingsActivity.this, "about_share_app"))); }
+                catch (Exception e) { android.widget.Toast.makeText(SettingsActivity.this, Lang.t(SettingsActivity.this, "open_failed"), android.widget.Toast.LENGTH_SHORT).show(); }
+            }
+        });
         // v4.19: long-press the dhammadownload.com credit line opens
         // the catalogue source itself in the browser — the credit
         // was display-only, and the retry-page long-presses (Talks
@@ -3943,7 +3964,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         // recoloured them — they kept day muted-brown at night and
         // nearly vanished on the dark card. Same night-grey as the
         // values beside them.
-        for (int id : new int[]{R.id.fontChevron, R.id.langChevron, R.id.altarChevron, R.id.adChooseChevron, R.id.repeatChevron, R.id.sleepChevron, R.id.downloadedChevron, R.id.clearChevron, R.id.teamChevron, R.id.policyChevron, R.id.checkUpdateChevron}) { TextView cv = findViewById(id); if (cv != null) cv.setTextColor(muted); }
+        for (int id : new int[]{R.id.fontChevron, R.id.langChevron, R.id.altarChevron, R.id.adChooseChevron, R.id.repeatChevron, R.id.sleepChevron, R.id.downloadedChevron, R.id.clearChevron, R.id.teamChevron, R.id.policyChevron, R.id.checkUpdateChevron, R.id.shareAppChevron}) { TextView cv = findViewById(id); if (cv != null) cv.setTextColor(muted); }
         // v12.94: the long Android-rules paragraph is gone — the note
         // under the notification row appears ONLY while a block is live
         // (v10.86/v12.27), naming the fix; healthy phones see no note
@@ -3959,6 +3980,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         setBtnText(R.id.btnTeam, "team_btn");
         setBtnText(R.id.btnPolicy, "policy_btn");
         setBtnText(R.id.btnCheckUpdate, "upd_check");
+        setBtnText(R.id.btnShareApp, "about_share_app"); // v15.47 (slice 1948)
         TextView vv2 = findViewById(R.id.versionValue);
         if (vv2 != null) {
             String vn = "";

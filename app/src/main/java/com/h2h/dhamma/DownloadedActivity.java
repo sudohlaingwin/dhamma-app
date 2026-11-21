@@ -84,6 +84,23 @@ public class DownloadedActivity extends Activity {
     // overwrites it, and it must come back when the filter clears.
     private String origEmptyText = null;
     private ListView dlListView;
+    // v15.47 (slice 1950): Downloaded row swipe — the live drag
+    // state. The card is what translates (cardInner); the row is
+    // what getView must not reset mid-drag; the entry/path are the
+    // DOWN-time row (a rebind can move rows under a held finger,
+    // the commit acts on the DOWN row, never a re-resolved one).
+    private android.view.View dlSwipeCard50 = null;
+    private android.view.View dlSwipeRow50 = null;
+    private float dlSwipeDownX50 = 0f;
+    private float dlSwipeDownY50 = 0f;
+    private boolean dlSwipeArmed50 = false;
+    private int dlSwipeDir50 = 0;
+    private Entry dlSwipeEntry50 = null;
+    private String dlSwipePath50 = null;
+    private boolean dlSwipeLeftOk50 = false;
+    private boolean dlSwipeRightOk50 = false;
+    private int dlSwipeSlop50 = -1;
+    private android.animation.ValueAnimator dlSwipeSettle50 = null;
     // v1.55: scroll position to restore once after a rotation (the
     // search text survived since v1.51, the scroll did not).
     private int savedDlScroll = -1;
@@ -4123,8 +4140,9 @@ public class DownloadedActivity extends Activity {
 
     // v14.76 (slice 1734): melt the shelf row you just marked in the
     // row menu — the Talks chooser's v14.75 twin, restated for the
-    // library. The row-menu favourite toggle (★) and the single-file
-    // queue add/remove verbs (◈ on/off) used to end in the shared
+    // library. The row-menu favourite toggle (★), the single-file
+    // mark toggle (✓, v15.47 slice 1949) and the single-file queue
+    // add/remove verbs (◈ on/off) used to end in the shared
     // saveLibQueue tail's bare notifyDataSetChanged, so the mark
     // snapped onto the row in one frame while every other library
     // arrival already has a beat (list pour v2.12, sounding row
@@ -6553,6 +6571,7 @@ public class DownloadedActivity extends Activity {
         adapter = new DlAdapter();
         dlListView = findViewById(R.id.list);
         if (dlListView != null) dlListView.setAdapter(adapter);
+        wireDlSwipe50(); // v15.47 (slice 1950): Downloaded row swipe
         wireDlStrip(); // v4.40: real mini-player on the library
         if (dlListView != null) dlListView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
@@ -9372,6 +9391,290 @@ public class DownloadedActivity extends Activity {
         return null;
     }
 
+
+    // v15.47 (slice 1950): "Swipe a Downloaded row" — the first
+    // gesture on the library shelf: a row dragged left marks (or
+    // un-marks) that one file listened, a row dragged right queues
+    // it next, with the gold underlay + action label revealed
+    // under the card as it travels. The shelf is a ListView, so
+    // there is no ItemTouchHelper — the gesture lives on the
+    // ListView's own touch stream (the Talks pull-refresh idiom,
+    // v15.34): DOWN records the row + both offers, MOVE arms only
+    // once the drag is horizontally dominant past touch slop (a
+    // vertical scroll never arms, a diagonal never arms), and from
+    // the arm on the listener consumes the stream so the list
+    // cannot scroll under the finger. The card (cardInner) is what
+    // translates — the root keeps its press squash, its pour and
+    // its rank-close glide, all on other properties/views — and a
+    // tick rebind landing mid-drag never snaps it (getView skips
+    // the translation reset on the live swipe card). The commit
+    // threshold is a third of the row, never less than 96dp; below
+    // it the card glides home over 200ms Decelerate (the app's
+    // melt rhythm), above it the action fires on animation end
+    // (a cancelled settle never fires — the cancel flag). LEFT
+    // reuses the 1949 mark toggle (DlMark + the same prefs /
+    // snapshot / toast sequence — the 1949 branches are frozen by
+    // sim1949, so the swipe has its own apply method mirroring
+    // them); RIGHT reuses the play-next branch the same way
+    // (queue copy + saveLibQueue + updateTotal + the
+    // queue_next_prefix toast). No new Lang key: the underlay
+    // paints the existing menu_play_next_short / dl_menu_mark_one
+    // / dl_menu_unmark_one words. Never arms while a pick-up/drop
+    // move is held, never on the playing row (both verbs exclude
+    // it), never right on an already-queued row, never left on a
+    // file with no dlMap link.
+    private void wireDlSwipe50() {
+        if (dlListView == null) return;
+        dlListView.setOnTouchListener(new android.view.View.OnTouchListener() {
+            @Override public boolean onTouch(android.view.View v, android.view.MotionEvent ev) {
+                return dlSwipeOnTouch50(ev);
+            }
+        });
+    }
+
+    private boolean dlSwipeOnTouch50(android.view.MotionEvent ev) {
+        if (dlListView == null) return false;
+        int action = ev.getActionMasked();
+        if (action == android.view.MotionEvent.ACTION_DOWN) {
+            dlSwipeReset50();
+            if (moveHeldPath != null) return false;
+            int pos = dlListView.pointToPosition((int) ev.getX(), (int) ev.getY());
+            if (pos == android.widget.AdapterView.INVALID_POSITION) return false;
+            Entry e = libEntryAtDisplay(pos);
+            if (e == null) return false;
+            String path = e.file.getAbsolutePath();
+            boolean playing = path.equals(soundingLibPath());
+            boolean queued = !playing && libQueueCache.contains(path);
+            boolean leftOk = DlMark.canOffer(dlSwipeUrl50(e.file.getName()), playing);
+            boolean rightOk = DlSwipe.offerRight(playing, queued);
+            if (!leftOk && !rightOk) return false;
+            if (dlSwipeSlop50 < 0) dlSwipeSlop50 = android.view.ViewConfiguration.get(DownloadedActivity.this).getScaledTouchSlop();
+            dlSwipeEntry50 = e;
+            dlSwipePath50 = path;
+            dlSwipeLeftOk50 = leftOk;
+            dlSwipeRightOk50 = rightOk;
+            dlSwipeDownX50 = ev.getX();
+            dlSwipeDownY50 = ev.getY();
+            return false;
+        }
+        if (dlSwipeEntry50 == null) return false;
+        if (action == android.view.MotionEvent.ACTION_MOVE) {
+            float dx = ev.getX() - dlSwipeDownX50;
+            float dy = ev.getY() - dlSwipeDownY50;
+            if (!dlSwipeArmed50) {
+                if (!DlSwipe.dominant(dx, dy, dlSwipeSlop50)) return false;
+                int dir = DlSwipe.direction(dx);
+                if (dir == DlSwipe.LEFT && !dlSwipeLeftOk50) { dlSwipeReset50(); return false; }
+                if (dir == DlSwipe.RIGHT && !dlSwipeRightOk50) { dlSwipeReset50(); return false; }
+                if (dir == DlSwipe.NONE) return false;
+                int pos = dlListView.pointToPosition((int) dlSwipeDownX50, (int) dlSwipeDownY50);
+                if (pos == android.widget.AdapterView.INVALID_POSITION) { dlSwipeReset50(); return false; }
+                android.view.View row = dlListView.getChildAt(pos - dlListView.getFirstVisiblePosition());
+                if (row == null) { dlSwipeReset50(); return false; }
+                android.view.View card = row.findViewById(R.id.cardInner);
+                if (card == null) { dlSwipeReset50(); return false; }
+                dlSwipeArmed50 = true;
+                dlSwipeDir50 = dir;
+                dlSwipeRow50 = row;
+                dlSwipeCard50 = card;
+                // The DOWN already started the row's press squash
+                // (Fx.press, v2.08); the swipe takes over from here
+                // and the row never sees UP, so release the squash
+                // now (the v3.48 hygiene lines) instead of leaving
+                // the row stuck at 0.96 until its next rebind.
+                row.animate().cancel();
+                Fx.cancelPress(row);
+                row.setScaleX(1f);
+                row.setScaleY(1f);
+                dlListView.requestDisallowInterceptTouchEvent(true);
+            }
+            if (dlSwipeCard50 != null) {
+                dlSwipeCard50.setTranslationX(DlSwipe.clampDir(ev.getX() - dlSwipeDownX50, dlSwipeDir50, dlSwipeCard50.getWidth()));
+            }
+            return true;
+        }
+        if (action == android.view.MotionEvent.ACTION_UP) {
+            if (!dlSwipeArmed50) { dlSwipeReset50(); return false; }
+            final android.view.View card = dlSwipeCard50;
+            final Entry e = dlSwipeEntry50;
+            final int dir = dlSwipeDir50;
+            float dx = card == null ? 0f : card.getTranslationX();
+            boolean fire = card != null && DlSwipe.commit(dx, card.getWidth(), dlSwipeMinCommit50());
+            dlSwipeSettle50(card, dir, e, fire);
+            return true;
+        }
+        if (action == android.view.MotionEvent.ACTION_CANCEL
+                || action == android.view.MotionEvent.ACTION_POINTER_DOWN) {
+            if (!dlSwipeArmed50) { dlSwipeReset50(); return false; }
+            dlSwipeSettle50(dlSwipeCard50, dlSwipeDir50, null, false);
+            return true;
+        }
+        return false;
+    }
+
+    // The 96dp commit floor in px — DlSwipe.commit takes the floor
+    // as an argument so the pure core never reads a resource.
+    private float dlSwipeMinCommit50() {
+        return 96f * getResources().getDisplayMetrics().density;
+    }
+
+    // Glide the card home over 200ms Decelerate (the app's melt
+    // rhythm), then fire the verb — the glide is the feedback, the
+    // toast follows it. A cancelled settle never fires: the cancel
+    // flag is checked on animation end, so a fresh DOWN that cuts
+    // a settle short cannot queue a stale verb. The swipe fields
+    // stay set until the animation ends, so a tick rebind landing
+    // mid-glide never snaps the card (getView's guard).
+    private void dlSwipeSettle50(final android.view.View card, final int dir, final Entry e, final boolean fire) {
+        if (dlSwipeSettle50 != null) dlSwipeSettle50.cancel();
+        dlSwipeSettle50 = null;
+        if (card == null) { dlSwipeReset50(); return; }
+        final float start = card.getTranslationX();
+        if (start == 0f) { dlSwipeReset50(); return; }
+        android.animation.ValueAnimator anim = android.animation.ValueAnimator.ofFloat(start, 0f);
+        dlSwipeSettle50 = anim;
+        anim.setDuration(200);
+        anim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        anim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                card.setTranslationX((Float) a.getAnimatedValue());
+            }
+        });
+        final boolean[] cancelled50 = new boolean[1];
+        anim.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationCancel(android.animation.Animator a) {
+                cancelled50[0] = true;
+            }
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                if (dlSwipeSettle50 == anim) dlSwipeSettle50 = null;
+                if (!cancelled50[0] && fire && e != null && dir == DlSwipe.LEFT) applySwipeMark50(e);
+                else if (!cancelled50[0] && fire && e != null && dir == DlSwipe.RIGHT) applySwipeQueueNext50(e);
+                dlSwipeReset50();
+            }
+        });
+        anim.start();
+    }
+
+    private void dlSwipeReset50() {
+        if (dlSwipeSettle50 != null) {
+            android.animation.ValueAnimator a = dlSwipeSettle50;
+            dlSwipeSettle50 = null;
+            a.cancel();
+        }
+        dlSwipeCard50 = null;
+        dlSwipeRow50 = null;
+        dlSwipeArmed50 = false;
+        dlSwipeDir50 = 0;
+        dlSwipeEntry50 = null;
+        dlSwipePath50 = null;
+        dlSwipeLeftOk50 = false;
+        dlSwipeRightOk50 = false;
+        dlSwipeDownX50 = 0f;
+        dlSwipeDownY50 = 0f;
+    }
+
+    // This file's original link for the swipe-left mark — the v6.53
+    // dlMap reverse lookup, exactly-one match (the v8.42 rule),
+    // duplicated here rather than extracted from showLibQueueMenu:
+    // that method's finals are frozen by sim1949's offer-line
+    // checks, and a shared helper would rewire the 1949 mark
+    // branch's inputs. A dual-claimed file resolves to null (no
+    // offer, never a wrong link), like the menu.
+    private String dlSwipeUrl50(String fileName) {
+        if (fileName == null || fileName.length() == 0) return null;
+        try {
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map =
+                    new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            java.util.Iterator<String> keys = map.keys();
+            String hit = null;
+            int matches = 0;
+            while (keys.hasNext()) {
+                String k = keys.next();
+                if (fileName.equals(map.optString(k, ""))) { hit = k; matches++; }
+            }
+            return matches == 1 ? hit : null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    // The swipe-left commit — the 1949 single-file mark toggle,
+    // fired by the gesture instead of the row menu: same DlMark
+    // call, same prefs write, same libListenedFiles step, same
+    // applyDlFilter re-pour, same menuMarkFadePath76 melt, same
+    // v14.76 snapshot adopt, same verb toast. The 1949 branches
+    // stay byte-identical (sim1949 freezes them); this method is
+    // their gesture twin, not a refactor of them.
+    private void applySwipeMark50(Entry t) {
+        if (t == null || t.file == null) return;
+        String path = t.file.getAbsolutePath();
+        String cur = soundingLibPath();
+        if (path.equals(cur)) {
+            android.widget.Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String url = dlSwipeUrl50(t.file.getName());
+        if (url == null) return;
+        boolean listened = libListenedFiles.contains(t.file.getName());
+        DlMark.Result r50 = null;
+        try {
+            android.content.SharedPreferences sp50 =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            java.util.Set<String> cur50 = sp50.getStringSet("playedTalks", new java.util.HashSet<String>());
+            r50 = listened
+                    ? DlMark.unmark(cur50, SiteHttp.identityUrl(url), url)
+                    : DlMark.mark(cur50, SiteHttp.identityUrl(url));
+            sp50.edit().putStringSet("playedTalks", r50.set).apply();
+        } catch (Exception ignored) {}
+        if (r50 != null && r50.changed) {
+            if (listened) libListenedFiles.remove(t.file.getName());
+            else libListenedFiles.add(t.file.getName());
+        }
+        applyDlFilter();
+        if (path != null) menuMarkFadePath76 = path;
+        try {
+            android.content.SharedPreferences pp50 =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            java.util.Set<String> played50 = pp50.getStringSet("playedTalks", null);
+            dlMarkPlayed45 = played50 == null
+                    ? new java.util.HashSet<String>()
+                    : new java.util.HashSet<String>(played50);
+        } catch (Exception ignored) {}
+        android.widget.Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this,
+                (r50 != null && r50.changed)
+                        ? (listened ? "dl_menu_unmark_one" : "dl_menu_mark_one")
+                        : (listened ? "nothing_to_unmark" : "already_listened")),
+                android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    // The swipe-right commit — the play-next branch fired by the
+    // gesture: same sounding re-check, same head insert, same
+    // saveLibQueue funnel (the just-added path is the keep, so the
+    // v12.08 drop step can never eat it), same updateTotal, same
+    // queue_next_prefix toast with the sayadaw suffix.
+    private void applySwipeQueueNext50(Entry t) {
+        if (t == null || t.file == null) return;
+        String path = t.file.getAbsolutePath();
+        String cur = soundingLibPath();
+        if (path.equals(cur)) {
+            android.widget.Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        refreshLibQueueCache();
+        java.util.ArrayList<String> q50 = new java.util.ArrayList<String>(libQueueCache);
+        q50.remove(path);
+        q50.add(0, path);
+        java.util.Set<String> keep50 = new java.util.HashSet<String>();
+        keep50.add(path);
+        saveLibQueue(q50, keep50, true);
+        updateTotal();
+        String sd50 = libSayadawMap.get(t.file.getName());
+        String suffix50 = (sd50 != null && sd50.length() > 0) ? " · " + sd50 : "";
+        android.widget.Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "queue_next_prefix") + t.title + suffix50, android.widget.Toast.LENGTH_SHORT).show();
+    }
+
     private void showLibQueueMenu(final int shownPos) {
         if (shownPos < 0 || shownPos >= libDisplayCount()) return;
         Fx.tap(DownloadedActivity.this);
@@ -9592,6 +9895,36 @@ public class DownloadedActivity extends Activity {
         }
         if (hasDlFavShown94) { items.add(Lang.t(DownloadedActivity.this, "dl_del_shown_star")); itemKeys.add("dl_del_shown_star"); }
         if (hasDlNewShown94) { items.add(Lang.t(DownloadedActivity.this, "dl_del_shown_new")); itemKeys.add("dl_del_shown_new"); }
+        // v15.47 (slice 1951): delete only the shown LISTENED files
+        // — the third member of the v6.94 subset-delete pair (star
+        // deletes the starred, new deletes the unlistened, this
+        // deletes the listened): the library could delete a
+        // narrowed set (v6.39) and its star / unlistened subsets
+        // (v6.94), but freeing space for just the finished talks
+        // meant deleting the whole narrowed set and re-downloading
+        // the rest, or deleting file by file. Same gates as v6.94,
+        // applied to the listened subset: offered from ANY row only
+        // while narrowed and never in queue-only view (the
+        // queue-only view is a play order, not a shelf to prune),
+        // and only when at least one shown file is listened (in
+        // libListenedFiles, the rows' own cache) and not the file
+        // still playing — one deletable listened file is enough to
+        // offer. Membership is the rows' own cache through the
+        // shared DlDelListened.pick core (the same core the handler
+        // below calls), so the offer and the handler can never
+        // disagree about a file marked since the menu opened; the
+        // playing file stays excluded on purpose, like v6.39/v6.94.
+        boolean hasDlListenedShown51 = false;
+        if (!libQueueOnly && ((dlQuery != null && !dlQuery.isEmpty()) || dlFilterMode != 0)) {
+            java.util.List<String> names51 = new java.util.ArrayList<String>();
+            for (int i = 0; i < libDisplayCount(); i++) {
+                Entry se51 = libEntryAtDisplay(i);
+                if (se51 == null) continue;
+                names51.add(se51.file.getName());
+            }
+            hasDlListenedShown51 = !DlDelListened.pick(names51, libListenedFiles, soundingLibPath()).isEmpty();
+        }
+        if (hasDlListenedShown51) { items.add(Lang.t(DownloadedActivity.this, "dl_del_shown_listened")); itemKeys.add("dl_del_shown_listened"); }
         // v6.40: shown-set ★ / unlistened queue verbs — the
         // shown-set variants of the v4.59 bulk verbs below,
         // which read the full shelf (entries). A listener who
@@ -9622,6 +9955,40 @@ public class DownloadedActivity extends Activity {
             }
             if (hasShownFav) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_queue_shown_star")); itemKeys.add("dl_menu_queue_shown_star"); }
             if (hasShownNew) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_queue_shown_new")); itemKeys.add("dl_menu_queue_shown_new"); }
+        // v15.47 (slice 1952): queue only the shown LISTENED files
+        // — the queue-side twin of the slice-1951 delete-listened
+        // verb and the third member of the v6.40 queue-shown pair
+        // (star queues the starred, new queues the unlistened,
+        // this queues the listened): a listener who had narrowed
+        // the library and finished a batch of talks could re-hear
+        // just those finished talks only by queueing the whole
+        // shown set (v6.38) and taking the unlistened files too,
+        // or by queueing them one by one. Same gates as v6.40,
+        // applied to the listened subset: offered from ANY row only
+        // while narrowed and never in queue-only view (the
+        // queue-only view already IS the queue), and only when at
+        // least one shown file is listened (in libListenedFiles,
+        // the rows' own cache) AND actually queueable (not the file
+        // still playing, not already queued — the v6.71 queue-next
+        // gate, not the v6.40 mark-only gate, so the verb never
+        // offers a guaranteed no-op). Membership is the rows' own
+        // cache through the shared DlQueueListened.pick core (the
+        // same core the handler below calls), so the offer and the
+        // handler can never disagree about a file marked, played
+        // or queued since the menu opened.
+        boolean hasQueueListenedShown52 = false;
+        if (!libQueueOnly && ((dlQuery != null && !dlQuery.isEmpty()) || dlFilterMode != 0)) {
+            java.util.List<String> names52 = new java.util.ArrayList<String>();
+            java.util.List<String> paths52 = new java.util.ArrayList<String>();
+            for (int i = 0; i < libDisplayCount(); i++) {
+                Entry se52 = libEntryAtDisplay(i);
+                if (se52 == null) continue;
+                names52.add(se52.file.getName());
+                paths52.add(se52.file.getAbsolutePath());
+            }
+            hasQueueListenedShown52 = !DlQueueListened.pick(names52, paths52, libListenedFiles, soundingLibPath(), queue).isEmpty();
+        }
+        if (hasQueueListenedShown52) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_queue_shown_listened")); itemKeys.add("dl_menu_queue_shown_listened"); }
         }
         // v6.71: queue only the shown favourites / shown not-yet-
         // listened files NEXT — the head-insert twins of the v6.40
@@ -10666,6 +11033,22 @@ public class DownloadedActivity extends Activity {
                 : Lang.t(DownloadedActivity.this, "menu_fav_add")); itemKeys.add(libFavFiles.contains(t.file.getName())
                 ? "menu_fav_remove"
                 : "menu_fav_add"); }
+        // v15.47 (slice 1949): mark this one file listened /
+        // un-mark it — the library mirror of the v7.90 per-row
+        // favourite toggle, and the last mirror surface those runs
+        // flagged: the library had shown-set mark/un-mark verbs
+        // (v6.44/v6.45, narrowed views only) but no per-row toggle,
+        // so a listener who wanted just this file marked had to
+        // play it to the end or narrow the library down to it
+        // first. Offered right after the star, like the chooser/
+        // drawer dialogs, and gated on DlMark.canOffer — the same
+        // shareUrl653 final as share/fav/copy, plus !playing (the
+        // bulk rule: the sounding file earns its mark by
+        // finishing). The label reads libListenedFiles, the same
+        // cache the row's own mark renders from, so it can never
+        // disagree with the visible mark; a file with no dlMap
+        // entry simply shows no entry, never a guessed link.
+        if (DlMark.canOffer(shareUrl653, playing)) { String markKey49 = DlMark.labelKey(libListenedFiles.contains(t.file.getName())); items.add(Lang.t(DownloadedActivity.this, markKey49)); itemKeys.add(markKey49); }
         // v6.56: copy this one file's link — the library mirror
         // of the chooser's v6.54 and the drawer's v6.55 single-talk
         // copies, and the last mirror surface those runs flagged:
@@ -11038,6 +11421,101 @@ public class DownloadedActivity extends Activity {
                                         .setNegativeButton(Lang.t(DownloadedActivity.this, "del_btn_no"), null)
                                         .show();
                             }
+                        } else if ("dl_del_shown_listened".equals(choiceKey)) {
+                            // v15.47 (slice 1951): delete only the
+                            // shown LISTENED files, in display order
+                            // — the third member of the v6.94
+                            // subset-delete pair (star deletes the
+                            // starred, new deletes the unlistened,
+                            // this deletes the listened). Same
+                            // mechanics as v6.94 (confirm first, a
+                            // delete is destructive; the count is
+                            // recomputed for the confirm message
+                            // and the victim set is recomputed
+                            // again at confirm time, so a talk
+                            // that started playing while the dialog
+                            // was open is never deleted and a file
+                            // gone since the dialog opened is never
+                            // counted; only files actually deleted
+                            // earn a dlMap prune, the v1.98 rule;
+                            // a queued tap on a deleted file is
+                            // cleared, the v1.63 rule, and a held
+                            // pick-up/drop arm on a deleted file is
+                            // dropped; the loadList tail prunes the
+                            // hand queue against the fresh shelf,
+                            // refreshes the star/check marks and
+                            // the footer, and reapplies the same
+                            // search/filter). The only difference
+                            // from v6.94 is the subset filter, read
+                            // from the rows' own cache (listened =
+                            // present in libListenedFiles, the
+                            // v6.94 rule) through the shared
+                            // DlDelListened.pick core, so offer and
+                            // handler can never disagree; the
+                            // dialog reuses the v6.94 shared suffix
+                            // keys with the new dl_tag_shown_listened
+                            // tag. The playing file stays excluded
+                            // on purpose, like v6.39/v6.94. A
+                            // listened file with a live re-download
+                            // job is deleted like v6.94 deletes it
+                            // (the job re-lands it) — the subset
+                            // deletes never cancelled live jobs,
+                            // only delete-all does.
+                            final String tag51 = Lang.t(DownloadedActivity.this, "dl_tag_shown_listened");
+                            java.util.List<String> names51 = new java.util.ArrayList<String>();
+                            for (int i = 0; i < libDisplayCount(); i++) {
+                                Entry de51 = libEntryAtDisplay(i);
+                                if (de51 == null) continue;
+                                names51.add(de51.file.getName());
+                            }
+                            java.util.List<String> victims51 = DlDelListened.pick(names51, libListenedFiles, cur);
+                            if (victims51.isEmpty()) {
+                                Toast.makeText(DownloadedActivity.this, tag51 + Lang.t(DownloadedActivity.this, "dl_nothing_to_delete_suffix"), Toast.LENGTH_SHORT).show();
+                            } else {
+                                final int offerCount51 = victims51.size();
+                                new android.app.AlertDialog.Builder(DownloadedActivity.this)
+                                        .setTitle(tag51 + Lang.t(DownloadedActivity.this, "dl_subset_del_title_suffix"))
+                                        .setMessage(tag51 + Lang.t(DownloadedActivity.this, "dl_subset_del_msg_mid") + offerCount51 + Lang.t(DownloadedActivity.this, "dl_subset_del_msg_suffix"))
+                                        .setPositiveButton(tag51 + Lang.t(DownloadedActivity.this, "dl_subset_del_btn_suffix"), new android.content.DialogInterface.OnClickListener() {
+                                            @Override public void onClick(android.content.DialogInterface d2, int which2) {
+                                                // v11.25: same unbound-window mirror as the v6.39/v6.94 confirms above.
+                                                String cur2 = soundingLibPath();
+                                                java.util.List<String> names51b = new java.util.ArrayList<String>();
+                                                for (int i = 0; i < libDisplayCount(); i++) {
+                                                    Entry de51b = libEntryAtDisplay(i);
+                                                    if (de51b == null) continue;
+                                                    names51b.add(de51b.file.getName());
+                                                }
+                                                java.util.Set<String> victims51b = new java.util.HashSet<String>(DlDelListened.pick(names51b, libListenedFiles, cur2));
+                                                java.util.Set<String> deletedNames = new java.util.HashSet<String>();
+                                                for (int i = 0; i < libDisplayCount(); i++) {
+                                                    Entry de = libEntryAtDisplay(i);
+                                                    if (de == null) continue;
+                                                    if (!victims51b.contains(de.file.getName())) continue;
+                                                    if (de.file.getAbsolutePath().equals(cur2)) continue;
+                                                    if (de.file.delete()) {
+                                                        deletedNames.add(de.file.getName());
+                                                        if (pendingDlPath != null && pendingDlPath.equals(de.file.getAbsolutePath())) {
+                                                            pendingDlPath = null;
+                                                            pendingDlTitle = null;
+                                                            pendingDlRestart = false;
+                                                        }
+                                                        if (moveHeldPath != null && moveHeldPath.equals(de.file.getAbsolutePath()))
+                                                            moveHeldPath = null;
+                                                    }
+                                                }
+                                                if (deletedNames.isEmpty()) {
+                                                    Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "delete_failed"), Toast.LENGTH_SHORT).show();
+                                                } else {
+                                                    pruneDlMapForFilenames(deletedNames);
+                                                    loadList();
+                                                    Toast.makeText(DownloadedActivity.this, tag51 + " " + deletedNames.size() + Lang.t(DownloadedActivity.this, "deleted_suffix"), Toast.LENGTH_SHORT).show();
+                                                }
+                                            }
+                                        })
+                                        .setNegativeButton(Lang.t(DownloadedActivity.this, "del_btn_no"), null)
+                                        .show();
+                            }
                         } else if ("dl_queue_all_star".equals(choiceKey)) {
                             // v4.59: queue the shelf's favourite files
                             // in shelf order — same skip rules as the
@@ -11092,6 +11570,22 @@ public class DownloadedActivity extends Activity {
                             }
                             Toast.makeText(DownloadedActivity.this, added > 0
                                     ? Lang.t(DownloadedActivity.this, "queue_shown_new_prefix") + added + Lang.t(DownloadedActivity.this, "queue_added_suffix")
+                                    : Lang.t(DownloadedActivity.this, "already_in_queue"), Toast.LENGTH_SHORT).show();
+                        } else if ("dl_menu_queue_shown_listened".equals(choiceKey)) {
+                            // v15.47 (slice 1952): queue only the shown LISTENED files, in display order — the queue-side twin of the slice-1951 delete-listened verb and the third member of the v6.40 queue-shown pair (star queues the starred, new queues the unlistened, this queues the listened). Same skip rules as the v6.40 twins (playing file, already queued) and the same count toast, via the shared saveLibQueue + updateTotal tail below; the offer above and this handler both read the shared DlQueueListened.pick core, so they can never disagree. A file with no dlMap entry has no listened mark either, so it counts as unlistened and is never queued here, like the v6.40 new verb. The contains re-check in the loop is belt-and-braces — pick already excluded queued paths.
+                            java.util.List<String> names52 = new java.util.ArrayList<String>();
+                            java.util.List<String> paths52 = new java.util.ArrayList<String>();
+                            for (int i = 0; i < libDisplayCount(); i++) {
+                                Entry de52 = libEntryAtDisplay(i);
+                                if (de52 == null) continue;
+                                names52.add(de52.file.getName());
+                                paths52.add(de52.file.getAbsolutePath());
+                            }
+                            java.util.List<String> add52 = DlQueueListened.pick(names52, paths52, libListenedFiles, cur, q);
+                            int added = 0;
+                            for (String u52 : add52) { if (!q.contains(u52)) { q.add(u52); added++; } }
+                            Toast.makeText(DownloadedActivity.this, added > 0
+                                    ? Lang.t(DownloadedActivity.this, "queue_shown_listened_prefix") + added + Lang.t(DownloadedActivity.this, "queue_added_suffix")
                                     : Lang.t(DownloadedActivity.this, "already_in_queue"), Toast.LENGTH_SHORT).show();
                         } else if ("dl_menu_queue_next_shown_star".equals(choiceKey)) {
                             // v6.71: queue only the shown favourite
@@ -13201,6 +13695,106 @@ public class DownloadedActivity extends Activity {
                             android.widget.Toast.makeText(DownloadedActivity.this,
                                     Lang.t(DownloadedActivity.this, added90 ? "fav_added" : "fav_removed"),
                                     android.widget.Toast.LENGTH_SHORT).show();
+                        } else if ("dl_menu_mark_one".equals(choiceKey)) {
+                            // v15.47 (slice 1949): mark this one file
+                            // listened, by its dlMap source URL (the
+                            // v6.53 shareUrl653 final, canonicalised
+                            // the v14.85 way — a raw add plants an
+                            // http twin the row cache misses on the
+                            // next loadList, so the mark would
+                            // evaporate on reload). The tap-time
+                            // sounding re-check (the v11.12/v11.14
+                            // rule): the dialog can sit open across
+                            // an auto-advance, so this file can BE
+                            // sounding by tap time — it earns its
+                            // mark by finishing, never by this verb.
+                            // libListenedFiles grows in step so the
+                            // row rebinds with its mark at once,
+                            // and applyDlFilter re-pours before the
+                            // toast, so an unlistened-only view
+                            // drops the marked row at once (and the
+                            // new-talk dot clears with it — the
+                            // 1923 gate needs !rowListened). Neither
+                            // the queue, the shelf order nor any
+                            // saved resume position is mutated. The
+                            // toast is the verb (the 1946 idiom);
+                            // an already-marked tap toasts
+                            // already_listened, never a false count.
+                            if (path.equals(cur)) {
+                                Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "queue_changed"), Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            DlMark.Result marked49 = null;
+                            try {
+                                android.content.SharedPreferences sp49 =
+                                        getSharedPreferences("dhamma", MODE_PRIVATE);
+                                java.util.Set<String> cur49 = sp49.getStringSet("playedTalks", new java.util.HashSet<String>());
+                                marked49 = DlMark.mark(cur49, SiteHttp.identityUrl(shareUrl653));
+                                sp49.edit().putStringSet("playedTalks", marked49.set).apply();
+                            } catch (Exception ignored) {}
+                            if (marked49 != null && marked49.changed) libListenedFiles.add(t.file.getName());
+                            applyDlFilter();
+                            if (path != null) menuMarkFadePath76 = path;
+                            // v14.76 (slice 1734): adopt the v7.45 tick
+                            // snapshots synchronously — the mark just
+                            // rewrote playedTalks in prefs, so the
+                            // next tick would read a changed set and
+                            // rebind the rows once more, up to a
+                            // second after the melt. Adopting here
+                            // means the tick snapshots the new state
+                            // and sees no change.
+                            try {
+                                android.content.SharedPreferences pp49 =
+                                        getSharedPreferences("dhamma", MODE_PRIVATE);
+                                java.util.Set<String> played49 = pp49.getStringSet("playedTalks", null);
+                                dlMarkPlayed45 = played49 == null
+                                        ? new java.util.HashSet<String>()
+                                        : new java.util.HashSet<String>(played49);
+                            } catch (Exception ignored) {}
+                            Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, (marked49 != null && marked49.changed) ? "dl_menu_mark_one" : "already_listened"), Toast.LENGTH_SHORT).show();
+                        } else if ("dl_menu_unmark_one".equals(choiceKey)) {
+                            // v15.47 (slice 1949): un-mark this one
+                            // file listened — the mark leg's mirror:
+                            // the same shareUrl653 final, the same
+                            // tap-time sounding re-check (a sounding
+                            // file keeps its mark while it plays),
+                            // and the v14.85 both-forms removal, so
+                            // a legacy http twin banked by the old
+                            // raw verb goes too. libListenedFiles
+                            // drops in step so the row rebinds
+                            // without its mark at once, and
+                            // applyDlFilter re-pours before the
+                            // toast, so the row returns to an
+                            // unlistened-only view at once. Neither
+                            // the queue, the shelf order nor any
+                            // saved resume position is mutated. The
+                            // toast is the verb (the 1946 idiom); a
+                            // not-marked tap toasts
+                            // nothing_to_unmark, never a false count.
+                            if (path.equals(cur)) {
+                                Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "queue_changed"), Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            DlMark.Result unmarked49 = null;
+                            try {
+                                android.content.SharedPreferences sp49 =
+                                        getSharedPreferences("dhamma", MODE_PRIVATE);
+                                java.util.Set<String> cur49 = sp49.getStringSet("playedTalks", new java.util.HashSet<String>());
+                                unmarked49 = DlMark.unmark(cur49, SiteHttp.identityUrl(shareUrl653), shareUrl653);
+                                sp49.edit().putStringSet("playedTalks", unmarked49.set).apply();
+                            } catch (Exception ignored) {}
+                            if (unmarked49 != null && unmarked49.changed) libListenedFiles.remove(t.file.getName());
+                            applyDlFilter();
+                            if (path != null) menuMarkFadePath76 = path;
+                            try {
+                                android.content.SharedPreferences pp49 =
+                                        getSharedPreferences("dhamma", MODE_PRIVATE);
+                                java.util.Set<String> played49 = pp49.getStringSet("playedTalks", null);
+                                dlMarkPlayed45 = played49 == null
+                                        ? new java.util.HashSet<String>()
+                                        : new java.util.HashSet<String>(played49);
+                            } catch (Exception ignored) {}
+                            Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, (unmarked49 != null && unmarked49.changed) ? "dl_menu_unmark_one" : "nothing_to_unmark"), Toast.LENGTH_SHORT).show();
                         } else if ("dl_menu_copy_link".equals(choiceKey)) {
                             // v6.56: copy this one file's own
                             // original link — shareUrl653 verbatim
@@ -13241,7 +13835,7 @@ public class DownloadedActivity extends Activity {
                         updateTotal();
                         // v14.76 (slice 1734): melt the row this menu
                         // just marked — the field is set only by the
-                        // favourite-toggle and single-file queue
+                        // favourite-toggle, mark-toggle and single-file queue
                         // add/remove branches above, and the helper
                         // consumes it once, so every other verb is a
                         // no-op here. The posted fade runs after the
@@ -13300,6 +13894,15 @@ public class DownloadedActivity extends Activity {
             Fx.cancelPress(v); // v3.90: press squash is an ObjectAnimator now — the cancel above cannot stop it.
             v.setScaleX(1f);
             v.setScaleY(1f);
+            // v15.47 (slice 1950): a rebind landing mid-swipe must
+            // not snap the dragged card home — the swipe owns its
+            // card's translationX until the settle ends, and the
+            // settle clears the swipe fields itself. Every other
+            // row (including a recycled mid-swipe view rebound to
+            // a new file) resets to 0 here, so a stale offset can
+            // never leak onto the next file.
+            android.view.View swipeCard50 = v.findViewById(R.id.cardInner);
+            if (swipeCard50 != null && v != dlSwipeRow50) swipeCard50.setTranslationX(0f);
             // v14.49 (slice 1706): row-alpha hygiene, the Talks chooser v14.47 mirror — the sounding-row fade above runs on the row view itself, so a rebind landing mid-fade (tick percent rebind, return theme-dip swap, user filter/search change) used to cancel the animator and strand the row half-transparent: this getView never touched row alpha (its v3.48 hygiene restores scale only). A rebind now restores alpha 1 with the scale, so a cut-short fade just ends fully visible. The pour (v2.12/v2.57) is a view Animation and the press squash (v2.08/v3.90) is scale-only, so neither reads this property; the listened title dim lives on titleView, untouched; the delete fade is an ObjectAnimator on alpha (a different channel from the ViewPropertyAnimator getView cancels) whose finish already restores 1 before deleting, and a rebind landing inside its 200ms only ever touches a row about to be deleted while the running animator keeps writing its own interpolated alpha each frame, so the fade still ends and the row still deletes.
             v.setAlpha(1f);
             // v4.58: queue-only mapping — a stale queue slot binds
@@ -13334,6 +13937,19 @@ public class DownloadedActivity extends Activity {
                 android.view.View card73 = v.findViewById(R.id.cardInner);
                 // v15.24 (slice 1787): the clear goes through the same helper — crossfadeCardTile is the card's sole writer now, so the recorded target must follow the paint: a bare setBackgroundResource here would leave the map recording gold while the view shows plain, and the next gold bind would no-op and strand the row plain while sounding.
                 if (card73 != null) Fx.crossfadeCardTile(card73, cachedDlNight ? R.drawable.card_bg_night : R.drawable.card_bg);
+                // v15.47 (slice 1950): the swipe offset is row
+                // STATE too — a recycled mid-swipe view rebound
+                // to a stale slot kept its card translated on an
+                // empty row until the next tick prune dropped the
+                // slot. The live swipe row can never be stale
+                // (its entry is on screen), so no guard is needed
+                // here, unlike the normal bind above. Labels
+                // cleared with the rest of the content.
+                if (card73 != null) card73.setTranslationX(0f);
+                android.widget.TextView swL73 = v.findViewById(R.id.dlSwipeLeft);
+                if (swL73 != null) swL73.setText("");
+                android.widget.TextView swR73 = v.findViewById(R.id.dlSwipeRight);
+                if (swR73 != null) swR73.setText("");
                 // v15.36 (slice 1861): the clear goes through the same helper — crossfadeTitleDim is the title's sole writer now, so the recorded target must follow the paint (see the card clear above, v15.24).
                 if (t73 != null) Fx.setTitleDimNow(t73, false);
                 // v13.97 (slice 1092): the hairline is row STATE
@@ -13483,6 +14099,20 @@ public class DownloadedActivity extends Activity {
             if (card != null) Fx.crossfadeCardTile(card, rowPlaying
                     ? R.drawable.dl_row_playing
                     : (night ? R.drawable.card_bg_night : R.drawable.card_bg));
+            // v15.47 (slice 1950): the swipe underlay labels — the
+            // words the gold underlay shows as the card travels:
+            // queue-next on the left (revealed by a right drag),
+            // mark/un-mark on the right (revealed by a left drag,
+            // flipping with the row's own listened state, the same
+            // cache the check renders from). Painted on every bind
+            // so a recycled row can never keep the previous file's
+            // verb; the labels are invisible at rest (the opaque
+            // card covers them) and the swipe gates at touch time
+            // decide whether a drag ever starts.
+            android.widget.TextView swLeft50 = v.findViewById(R.id.dlSwipeLeft);
+            if (swLeft50 != null) swLeft50.setText(Lang.t(DownloadedActivity.this, "menu_play_next_short"));
+            android.widget.TextView swRight50 = v.findViewById(R.id.dlSwipeRight);
+            if (swRight50 != null) swRight50.setText(Lang.t(DownloadedActivity.this, DlSwipe.labelKey(DlSwipe.LEFT, rowListened)));
             int f = cachedDlFont;
             if (title != null) title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, f == 0 ? 14 : (f == 1 ? 16 : 20));
             double mb = e.len / 1048576.0;
