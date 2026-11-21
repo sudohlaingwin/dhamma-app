@@ -10140,6 +10140,39 @@ public class DownloadedActivity extends Activity {
             if (hasQueuedFavShown00) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_unqueue_shown_star")); itemKeys.add("dl_menu_unqueue_shown_star"); }
             if (hasQueuedNewShown00) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_unqueue_shown_new")); itemKeys.add("dl_menu_unqueue_shown_new"); }
         }
+        // v15.50 (slice 1968): un-queue only the shown LISTENED
+        // files — the fourth member of the unqueue family (v6.41
+        // un-queues the whole shown set, v7.00 un-queues the shown
+        // star / shown unlistened subsets, this un-queues the
+        // shown listened subset): a listener who had narrowed the
+        // library and finished a batch of talks could clear just
+        // those finished talks out of the queue only by removing
+        // the whole shown set (which also drops unlistened files
+        // still waiting) or un-queueing row by row. Same gates as
+        // v7.00, applied to the listened subset: offered from ANY
+        // row only while narrowed and never in queue-only view
+        // (the queue-only view already IS the queue, so removing
+        // its shown set is just "တန်းစီအားလုံး ရှင်း"), and only
+        // when at least one shown listened file is actually
+        // queued — the v7.00 gate, so the verb never offers an
+        // empty set. Membership is the rows' own listened cache
+        // AND the live queue through the shared DlUnqueueListened
+        // core (the same core the handler below calls), so the
+        // offer and the handler can never disagree about a file
+        // marked, played or queued since the menu opened.
+        boolean hasUnqueueListenedShown1968 = false;
+        if (!libQueueOnly && ((dlQuery != null && !dlQuery.isEmpty()) || dlFilterMode != 0)) {
+            java.util.List<String> names1968 = new java.util.ArrayList<String>();
+            java.util.List<String> paths1968 = new java.util.ArrayList<String>();
+            for (int i = 0; i < libDisplayCount(); i++) {
+                Entry se1968 = libEntryAtDisplay(i);
+                if (se1968 == null) continue;
+                names1968.add(se1968.file.getName());
+                paths1968.add(se1968.file.getAbsolutePath());
+            }
+            hasUnqueueListenedShown1968 = DlUnqueueListened.hasRemovable(names1968, paths1968, libListenedFiles, soundingLibPath(), queue);
+        }
+        if (hasUnqueueListenedShown1968) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_unqueue_shown_listened")); itemKeys.add("dl_menu_unqueue_shown_listened"); }
         // v6.42: favourite only the shown files — the shown-set
         // favourite verb the library's ⋮ menu still lacked (the
         // Room drawer gained it as v6.15; the library had only
@@ -10766,6 +10799,38 @@ public class DownloadedActivity extends Activity {
             if (hasPlayFav674) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_play_shown_star")); itemKeys.add("dl_menu_play_shown_star"); }
             if (hasPlayNew674) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_play_shown_new")); itemKeys.add("dl_menu_play_shown_new"); }
         }
+        // v15.50 (slice 1967): play only the shown LISTENED files
+        // — the fourth member of the play-shown family (v6.47 plays
+        // the whole shown set, v6.74 plays the shown star / shown
+        // unlistened subsets, this plays the shown listened
+        // subset): a listener who had narrowed the library and
+        // finished a batch of talks could re-hear just those
+        // finished talks only by playing the whole shown set and
+        // skipping the unlistened files, or by queueing the
+        // subset (v15.47, slice 1952) and then tapping its first
+        // row. Same gates as v6.74, applied to the listened
+        // subset: offered from ANY row only while narrowed and
+        // never in queue-only view (a play order, not a picked
+        // set), and only when the subset holds a file other than
+        // the file still playing — the v6.74 gate, so a subset
+        // whose only member is already sounding never offers.
+        // Membership is the rows' own listened cache through the
+        // shared DlPlayListened core (the same core the handler
+        // below calls), so the offer and the handler can never
+        // disagree about a file marked since the menu opened.
+        boolean hasPlayListenedShown1967 = false;
+        if (!libQueueOnly && ((dlQuery != null && !dlQuery.isEmpty()) || dlFilterMode != 0)) {
+            java.util.List<String> names1967 = new java.util.ArrayList<String>();
+            java.util.List<String> paths1967 = new java.util.ArrayList<String>();
+            for (int i = 0; i < libDisplayCount(); i++) {
+                Entry se1967 = libEntryAtDisplay(i);
+                if (se1967 == null) continue;
+                names1967.add(se1967.file.getName());
+                paths1967.add(se1967.file.getAbsolutePath());
+            }
+            hasPlayListenedShown1967 = DlPlayListened.hasPlayable(names1967, paths1967, libListenedFiles, soundingLibPath());
+        }
+        if (hasPlayListenedShown1967) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_play_shown_listened")); itemKeys.add("dl_menu_play_shown_listened"); }
         // v6.77: play the hand queue from its head — the
         // library mirror of the Room drawer's v6.75 and the
         // Talks chooser's v6.76, the queue verb the library's
@@ -11790,6 +11855,22 @@ public class DownloadedActivity extends Activity {
                             }
                             Toast.makeText(DownloadedActivity.this, removed00b > 0
                                     ? Lang.t(DownloadedActivity.this, "queue_remove_shown_new_prefix") + removed00b + Lang.t(DownloadedActivity.this, "removed_suffix")
+                                    : Lang.t(DownloadedActivity.this, "not_in_queue"), Toast.LENGTH_SHORT).show();
+                        } else if ("dl_menu_unqueue_shown_listened".equals(choiceKey)) {
+                            // v15.50 (slice 1968): un-queue only the shown LISTENED files, in display order — the fourth member of the unqueue family (v6.41 un-queues the whole shown set, v7.00 un-queues the shown star / shown unlistened subsets, this un-queues the shown listened subset) and the unqueue twin of the slice-1967 play-listened verb. Same skip rules and shared tail as the v7.00 twins: the playing file is skipped (it never queues) and files not queued are skipped, so the count is newly removed files only; the shared saveLibQueue + updateTotal tail below moves the ◈ marks and the footer at once, and queued files outside the subset stay queued. The subset is the shared DlUnqueueListened core's pick (the same core the offer above calls), so offer and handler can never disagree.
+                            java.util.List<String> names1968 = new java.util.ArrayList<String>();
+                            java.util.List<String> paths1968 = new java.util.ArrayList<String>();
+                            for (int i = 0; i < libDisplayCount(); i++) {
+                                Entry de1968 = libEntryAtDisplay(i);
+                                if (de1968 == null) continue;
+                                names1968.add(de1968.file.getName());
+                                paths1968.add(de1968.file.getAbsolutePath());
+                            }
+                            java.util.List<String> rem1968 = DlUnqueueListened.pick(names1968, paths1968, libListenedFiles, cur, q);
+                            int removed1968 = 0;
+                            for (String u1968 : rem1968) { if (q.remove(u1968)) removed1968++; }
+                            Toast.makeText(DownloadedActivity.this, removed1968 > 0
+                                    ? Lang.t(DownloadedActivity.this, "queue_remove_shown_listened_prefix") + removed1968 + Lang.t(DownloadedActivity.this, "removed_suffix")
                                     : Lang.t(DownloadedActivity.this, "not_in_queue"), Toast.LENGTH_SHORT).show();
                         } else if ("dl_menu_fav_shown".equals(choiceKey)) {
                             // v6.42: star only the shown files, in
@@ -12964,6 +13045,63 @@ public class DownloadedActivity extends Activity {
                                     glideToDlPath(firstPath674);
                                     Toast.makeText(DownloadedActivity.this,
                                             tag674 + " " + Lang.t(DownloadedActivity.this, "dl_play_start_mid") + playable674 + Lang.t(DownloadedActivity.this, "dl_count_close"),
+                                            Toast.LENGTH_SHORT).show();
+                                }
+                            }
+                        } else if ("dl_menu_play_shown_listened".equals(choiceKey)) {
+                            // v15.50 (slice 1967): play only the shown LISTENED files, in display order — the fourth member of the play-shown family (v6.47 plays the whole shown set, v6.74 plays the shown star / shown unlistened subsets, this plays the shown listened subset) and the play twin of the slice-1952 queue-listened verb. v6.74's handler run on the listened subset, in display order: the subset's first file plays with row-tap semantics (saveLastLibrary anchor, saved-spot resume, glide to its row; an unbound service queues through pendingDlPath like a row tap before the bind, so the tap is never dropped); the rest are queued at the HEAD in display order, skipping already-queued paths and the playing file, so the subset plays straight through before any older queue. Same two orderings as v6.47: the first file is dropped from the queue BEFORE play starts, and the shared tail below saves the new queue, so Next / auto-advance see it at once. If the subset's first file is the one already playing, nothing restarts — the rest are simply head-queued behind it, like v6.47's stay-put branch. The queue-ahead trim a row tap does is deliberately NOT applied, the shelf order and files outside the subset are untouched, saved resume positions are untouched, and the play toast counts playable files only (the playing file is in the subset but never counts as a file about to play). The subset is the shared DlPlayListened core's pick (the same core the offer above calls), mapped back to display entries in display order; the tag is the existing dl_tag_shown_listened key, so no new toast key.
+                            String tag1967 = Lang.t(DownloadedActivity.this, "dl_tag_shown_listened");
+                            java.util.List<String> names1967 = new java.util.ArrayList<String>();
+                            java.util.List<String> paths1967 = new java.util.ArrayList<String>();
+                            for (int i = 0; i < libDisplayCount(); i++) {
+                                Entry de1967 = libEntryAtDisplay(i);
+                                if (de1967 == null) continue;
+                                names1967.add(de1967.file.getName());
+                                paths1967.add(de1967.file.getAbsolutePath());
+                            }
+                            java.util.List<String> picked1967 = DlPlayListened.pick(names1967, paths1967, libListenedFiles);
+                            java.util.Set<String> pickedSet1967 = new java.util.HashSet<String>(picked1967);
+                            java.util.ArrayList<Entry> subset1967 = new java.util.ArrayList<Entry>();
+                            for (int i = 0; i < libDisplayCount(); i++) {
+                                Entry de1967 = libEntryAtDisplay(i);
+                                if (de1967 == null) continue;
+                                if (pickedSet1967.contains(de1967.file.getAbsolutePath())) subset1967.add(de1967);
+                            }
+                            if (!subset1967.isEmpty()) {
+                                Entry first1967 = subset1967.get(0);
+                                String firstPath1967 = first1967.file.getAbsolutePath();
+                                boolean firstPlaying1967 = firstPath1967.equals(cur);
+                                int playable1967 = 0;
+                                for (Entry e1967 : subset1967)
+                                    if (!e1967.file.getAbsolutePath().equals(cur)) playable1967++;
+                                java.util.ArrayList<String> rest1967 = new java.util.ArrayList<String>();
+                                for (int k1967 = 1; k1967 < subset1967.size(); k1967++) {
+                                    String u1967 = subset1967.get(k1967).file.getAbsolutePath();
+                                    if (u1967.equals(cur)) continue;
+                                    if (q.contains(u1967)) continue;
+                                    rest1967.add(u1967);
+                                }
+                                q.remove(firstPath1967);
+                                if (!rest1967.isEmpty()) q.addAll(0, rest1967);
+                                if (firstPlaying1967) {
+                                    Toast.makeText(DownloadedActivity.this,
+                                            tag1967 + " " + rest1967.size() + Lang.t(DownloadedActivity.this, "dl_queued_count_suffix"),
+                                            Toast.LENGTH_SHORT).show();
+                                } else if (service == null) {
+                                    pendingDlPath = firstPath1967;
+                                    pendingDlTitle = first1967.title;
+                                    pendingDlRestart = false;
+                                    Toast.makeText(DownloadedActivity.this,
+                                            tag1967 + " " + Lang.t(DownloadedActivity.this, "dl_play_start_mid") + playable1967 + Lang.t(DownloadedActivity.this, "dl_count_close"),
+                                            Toast.LENGTH_SHORT).show();
+                                } else {
+                                    saveLastLibrary(firstPath1967, first1967.title);
+                                    clearLibTrail13(); // v8.13
+                                    service.play(firstPath1967, first1967.title, savedPosForFile(firstPath1967));
+                                    if (adapter != null) adapter.notifyDataSetChanged();
+                                    glideToDlPath(firstPath1967);
+                                    Toast.makeText(DownloadedActivity.this,
+                                            tag1967 + " " + Lang.t(DownloadedActivity.this, "dl_play_start_mid") + playable1967 + Lang.t(DownloadedActivity.this, "dl_count_close"),
                                             Toast.LENGTH_SHORT).show();
                                 }
                             }

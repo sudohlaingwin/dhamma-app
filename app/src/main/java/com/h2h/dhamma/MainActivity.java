@@ -141,6 +141,25 @@ public class MainActivity extends Activity {
     private android.widget.LinearLayout bmRail;
     private android.widget.TextView bmRailLabel;
     private String lastBmRailKey = null;
+    // v15.50 (slice 1964): favourite-talks rail views + the key
+    // of the last built rail (picked identity URLs + saved spots
+    // in order + night flag) — steady passes return early below,
+    // only a real change rebuilds the cards. Reuses lastRailTapMs
+    // (the 700ms double-tap guard) and openRecentTalk1930 (the
+    // 1930 tap).
+    private android.widget.LinearLayout favTalkRailWrap;
+    private android.widget.LinearLayout favTalkRail;
+    private android.widget.TextView favTalkRailLabel;
+    private String lastFavTalkRailKey = null;
+    // v15.50 (slice 1966): new-talks rail views + the key of the
+    // last built rail (picked identity URLs in order + night flag)
+    // — steady passes return early below, only a real change
+    // rebuilds the cards. Reuses lastRailTapMs (the 700ms
+    // double-tap guard) and openRecentTalk1930 (the 1930 tap).
+    private android.widget.LinearLayout newTalkRailWrap;
+    private android.widget.LinearLayout newTalkRail;
+    private android.widget.TextView newTalkRailLabel;
+    private String lastNewTalkRailKey = null;
     // v15.44 (slice 1937): recent-searches row views + the key
     // of the last built row (joined queries + night flag) —
     // steady ticks return early below, only a real change
@@ -158,6 +177,15 @@ public class MainActivity extends Activity {
     private android.widget.TextView favNewRowCount;
     private String favNewPickKey = "";
     private String favNewCountWord = null;
+    // v15.50 (slice 1965): "Shuffle play" row — one tap plays a
+    // shuffled set from a randomly-picked sayadaw (ShufflePick).
+    // lastShuffleMs is the row's own 700ms double-tap guard;
+    // shuffleLoading blocks a second tap while a page fetch is
+    // in flight (the cache hit is instant; only an uncached
+    // page fetches, on a background thread).
+    private android.widget.LinearLayout shuffleRow;
+    private long lastShuffleMs = 0;
+    private boolean shuffleLoading = false;
     private long lastFavNewMs = 0;
     // v14.50 (slice 1707): sounding-only shelf trackers — the ordered
     // favourite names + night flag + sounding name of the last built
@@ -719,7 +747,10 @@ public class MainActivity extends Activity {
         refreshRecentRail(); // v15.43 (slice 1930): rail follows the shelf funnel
         refreshDlRecentRail(); // v15.49 (slice 1960): downloaded rail follows the shelf funnel
         refreshBmRail(); // v15.49 (slice 1962): bookmarks rail follows the shelf funnel
+        refreshFavTalkRail(); // v15.50 (slice 1964): favourite-talks rail follows the shelf funnel
+        refreshNewTalkRail(); // v15.50 (slice 1966): new-talks rail follows the shelf funnel
         refreshFavNewRow(); // v15.44 (slice 1934): fav-new row follows the shelf funnel
+        refreshShuffleRow(); // v15.50 (slice 1965): shuffle row follows the shelf funnel
     }
 
     @Override
@@ -2274,7 +2305,10 @@ public class MainActivity extends Activity {
                         refreshRecentRail(); // v15.43 (slice 1930): sounding flip moves the rail too
                         refreshDlRecentRail(); // v15.49 (slice 1960): sounding flip moves the downloaded rail too
                         refreshBmRail(); // v15.49 (slice 1962): sounding flip moves the bookmarks rail too
+                        refreshFavTalkRail(); // v15.50 (slice 1964): sounding flip moves the favourite-talks rail too
+                        refreshNewTalkRail(); // v15.50 (slice 1966): sounding flip moves the new-talks rail too
                         refreshFavNewRow(); // v15.44 (slice 1934): sounding flip moves the fav-new row too
+                        refreshShuffleRow(); // v15.50 (slice 1965): sounding flip moves the shuffle row too
                     }
                     // v15.36 (slice 1851): the shelf chip ring breath's
                     // second driver — refreshFavShelf's change gate
@@ -3070,8 +3104,15 @@ public class MainActivity extends Activity {
         bmRailWrap = findViewById(R.id.bmRailWrap);
         bmRail = findViewById(R.id.bmRail);
         bmRailLabel = findViewById(R.id.bmRailLabel);
+        favTalkRailWrap = findViewById(R.id.favTalkRailWrap);
+        favTalkRail = findViewById(R.id.favTalkRail);
+        favTalkRailLabel = findViewById(R.id.favTalkRailLabel);
+        newTalkRailWrap = findViewById(R.id.newTalkRailWrap);
+        newTalkRail = findViewById(R.id.newTalkRail);
+        newTalkRailLabel = findViewById(R.id.newTalkRailLabel);
         favNewRow = findViewById(R.id.favNewRow);
         favNewRowCount = findViewById(R.id.favNewRowCount);
+        shuffleRow = findViewById(R.id.shuffleRow);
         recentSearchWrap = findViewById(R.id.recentSearchWrap);
         recentSearchRow = findViewById(R.id.recentSearchRow);
         // v15.44 (slice 1934): wire the fav-new row — one tap
@@ -3084,6 +3125,18 @@ public class MainActivity extends Activity {
             @Override public void onClick(android.view.View v) {
                 Fx.tap(MainActivity.this);
                 playFavNewShown(v);
+            }
+        });
+        // v15.50 (slice 1965): wire the shuffle row — one tap
+        // plays a shuffled set from a random sayadaw
+        // (playShuffleShown; the pick is re-rolled fresh at tap
+        // time, a fetch failure refuses with the open_failed
+        // toast and never consumes the 700ms guard). A missing
+        // id simply never wires.
+        if (shuffleRow != null) shuffleRow.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                Fx.tap(MainActivity.this);
+                playShuffleShown(v);
             }
         });
         noResultsText = findViewById(R.id.noResultsText);
@@ -3159,7 +3212,10 @@ public class MainActivity extends Activity {
                 refreshRecentRail(); // v15.43 (slice 1930): rail follows the shelf funnel
                 refreshDlRecentRail(); // v15.49 (slice 1960): downloaded rail follows the shelf funnel
                 refreshBmRail(); // v15.49 (slice 1962): bookmarks rail follows the shelf funnel
+                refreshFavTalkRail(); // v15.50 (slice 1964): favourite-talks rail follows the shelf funnel
+                refreshNewTalkRail(); // v15.50 (slice 1966): new-talks rail follows the shelf funnel
                 refreshFavNewRow(); // v15.44 (slice 1934): fav-new row follows the shelf funnel
+                refreshShuffleRow(); // v15.50 (slice 1965): shuffle row follows the shelf funnel
                 return true;
             }
         });
@@ -5404,6 +5460,354 @@ public class MainActivity extends Activity {
         openRecentTalk1930(s, c.e, v);
     }
 
+    // v15.50 (slice 1964): "Favourite talks" rail — the listener's
+    // starred talks as tappable cards below the bookmarks rail
+    // (1962), one tap back into the Room at the saved spot. The pick
+    // is FavTalkRail's (favTalks joined to statsRecent for title +
+    // sayadaw, in most-recently-played order, catalog sayadaw for
+    // the photo, not the sounding talk; a starred talk with no play
+    // record has no card, never a title-less card); the cards are
+    // the 1930 card shape with the saved spot first ("↺ 12:34 ·
+    // title", bare title when never started), the tap is
+    // openFavTalk1964, which opens the Room through
+    // openRecentTalk1930 with no resume-spot write — the Room
+    // resumes from the saved spot (v1.56 re-entry), so the tap
+    // lands where the listener left off. Rides the shelf funnel
+    // beside refreshRecentRail / refreshDlRecentRail /
+    // refreshBmRail (a star is added in the Talks row menus, the
+    // Downloaded row menus and the Room drawer row menus, never on
+    // Main, so the return-to-Main refresh is the update path; no
+    // download-receiver call — downloads never change stars);
+    // hides while searching/filtering and while no star resolves.
+    private void refreshFavTalkRail() {
+        if (favTalkRailWrap == null || favTalkRail == null) return;
+        boolean show = query != null && query.length() == 0 && !favOnly && !newOnly && all != null;
+        java.util.List<FavTalkRail.Card> picked =
+                new java.util.ArrayList<FavTalkRail.Card>();
+        if (show) {
+            java.util.Set<String> names = new java.util.HashSet<String>();
+            for (Sayadaw s : all) if (s != null && s.name != null) names.add(s.name);
+            String sounding = (AudioService.liveSession && AudioService.liveHasTrack)
+                    ? AudioService.liveUrl : null;
+            picked = FavTalkRail.pick(readFavTalks1964(), Prefs.statsRecent(this), names, sounding, readTalkPos1964());
+        }
+        StringBuilder kb = new StringBuilder();
+        kb.append(cachedNight ? "N" : "D");
+        for (FavTalkRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(c.posMs);
+        String key = kb.toString();
+        if (picked.isEmpty()) {
+            if (favTalkRailWrap.getVisibility() != android.view.View.GONE)
+                Fx.fadeOut(favTalkRailWrap, 200);
+            lastFavTalkRailKey = null;
+            return;
+        }
+        if (key.equals(lastFavTalkRailKey)
+                && favTalkRailWrap.getVisibility() == android.view.View.VISIBLE) return;
+        favTalkRail.removeAllViews();
+        float d = getResources().getDisplayMetrics().density;
+        int added = 0;
+        for (final FavTalkRail.Card c : picked) {
+            final Sayadaw s = sayadawByName1930(c.e.sayadaw);
+            if (s == null) continue;
+            android.widget.LinearLayout card = new android.widget.LinearLayout(this);
+            card.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+            card.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            card.setBackgroundResource(R.drawable.nav_glass);
+            int pad = (int) (10 * d);
+            card.setPadding(pad, (int) (8 * d), pad, (int) (8 * d));
+            android.widget.LinearLayout.LayoutParams cp =
+                    new android.widget.LinearLayout.LayoutParams((int) (220 * d),
+                            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+            cp.setMargins(0, 0, (int) (8 * d), 0);
+            card.setLayoutParams(cp);
+            CircleImageView photo = new CircleImageView(this);
+            int px = (int) (44 * d);
+            android.widget.LinearLayout.LayoutParams pp =
+                    new android.widget.LinearLayout.LayoutParams(px, px);
+            pp.setMargins(0, 0, (int) (8 * d), 0);
+            photo.setLayoutParams(pp);
+            photo.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+            ImageLoader.load(this, s.photo, s.name, photo);
+            card.addView(photo);
+            android.widget.LinearLayout col = new android.widget.LinearLayout(this);
+            col.setOrientation(android.widget.LinearLayout.VERTICAL);
+            col.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            android.widget.TextView name = new android.widget.TextView(this);
+            name.setText(s.name);
+            name.setTextColor(cachedNight ? android.graphics.Color.WHITE
+                    : android.graphics.Color.parseColor("#3B2314"));
+            name.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13);
+            name.setTypeface(null, android.graphics.Typeface.BOLD);
+            name.setMaxLines(1);
+            name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            col.addView(name);
+            android.widget.TextView title = new android.widget.TextView(this);
+            title.setText(c.posMs > 0 ? "\u21BA " + FavTalkRail.fmtTime(c.posMs) + " · " + c.e.title : c.e.title);
+            title.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
+            title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
+            title.setMaxLines(1);
+            title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            col.addView(title);
+            card.addView(col);
+            Fx.press(card);
+            card.setOnClickListener(new android.view.View.OnClickListener() {
+                @Override public void onClick(android.view.View v) {
+                    openFavTalk1964(s, c, v);
+                }
+            });
+            favTalkRail.addView(card);
+            added++;
+        }
+        if (added == 0) {
+            if (favTalkRailWrap.getVisibility() != android.view.View.GONE)
+                Fx.fadeOut(favTalkRailWrap, 200);
+            lastFavTalkRailKey = null;
+            return;
+        }
+        lastFavTalkRailKey = key;
+        if (favTalkRailLabel != null)
+            favTalkRailLabel.setText(Lang.t(MainActivity.this, "hs_fav_talks"));
+        if (favTalkRailWrap.getVisibility() != android.view.View.VISIBLE) {
+            favTalkRailWrap.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(favTalkRailWrap, 250);
+        } else if (favTalkRailWrap.getAlpha() < 0.999f) {
+            Fx.fadeIn(favTalkRailWrap, 250);
+        }
+    }
+
+    // v15.50 (slice 1964): the raw favTalks set for the rail —
+    // canonical https URLs, unordered; all matching lives in
+    // FavTalkRail.pick. Copied before use (the Prefs.java:386
+    // rule: a getStringSet result must never be mutated in
+    // place). Fail closed to an empty set — a torn write is an
+    // empty rail for one pass, never a crash.
+    private java.util.Set<String> readFavTalks1964() {
+        java.util.Set<String> out = new java.util.HashSet<String>();
+        try {
+            java.util.Set<String> raw = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favTalks", null);
+            if (raw != null) out.addAll(raw);
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    // v15.50 (slice 1964): the saved-spot map for the rail — one
+    // parse of the raw talkPosMap string (the v5.69 lesson: never
+    // call talkPosGet per talk, that re-splits the whole map on
+    // every lookup), keyed by identity URL so http/https twins
+    // collapse to one spot; the first line per identity wins (the
+    // talkPosGet first-match rule). Fail closed to an empty map.
+    private java.util.Map<String, Integer> readTalkPos1964() {
+        java.util.Map<String, Integer> out = new java.util.HashMap<String, Integer>();
+        try {
+            String raw = getSharedPreferences("dhamma", MODE_PRIVATE).getString("talkPosMap", "");
+            if (raw != null && raw.length() > 0) {
+                for (String line : raw.split("\\n")) {
+                    int t = line.indexOf('\t');
+                    if (t <= 0) continue;
+                    String id = SiteHttp.identityUrl(line.substring(0, t));
+                    if (id == null || out.containsKey(id)) continue;
+                    try {
+                        int pos = Integer.parseInt(line.substring(t + 1));
+                        if (pos > 0) out.put(id, Integer.valueOf(pos));
+                    } catch (Exception ignored) {}
+                }
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    // v15.50 (slice 1964): favourite-talks-rail tap — the Room
+    // opens through openRecentTalk1930, which resumes from the
+    // saved spot (v1.56 re-entry), so the tap lands where the
+    // listener left off. NO resume-spot write (unlike the 1962
+    // mark write — a star is not a spot). The 700ms guard is
+    // peeked, not set, so a guard-blocked double-tap consumes
+    // nothing (the 1930 rule).
+    private void openFavTalk1964(final Sayadaw s, final FavTalkRail.Card c,
+            android.view.View v) {
+        if (s == null || c == null || c.e == null) return;
+        long now = android.os.SystemClock.uptimeMillis();
+        if (now - lastRailTapMs < 700) return;
+        openRecentTalk1930(s, c.e, v);
+    }
+
+    // v15.50 (slice 1966): "New talks" rail — the talks that arrived
+    // since the last visit, as tappable cards below the
+    // favourite-talks rail (1964), one tap straight into the Room
+    // at the start. The pick is NewTalkRail's (each dotted sayadaw's
+    // cached list in page order, joined to its new-set — the 1920
+    // diff — gated by the 1921 rule: not finished, not started, not
+    // sounding; catalogue order across sayadaws, page order within
+    // one sayadaw, capped at five; a new talk with no cached title
+    // has no card, never a title-less card). The cards are the 1930
+    // card shape with the talk title second (no saved spot — the
+    // gate only ever picks talks nobody started), the tap is
+    // openNewTalk1966, which opens the Room through
+    // openRecentTalk1930 with no resume-spot write. Rides the shelf
+    // funnel beside refreshRecentRail / refreshDlRecentRail /
+    // refreshBmRail / refreshFavTalkRail (a Talks visit is what
+    // stores a new-set, so the return-to-Main refresh is the update
+    // path; no download-receiver call — downloads never change
+    // new-sets); hides while searching/filtering and while no new
+    // talk waits.
+    private void refreshNewTalkRail() {
+        if (newTalkRailWrap == null || newTalkRail == null) return;
+        boolean show = query != null && query.length() == 0 && !favOnly && !newOnly && all != null;
+        java.util.List<NewTalkRail.Card> picked =
+                new java.util.ArrayList<NewTalkRail.Card>();
+        if (show) {
+            java.util.Set<String> played = readPlayedTalks1966();
+            java.util.Set<String> resumeKeys = new java.util.HashSet<String>();
+            try { resumeKeys = Prefs.talkPosKeysOver(this, 5000); } catch (Exception ignored) {}
+            String sounding = (AudioService.liveSession && AudioService.liveHasTrack)
+                    ? AudioService.liveUrl : null;
+            picked = NewTalkRail.pick(collectNewTalkEntries1966(played, resumeKeys),
+                    played, resumeKeys, sounding);
+        }
+        StringBuilder kb = new StringBuilder();
+        kb.append(cachedNight ? "N" : "D");
+        for (NewTalkRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url));
+        String key = kb.toString();
+        if (picked.isEmpty()) {
+            if (newTalkRailWrap.getVisibility() != android.view.View.GONE)
+                Fx.fadeOut(newTalkRailWrap, 200);
+            lastNewTalkRailKey = null;
+            return;
+        }
+        if (key.equals(lastNewTalkRailKey)
+                && newTalkRailWrap.getVisibility() == android.view.View.VISIBLE) return;
+        newTalkRail.removeAllViews();
+        float d = getResources().getDisplayMetrics().density;
+        int added = 0;
+        for (final NewTalkRail.Card c : picked) {
+            final Sayadaw s = sayadawByName1930(c.e.sayadaw);
+            if (s == null) continue;
+            android.widget.LinearLayout card = new android.widget.LinearLayout(this);
+            card.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+            card.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            card.setBackgroundResource(R.drawable.nav_glass);
+            int pad = (int) (10 * d);
+            card.setPadding(pad, (int) (8 * d), pad, (int) (8 * d));
+            android.widget.LinearLayout.LayoutParams cp =
+                    new android.widget.LinearLayout.LayoutParams((int) (220 * d),
+                            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+            cp.setMargins(0, 0, (int) (8 * d), 0);
+            card.setLayoutParams(cp);
+            CircleImageView photo = new CircleImageView(this);
+            int px = (int) (44 * d);
+            android.widget.LinearLayout.LayoutParams pp =
+                    new android.widget.LinearLayout.LayoutParams(px, px);
+            pp.setMargins(0, 0, (int) (8 * d), 0);
+            photo.setLayoutParams(pp);
+            photo.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+            ImageLoader.load(this, s.photo, s.name, photo);
+            card.addView(photo);
+            android.widget.LinearLayout col = new android.widget.LinearLayout(this);
+            col.setOrientation(android.widget.LinearLayout.VERTICAL);
+            col.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            android.widget.TextView name = new android.widget.TextView(this);
+            name.setText(s.name);
+            name.setTextColor(cachedNight ? android.graphics.Color.WHITE
+                    : android.graphics.Color.parseColor("#3B2314"));
+            name.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13);
+            name.setTypeface(null, android.graphics.Typeface.BOLD);
+            name.setMaxLines(1);
+            name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            col.addView(name);
+            android.widget.TextView title = new android.widget.TextView(this);
+            title.setText(c.e.title);
+            title.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
+            title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
+            title.setMaxLines(1);
+            title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            col.addView(title);
+            card.addView(col);
+            Fx.press(card);
+            card.setOnClickListener(new android.view.View.OnClickListener() {
+                @Override public void onClick(android.view.View v) {
+                    openNewTalk1966(s, c, v);
+                }
+            });
+            newTalkRail.addView(card);
+            added++;
+        }
+        if (added == 0) {
+            if (newTalkRailWrap.getVisibility() != android.view.View.GONE)
+                Fx.fadeOut(newTalkRailWrap, 200);
+            lastNewTalkRailKey = null;
+            return;
+        }
+        lastNewTalkRailKey = key;
+        if (newTalkRailLabel != null)
+            newTalkRailLabel.setText("● " + Lang.t(MainActivity.this, "hs_new_talks"));
+        if (newTalkRailWrap.getVisibility() != android.view.View.VISIBLE) {
+            newTalkRailWrap.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(newTalkRailWrap, 250);
+        } else if (newTalkRailWrap.getAlpha() < 0.999f) {
+            Fx.fadeIn(newTalkRailWrap, 250);
+        }
+    }
+
+    // v15.50 (slice 1966): the raw playedTalks set for the rail —
+    // canonical identity URLs. Copied before use (the Prefs.java:386
+    // rule: a getStringSet result must never be mutated in place).
+    // Fail closed to an empty set — a torn write is an empty rail
+    // for one pass, never a crash.
+    private java.util.Set<String> readPlayedTalks1966() {
+        java.util.Set<String> out = new java.util.HashSet<String>();
+        try {
+            java.util.Set<String> raw = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("playedTalks", null);
+            if (raw != null) out.addAll(raw);
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    // v15.50 (slice 1966): the new-talk entries for the rail — one
+    // pass over the catalogue in order. The 1921 gate at sayadaw
+    // level (loadNewSet + hasUnseenNew over the played set + resume
+    // keys) decides which sayadaws pay a cache-file read, so
+    // undotted sayadaws cost one prefs read and nothing else; a
+    // dotted sayadaw contributes its cached [title, url] pairs in
+    // page order. A failed loadNewSet reads as "no new talks" (the
+    // 1920 rule: failed loads keep the old set); a missing cache
+    // file drops the sayadaw — a new talk with no cached title has
+    // no card, never a title-less card (the 1962 aged-out edge).
+    private java.util.List<NewTalkRail.Entry> collectNewTalkEntries1966(
+            java.util.Set<String> played, java.util.Set<String> resumeKeys) {
+        java.util.List<NewTalkRail.Entry> out =
+                new java.util.ArrayList<NewTalkRail.Entry>();
+        if (all == null) return out;
+        try {
+            for (Sayadaw s : all) {
+                if (s == null || s.url == null || s.url.length() == 0) continue;
+                if (s.name == null || s.name.length() == 0) continue;
+                java.util.Set<String> news = TalkListCache.loadNewSet(this, s.url);
+                if (!TalkListCache.hasUnseenNew(news, played, resumeKeys)) continue;
+                java.util.List<String[]> cached = TalkListCache.load(this, s.url);
+                if (cached == null || cached.isEmpty()) continue;
+                out.add(new NewTalkRail.Entry(s.name, news, cached));
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    // v15.50 (slice 1966): new-talks-rail tap — the Room opens
+    // through openRecentTalk1930 on the card's fresh HistEntry (url
+    // + sayadaw + title, spot 0: the gate only ever picks talks
+    // nobody started). NO resume-spot write — the Room writes the
+    // spot as the talk plays (v1.56 re-entry). The 700ms guard is
+    // peeked, not set, so a guard-blocked double-tap consumes
+    // nothing (the 1930 rule).
+    private void openNewTalk1966(final Sayadaw s, final NewTalkRail.Card c,
+            android.view.View v) {
+        if (s == null || c == null || c.e == null) return;
+        long now = android.os.SystemClock.uptimeMillis();
+        if (now - lastRailTapMs < 700) return;
+        openRecentTalk1930(s, c.e, v);
+    }
+
     // v15.49 (slice 1960): the Downloads/Dhamma shelf scan for the
     // downloaded rail — the library's own file set. The in-progress
     // exclusion is the dlQueued gate in DlRecentRail.pick, not a
@@ -5627,6 +6031,195 @@ public class MainActivity extends Activity {
             if (parts.length == 3 && parts[1] != null && parts[1].length() > 0) return parts[1];
         } catch (Exception ignored) {}
         return "";
+    }
+
+    // v15.50 (slice 1965): "Shuffle play" row — visible while
+    // the catalogue is loaded and nothing narrows it (the same
+    // show gate as the rails: empty query, no favOnly/newOnly),
+    // so the row never competes with a search or a filtered grid.
+    // The label is the shipped "shuffle" key's own Burmese,
+    // written into the layout by the patch (never hand-typed).
+    // No count: the pick is re-rolled on every tap, so no number
+    // shown could stay true. Rides the shelf funnel beside
+    // refreshFavNewRow.
+    private void refreshShuffleRow() {
+        if (shuffleRow == null) return;
+        boolean show = query != null && query.length() == 0 && !favOnly && !newOnly && all != null && !all.isEmpty();
+        if (!show) {
+            if (shuffleRow.getVisibility() == android.view.View.VISIBLE) Fx.fadeOut(shuffleRow, 200);
+            return;
+        }
+        if (shuffleRow.getVisibility() != android.view.View.VISIBLE) {
+            shuffleRow.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(shuffleRow, 250);
+        } else if (shuffleRow.getAlpha() < 0.999f) {
+            Fx.fadeIn(shuffleRow, 250);
+        }
+    }
+
+    // v15.50 (slice 1965): play a shuffled set from a
+    // randomly-picked sayadaw — the Play All shape (v13.76)
+    // with a random anchor: same 700ms debounce on its own
+    // clock (an invalid tap never consumes the window, v12.28
+    // rule), same count toast, same Room open on the first
+    // shuffled talk. The anchor is re-rolled fresh here, so
+    // the tap never trusts a stale refresh; the page comes
+    // from TalkListCache, and only an uncached page fetches
+    // (SiteHttp + TalksActivity.parseTalkList, the
+    // AutoDownloadJob shape) on a background thread — the
+    // fetch failure refuses with the open_failed toast. The
+    // queue is REBUILT like 1934: the shuffled talks head it
+    // in order (the first as a bare v1 line under the anchor
+    // sayadaw's key, the rest as v2 foreign lines), and the
+    // anchor's existing foreign lines are carried after them
+    // (deduped by identity, never the sounding talk, never a
+    // line naming the anchor itself).
+    private void playShuffleShown(final android.view.View v) {
+        if (shuffleLoading) return;
+        long now65 = android.os.SystemClock.uptimeMillis();
+        if (now65 - lastShuffleMs < 700) return;
+        final java.util.List<String[]> entries65 = new java.util.ArrayList<String[]>();
+        if (all != null) {
+            for (Sayadaw s : all) {
+                if (s == null) continue;
+                entries65.add(new String[]{s.name == null ? "" : s.name, s.url == null ? "" : s.url});
+            }
+        }
+        final String[] anchor65 = ShufflePick.pickSayadaw(entries65, new java.util.Random());
+        if (anchor65 == null) {
+            android.widget.Toast.makeText(MainActivity.this,
+                    Lang.t(MainActivity.this, "no_search_match"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        lastShuffleMs = now65;
+        shuffleLoading = true;
+        final Sayadaw anchorSayadaw65 = sayadawByName1930(anchor65[0]);
+        if (anchorSayadaw65 == null) {
+            shuffleLoading = false;
+            android.widget.Toast.makeText(MainActivity.this,
+                    Lang.t(MainActivity.this, "no_search_match"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        new Thread(new Runnable() {
+            @Override public void run() {
+                java.util.List<String[]> pairs65 = TalkListCache.load(MainActivity.this, anchor65[1]);
+                if (pairs65 == null || pairs65.isEmpty()) {
+                    try {
+                        byte[] bytes65 = SiteHttp.fetchBytes(anchor65[1], 20000, 30000);
+                        if (bytes65 != null && bytes65.length > 0) {
+                            String html65 = new String(bytes65, "UTF-8");
+                            java.util.List<TalksActivity.Talk> talks65 = TalksActivity.parseTalkList(anchor65[1], html65);
+                            if (talks65 != null && !talks65.isEmpty()) {
+                                pairs65 = new java.util.ArrayList<String[]>();
+                                for (TalksActivity.Talk t65 : talks65) {
+                                    if (t65 == null || t65.url == null || t65.url.length() == 0) continue;
+                                    pairs65.add(new String[]{t65.title == null ? "" : t65.title, t65.url});
+                                }
+                                TalkListCache.save(MainActivity.this, anchor65[1], pairs65);
+                            }
+                        }
+                    } catch (Exception ignored) { }
+                }
+                final java.util.List<String[]> fetched65 = pairs65;
+                runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        finishShuffleShown(v, anchorSayadaw65, fetched65);
+                    }
+                });
+            }
+        }).start();
+    }
+
+    // v15.50 (slice 1965): the shuffle tap's UI-thread finish
+    // — the shuffled order is resolved here (never the sounding
+    // talk), the queue is rebuilt under the anchor (the 1934
+    // merge, same shape), the count toasts, the row morphs and
+    // the Room opens on the first shuffled talk. A fetch that
+    // landed nothing refuses with the open_failed toast. Always
+    // clears shuffleLoading, so a failed tap never wedges the
+    // row.
+    private void finishShuffleShown(android.view.View v, Sayadaw anchor, java.util.List<String[]> pairs) {
+        shuffleLoading = false;
+        if (anchor == null) return;
+        String sounding65 = (AudioService.liveSession && AudioService.liveHasTrack)
+                ? AudioService.liveUrl : null;
+        String soundingLib65 = soundingLibUrl1934();
+        java.util.List<String[]> order65 = ShufflePick.shuffleOrder(pairs, new java.util.Random(), sounding65, soundingLib65);
+        if (order65.isEmpty()) {
+            android.widget.Toast.makeText(MainActivity.this,
+                    Lang.t(MainActivity.this, "open_failed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        java.util.ArrayList<String> lines65 = new java.util.ArrayList<String>();
+        java.util.Set<String> seen65 = new java.util.HashSet<String>();
+        for (int i65 = 0; i65 < order65.size(); i65++) {
+            String[] p65 = order65.get(i65);
+            if (p65 == null || p65.length < 2 || p65[1] == null || p65[1].length() == 0) continue;
+            String id65 = SiteHttp.identityUrl(p65[1]);
+            if (id65 != null) {
+                if (seen65.contains(id65)) continue;
+                seen65.add(id65);
+            }
+            lines65.add(QueueEntry.format(new QueueEntry(p65[1],
+                    i65 == 0 ? "" : anchor.name, p65[0] == null ? "" : p65[0])));
+        }
+        if (lines65.isEmpty()) {
+            android.widget.Toast.makeText(MainActivity.this,
+                    Lang.t(MainActivity.this, "open_failed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            String saved65 = Prefs.savedQueue(this, anchor.name);
+            if (saved65 != null && saved65.length() > 0) {
+                for (String line65 : saved65.split("\\n")) {
+                    QueueEntry e65 = QueueEntry.parse(line65);
+                    if (e65 == null || e65.url == null || e65.url.length() == 0) continue;
+                    if (!e65.isV2()) continue;
+                    if (e65.sayadaw == null || e65.sayadaw.length() == 0
+                            || e65.sayadaw.equals(anchor.name)) continue;
+                    String id65 = SiteHttp.identityUrl(e65.url);
+                    if (id65 != null && seen65.contains(id65)) continue;
+                    if (sounding65 != null && sounding65.length() > 0
+                            && SiteHttp.sameTalk(e65.url, sounding65)) continue;
+                    if (soundingLib65 != null && soundingLib65.length() > 0
+                            && SiteHttp.sameTalk(e65.url, soundingLib65)) continue;
+                    if (id65 != null) seen65.add(id65);
+                    lines65.add(line65);
+                }
+            }
+        } catch (Exception ignored) {}
+        Prefs.saveQueue(this, anchor.name, lines65);
+        android.widget.Toast.makeText(MainActivity.this,
+                Lang.t(MainActivity.this, "queue_plain_prefix") + order65.size()
+                        + Lang.t(MainActivity.this, "queue_added_suffix"),
+                android.widget.Toast.LENGTH_SHORT).show();
+        Fx.morph(v);
+        openShuffle1965(anchor, order65.get(0)[1], order65.get(0)[0]);
+    }
+
+    // v15.50 (slice 1965): shuffle tap — the Talks row-tap
+    // Room Intent (name/group/url/photo/autoUrl/autoTitle)
+    // with plain Fx.go (the 1823 row-tap precedent, the 1934
+    // open shape); the Room resumes from the saved spot, and
+    // the rebuilt queue (see finishShuffleShown) is already
+    // saved under the anchor's key, so auto-advance walks the
+    // shuffled set. The tap method owns the morph and the 700ms
+    // guard, so this opens with Fx.go only — no second morph,
+    // no second guard.
+    private void openShuffle1965(final Sayadaw s, final String url, final String title) {
+        if (s == null || url == null || url.length() == 0) return;
+        Intent i = new Intent(MainActivity.this, RoomActivity.class);
+        i.putExtra("name", s.name);
+        i.putExtra("group", s.group);
+        i.putExtra("url", s.url);
+        i.putExtra("photo", s.photo == null ? "" : s.photo);
+        i.putExtra("autoUrl", url);
+        i.putExtra("autoTitle", title == null ? "" : title);
+        Fx.go(MainActivity.this, i);
     }
 
     // v15.44 (slice 1934): play the picked fav-new talks —
@@ -6122,7 +6715,10 @@ public class MainActivity extends Activity {
         refreshRecentRail(); // v15.43 (slice 1930): rail follows the shelf funnel
         refreshDlRecentRail(); // v15.49 (slice 1960): downloaded rail follows the shelf funnel
         refreshBmRail(); // v15.49 (slice 1962): bookmarks rail follows the shelf funnel
+        refreshFavTalkRail(); // v15.50 (slice 1964): favourite-talks rail follows the shelf funnel
+        refreshNewTalkRail(); // v15.50 (slice 1966): new-talks rail follows the shelf funnel
         refreshFavNewRow(); // v15.44 (slice 1934): fav-new row follows the shelf funnel
+        refreshShuffleRow(); // v15.50 (slice 1965): shuffle row follows the shelf funnel
         if (allowToast && setChanged && gridView != null && gridView.getFirstVisiblePosition() > 0)
             gridView.setSelection(0);
         // v2.02: a search matching no sayadaw used to leave a

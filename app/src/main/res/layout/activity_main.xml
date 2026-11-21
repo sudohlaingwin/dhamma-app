@@ -214,6 +214,33 @@
             android:textColor="@color/ink"
             android:textSize="15sp" />
     </LinearLayout>
+    <!-- v15.50 (slice 1965): shuffle-play row — one tap plays a
+         shuffled set from a randomly-picked sayadaw (ShufflePick).
+         Same nav_glass shape as the fav-new row above; the label
+         is the shipped "shuffle" key's own Burmese, written by
+         the patch (never hand-typed); no count — the pick is
+         re-rolled on every tap. GONE until the catalogue loads;
+         hidden while a search or filter narrows the grid, like
+         the rail. -->
+    <LinearLayout
+        android:id="@+id/shuffleRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/nav_glass"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:visibility="gone">
+        <TextView
+            android:id="@+id/shuffleRowLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🔀 ကျပန်း ဖွင့်ခြင်း"
+            android:textColor="@color/gold"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+    </LinearLayout>
     <!-- v15.43 (slice 1930): recently-played rail — the Spotify
          "Jump back in" / YouTube Music "Listen again" rail: the
          last few talks the listener actually played, as tappable
@@ -308,6 +335,73 @@
             android:scrollbars="none">
             <LinearLayout
                 android:id="@+id/bmRail"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
+    </LinearLayout>
+    <!-- v15.50 (slice 1964): favourite-talks rail — the listener's
+         starred talks as tappable cards below the bookmarks rail
+         (one tap back into the Room at the saved spot). Same shape
+         as the three rails above; the label is set from code (Lang
+         hs_fav_talks, so it follows the UI language); the rail
+         hides while searching/filtering and while no star
+         resolves. -->
+    <LinearLayout
+        android:id="@+id/favTalkRailWrap"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+        <TextView
+            android:id="@+id/favTalkRailLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/gold"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:scrollbars="none">
+            <LinearLayout
+                android:id="@+id/favTalkRail"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
+    </LinearLayout>
+    <!-- v15.50 (slice 1966): new-talks rail — the talks that arrived
+         since the last visit, as tappable cards below the
+         favourite-talks rail (one tap straight into the Room at the
+         start). Same shape as the four rails above; the label is set
+         from code ("● " + Lang hs_new_talks, so it follows the UI
+         language — the ● is painted in code because it appears in
+         zero Lang columns); the rail hides while searching/filtering
+         and while no new talk waits. -->
+    <LinearLayout
+        android:id="@+id/newTalkRailWrap"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+        <TextView
+            android:id="@+id/newTalkRailLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/gold"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:scrollbars="none">
+            <LinearLayout
+                android:id="@+id/newTalkRail"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal" />
