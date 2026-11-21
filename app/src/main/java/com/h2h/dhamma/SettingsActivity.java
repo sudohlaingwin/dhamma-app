@@ -582,6 +582,39 @@ public class SettingsActivity extends Activity {
         if (rowClearData != null) rowClearData.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { Fx.morph(v); showClearDataDialog(); }
         });
+        // v15.48 (slice 1957): Data -> "Back up my lists" row — the
+        // export twin of the clear-data row above: one tap copies the
+        // listener's own lists out through the share sheet as one JSON
+        // text (ListBackup.build — favourite sayadaws, favourite talks,
+        // listened talks, recent searches, sorted, so the text is
+        // stable), so they can be saved to Drive / notes / mail before
+        // clearing or on a new phone. Nothing is uploaded anywhere;
+        // the text leaves only through the chooser the listener picks.
+        // An empty set of lists refuses with the backup_nothing word
+        // instead of sharing an empty backup; the chooser title is the
+        // row's own label, and a missing share target toasts the
+        // existing open_failed word, like the share-app row (1948).
+        // No new screen, no new dialog — import is the open follow-on.
+        android.view.View rowBackup = findViewById(R.id.rowBackup);
+        if (rowBackup != null) rowBackup.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.morph(v);
+                android.content.SharedPreferences pp57 = getSharedPreferences("dhamma", MODE_PRIVATE);
+                java.util.Set<String> favs57 = pp57.getStringSet("favs", null);
+                java.util.Set<String> favTalks57 = pp57.getStringSet("favTalks", null);
+                java.util.Set<String> played57 = pp57.getStringSet("playedTalks", null);
+                java.util.List<String> recents57 = Prefs.recentSearches(SettingsActivity.this);
+                if (ListBackup.isEmpty(favs57, favTalks57, played57, recents57)) {
+                    android.widget.Toast.makeText(SettingsActivity.this, Lang.t(SettingsActivity.this, "backup_nothing"), android.widget.Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                Intent send57 = new Intent(Intent.ACTION_SEND);
+                send57.setType("text/plain");
+                send57.putExtra(Intent.EXTRA_TEXT, ListBackup.build(favs57, favTalks57, played57, recents57));
+                try { startActivity(Intent.createChooser(send57, Lang.t(SettingsActivity.this, "data_backup_lists"))); }
+                catch (Exception e) { android.widget.Toast.makeText(SettingsActivity.this, Lang.t(SettingsActivity.this, "open_failed"), android.widget.Toast.LENGTH_SHORT).show(); }
+            }
+        });
         // v1.36: the downloaded library lost its main-screen button in the
         // v1.25 minimal-main redesign, so it opens from Settings now
         android.view.View rowDownloaded = findViewById(R.id.rowDownloaded);
@@ -1156,7 +1189,7 @@ android.view.View settingsStripPrev = findViewById(R.id.nowStripPrev);
                 R.id.btnNoti, R.id.btnAutoplay, R.id.rowRepeat, R.id.btnShuffle, R.id.btnBackground,
                 R.id.btnKeepScreen, R.id.btnThemeAuto, R.id.rowSleep,
                 R.id.btnFx, R.id.btnDataSaver, R.id.btnAutoDl, R.id.autoDlCheckNow,
-                R.id.rowDownloaded, R.id.rowClearData, R.id.btnResetAll, R.id.rowTeam, R.id.rowPolicy}) {
+                R.id.rowDownloaded, R.id.rowClearData, R.id.rowBackup, R.id.btnResetAll, R.id.rowTeam, R.id.rowPolicy}) {
             View b = findViewById(id);
             if (b != null) Fx.press(b);
         }
@@ -3948,6 +3981,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         setLabelText(R.id.secData, "sec_data");
         setLabelText(R.id.secAbout, "sec_about");
         setLabelText(R.id.lblClearData, "clear_data");
+        setLabelText(R.id.lblBackup, "data_backup_lists"); // v15.48 (slice 1957)
         setLabelText(R.id.lblVersion, "version");
         if (fontValue != null) { fontValue.setText(fs == 0 ? Lang.t(this, "font_small") : fs == 1 ? Lang.t(this, "font_normal") : Lang.t(this, "font_large")); fontValue.setTextColor(muted); fontValue.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn); }
         if (langValue != null) { langValue.setText(Lang.NAMES[Lang.index(this)]); langValue.setTextColor(muted); langValue.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn); }

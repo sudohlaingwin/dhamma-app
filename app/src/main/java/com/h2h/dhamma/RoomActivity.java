@@ -10221,6 +10221,8 @@ if (snd67n >= 0) currentIndex = snd67n;
                         java.util.ArrayList<String> fKeys = new java.util.ArrayList<String>();
                         fOptList.add(Lang.t(RoomActivity.this, "menu_share"));
                         fKeys.add("menu_share");
+                        // v15.48 (slice 1955): share this one FILE itself — right after the menu_share text share above, so the two share verbs sit together: the text share sends the talk's title + link, this one sends the actual downloaded .mp3 through the TalkFileProvider content:// URI. Gated on the Room's own downloadedFileName (the cache-only dlMap + basename rule the download gates already read, v1.57 — a name outside the set is not downloaded, whatever the disk holds right now), so a streamed-only talk never offers it; the tap-time resolve re-checks the file on disk. The menu_share offer above stays byte-identical.
+                        if (downloadedFileName(ffe.url) != null) { fOptList.add(Lang.t(RoomActivity.this, "dl_menu_share_file")); fKeys.add("dl_menu_share_file"); }
                         // v7.89: same favourite verb as the full-list
                         // dialog above — a foreign row could only be
                         // shared, removed or moved, never favourited,
@@ -10296,6 +10298,20 @@ if (snd67n >= 0) currentIndex = snd67n;
                                                     + (ffe.title.length() > 0 ? ffe.title : ffe.url)
                                                     + "\n" + ffe.url + Lang.t(RoomActivity.this, "share_source"));
                                             startActivity(Intent.createChooser(send, Lang.t(RoomActivity.this, "share_talk")));
+                                        } else if ("dl_menu_share_file".equals(fKeyArr[which])) {
+                                            // v15.48 (slice 1955): share this one DOWNLOADED FILE — the menu_share branch above sends the talk's text (title + original dhammadownload.com link + credit); a listener who wanted the actual .mp3 in another app had no way to send it from the Room — the file sits in Downloads/Dhamma and a file:// URI is refused on API 24+. The file crosses as a TalkFileProvider content:// URI with a one-shot read grant, type audio/mpeg, same chooser title as every other share. The name comes from the Room's own downloadedFileName (cache-only, v1.57) and the URI is built through TalkFileShare.shareUriFor (resolve + uriStringFor), so a name that no longer resolves to a file on disk toasts the existing talk_no_longer_in_list, never a guessed URI. A share mutates nothing. suppressBgPause only when actually sending, like the text share beside it.
+                                            java.io.File dir55 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+                                            String uri55 = TalkFileShare.shareUriFor(dir55, downloadedFileName(ffe.url));
+                                            if (uri55 == null) {
+                                                Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "talk_no_longer_in_list"), Toast.LENGTH_SHORT).show();
+                                            } else {
+                                                Intent send55 = new Intent(Intent.ACTION_SEND);
+                                                send55.setType("audio/mpeg");
+                                                send55.putExtra(Intent.EXTRA_STREAM, android.net.Uri.parse(uri55));
+                                                send55.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                                suppressBgPause = true;
+                                                startActivity(Intent.createChooser(send55, Lang.t(RoomActivity.this, "share_talk")));
+                                            }
                                         } else if ("menu_fav_add".equals(fKeyArr[which]) || "menu_fav_remove".equals(fKeyArr[which])) {
                                             // v7.89: same as the full-list dialog —
                                             // refreshMarkSets reloads favSet so the
@@ -10523,6 +10539,8 @@ if (snd67n >= 0) currentIndex = snd67n;
                     java.util.ArrayList<String> qKeys = new java.util.ArrayList<String>();
                     qOptList.add(Lang.t(RoomActivity.this, "menu_share"));
                     qKeys.add("menu_share");
+                    // v15.48 (slice 1955): share this one FILE itself — right after the menu_share text share above, so the two share verbs sit together: the text share sends the talk's title + link, this one sends the actual downloaded .mp3 through the TalkFileProvider content:// URI. Gated on the Room's own downloadedFileName (the cache-only dlMap + basename rule the download gates already read, v1.57 — a name outside the set is not downloaded, whatever the disk holds right now), so a streamed-only talk never offers it; the tap-time resolve re-checks the file on disk. The menu_share offer above stays byte-identical.
+                    if (downloadedFileName(qt.url) != null) { qOptList.add(Lang.t(RoomActivity.this, "dl_menu_share_file")); qKeys.add("dl_menu_share_file"); }
                     boolean qFav91 = false;
                     try {
                         java.util.Set<String> ft91 = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favTalks", null);
@@ -10595,6 +10613,20 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         send.putExtra(Intent.EXTRA_TEXT, (sayadawName == null ? "" : sayadawName) + " — " + qt.title
                                                 + "\n" + qt.url + Lang.t(RoomActivity.this, "share_source"));
                                         startActivity(Intent.createChooser(send, Lang.t(RoomActivity.this, "share_talk")));
+                                    } else if ("dl_menu_share_file".equals(qKeyArr[which])) {
+                                        // v15.48 (slice 1955): share this one DOWNLOADED FILE — the menu_share branch above sends the talk's text (title + original dhammadownload.com link + credit); a listener who wanted the actual .mp3 in another app had no way to send it from the Room — the file sits in Downloads/Dhamma and a file:// URI is refused on API 24+. The file crosses as a TalkFileProvider content:// URI with a one-shot read grant, type audio/mpeg, same chooser title as every other share. The name comes from the Room's own downloadedFileName (cache-only, v1.57) and the URI is built through TalkFileShare.shareUriFor (resolve + uriStringFor), so a name that no longer resolves to a file on disk toasts the existing talk_no_longer_in_list, never a guessed URI. A share mutates nothing. suppressBgPause only when actually sending, like the text share beside it.
+                                        java.io.File dir55 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+                                        String uri55 = TalkFileShare.shareUriFor(dir55, downloadedFileName(qt.url));
+                                        if (uri55 == null) {
+                                            Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "talk_no_longer_in_list"), Toast.LENGTH_SHORT).show();
+                                        } else {
+                                            Intent send55 = new Intent(Intent.ACTION_SEND);
+                                            send55.setType("audio/mpeg");
+                                            send55.putExtra(Intent.EXTRA_STREAM, android.net.Uri.parse(uri55));
+                                            send55.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                            suppressBgPause = true;
+                                            startActivity(Intent.createChooser(send55, Lang.t(RoomActivity.this, "share_talk")));
+                                        }
                                     } else if ("menu_fav_add".equals(qKeyArr[which]) || "menu_fav_remove".equals(qKeyArr[which])) {
                                         boolean added91 = Fx.toggleFavTalk(RoomActivity.this, qt.url);
                                         // v10.02: same paused-card star sync as the foreign-row branch above.
@@ -10797,6 +10829,8 @@ if (snd67n >= 0) currentIndex = snd67n;
                     java.util.ArrayList<String> sKeys = new java.util.ArrayList<String>();
                     sOpts.add(Lang.t(RoomActivity.this, "menu_share"));
                     sKeys.add("menu_share");
+                    // v15.48 (slice 1955): share this one FILE itself — right after the menu_share text share above, so the two share verbs sit together: the text share sends the talk's title + link, this one sends the actual downloaded .mp3 through the TalkFileProvider content:// URI. Gated on the Room's own downloadedFileName (the cache-only dlMap + basename rule the download gates already read, v1.57 — a name outside the set is not downloaded, whatever the disk holds right now), so a streamed-only talk never offers it; the tap-time resolve re-checks the file on disk. The menu_share offer above stays byte-identical.
+                    if (downloadedFileName(st.url) != null) { sOpts.add(Lang.t(RoomActivity.this, "dl_menu_share_file")); sKeys.add("dl_menu_share_file"); }
                     boolean sFav71 = false;
                     try {
                         java.util.Set<String> ft71 = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favTalks", null);
@@ -10821,6 +10855,20 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         send.putExtra(Intent.EXTRA_TEXT, (sayadawName == null ? "" : sayadawName) + " — " + st.title
                                                 + "\n" + st.url + Lang.t(RoomActivity.this, "share_source"));
                                         startActivity(Intent.createChooser(send, Lang.t(RoomActivity.this, "share_talk")));
+                                    } else if ("dl_menu_share_file".equals(sKeyArr[which])) {
+                                        // v15.48 (slice 1955): share this one DOWNLOADED FILE — the menu_share branch above sends the talk's text (title + original dhammadownload.com link + credit); a listener who wanted the actual .mp3 in another app had no way to send it from the Room — the file sits in Downloads/Dhamma and a file:// URI is refused on API 24+. The file crosses as a TalkFileProvider content:// URI with a one-shot read grant, type audio/mpeg, same chooser title as every other share. The name comes from the Room's own downloadedFileName (cache-only, v1.57) and the URI is built through TalkFileShare.shareUriFor (resolve + uriStringFor), so a name that no longer resolves to a file on disk toasts the existing talk_no_longer_in_list, never a guessed URI. A share mutates nothing. suppressBgPause only when actually sending, like the text share beside it.
+                                        java.io.File dir55 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+                                        String uri55 = TalkFileShare.shareUriFor(dir55, downloadedFileName(st.url));
+                                        if (uri55 == null) {
+                                            Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "talk_no_longer_in_list"), Toast.LENGTH_SHORT).show();
+                                        } else {
+                                            Intent send55 = new Intent(Intent.ACTION_SEND);
+                                            send55.setType("audio/mpeg");
+                                            send55.putExtra(Intent.EXTRA_STREAM, android.net.Uri.parse(uri55));
+                                            send55.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                            suppressBgPause = true;
+                                            startActivity(Intent.createChooser(send55, Lang.t(RoomActivity.this, "share_talk")));
+                                        }
                                     } else if ("menu_fav_add".equals(sKeyArr[which]) || "menu_fav_remove".equals(sKeyArr[which])) {
                                         // v7.89 shape: refreshMarkSets reloads favSet
                                         // so the star mark rebinds at once.
@@ -10852,6 +10900,8 @@ if (snd67n >= 0) currentIndex = snd67n;
                     java.util.ArrayList<String> dKeys = new java.util.ArrayList<String>();
                     dOpts.add(Lang.t(RoomActivity.this, "menu_share"));
                     dKeys.add("menu_share");
+                    // v15.48 (slice 1955): share this one FILE itself — right after the menu_share text share above, so the two share verbs sit together: the text share sends the talk's title + link, this one sends the actual downloaded .mp3 through the TalkFileProvider content:// URI. Gated on the Room's own downloadedFileName (the cache-only dlMap + basename rule the download gates already read, v1.57 — a name outside the set is not downloaded, whatever the disk holds right now), so a streamed-only talk never offers it; the tap-time resolve re-checks the file on disk. The menu_share offer above stays byte-identical.
+                    if (downloadedFileName(dt.url) != null) { dOpts.add(Lang.t(RoomActivity.this, "dl_menu_share_file")); dKeys.add("dl_menu_share_file"); }
                     // v7.89: per-talk favourite from the Room drawer — the
                     // v7.88 chooser verb's Room-side mirror. Before this
                     // the drawer could only toggle a favourite for the
@@ -10910,6 +10960,20 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         send.putExtra(Intent.EXTRA_TEXT, (sayadawName == null ? "" : sayadawName) + " — " + dt.title
                                                 + "\n" + dt.url + Lang.t(RoomActivity.this, "share_source"));
                                         startActivity(Intent.createChooser(send, Lang.t(RoomActivity.this, "share_talk")));
+                                    } else if ("dl_menu_share_file".equals(dKeyArr[which])) {
+                                        // v15.48 (slice 1955): share this one DOWNLOADED FILE — the menu_share branch above sends the talk's text (title + original dhammadownload.com link + credit); a listener who wanted the actual .mp3 in another app had no way to send it from the Room — the file sits in Downloads/Dhamma and a file:// URI is refused on API 24+. The file crosses as a TalkFileProvider content:// URI with a one-shot read grant, type audio/mpeg, same chooser title as every other share. The name comes from the Room's own downloadedFileName (cache-only, v1.57) and the URI is built through TalkFileShare.shareUriFor (resolve + uriStringFor), so a name that no longer resolves to a file on disk toasts the existing talk_no_longer_in_list, never a guessed URI. A share mutates nothing. suppressBgPause only when actually sending, like the text share beside it.
+                                        java.io.File dir55 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+                                        String uri55 = TalkFileShare.shareUriFor(dir55, downloadedFileName(dt.url));
+                                        if (uri55 == null) {
+                                            Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "talk_no_longer_in_list"), Toast.LENGTH_SHORT).show();
+                                        } else {
+                                            Intent send55 = new Intent(Intent.ACTION_SEND);
+                                            send55.setType("audio/mpeg");
+                                            send55.putExtra(Intent.EXTRA_STREAM, android.net.Uri.parse(uri55));
+                                            send55.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                            suppressBgPause = true;
+                                            startActivity(Intent.createChooser(send55, Lang.t(RoomActivity.this, "share_talk")));
+                                        }
                                     } else if ("menu_fav_add".equals(dKeyArr[which]) || "menu_fav_remove".equals(dKeyArr[which])) {
                                         // v7.89: refreshMarkSets reloads favSet from
                                         // prefs, so the ★ marks in these rows

@@ -665,6 +665,40 @@
             android:textSize="20sp" />
     </LinearLayout>
 
+    <!-- v15.48 (slice 1957): "Back up my lists" row — the Data
+         section's export twin of the clear-data row above: one tap
+         copies the listener's own lists out through the share sheet
+         as one JSON text. Same shape as rowClearData (label +
+         chevron, 14dp padding). -->
+    <LinearLayout
+        android:id="@+id/rowBackup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingVertical="14dp">
+        <TextView
+            android:id="@+id/lblBackup"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="ကျွန်ုပ်၏ စာရင်းများ ကူးမယ်"
+            android:textColor="@color/ink"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/backupChevron"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="8dp"
+            android:text="›"
+            android:textColor="@color/muted"
+            android:textSize="20sp" />
+    </LinearLayout>
+
     <TextView
         android:id="@+id/secAbout"
         android:layout_width="match_parent"

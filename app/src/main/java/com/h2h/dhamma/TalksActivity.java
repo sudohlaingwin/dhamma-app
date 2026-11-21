@@ -3674,6 +3674,8 @@ public class TalksActivity extends Activity {
                     java.util.ArrayList<String> dKeys = new java.util.ArrayList<String>();
                     dOpts.add(Lang.t(TalksActivity.this, "menu_share"));
                     dKeys.add("menu_share");
+                    // v15.48 (slice 1956): share this one FILE itself — right after the menu_share text share above, so the two share verbs sit together: the text share sends the talk's title + link, this one sends the actual downloaded .mp3 through the TalkFileProvider content:// URI. Gated on the chooser's own isTalkDownloaded (mapped name + basename candidates, the same gate the download verb below reads in reverse), so a streamed-only talk never offers it; the tap-time resolve re-checks the file on disk. The menu_share offer above stays byte-identical.
+                    if (isTalkDownloaded(dt.url)) { dOpts.add(Lang.t(TalksActivity.this, "dl_menu_share_file")); dKeys.add("dl_menu_share_file"); }
                     // v7.88: per-talk favourite from the browsing screen — the
                     // same builder gap as the v7.81/v7.82 queue builders:
                     // favTalks could only ever be toggled for the SOUNDING
@@ -3788,6 +3790,21 @@ public class TalksActivity extends Activity {
                                         send.putExtra(Intent.EXTRA_TEXT, (sayadawName == null ? "" : sayadawName) + " — " + dt.title
                                                 + "\n" + dt.url + Lang.t(TalksActivity.this, "share_source"));
                                         startActivity(Intent.createChooser(send, Lang.t(TalksActivity.this, "share_talk")));
+                                    } else if ("dl_menu_share_file".equals(dKeyArr[which])) {
+                                        // v15.48 (slice 1956): share this one DOWNLOADED FILE — the menu_share branch above sends the talk's text (title + original dhammadownload.com link + credit); a listener who wanted the actual .mp3 in another app had no way to send it from the chooser — the file sits in Downloads/Dhamma and a file:// URI is refused on API 24+. The file crosses as a TalkFileProvider content:// URI with a one-shot read grant, type audio/mpeg, same chooser title as every other share. The name comes from the chooser's own isTalkDownloaded + talkDlFileCache (v5.59 — the Resume row already reads it), re-checked fresh at tap time, and the URI is built through TalkFileShare.shareUriFor (resolve + uriStringFor), so a name that no longer resolves to a file on disk toasts the existing talk_no_longer_in_list, never a guessed URI. A share mutates nothing. suppressSharePause only when actually sending, like the text share beside it. The sounding talk keeps its direct text share below (no dialog to host a second verb; the Room drawer already serves its file share, slice 1955).
+                                        java.io.File dir56 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+                                        String fn56 = isTalkDownloaded(dt.url) ? talkDlFileCache.get(dt.url) : null;
+                                        String uri56 = TalkFileShare.shareUriFor(dir56, fn56);
+                                        if (uri56 == null) {
+                                            android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "talk_no_longer_in_list"), android.widget.Toast.LENGTH_SHORT).show();
+                                        } else {
+                                            suppressSharePause = true;
+                                            Intent send56 = new Intent(Intent.ACTION_SEND);
+                                            send56.setType("audio/mpeg");
+                                            send56.putExtra(Intent.EXTRA_STREAM, android.net.Uri.parse(uri56));
+                                            send56.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                            startActivity(Intent.createChooser(send56, Lang.t(TalksActivity.this, "share_talk")));
+                                        }
                                     } else if ("menu_fav_add".equals(dKeyArr[which]) || "menu_fav_remove".equals(dKeyArr[which])) {
                                         // v7.88: toggle by URL, not by the label built
                                         // above — if the set changed between the

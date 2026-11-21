@@ -10029,6 +10029,47 @@ public class DownloadedActivity extends Activity {
             if (hasNextFavShown71) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_queue_next_shown_star")); itemKeys.add("dl_menu_queue_next_shown_star"); }
             if (hasNextNewShown71) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_queue_next_shown_new")); itemKeys.add("dl_menu_queue_next_shown_new"); }
         }
+        // v15.48 (slice 1953): queue only the shown LISTENED files
+        // NEXT — the head-insert twin of the slice-1952 append
+        // verb and the third member of the v6.71 queue-next pair
+        // (star queues the starred next, new queues the unlistened
+        // next, this queues the listened next): a listener who had
+        // narrowed the library and finished a batch of talks could
+        // re-hear just those finished talks right after the talk
+        // now playing only by appending them (1952) and then moving
+        // each file to the top one by one, or by head-inserting the
+        // whole shown set (v6.68) and taking the unlistened files
+        // too. Same gates as v6.71, applied to the listened subset:
+        // offered from ANY row only while narrowed and never in
+        // queue-only view (the queue-only view already IS the
+        // queue), only while the queue is non-empty (with an empty
+        // queue a head insert is identical to the 1952 append, so
+        // the verb never offers when it would do nothing new), and
+        // only when at least one shown file is listened (in
+        // libListenedFiles, the rows' own cache) AND actually
+        // queueable (not the file still playing, not already queued
+        // — the v6.71 queue-next gate, so the verb never offers a
+        // guaranteed no-op). Membership is the rows' own cache
+        // through the shared DlQueueNextListened.pick core (the
+        // same core the handler below calls, and the same pick the
+        // 1952 append twin delegates to), so the offer, the
+        // handler and the append twin can never disagree about a
+        // file marked, played or queued since the menu opened.
+        // The v6.71 block above stays byte-identical; this block
+        // is its own sibling, like 1952's block after v6.40.
+        boolean hasQueueNextListenedShown53 = false;
+        if (!libQueueOnly && ((dlQuery != null && !dlQuery.isEmpty()) || dlFilterMode != 0) && !queue.isEmpty()) {
+            java.util.List<String> names53 = new java.util.ArrayList<String>();
+            java.util.List<String> paths53 = new java.util.ArrayList<String>();
+            for (int i = 0; i < libDisplayCount(); i++) {
+                Entry se53 = libEntryAtDisplay(i);
+                if (se53 == null) continue;
+                names53.add(se53.file.getName());
+                paths53.add(se53.file.getAbsolutePath());
+            }
+            hasQueueNextListenedShown53 = !DlQueueNextListened.pick(names53, paths53, libListenedFiles, soundingLibPath(), queue).isEmpty();
+        }
+        if (hasQueueNextListenedShown53) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_queue_next_shown_listened")); itemKeys.add("dl_menu_queue_next_shown_listened"); }
         // v6.41: remove only the shown files from the queue —
         // the shown-set un-queue verb the library's ⋮ menu
         // still lacked (the Talks chooser gained it as v6.29;
@@ -11012,6 +11053,18 @@ public class DownloadedActivity extends Activity {
         // dlMap entry simply shows no share entry, never a
         // title-only share and never a guessed link.
         if (shareUrl653 != null) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_share")); itemKeys.add("dl_menu_share"); }
+        // v15.48 (slice 1954): share this one FILE itself — right
+        // after the v6.53 text share, so the two share verbs sit
+        // together: the text share sends the talk's title + link,
+        // this one sends the actual downloaded .mp3 through the
+        // TalkFileProvider content:// URI. Gated on the file
+        // existing on disk, NOT on the dlMap link (the v6.53
+        // shareUrl653 gate): the file itself is the shareable
+        // thing, so a file with no dlMap entry still shares, and a
+        // file deleted between scan and menu simply shows no
+        // entry. No narrowed gate, no queue gate — sharing is not
+        // a play order. The v6.53 offer above stays byte-identical.
+        if (t.file != null && t.file.exists()) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_share_file")); itemKeys.add("dl_menu_share_file"); }
         // v7.90: favourite this one file — the library mirror of the
         // Talks chooser's v7.88 and the Room drawer's v7.89 single-talk
         // verbs, and the last mirror surface those runs flagged: the
@@ -11647,6 +11700,21 @@ public class DownloadedActivity extends Activity {
                             if (!next71b.isEmpty()) q.addAll(0, next71b);
                             Toast.makeText(DownloadedActivity.this, !next71b.isEmpty()
                                     ? Lang.t(DownloadedActivity.this, "queue_next_shown_new_prefix") + next71b.size() + Lang.t(DownloadedActivity.this, "queue_next_suffix")
+                                    : Lang.t(DownloadedActivity.this, "already_in_queue"), Toast.LENGTH_SHORT).show();
+                        } else if ("dl_menu_queue_next_shown_listened".equals(choiceKey)) {
+                            // v15.48 (slice 1953): queue only the shown LISTENED files NEXT, in display order — the head-insert twin of the slice-1952 append verb and the third member of the v6.71 queue-next pair (star queues the starred next, new queues the unlistened next, this queues the listened next). The picks land at the head of the queue (index 0 plays next, the same head the v6.68/v6.71 verbs use) through DlQueueNextListened.insertHead, so the subset plays straight after the current file and before any older queue, without stopping playback; the playing file never re-queues and already-queued paths stay where they are (like every other bulk queue verb), so the already-queued toast covers the nothing-new case; the offer above and this handler both read the shared pick core, so they can never disagree. A file with no dlMap entry has no listened mark either, so it counts as unlistened and is never queued here, like the v6.71 new verb. The shared saveLibQueue + updateTotal tail below moves the queue marks and the footer at once.
+                            java.util.List<String> names53 = new java.util.ArrayList<String>();
+                            java.util.List<String> paths53 = new java.util.ArrayList<String>();
+                            for (int i = 0; i < libDisplayCount(); i++) {
+                                Entry de53 = libEntryAtDisplay(i);
+                                if (de53 == null) continue;
+                                names53.add(de53.file.getName());
+                                paths53.add(de53.file.getAbsolutePath());
+                            }
+                            java.util.List<String> add53 = DlQueueNextListened.pick(names53, paths53, libListenedFiles, cur, q);
+                            int added53 = DlQueueNextListened.insertHead(q, add53);
+                            Toast.makeText(DownloadedActivity.this, added53 > 0
+                                    ? Lang.t(DownloadedActivity.this, "queue_next_shown_listened_prefix") + added53 + Lang.t(DownloadedActivity.this, "queue_next_suffix")
                                     : Lang.t(DownloadedActivity.this, "already_in_queue"), Toast.LENGTH_SHORT).show();
                         } else if ("dl_menu_unqueue_shown".equals(choiceKey)) {
                             // v6.41: un-queue only the shown set,
@@ -13627,6 +13695,47 @@ public class DownloadedActivity extends Activity {
                             // v8.55: share chooser — suppress the background-off pause.
                             suppressDlSharePause = true;
                             startActivity(Intent.createChooser(send653, Lang.t(DownloadedActivity.this, "share_talk")));
+                        } else if ("dl_menu_share_file".equals(choiceKey)) {
+                            // v15.48 (slice 1954): share this one
+                            // DOWNLOADED FILE — the v6.53 share above
+                            // sends the talk's text (title + original
+                            // dhammadownload.com link + credit); a
+                            // listener who wanted the actual .mp3 in
+                            // another app (a messenger, a file manager,
+                            // another player) had no way to send it —
+                            // the file sits in Downloads/Dhamma and a
+                            // file:// URI is refused on API 24+. The
+                            // file crosses as a TalkFileProvider
+                            // content:// URI with a one-shot read
+                            // grant, type audio/mpeg, same chooser
+                            // title as every other share. The URI is
+                            // built through the TalkFileShare core
+                            // (name only — the core's canonical-path
+                            // gate is what keeps a crafted URI inside
+                            // Downloads/Dhamma). The offer gate above
+                            // checks the file exists; this branch
+                            // re-checks at tap time (a file deleted
+                            // between menu and tap) and toasts the
+                            // existing talk_no_longer_in_list, never a
+                            // guessed URI. A share mutates nothing, so
+                            // the shared saveLibQueue + updateTotal tail
+                            // below is a no-op rewrite, like v6.35.
+                            // v8.55: share chooser — suppress the
+                            // background-off pause, like the text
+                            // share beside it.
+                            java.io.File f54 = t.file;
+                            String uri54 = (f54 == null || !f54.exists())
+                                    ? null : TalkFileShare.uriStringFor(f54.getName());
+                            if (uri54 == null) {
+                                Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "talk_no_longer_in_list"), Toast.LENGTH_SHORT).show();
+                            } else {
+                                Intent send54 = new Intent(Intent.ACTION_SEND);
+                                send54.setType("audio/mpeg");
+                                send54.putExtra(Intent.EXTRA_STREAM, android.net.Uri.parse(uri54));
+                                send54.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                suppressDlSharePause = true;
+                                startActivity(Intent.createChooser(send54, Lang.t(DownloadedActivity.this, "share_talk")));
+                            }
                         } else if ("menu_fav_add".equals(choiceKey) || "menu_fav_remove".equals(choiceKey)) {
                             // v7.90: toggle this one file's star by its
                             // dlMap source URL (the v6.53 shareUrl653
