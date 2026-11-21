@@ -10263,6 +10263,8 @@ if (snd67n >= 0) currentIndex = snd67n;
                         fKeys.add("menu_share");
                         // v15.48 (slice 1955): share this one FILE itself — right after the menu_share text share above, so the two share verbs sit together: the text share sends the talk's title + link, this one sends the actual downloaded .mp3 through the TalkFileProvider content:// URI. Gated on the Room's own downloadedFileName (the cache-only dlMap + basename rule the download gates already read, v1.57 — a name outside the set is not downloaded, whatever the disk holds right now), so a streamed-only talk never offers it; the tap-time resolve re-checks the file on disk. The menu_share offer above stays byte-identical.
                         if (downloadedFileName(ffe.url) != null) { fOptList.add(Lang.t(RoomActivity.this, "dl_menu_share_file")); fKeys.add("dl_menu_share_file"); }
+                        // v15.54 (slice 1986): "Delete this downloaded file" — the drawer foreign dialog's delete verb: the drawer could share a downloaded file (1955) but never delete it, so a listener in the Room with a finished foreign talk queued had to leave the Room, open the library and find the row again. The file verbs sit together — send the file / delete the file — right after the 1955 share, the same twin grouping as 1955/1975/1978/1979. Gated on the Room's own downloadedFileName (the 1955 gate, so a streamed-only talk never offers it) AND not sounding (the DlMark rule, 1949/1978/1979 — the playing file's bytes are open, and the Room IS the session's screen; the 1984 chooser's stop-then-delete belongs to Talks, which never binds). The sounding dialog never offers it at all — it IS the sounding talk. The queue line is NOT removed by this verb (a deleted file still streams from its URL; the queue is a URL queue, not a file queue — the separate menu_queue_remove verb owns queue removal). 0 new Lang keys (the 1984 set).
+                        if (DrawerDelete.canOffer(downloadedFileName(ffe.url), isSoundingForeignTalk(ffe.url, ffe.sayadaw))) { fOptList.add(Lang.t(RoomActivity.this, "del_one_btn")); fKeys.add("del_one_btn"); }
                         // v15.52 (slice 1975): "Copy this talk's link" — the clipboard twin of the two share verbs above: the text share sends title + link through the sheet, the file share sends the .mp3, and this one copies just the talk's own original link for pasting elsewhere. A streamed-only talk still offers it (a link is not a file); only a blank url hides it.
                         if (RoomCopyLink.canOffer(ffe.url)) { fOptList.add(Lang.t(RoomActivity.this, "dl_menu_copy_link")); fKeys.add("dl_menu_copy_link"); }
                         // v7.89: same favourite verb as the full-list
@@ -10280,6 +10282,8 @@ if (snd67n >= 0) currentIndex = snd67n;
                         fKeys.add(fFav89 ? "menu_fav_remove" : "menu_fav_add");
                         // v15.52 (slice 1979): mark this one talk listened / unlistened — the drawer foreign dialog's first mark verb: the queue dialog gained it in slice 1978, but a queued talk of ANOTHER sayadaw could only earn its listened mark by playing to the end in its own Room, and a talk heard elsewhere could not be cleared from the drawer's unlistened view without opening the library. The verb sits in the existing dialog (no new view, no row menu resurrected), right after the favourite toggle — the other per-talk state toggle — and reuses the 1949 pure core (DlMark) and its keys (dl_menu_mark_one / dl_menu_unmark_one), so 0 new Lang keys. The label reads playedSet (the same cache the foreign rows render their tick from — fPlayed in the bind), so it can never disagree with the visible mark; the sounding foreign talk is excluded by the DlMark gate through isSoundingForeignTalk (the v11.32 mirror, the same one the move/play-next gates in this dialog read), and the tap-time re-check in the handler below guards the auto-advance window while the dialog sits open.
                         if (DlMark.canOffer(ffe.url, isSoundingForeignTalk(ffe.url, ffe.sayadaw))) { String markKey79 = DlMark.labelKey(DlMark.isMarked(playedSet, SiteHttp.identityUrl(ffe.url))); fOptList.add(Lang.t(RoomActivity.this, markKey79)); fKeys.add(markKey79); }
+                        // v15.54 (slice 1985): "Go to sayadaw's talks" — the drawer foreign dialog's first navigation verb: a queued talk of ANOTHER sayadaw had no way to open that sayadaw's Talks list from the Room — the listener had to leave the Room, find the sayadaw on Main and open Talks. The library row gained the same verb in v15.46 (slice 1944), but the drawer foreign row is a different surface — the queue context, not the shelf — with the Room's own v7.08 resolver (exact-name match over the bundled catalog) and no bound service. Offered only while the sayadaw resolves to a page URL, so an unknown or unlisted sayadaw never offers a dead tap; the tap-time re-check below guards the catalog read while the dialog sits open. In-list rows never offer it — they are this Room's own sayadaw, and the Talks list behind them is the one already open.
+                        if (GoSayadaw.canGo(catalogEntryForSayadaw(ffe.sayadaw))) { fOptList.add(Lang.t(RoomActivity.this, "menu_go_sayadaw")); fKeys.add("menu_go_sayadaw"); }
                         fOptList.add(Lang.t(RoomActivity.this, "menu_queue_remove"));
                         fKeys.add("menu_queue_remove");
                         final boolean fHeldRow = ffe.url.equals(moveHeldUrl)
@@ -10356,6 +10360,56 @@ if (snd67n >= 0) currentIndex = snd67n;
                                                 suppressBgPause = true;
                                                 startActivity(Intent.createChooser(send55, Lang.t(RoomActivity.this, "share_talk")));
                                             }
+                                        } else if ("del_one_btn".equals(fKeyArr[which])) {
+                                            // v15.54 (slice 1986): delete this downloaded file — the library's single-row delete (doDelete) in drawer form: the confirm is the library's own (del_one_title + the talk title + del_one_btn / del_btn_no), and the positive button mirrors its rules, adapted to the Room. Tap-time re-checks, the v11.70/v11.14 pattern: sounding by tap time refuses with queue_changed (the 1978/1979 mark-leg rule — the Room IS the session's screen, so a stop-then-delete would kill its own playback; the 1984 chooser's stop belongs to Talks, which never binds); a file deleted externally while the dialog sat open refreshes the marks and toasts dl_file_gone, never a guessed delete; the file resolves through TalkFileShare.resolve (the 1956 gate — canonical-path containment + isFile), so a name that no longer resolves to a file on disk toasts dl_file_gone too. A held pick-up/drop arm on this row is cleared (the v7.86 rule, same as menu_queue_remove). The queue line is NOT removed: the URL still streams, so the queue is untouched — the delete is a storage verb, not a queue verb. On a successful delete the dlMap rows for this talk are pruned — all three key forms (the core's pruneKeys, the v14.88 rule) under DlLock like recordTalkDownload, one apply — then the downloaded set is rescanned (refreshDownloadedSet, so the cached set drops the name), the marks refresh, the row melts (the v15.41 menu fade) and the toast is dl_deleted_done; a failed delete toasts delete_failed and changes nothing. A live re-download job is never cancelled — the subset deletes (1951) never cancelled live jobs, only delete-all does; the job re-lands the file. No pause guard (no sheet is left to return from, like the 1975 copy verb and the 1985 go verb).
+                                            new android.app.AlertDialog.Builder(RoomActivity.this)
+                                                    .setTitle(Lang.t(RoomActivity.this, "del_one_title"))
+                                                    .setMessage(ffe.title.length() > 0 ? ffe.title : ffe.url)
+                                                    .setPositiveButton(Lang.t(RoomActivity.this, "del_one_btn"), new android.content.DialogInterface.OnClickListener() {
+                                                        @Override public void onClick(android.content.DialogInterface d, int which) {
+                                                            if (isSoundingForeignTalk(ffe.url, ffe.sayadaw)) {
+                                                                android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+                                                                return;
+                                                            }
+                                                            String delName86 = downloadedFileName(ffe.url);
+                                                            if (delName86 == null) {
+                                                                refreshDownloadedSet();
+                                                                refreshMarkSets();
+                                                                if (adapter != null) adapter.notifyDataSetChanged();
+                                                                android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "dl_file_gone"), android.widget.Toast.LENGTH_SHORT).show();
+                                                                return;
+                                                            }
+                                                            java.io.File dir86 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+                                                            java.io.File f86 = TalkFileShare.resolve(dir86, delName86);
+                                                            if (f86 == null) {
+                                                                refreshDownloadedSet();
+                                                                refreshMarkSets();
+                                                                if (adapter != null) adapter.notifyDataSetChanged();
+                                                                android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "dl_file_gone"), android.widget.Toast.LENGTH_SHORT).show();
+                                                                return;
+                                                            }
+                                                            if (f86.delete()) {
+                                                                if (ffe.url.equals(moveHeldUrl)) moveHeldUrl = null;
+                                                                synchronized (DlLock.LOCK) {
+                                                                    try {
+                                                                        android.content.SharedPreferences sp86 = getSharedPreferences("dhamma", MODE_PRIVATE);
+                                                                        org.json.JSONObject map86 = new org.json.JSONObject(sp86.getString("dlMap", "{}"));
+                                                                        for (String k86 : DrawerDelete.pruneKeys(ffe.url)) map86.remove(k86);
+                                                                        sp86.edit().putString("dlMap", map86.toString()).apply();
+                                                                    } catch (Exception ignored) {}
+                                                                }
+                                                                refreshDownloadedSet();
+                                                                refreshMarkSets();
+                                                                if (adapter != null) adapter.notifyDataSetChanged();
+                                                                if (ffe != null && ffe.url != null) { menuMarkFadeUrl77 = ffe.url; menuMarkBurstFav41 = null; fadeMenuMarkedDrawerRow77(); }
+                                                                android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "dl_deleted_done"), android.widget.Toast.LENGTH_SHORT).show();
+                                                            } else {
+                                                                android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "delete_failed"), android.widget.Toast.LENGTH_SHORT).show();
+                                                            }
+                                                        }
+                                                    })
+                                                    .setNegativeButton(Lang.t(RoomActivity.this, "del_btn_no"), null)
+                                                    .show();
                                         } else if ("dl_menu_copy_link".equals(fKeyArr[which])) {
                                             // v15.52 (slice 1975): "Copy this talk's link" — the drawer's clipboard verb: the listener who wanted just this talk's link pasted elsewhere had to share it through the sheet and copy from there. Copies the talk's own original link verbatim (the v6.56 rule — never a bare title, never a guessed link) with the v6.56 clipboard label + toast, through the RoomCopyLink core: the tap-time gate re-checks the offer, so the two can never disagree. No pause guard (no sheet is left to return from) and no file gate (a link is not a file — a streamed-only talk copies too). A copy mutates nothing.
                                             if (RoomCopyLink.canOffer(ffe.url)) {
@@ -10404,6 +10458,20 @@ if (snd67n >= 0) currentIndex = snd67n;
                                             if (adapter != null) adapter.notifyDataSetChanged();
                                             if (ffe != null && ffe.url != null) { menuMarkFadeUrl77 = ffe.url; menuMarkBurstFav41 = null; fadeMenuMarkedDrawerRow77(); }
                                             android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, (unmarked79 != null && unmarked79.changed) ? "dl_menu_unmark_one" : "nothing_to_unmark"), android.widget.Toast.LENGTH_SHORT).show();
+                                        } else if ("menu_go_sayadaw".equals(fKeyArr[which])) {
+                                            // v15.54 (slice 1985): "Go to sayadaw's talks" — the 1944 verb on the drawer surface: re-resolve the sayadaw through the bundled catalog at tap time (the offer and the tap can never disagree), toast no_sayadaw_page on a failed re-read, else open that sayadaw's Talks list inside the app with Main's own intent extras (name/group/url/photo). The name is the queue line's own sayadaw, never the catalog's — the catalog entry carries no name slot. A navigation mutates nothing: no queue, shelf or resume change, no pause guard (no sheet is left to return from).
+                                            String[] cat85 = catalogEntryForSayadaw(ffe.sayadaw);
+                                            if (!GoSayadaw.canGo(cat85)) {
+                                                android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "no_sayadaw_page"), android.widget.Toast.LENGTH_SHORT).show();
+                                            } else {
+                                                android.content.Intent gi85 = new android.content.Intent(RoomActivity.this, TalksActivity.class);
+                                                gi85.putExtra("name", ffe.sayadaw);
+                                                gi85.putExtra("group", GoSayadaw.group(cat85));
+                                                gi85.putExtra("url", GoSayadaw.page(cat85));
+                                                gi85.putExtra("photo", GoSayadaw.photo(cat85));
+                                                Fx.tap(RoomActivity.this);
+                                                Fx.go(RoomActivity.this, gi85);
+                                            }
                                         } else if ("menu_fav_add".equals(fKeyArr[which]) || "menu_fav_remove".equals(fKeyArr[which])) {
                                             // v7.89: same as the full-list dialog —
                                             // refreshMarkSets reloads favSet so the
@@ -10633,6 +10701,8 @@ if (snd67n >= 0) currentIndex = snd67n;
                     qKeys.add("menu_share");
                     // v15.48 (slice 1955): share this one FILE itself — right after the menu_share text share above, so the two share verbs sit together: the text share sends the talk's title + link, this one sends the actual downloaded .mp3 through the TalkFileProvider content:// URI. Gated on the Room's own downloadedFileName (the cache-only dlMap + basename rule the download gates already read, v1.57 — a name outside the set is not downloaded, whatever the disk holds right now), so a streamed-only talk never offers it; the tap-time resolve re-checks the file on disk. The menu_share offer above stays byte-identical.
                     if (downloadedFileName(qt.url) != null) { qOptList.add(Lang.t(RoomActivity.this, "dl_menu_share_file")); qKeys.add("dl_menu_share_file"); }
+                    // v15.54 (slice 1986): "Delete this downloaded file" — the drawer queue dialog's delete verb (see the f-list offer for the rule): the file verbs sit together, right after the 1955 share. Gated on the Room's own downloadedFileName AND not sounding (the DlMark rule — the queue dialog CAN show the sounding row, the v11.71 service-restart leftover, so the gate excludes it here even though the dialog gate does not). 0 new Lang keys (the 1984 set).
+                    if (DrawerDelete.canOffer(downloadedFileName(qt.url), isSoundingTalk(qt.url))) { qOptList.add(Lang.t(RoomActivity.this, "del_one_btn")); qKeys.add("del_one_btn"); }
                     // v15.52 (slice 1975): "Copy this talk's link" — the clipboard twin of the two share verbs above (see the f-list offer for the rule).
                     if (RoomCopyLink.canOffer(qt.url)) { qOptList.add(Lang.t(RoomActivity.this, "dl_menu_copy_link")); qKeys.add("dl_menu_copy_link"); }
                     boolean qFav91 = false;
@@ -10723,6 +10793,56 @@ if (snd67n >= 0) currentIndex = snd67n;
                                             suppressBgPause = true;
                                             startActivity(Intent.createChooser(send55, Lang.t(RoomActivity.this, "share_talk")));
                                         }
+                                    } else if ("del_one_btn".equals(qKeyArr[which])) {
+                                        // v15.54 (slice 1986): delete this downloaded file — the library's single-row delete in drawer form (see the f-list branch for the rule): the confirm is the library's own, the tap-time sounding re-check refuses with queue_changed (the 1978 mark-leg rule), a file deleted externally toasts dl_file_gone, a held arm is cleared (v7.86), the queue line is NOT removed (the URL still streams), the dlMap rows are pruned under DlLock, the downloaded set is rescanned, the row melts and the toast is dl_deleted_done. No pause guard.
+                                        new android.app.AlertDialog.Builder(RoomActivity.this)
+                                                .setTitle(Lang.t(RoomActivity.this, "del_one_title"))
+                                                .setMessage(qt.title != null && qt.title.length() > 0 ? qt.title : qt.url)
+                                                .setPositiveButton(Lang.t(RoomActivity.this, "del_one_btn"), new android.content.DialogInterface.OnClickListener() {
+                                                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                                                        if (isSoundingTalk(qt.url)) {
+                                                            android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+                                                            return;
+                                                        }
+                                                        String delName86 = downloadedFileName(qt.url);
+                                                        if (delName86 == null) {
+                                                            refreshDownloadedSet();
+                                                            refreshMarkSets();
+                                                            if (adapter != null) adapter.notifyDataSetChanged();
+                                                            android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "dl_file_gone"), android.widget.Toast.LENGTH_SHORT).show();
+                                                            return;
+                                                        }
+                                                        java.io.File dir86 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+                                                        java.io.File f86 = TalkFileShare.resolve(dir86, delName86);
+                                                        if (f86 == null) {
+                                                            refreshDownloadedSet();
+                                                            refreshMarkSets();
+                                                            if (adapter != null) adapter.notifyDataSetChanged();
+                                                            android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "dl_file_gone"), android.widget.Toast.LENGTH_SHORT).show();
+                                                            return;
+                                                        }
+                                                        if (f86.delete()) {
+                                                            if (qt.url.equals(moveHeldUrl)) moveHeldUrl = null;
+                                                            synchronized (DlLock.LOCK) {
+                                                                try {
+                                                                    android.content.SharedPreferences sp86 = getSharedPreferences("dhamma", MODE_PRIVATE);
+                                                                    org.json.JSONObject map86 = new org.json.JSONObject(sp86.getString("dlMap", "{}"));
+                                                                    for (String k86 : DrawerDelete.pruneKeys(qt.url)) map86.remove(k86);
+                                                                    sp86.edit().putString("dlMap", map86.toString()).apply();
+                                                                } catch (Exception ignored) {}
+                                                            }
+                                                            refreshDownloadedSet();
+                                                            refreshMarkSets();
+                                                            if (adapter != null) adapter.notifyDataSetChanged();
+                                                            if (qt != null && qt.url != null) { menuMarkFadeUrl77 = qt.url; menuMarkBurstFav41 = null; fadeMenuMarkedDrawerRow77(); }
+                                                            android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "dl_deleted_done"), android.widget.Toast.LENGTH_SHORT).show();
+                                                        } else {
+                                                            android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "delete_failed"), android.widget.Toast.LENGTH_SHORT).show();
+                                                        }
+                                                    }
+                                                })
+                                                .setNegativeButton(Lang.t(RoomActivity.this, "del_btn_no"), null)
+                                                .show();
                                     } else if ("dl_menu_copy_link".equals(qKeyArr[which])) {
                                         // v15.52 (slice 1975): "Copy this talk's link" — the drawer's clipboard verb (see the f-list branch for the rule).
                                         if (RoomCopyLink.canOffer(qt.url)) {
@@ -11071,6 +11191,8 @@ if (snd67n >= 0) currentIndex = snd67n;
                     dKeys.add("menu_share");
                     // v15.48 (slice 1955): share this one FILE itself — right after the menu_share text share above, so the two share verbs sit together: the text share sends the talk's title + link, this one sends the actual downloaded .mp3 through the TalkFileProvider content:// URI. Gated on the Room's own downloadedFileName (the cache-only dlMap + basename rule the download gates already read, v1.57 — a name outside the set is not downloaded, whatever the disk holds right now), so a streamed-only talk never offers it; the tap-time resolve re-checks the file on disk. The menu_share offer above stays byte-identical.
                     if (downloadedFileName(dt.url) != null) { dOpts.add(Lang.t(RoomActivity.this, "dl_menu_share_file")); dKeys.add("dl_menu_share_file"); }
+                    // v15.54 (slice 1986): "Delete this downloaded file" — the drawer in-list dialog's delete verb (see the f-list offer for the rule): the file verbs sit together, right after the 1955 share. Gated on the Room's own downloadedFileName AND not sounding (the dialog gate already excludes the sounding talk, and the offer keeps the isSoundingTalk mirror for uniformity, the 1979 shape). 0 new Lang keys (the 1984 set).
+                    if (DrawerDelete.canOffer(downloadedFileName(dt.url), isSoundingTalk(dt.url))) { dOpts.add(Lang.t(RoomActivity.this, "del_one_btn")); dKeys.add("del_one_btn"); }
                     // v15.52 (slice 1975): "Copy this talk's link" — the clipboard twin of the two share verbs above (see the f-list offer for the rule).
                     if (RoomCopyLink.canOffer(dt.url)) { dOpts.add(Lang.t(RoomActivity.this, "dl_menu_copy_link")); dKeys.add("dl_menu_copy_link"); }
                     // v7.89: per-talk favourite from the Room drawer — the
@@ -11147,6 +11269,56 @@ if (snd67n >= 0) currentIndex = snd67n;
                                             suppressBgPause = true;
                                             startActivity(Intent.createChooser(send55, Lang.t(RoomActivity.this, "share_talk")));
                                         }
+                                    } else if ("del_one_btn".equals(dKeyArr[which])) {
+                                        // v15.54 (slice 1986): delete this downloaded file — the library's single-row delete in drawer form (see the f-list branch for the rule): the confirm is the library's own, the tap-time sounding re-check refuses with queue_changed (the 1979 mark-leg rule), a file deleted externally toasts dl_file_gone, a held arm is cleared (v7.86), the queue line is NOT removed (the URL still streams), the dlMap rows are pruned under DlLock, the downloaded set is rescanned, the row melts and the toast is dl_deleted_done. No pause guard.
+                                        new android.app.AlertDialog.Builder(RoomActivity.this)
+                                                .setTitle(Lang.t(RoomActivity.this, "del_one_title"))
+                                                .setMessage(dt.title != null && dt.title.length() > 0 ? dt.title : dt.url)
+                                                .setPositiveButton(Lang.t(RoomActivity.this, "del_one_btn"), new android.content.DialogInterface.OnClickListener() {
+                                                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                                                        if (isSoundingTalk(dt.url)) {
+                                                            android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+                                                            return;
+                                                        }
+                                                        String delName86 = downloadedFileName(dt.url);
+                                                        if (delName86 == null) {
+                                                            refreshDownloadedSet();
+                                                            refreshMarkSets();
+                                                            if (adapter != null) adapter.notifyDataSetChanged();
+                                                            android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "dl_file_gone"), android.widget.Toast.LENGTH_SHORT).show();
+                                                            return;
+                                                        }
+                                                        java.io.File dir86 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+                                                        java.io.File f86 = TalkFileShare.resolve(dir86, delName86);
+                                                        if (f86 == null) {
+                                                            refreshDownloadedSet();
+                                                            refreshMarkSets();
+                                                            if (adapter != null) adapter.notifyDataSetChanged();
+                                                            android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "dl_file_gone"), android.widget.Toast.LENGTH_SHORT).show();
+                                                            return;
+                                                        }
+                                                        if (f86.delete()) {
+                                                            if (dt.url.equals(moveHeldUrl)) moveHeldUrl = null;
+                                                            synchronized (DlLock.LOCK) {
+                                                                try {
+                                                                    android.content.SharedPreferences sp86 = getSharedPreferences("dhamma", MODE_PRIVATE);
+                                                                    org.json.JSONObject map86 = new org.json.JSONObject(sp86.getString("dlMap", "{}"));
+                                                                    for (String k86 : DrawerDelete.pruneKeys(dt.url)) map86.remove(k86);
+                                                                    sp86.edit().putString("dlMap", map86.toString()).apply();
+                                                                } catch (Exception ignored) {}
+                                                            }
+                                                            refreshDownloadedSet();
+                                                            refreshMarkSets();
+                                                            if (adapter != null) adapter.notifyDataSetChanged();
+                                                            if (dt != null && dt.url != null) { menuMarkFadeUrl77 = dt.url; menuMarkBurstFav41 = null; fadeMenuMarkedDrawerRow77(); }
+                                                            android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "dl_deleted_done"), android.widget.Toast.LENGTH_SHORT).show();
+                                                        } else {
+                                                            android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "delete_failed"), android.widget.Toast.LENGTH_SHORT).show();
+                                                        }
+                                                    }
+                                                })
+                                                .setNegativeButton(Lang.t(RoomActivity.this, "del_btn_no"), null)
+                                                .show();
                                     } else if ("dl_menu_copy_link".equals(dKeyArr[which])) {
                                         // v15.52 (slice 1975): "Copy this talk's link" — the drawer's clipboard verb (see the f-list branch for the rule).
                                         if (RoomCopyLink.canOffer(dt.url)) {
