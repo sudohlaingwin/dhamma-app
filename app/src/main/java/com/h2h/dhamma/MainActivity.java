@@ -247,6 +247,14 @@ public class MainActivity extends Activity {
     // resume) until the next flip. Tracked beside the other
     // tick trackers; steady ticks never touch the grid.
     private boolean mainGridPlaying = false;
+    // v15.41 (slice 1921): Main-grid new-talk dot — the pageUrls
+    // whose card wears a ● before the name: sayadaws with new
+    // talks since the last visit that nobody started or
+    // finished (TalkListCache new-set, gated by hasUnseenNew).
+    // Recomputed by refreshGridNewDots() immediately before
+    // every grid rebind, so getView reads it in O(1) and does
+    // no prefs work per card (v1.57/v5.69 one-parse rule).
+    private java.util.Set<String> gridNewSayadawUrls = new java.util.HashSet<String>();
     // v4.60: is the mini strip currently showing the resume mode
     // (dead session + saved spot) instead of a live session? The
     // strip's toggle and long-press read it, so a resume tap
@@ -617,6 +625,7 @@ public class MainActivity extends Activity {
         if (mainLabel != null) mainLabel.setTextColor(gold);
         syncNavPlayerLiveTintNow(navText, gold); // v14.62: instant stamp on first paint / dip / return —
         // the melt lives on the 1s tick only (syncNavPlayerLiveTint below)
+        refreshGridNewDots(); // v15.41 (slice 1921): dots fresh before the rebind below
         if (adapter != null) adapter.notifyDataSetChanged();
         // v12.38: the grid was just rebound with the current
         // marks — seed all five tick trackers here (onResume and
@@ -2070,6 +2079,7 @@ public class MainActivity extends Activity {
                         mainGridFailed = AudioService.liveTrackError;
                         mainGridBuffering = AudioService.liveBuffering;
                         mainGridPlaying = AudioService.livePlaying;
+                        refreshGridNewDots(); // v15.41 (slice 1921): a finished new talk clears its card dot
                         if (adapter != null) adapter.notifyDataSetChanged();
                         // v13.87: the same change moves the shelf ring
                         // (refreshFavShelf's key carries the sounding
@@ -2909,7 +2919,7 @@ public class MainActivity extends Activity {
                         applyFilter();
                         if (favs.isEmpty())
                             Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "no_fav_sayadaw"), Toast.LENGTH_SHORT).show();
-                    } else adapter.notifyDataSetChanged();
+                    } else { refreshGridNewDots(); adapter.notifyDataSetChanged(); }
                 refreshFavShelf(); // v13.74: star/unstar re-pours the shelf
                 return true;
             }
@@ -4863,6 +4873,7 @@ public class MainActivity extends Activity {
                 setChanged = true;
             }
         }
+        refreshGridNewDots(); // v15.41 (slice 1921): dots fresh for the rebuilt shown set
         adapter.notifyDataSetChanged();
         // v15.36 (slice 1853): arm the rank-close glide on a real
         // set change (the same gesture-only rule as the pour
@@ -4921,6 +4932,39 @@ public class MainActivity extends Activity {
         refreshNoResults(allowToast || favToggleChange, noResultsKey);
         // v15.33 (slice 1836): the search clear ✕ follows every filter pass — same animate rule as the empty-search view beside it (gesture passes animate, silent passes land instantly, the v1.53 rule).
         refreshSearchClear(allowToast || favToggleChange);
+    }
+
+    // v15.41 (slice 1921): recompute the Main-grid dot set — one
+    // pass over the shown sayadaws per rebind cycle. playedTalks
+    // is loaded once and the talk-position blob is parsed once
+    // (Prefs.talkPosKeysOver, the v5.69 shape); only the small
+    // per-sayadaw new-set is read per card. A sayadaw with no
+    // link (null/empty url) never dots. Called immediately
+    // before every adapter.notifyDataSetChanged() below, so the
+    // dots are fresh at every rebind: on return from Talks
+    // (the visit that stored the set), on a sounding flip
+    // (a finished new talk clears its card), on a filter
+    // rebuild and on the fav-toggle rebind.
+    // Edge (documented): a talk started ONLY from the library
+    // holds its spot under the downloaded-path form (v5.59),
+    // which the grid cannot know without a per-bind filesystem
+    // scan — the v1.57 jank class bars exactly that — so such
+    // a talk keeps its card dot until finished or the next
+    // Talks load replaces the set. Streaming-started talks
+    // clear on the next rebind.
+    private void refreshGridNewDots() {
+        java.util.Set<String> dots = new java.util.HashSet<String>();
+        try {
+            java.util.Set<String> played = getSharedPreferences("dhamma", MODE_PRIVATE)
+                    .getStringSet("playedTalks", null);
+            java.util.Set<String> resumeKeys = Prefs.talkPosKeysOver(this, 5000);
+            for (Sayadaw s : shown) {
+                if (s == null || s.url == null || s.url.length() == 0) continue;
+                java.util.Set<String> news = TalkListCache.loadNewSet(this, s.url);
+                if (TalkListCache.hasUnseenNew(news, played, resumeKeys)) dots.add(s.url);
+            }
+        } catch (Exception ignored) {}
+        gridNewSayadawUrls = dots;
     }
 
     private class SayadawAdapter extends BaseAdapter {
@@ -5011,7 +5055,15 @@ public class MainActivity extends Activity {
             // v15.33 (slice 1838): the EQ badge below owns the sounding mark now — the "▶ " text prefix retires on this card (the chooser/drawer rows keep theirs: there the bars replace the number slot, not the ▶). The ⚠ / buffering word still ride as text: the badge cannot say failed or loading.
             String gridMark = Fx.soundingRowMark(gridPlaying, AudioService.liveTrackError, AudioService.liveBuffering ? Lang.t(MainActivity.this, "notif_state_buffering") : "", "\u25B6");
             if (gridPlaying && !AudioService.liveTrackError && !AudioService.liveBuffering) gridMark = "";
-            if (nameView != null) nameView.setText(gridMark + s.name);
+            // v15.41 (slice 1921): Main-grid new-talk dot — the
+            // card wears a ● before the name while its sayadaw
+            // has new talks nobody started or finished (the
+            // Talks dot, one screen up). Title-coloured like
+            // every other text mark (v14.16 idiom); rebound on
+            // every bind, so a recycled card can never carry
+            // the dot onto another sayadaw.
+            String newDot = gridNewSayadawUrls.contains(s.url) ? "● " : "";
+            if (nameView != null) nameView.setText(gridMark + newDot + s.name);
             // v15.31 (slice 1822): the card name colour melts
             // gold<->plain through Fx.crossfadeTextColor (250ms,
             // v14.34 helper) instead of snapping — the last snap

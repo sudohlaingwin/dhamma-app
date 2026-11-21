@@ -678,6 +678,19 @@ public class RoomActivity extends Activity {
     // helper, so a cancel / stale-dialog / sounding-guard path
     // — or any other rebind — never inherits a fade.
     private String menuMarkFadeUrl77 = null;
+    // v15.41 (slice 1914): the drawer long-press favourite burst
+    // — the Main grid fav tap bursts (1877), the Room altar hold
+    // bursts at the finger (1844) and the Talks (1912) /
+    // Downloaded (1913) dialog fav toggles burst at the row, but
+    // the four Room drawer dialogs' fav toggles only toasted +
+    // faded the row. menuMarkBurstFav41 carries the toggle's new
+    // state (null = no burst — the queue branches and
+    // enqueueRoomDownload sharing the helper below must never
+    // burst); drawerFavBurstView / drawerFavBurstGen are the
+    // burst view + generation guard, the Main 1877 shape.
+    private Boolean menuMarkBurstFav41 = null;
+    private android.widget.TextView drawerFavBurstView = null;
+    private int drawerFavBurstGen = 0;
     // v14.96 (slice 1754): the open drawer's rows' melt state for
     // an external mark change — syncOpenDrawerMarks46's rebind
     // (v7.46) used to snap the changed ★/✓ onto their rows in one
@@ -1164,6 +1177,13 @@ public class RoomActivity extends Activity {
     // (mutate nothing). Visual only; the mutation, the toast
     // and the rebind are untouched.
     private void fadeMenuMarkedDrawerRow77() {
+        // v15.41 (slice 1914): the fav-burst arm — consumed here,
+        // at entry, before the null-URL early return, so a later
+        // menu action can never inherit a stale burst (the queue
+        // branches and enqueueRoomDownload leave it null and
+        // never burst).
+        final Boolean burstFav41 = menuMarkBurstFav41;
+        menuMarkBurstFav41 = null;
         if (menuMarkFadeUrl77 == null || roomList == null || adapter == null) { menuMarkFadeUrl77 = null; return; }
         final String url = menuMarkFadeUrl77;
         menuMarkFadeUrl77 = null;
@@ -1174,8 +1194,93 @@ public class RoomActivity extends Activity {
                 int first = roomList.getFirstVisiblePosition();
                 android.view.View row = dp >= 0 ? roomList.getChildAt(dp - first) : null;
                 if (row != null) Fx.fadeIn(row, 250);
+                if (row != null && burstFav41 != null) {
+                    final android.view.View burstRow41 = row;
+                    final boolean burstNowFav41 = burstFav41.booleanValue();
+                    row.postDelayed(new Runnable() {
+                        @Override public void run() {
+                            if (burstRow41 == null || !burstRow41.isShown() || isFinishing() || isDestroyed()) return;
+                            showDrawerFavBurst(burstNowFav41, burstRow41);
+                        }
+                    }, 160);
+                }
             }
         });
+    }
+    // v15.41 (slice 1914): the Room drawer long-press favourite burst —
+    // the Main-grid 1877 shape at the marked drawer row's centre (48sp
+    // gold U+2605 on add, muted U+2606 on remove; 180ms grow to
+    // 1.15x, 420ms shrink + fade; gen-guarded, restart-safe).
+    // Fired only from fadeMenuMarkedDrawerRow77 when one of the four
+    // drawer dialogs' fav branches armed menuMarkBurstFav41; the
+    // queue branches and enqueueRoomDownload share that helper and
+    // never arm it, so they never burst. Anchored on
+    // android.R.id.content like the Talks (1912) / Downloaded (1913)
+    // bursts — the drawer panel lives inside the activity content,
+    // so the burst floats above it at the row's screen position.
+    // (The altar hold keeps its own finger-anchored showFavBurst,
+    // 1844 — a different anchor for a different gesture.)
+    private void showDrawerFavBurst(boolean nowFav, android.view.View row) {
+        try {
+            android.view.View content = findViewById(android.R.id.content);
+            if (content == null || !(content instanceof android.view.ViewGroup) || row == null) return;
+            if (drawerFavBurstView == null) {
+                android.widget.TextView tv = new android.widget.TextView(this);
+                tv.setVisibility(View.GONE);
+                tv.setClickable(false);
+                tv.setFocusable(false);
+                tv.setGravity(android.view.Gravity.CENTER);
+                tv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 48);
+                tv.setShadowLayer(6f, 0f, 2f, 0x99000000);
+                ((android.view.ViewGroup) content).addView(tv,
+                        new android.widget.FrameLayout.LayoutParams(
+                                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT));
+                drawerFavBurstView = tv;
+            }
+            final android.widget.TextView tv = drawerFavBurstView;
+            tv.animate().cancel();
+            drawerFavBurstGen++;
+            final int myGen = drawerFavBurstGen;
+            tv.setText(nowFav ? "\u2605" : "\u2606");
+            tv.setTextColor(nowFav ? 0xFFC9A227 : 0xFFAAAAAA);
+            tv.setVisibility(View.VISIBLE);
+            tv.measure(android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED),
+                       android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+            int w = tv.getMeasuredWidth();
+            int h = tv.getMeasuredHeight();
+            tv.setPivotX(w / 2f);
+            tv.setPivotY(h / 2f);
+            int[] rowLoc = new int[2];
+            int[] contentLoc = new int[2];
+            row.getLocationOnScreen(rowLoc);
+            content.getLocationOnScreen(contentLoc);
+            float cx = (rowLoc[0] - contentLoc[0]) + row.getWidth() / 2f;
+            float cy = (rowLoc[1] - contentLoc[1]) + row.getHeight() / 2f;
+            if (content.getWidth() > 0) cx = Math.max(w / 2f, Math.min(content.getWidth() - w / 2f, cx));
+            if (content.getHeight() > 0) cy = Math.max(h / 2f, Math.min(content.getHeight() - h / 2f, cy));
+            tv.setX(cx - w / 2f);
+            tv.setY(cy - h / 2f);
+            tv.setScaleX(0.5f);
+            tv.setScaleY(0.5f);
+            tv.setAlpha(1f);
+            tv.animate().scaleX(1.15f).scaleY(1.15f).setDuration(180)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                    .withEndAction(new Runnable() {
+                        @Override public void run() {
+                            if (myGen != drawerFavBurstGen) return;
+                            tv.animate().scaleX(1f).scaleY(1f).alpha(0f).setDuration(420)
+                                    .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                                    .withEndAction(new Runnable() {
+                                        @Override public void run() {
+                                            if (myGen != drawerFavBurstGen) return;
+                                            tv.setVisibility(View.GONE);
+                                            tv.setAlpha(1f);
+                                        }
+                                    }).start();
+                        }
+                    }).start();
+        } catch (Exception ignored) {}
     }
     // v14.96 (slice 1754): the changed-mark set for the sync melt —
     // pure (only SiteHttp.identityUrl + java.util), so the sim
@@ -10125,7 +10230,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                                             refreshCardIfFlipped1025(ffe.url);
                                             refreshMarkSets();
                                             if (adapter != null) adapter.notifyDataSetChanged();
-                                            menuMarkFadeUrl77 = ffe.url; fadeMenuMarkedDrawerRow77();
+                                            menuMarkFadeUrl77 = ffe.url; menuMarkBurstFav41 = Boolean.valueOf(added89f); fadeMenuMarkedDrawerRow77();
                                             Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, added89f ? "fav_added" : "fav_removed"), Toast.LENGTH_SHORT).show();
                                         } else if ("menu_queue_remove".equals(fKeyArr[which])) {
                                             // v7.89: was `which == 1` — the new
@@ -10420,7 +10525,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         refreshCardIfFlipped1025(qt.url);
                                         refreshMarkSets();
                                         if (adapter != null) adapter.notifyDataSetChanged();
-                                        menuMarkFadeUrl77 = qt.url; fadeMenuMarkedDrawerRow77();
+                                        menuMarkFadeUrl77 = qt.url; menuMarkBurstFav41 = Boolean.valueOf(added91); fadeMenuMarkedDrawerRow77();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, added91 ? "fav_added" : "fav_removed"), Toast.LENGTH_SHORT).show();
                                     } else if ("menu_queue_remove".equals(qKeyArr[which])) {
                                         int qi = queueLineIndexForUrl(qt.url);
@@ -10647,7 +10752,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         refreshCardIfFlipped1025(st.url);
                                         refreshMarkSets();
                                         if (adapter != null) adapter.notifyDataSetChanged();
-                                        menuMarkFadeUrl77 = st.url; fadeMenuMarkedDrawerRow77();
+                                        menuMarkFadeUrl77 = st.url; menuMarkBurstFav41 = Boolean.valueOf(added71); fadeMenuMarkedDrawerRow77();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, added71 ? "fav_added" : "fav_removed"), Toast.LENGTH_SHORT).show();
                                     } else if ("dl_btn_download".equals(sKeyArr[which])) {
                                         enqueueRoomDownload(st);
@@ -10739,7 +10844,7 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         refreshCardIfFlipped1025(dt.url);
                                         refreshMarkSets();
                                         if (adapter != null) adapter.notifyDataSetChanged();
-                                        menuMarkFadeUrl77 = dt.url; fadeMenuMarkedDrawerRow77();
+                                        menuMarkFadeUrl77 = dt.url; menuMarkBurstFav41 = Boolean.valueOf(added89); fadeMenuMarkedDrawerRow77();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, added89 ? "fav_added" : "fav_removed"), Toast.LENGTH_SHORT).show();
                                     } else if ("menu_queue_remove".equals(dKeyArr[which])) {
                                         int qi = queueLineIndexForUrl(dt.url);

@@ -4122,9 +4122,27 @@ public class DownloadedActivity extends Activity {
     // the tick arms no melt for a pure mark change anyway, v14.49).
     // Consume-once: the field is nulled here.
     private String menuMarkFadePath76 = null;
+    // v15.41 (slice 1913): the long-press favourite burst — the
+    // Main grid fav tap bursts (1877), the Room altar
+    // long-press bursts (1844) and the Talks dialog fav toggle
+    // bursts (1912), but this screen's dialog fav toggle only
+    // toasted + faded the row. menuMarkBurstFav41 carries the
+    // toggle's new state (null = no burst — the queue branches
+    // sharing the helper below must never burst); dlFavBurstView
+    // / dlFavBurstGen are the burst view + generation guard,
+    // the Main 1877 shape.
+    private Boolean menuMarkBurstFav41 = null;
+    private android.widget.TextView dlFavBurstView = null;
+    private int dlFavBurstGen = 0;
     private void fadeMenuMarkedDlRow() {
         final String path = menuMarkFadePath76;
         menuMarkFadePath76 = null;
+        // v15.41 (slice 1913): the fav-burst arm — consumed here,
+        // at entry, with the path field above, so a later menu
+        // action can never inherit a stale burst (the queue
+        // branches leave it null and never burst).
+        final Boolean burstFav41 = menuMarkBurstFav41;
+        menuMarkBurstFav41 = null;
         if (path == null || dlListView == null) return;
         dlListView.post(new Runnable() {
             @Override public void run() {
@@ -4141,8 +4159,89 @@ public class DownloadedActivity extends Activity {
                 android.view.View row = dlListView.getChildAt(dispPos - first);
                 if (row == null) return;
                 Fx.fadeIn(row, 250);
+                if (burstFav41 != null) {
+                    final android.view.View burstRow41 = row;
+                    final boolean burstNowFav41 = burstFav41.booleanValue();
+                    row.postDelayed(new Runnable() {
+                        @Override public void run() {
+                            if (burstRow41 == null || !burstRow41.isShown() || isFinishing() || isDestroyed()) return;
+                            showDlFavBurst(burstNowFav41, burstRow41);
+                        }
+                    }, 160);
+                }
             }
         });
+    }
+
+    // v15.41 (slice 1913): the Downloaded long-press favourite
+    // burst — the Main-grid 1877 shape at the marked row's
+    // centre (48sp gold U+2605 on add, muted U+2606 on remove;
+    // 180ms grow to 1.15x, 420ms shrink + fade; gen-guarded,
+    // restart-safe). Fired only from fadeMenuMarkedDlRow when
+    // the fav branch armed menuMarkBurstFav41; the queue
+    // branches share that helper and never arm it, so they
+    // never burst.
+    private void showDlFavBurst(boolean nowFav, android.view.View row) {
+        try {
+            android.view.View content = findViewById(android.R.id.content);
+            if (content == null || !(content instanceof android.view.ViewGroup) || row == null) return;
+            if (dlFavBurstView == null) {
+                android.widget.TextView tv = new android.widget.TextView(this);
+                tv.setVisibility(View.GONE);
+                tv.setClickable(false);
+                tv.setFocusable(false);
+                tv.setGravity(android.view.Gravity.CENTER);
+                tv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 48);
+                tv.setShadowLayer(6f, 0f, 2f, 0x99000000);
+                ((android.view.ViewGroup) content).addView(tv,
+                        new android.widget.FrameLayout.LayoutParams(
+                                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT));
+                dlFavBurstView = tv;
+            }
+            final android.widget.TextView tv = dlFavBurstView;
+            tv.animate().cancel();
+            dlFavBurstGen++;
+            final int myGen = dlFavBurstGen;
+            tv.setText(nowFav ? "\u2605" : "\u2606");
+            tv.setTextColor(nowFav ? 0xFFC9A227 : 0xFFAAAAAA);
+            tv.setVisibility(View.VISIBLE);
+            tv.measure(android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED),
+                       android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+            int w = tv.getMeasuredWidth();
+            int h = tv.getMeasuredHeight();
+            tv.setPivotX(w / 2f);
+            tv.setPivotY(h / 2f);
+            int[] rowLoc = new int[2];
+            int[] contentLoc = new int[2];
+            row.getLocationOnScreen(rowLoc);
+            content.getLocationOnScreen(contentLoc);
+            float cx = (rowLoc[0] - contentLoc[0]) + row.getWidth() / 2f;
+            float cy = (rowLoc[1] - contentLoc[1]) + row.getHeight() / 2f;
+            if (content.getWidth() > 0) cx = Math.max(w / 2f, Math.min(content.getWidth() - w / 2f, cx));
+            if (content.getHeight() > 0) cy = Math.max(h / 2f, Math.min(content.getHeight() - h / 2f, cy));
+            tv.setX(cx - w / 2f);
+            tv.setY(cy - h / 2f);
+            tv.setScaleX(0.5f);
+            tv.setScaleY(0.5f);
+            tv.setAlpha(1f);
+            tv.animate().scaleX(1.15f).scaleY(1.15f).setDuration(180)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                    .withEndAction(new Runnable() {
+                        @Override public void run() {
+                            if (myGen != dlFavBurstGen) return;
+                            tv.animate().scaleX(1f).scaleY(1f).alpha(0f).setDuration(420)
+                                    .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                                    .withEndAction(new Runnable() {
+                                        @Override public void run() {
+                                            if (myGen != dlFavBurstGen) return;
+                                            tv.setVisibility(View.GONE);
+                                            tv.setAlpha(1f);
+                                        }
+                                    }).start();
+                        }
+                    }).start();
+        } catch (Exception ignored) {}
     }
 
     private void wireDlStrip() {
@@ -12865,7 +12964,7 @@ public class DownloadedActivity extends Activity {
                             if (added90) libFavFiles.add(t.file.getName());
                             else libFavFiles.remove(t.file.getName());
                             if (!added90 && dlFilterMode == 1) applyDlFilter();
-                            if (path != null) menuMarkFadePath76 = path;
+                            if (path != null) { menuMarkFadePath76 = path; menuMarkBurstFav41 = Boolean.valueOf(added90); }
                             // v14.76 (slice 1734): adopt the v7.45 tick
                             // snapshots synchronously — the Talks v10.88
                             // rule, restated for the library (see the

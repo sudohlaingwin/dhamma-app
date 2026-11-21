@@ -150,6 +150,75 @@ public class TalkListCache {
         }
     }
 
+    // v15.41 (slice 1920): newly-added talks — pure core: the
+    // identity URLs in the fresh list that the saved list does
+    // not have. A null old list is a first visit, so nothing is
+    // new (the whole list is a first sight, not an arrival);
+    // a null fresh list is empty. Identity-compared, so an
+    // http/https respelling of the same talk never reads new.
+    static java.util.Set<String> diffNewIds(java.util.List<String[]> oldPairs,
+            java.util.List<String> freshUrls) {
+        java.util.Set<String> out = new java.util.HashSet<String>();
+        if (oldPairs == null || freshUrls == null) return out;
+        java.util.Set<String> oldIds = new java.util.HashSet<String>();
+        for (String[] p : oldPairs) {
+            if (p != null && p.length > 1 && p[1] != null) oldIds.add(SiteHttp.identityUrl(p[1]));
+        }
+        for (String u : freshUrls) {
+            String id = SiteHttp.identityUrl(u);
+            if (id != null && !oldIds.contains(id)) out.add(id);
+        }
+        return out;
+    }
+
+    // v15.41 (slice 1920): the new-talk set store — same key as
+    // the list cache plus "_new", in the shared "dhamma" prefs
+    // file beside favTalks/playedTalks. Survives rotation and
+    // restarts; replaced on every successful load, never cleared
+    // on a failed one (no fresh list to compare against).
+    // v15.41 (slice 1921): Main-grid dot gate — pure core: true
+    // iff some identity URL in the new-set is in neither the
+    // played set (finished) nor the resume-key set (saved spot
+    // over 5s, i.e. started). The same gate as the Talks row
+    // (1920), lifted to the card level: a card dots while its
+    // sayadaw still has new talks nobody started or finished.
+    // Null-safe on all three sets; the resume keys already
+    // carry both the raw and the identity form (v13.65), and
+    // the played set holds identity URLs (Talks row, v5.49),
+    // so plain membership tests are exact.
+    static boolean hasUnseenNew(java.util.Set<String> newIds,
+            java.util.Set<String> playedIds, java.util.Set<String> resumeKeys) {
+        if (newIds == null || newIds.isEmpty()) return false;
+        for (String id : newIds) {
+            if (id == null) continue;
+            if (playedIds != null && playedIds.contains(id)) continue;
+            if (resumeKeys != null && resumeKeys.contains(id)) continue;
+            return true;
+        }
+        return false;
+    }
+
+    public static void saveNewSet(Context c, String pageUrl, java.util.Set<String> ids) {
+        if (c == null || pageUrl == null) return;
+        try {
+            SharedPreferences sp = c.getSharedPreferences("dhamma", Context.MODE_PRIVATE);
+            java.util.Set<String> keep = ids == null
+                    ? new java.util.HashSet<String>() : new java.util.HashSet<String>(ids);
+            sp.edit().putStringSet(keyFor(pageUrl) + "_new", keep).apply();
+        } catch (Exception ignored) {}
+    }
+
+    public static java.util.Set<String> loadNewSet(Context c, String pageUrl) {
+        if (c == null || pageUrl == null) return new java.util.HashSet<String>();
+        try {
+            SharedPreferences sp = c.getSharedPreferences("dhamma", Context.MODE_PRIVATE);
+            java.util.Set<String> s = sp.getStringSet(keyFor(pageUrl) + "_new", null);
+            return s == null ? new java.util.HashSet<String>() : new java.util.HashSet<String>(s);
+        } catch (Exception ignored) {
+            return new java.util.HashSet<String>();
+        }
+    }
+
     // The Lang key for the real failure reason. Walks one cause level
     // because HttpURLConnection sometimes wraps the root failure.
     // A certificate failure is its own key: his Redmi's live symptom
