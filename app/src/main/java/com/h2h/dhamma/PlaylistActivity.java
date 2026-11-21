@@ -107,7 +107,7 @@ public class PlaylistActivity extends Activity {
         if (headerBtn != null) {
             headerBtn.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) {
-                    if (curList != null) showLists();
+                    if (curList != null) { plNav40 = true; showLists(); }
                     else showNewListDialog();
                 }
             });
@@ -129,7 +129,7 @@ public class PlaylistActivity extends Activity {
             listView.setAdapter(adapter);
             listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
                 @Override public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
-                    if (curList == null) showDetail(names.get(pos));
+                    if (curList == null) { plNav40 = true; showDetail(names.get(pos)); }
                     else playFrom(pos);
                 }
             });
@@ -187,10 +187,15 @@ public class PlaylistActivity extends Activity {
         // the drawable pins the dead view + its destroyed
         // activity otherwise.
         GlassBlur.detach(findViewById(R.id.nowStrip));
+        // v15.40 (slice 1909): cancel in-flight header melts so a
+        // destroy mid-melt never touches a detached header (the
+        // update-gate dismissBlock / 1908 stats hygiene).
+        Fx.cancelMeltText(headerTitle);
+        Fx.cancelMeltText(headerBtn);
     }
 
     @Override public void onBackPressed() {
-        if (curList != null) { showLists(); return; }
+        if (curList != null) { plNav40 = true; showLists(); return; }
         super.onBackPressed();
     }
 
@@ -322,26 +327,67 @@ public class PlaylistActivity extends Activity {
         if (empty) emptyText.setText(Lang.t(this, "pl_empty"));
     }
 
+    // v15.40 (slice 1909): the Playlist lists<->detail navigation
+    // moves instead of swapping in one frame — the last
+    // un-choreographed navigation in the app. showLists() /
+    // showDetail() used to rewrite the header title ("Playlist"
+    // <-> list name), the header button ("New" <-> "Back"), the
+    // Play All button (GONE <-> VISIBLE) and the whole row set in
+    // a single frame, while every sibling navigation already
+    // moves (drawer slide v3.36, grid pour v2.07, strip melts
+    // 1907). meltHeader40 routes both header texts through the
+    // shared Fx.meltText (dip 90ms, swap at the bottom, rise
+    // 180ms, Decelerate); the first paint adopts (plHeaderKnown40,
+    // the 1906 gate / 1908 stats idiom) so the header never melts
+    // under its own entrance, and the onCreate->onResume double
+    // call melts nothing (identical values no-op inside meltText).
+    // Play All rides Fx.crossfadeStripBtn (the 1907 strip idiom:
+    // recorded shown state, instant seed on a fresh view, 250ms
+    // fade in/out, steady state a no-op). The list itself pours
+    // only on a user navigation: the six nav sites arm plNav40
+    // (row tap, back, header button, new-list create, new-list
+    // existing-name, delete-list confirm); showLists() /
+    // showDetail() consume it and Fx.fadeIn the ListView 250ms
+    // (settled alpha still starts from 0, v3.52). onCreate
+    // restore and onResume never arm it, so a return from the
+    // Room never re-pours the list. Empty state untouched
+    // (1891-closed family); strip untouched (1907).
+    private boolean plHeaderKnown40 = false;
+    private boolean plNav40 = false;
+    private void meltHeader40(android.widget.TextView tv, String want) {
+        if (tv == null || want == null) return;
+        if (!plHeaderKnown40) { tv.setText(want); return; }
+        Fx.meltText(tv, want);
+    }
+    private void pourList40() {
+        boolean pour = plNav40;
+        plNav40 = false;
+        if (pour && listView != null) Fx.fadeIn(listView, 250);
+    }
+
     private void showLists() {
         curList = null;
         names = Prefs.playlistNames(this);
-        if (headerTitle != null) headerTitle.setText(Lang.t(this, "pl_title"));
-        if (headerBtn != null) headerBtn.setText(Lang.t(this, "pl_new"));
-        if (playAllBtn != null) playAllBtn.setVisibility(View.GONE);
+        meltHeader40(headerTitle, Lang.t(this, "pl_title"));
+        meltHeader40(headerBtn, Lang.t(this, "pl_new"));
+        Fx.crossfadeStripBtn(playAllBtn, false);
         if (adapter != null) adapter.notifyDataSetChanged();
         refreshEmpty();
+        plHeaderKnown40 = true;
+        pourList40();
     }
 
     private void showDetail(String name) {
         curList = name;
         items = Prefs.playlistItems(this, name);
-        if (headerTitle != null) headerTitle.setText(name);
-        if (headerBtn != null) headerBtn.setText(Lang.t(this, "back"));
-        if (playAllBtn != null)
-            playAllBtn.setVisibility(items.isEmpty() ? View.GONE : View.VISIBLE);
+        meltHeader40(headerTitle, name);
+        meltHeader40(headerBtn, Lang.t(this, "back"));
+        Fx.crossfadeStripBtn(playAllBtn, !items.isEmpty());
         refreshPlaylistPlayingMarks(); // v13.55: mark right on first paint, not one tick late
         if (adapter != null) adapter.notifyDataSetChanged();
         refreshEmpty();
+        plHeaderKnown40 = true;
+        pourList40();
     }
 
     private void confirmDeleteList(final String name) {
@@ -358,6 +404,7 @@ public class PlaylistActivity extends Activity {
                         new DialogInterface.OnClickListener() {
                     @Override public void onClick(DialogInterface d, int which) {
                         Prefs.playlistDelete(PlaylistActivity.this, name);
+                        plNav40 = true;
                         showLists();
                         Toast.makeText(PlaylistActivity.this,
                                 Lang.t(PlaylistActivity.this, "pl_deleted"),
@@ -408,6 +455,7 @@ public class PlaylistActivity extends Activity {
                         // An existing name just opens that list —
                         // no error path for a repeat name.
                         if (Prefs.playlistCreate(PlaylistActivity.this, name)) {
+                            plNav40 = true;
                             showDetail(name);
                             return;
                         }
@@ -420,6 +468,7 @@ public class PlaylistActivity extends Activity {
                         java.util.List<String> held =
                                 Prefs.playlistNames(PlaylistActivity.this);
                         if (held.contains(name)) {
+                            plNav40 = true;
                             showDetail(name);
                         } else if (held.size() >= 20) {
                             // 20 = the store's 20-list cap.
@@ -632,6 +681,38 @@ public class PlaylistActivity extends Activity {
         });
     }
 
+    // v15.40 (slice 1907): the Playlist resume strip's title melts on a
+    // structural change instead of snapping — the mirror of Main's
+    // v14.70 meltResumeStripTitle70. The 1s tick re-runs
+    // syncPlaylistStrip in resume mode, and the title carries the
+    // download mark (stripResumeDownloadMark / the lib branch's inline
+    // check), so a download landing while Playlist sits open flipped
+    // its ⏳ to ⬇ in one frame on the visible strip; a ★ gained or
+    // lost on a favour/clear return flips the same way. Same idiom
+    // as Main: first resume sighting writes instantly (the slide-in
+    // owns the entrance), steady ticks never touch the view, and a
+    // change melts 250ms via Fx.fadeIn only while VISIBLE and settled
+    // (alpha >= 0.999f); a stale live dip is cancelled first. The
+    // tracker resets where the strip leaves resume mode — the live
+    // entry below and both resume hide paths — so a later re-appear
+    // with a different talk never melts under its own slide-in.
+    // Rotation recreates the activity, so the tracker resets there
+    // too. The live branch's stripTextLast tag is untouched:
+    // fadeStripText keys on identity, not text, so a resume write
+    // never desyncs its next live melt (v14.43 class).
+    private String plResumeStripTitle = null;
+    private void meltResumeStripTitlePl(android.widget.TextView tx, String want) {
+        if (tx == null || want == null) return;
+        Object aObjPl = tx.getTag(R.id.stripTextAnim);
+        if (aObjPl instanceof android.animation.Animator) ((android.animation.Animator) aObjPl).cancel();
+        String prevPl = plResumeStripTitle;
+        plResumeStripTitle = want;
+        if (prevPl == null) { tx.setText(want); return; }
+        if (prevPl.equals(want)) return;
+        tx.setText(want);
+        if (tx.getVisibility() == android.view.View.VISIBLE && tx.getAlpha() >= 0.999f) Fx.fadeIn(tx, 250);
+    }
+
     private void syncPlaylistStrip() {
         // v13.55: playing-row mark — rebind once when the sounding talk changes under the list
         // (Talks v4.89/v11.15, same change-only rule): auto-advance, a Next from the strip, a
@@ -686,7 +767,8 @@ public class PlaylistActivity extends Activity {
             // >5s) and same presentation: ↺ title over sayadaw ·
             // mm:ss resume cue, ▶ re-opening the Room, Next
             // hidden (advancing needs a live track), progress
-            // empty (no duration survives a dead session).
+            // filled from the stored duration (Main's v14.03 rule;
+            // unknown duration still reads empty).
             // Global like the live strip — it shows whichever
             // sayadaw's talk was playing, not only this list's.
             // An explicit stop already clears the spot (v1.57),
@@ -757,6 +839,7 @@ public class PlaylistActivity extends Activity {
                 }
                 if (lTitle.length() == 0 || !lMatch) {
                     syncPlaylistStripPhoto(null);
+                    plResumeStripTitle = null;
                     Fx.hideStrip(strip);
                     return;
                 }
@@ -781,8 +864,10 @@ public class PlaylistActivity extends Activity {
                 } catch (Exception ignored) {}
                 int lSec = rPos / 1000;
                 String lTime = Fx.stripResumeTime(lSec);
+                // v15.40 (slice 1907): the stored duration (v13.96) fills the bar — Main's v14.03 rule; unknown duration still reads empty (stripResumeProgress).
+                int lDur = Fx.stripResumeDuration(PlaylistActivity.this, rsp, rSavedUrl, lPath);
                 // v8.52: Main's v7.94 resume mark, mirrored — the proven file is offline, like Main's lib branch.
-                if (tx != null) tx.setText("↺ " + lTitle + (lFav ? " ★" : "") + (Fx.stripInProgressDlFilenames(PlaylistActivity.this, rsp).contains(new java.io.File(lPath).getName()) ? " ⏳" : " ⬇"));
+                meltResumeStripTitlePl(tx, "↺ " + lTitle + (lFav ? " ★" : "") + (Fx.stripInProgressDlFilenames(PlaylistActivity.this, rsp).contains(new java.io.File(lPath).getName()) ? " ⏳" : " ⬇"));
                 // v5.46: a dead library strip names its recorded
                 // sayadaw like the live strip since v5.45, in the
                 // Room strip's "name · mm:ss မှ ဆက်နားထောင်ရန်"
@@ -791,7 +876,7 @@ public class PlaylistActivity extends Activity {
                 String libSd = Fx.stripLibSayadaw(PlaylistActivity.this, rsp);
                 if (sb != null) sb.setText(libSd != null ? libSd + " · " + lTime + Lang.t(PlaylistActivity.this, "resume_from") : Lang.t(PlaylistActivity.this, "downloaded_talk") + " · " + lTime + Lang.t(PlaylistActivity.this, "resume_from"));
                 if (tg != null) tg.setText("▶");
-                if (nx != null) nx.setVisibility(android.view.View.GONE);
+                if (nx != null) Fx.crossfadeStripBtn(nx, false);
                 // v7.31: Previous hides with Next in resume mode
                 // (Main's mirror fix) — stepping back needs a
                 // live track exactly like advancing does, and
@@ -799,9 +884,9 @@ public class PlaylistActivity extends Activity {
                 // on a ↺ strip ACTION_PREV-ed into a different
                 // talk instead of resuming this one.
                 android.view.View pv0 = findViewById(R.id.nowStripPrev);
-                if (pv0 != null) pv0.setVisibility(android.view.View.GONE);
+                if (pv0 != null) Fx.crossfadeStripBtn(pv0, false);
                 android.widget.ProgressBar lPb = findViewById(R.id.nowStripProgress);
-                if (lPb != null) lPb.setProgress(0);
+                if (lPb != null) Fx.stripResumeProgress(lPb, rPos, lDur);
                 plResumeStripMode = true;
                 syncPlaylistStripPhoto(libSd);
                 Fx.showStrip(strip);
@@ -810,6 +895,7 @@ public class PlaylistActivity extends Activity {
             if (!"room".equals(rKind) || rName.length() == 0 || rTitle.length() == 0
                     || rPage.length() == 0 || rPos <= 5000 || !rMatch) {
                 syncPlaylistStripPhoto(null);
+                plResumeStripTitle = null;
                 Fx.hideStrip(strip);
                 return;
             }
@@ -820,27 +906,29 @@ public class PlaylistActivity extends Activity {
             } catch (Exception ignored) {}
             int rSec = rPos / 1000;
             String rTime = Fx.stripResumeTime(rSec);
+            int rDur = Fx.stripResumeDuration(PlaylistActivity.this, rsp, rUrl, null);
             // v8.52: Main's v7.94 resume download mark, mirrored — a ↺ strip here never said whether resuming streams or plays offline.
-            if (tx != null) tx.setText("↺ " + rTitle + (rFav ? " ★" : "") + Fx.stripResumeDownloadMark(PlaylistActivity.this, rsp, rUrl));
+            meltResumeStripTitlePl(tx, "↺ " + rTitle + (rFav ? " ★" : "") + Fx.stripResumeDownloadMark(PlaylistActivity.this, rsp, rUrl));
             if (sb != null) sb.setText(rName + " · " + rTime + Lang.t(PlaylistActivity.this, "resume_from"));
             if (tg != null) tg.setText("▶");
-            if (nx != null) nx.setVisibility(android.view.View.GONE);
+            if (nx != null) Fx.crossfadeStripBtn(nx, false);
             // v7.31: same Previous hide as the library resume
             // branch above — a ↺ strip never shows ⏮.
             android.view.View pv0 = findViewById(R.id.nowStripPrev);
-            if (pv0 != null) pv0.setVisibility(android.view.View.GONE);
+            if (pv0 != null) Fx.crossfadeStripBtn(pv0, false);
             android.widget.ProgressBar rPb = findViewById(R.id.nowStripProgress);
-            if (rPb != null) rPb.setProgress(0);
+            if (rPb != null) Fx.stripResumeProgress(rPb, rPos, rDur);
             plResumeStripMode = true;
             syncPlaylistStripPhoto(rName);
             Fx.showStrip(strip);
             return;
         }
         plResumeStripMode = false;
-        if (nx != null) nx.setVisibility(android.view.View.VISIBLE);
+        plResumeStripTitle = null; // v15.40: live branch owns tx via fadeStripText from here
+        if (nx != null) Fx.crossfadeStripBtn(nx, true);
         // v7.31: Previous returns with Next on a live session.
         android.view.View pv0 = findViewById(R.id.nowStripPrev);
-        if (pv0 != null) pv0.setVisibility(android.view.View.VISIBLE);
+        if (pv0 != null) Fx.crossfadeStripBtn(pv0, true);
         android.content.SharedPreferences sp =
                 getSharedPreferences("dhamma", MODE_PRIVATE);
         String kind = sp.getString("lastKind", "");

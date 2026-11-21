@@ -4251,4 +4251,90 @@ public class Fx {
         return (sec / 60) + ":" + (sec % 60 < 10 ? "0" + (sec % 60) : "" + (sec % 60));
     }
 
+    // v15.40 (slice 1906): structural-text melt — a VISIBLE, settled
+    // TextView dips 90ms, swaps at the bottom and rises 180ms (the
+    // meltSleepText rhythm, Decelerate), so a state change reads as
+    // one transition instead of a one-frame swap. Tick-only changes
+    // must NOT call this: melting a ticking value flickers (the
+    // v14.95 distinction) — callers melt only on a phase/structural
+    // change and setText directly on ticks. Gen is bumped BEFORE
+    // every cancel (v3.19): a cancelled dip still fires its end
+    // action, so a stale end returns without swapping text or
+    // starting a rise, and a stale cancel handler returns without
+    // restoring alpha. A non-settled view adopts instantly. The
+    // per-view animator + gen live in WeakHashMaps (the fadeGens
+    // model), so no view is held after its dialog is gone.
+    private static java.util.WeakHashMap<android.widget.TextView, android.animation.ObjectAnimator> meltTextAnims =
+            new java.util.WeakHashMap<android.widget.TextView, android.animation.ObjectAnimator>();
+    private static java.util.WeakHashMap<android.widget.TextView, Integer> meltTextGens =
+            new java.util.WeakHashMap<android.widget.TextView, Integer>();
+    public static void meltText(final android.widget.TextView v, final String want) {
+        if (v == null || want == null) return;
+        String cur = v.getText() == null ? "" : v.getText().toString();
+        if (want.equals(cur)) return;
+        if (v.getVisibility() != android.view.View.VISIBLE || v.getAlpha() < 0.999f) {
+            v.setText(want);
+            return;
+        }
+        Integer curGen = meltTextGens.get(v);
+        final int gen = (curGen == null ? 1 : curGen + 1);
+        meltTextGens.put(v, gen);
+        android.animation.ObjectAnimator old = meltTextAnims.get(v);
+        if (old != null) old.cancel();
+        final android.animation.ObjectAnimator dip = android.animation.ObjectAnimator.ofFloat(v, "alpha", v.getAlpha(), 0f);
+        meltTextAnims.put(v, dip);
+        dip.setDuration(90);
+        dip.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        dip.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                Integer now = meltTextGens.get(v);
+                if (now == null || now != gen) return;
+                v.setText(want);
+                final android.animation.ObjectAnimator rise = android.animation.ObjectAnimator.ofFloat(v, "alpha", 0f, 1f);
+                meltTextAnims.put(v, rise);
+                rise.setDuration(180);
+                rise.setInterpolator(new android.view.animation.DecelerateInterpolator());
+                rise.addListener(new android.animation.AnimatorListenerAdapter() {
+                    @Override public void onAnimationEnd(android.animation.Animator b) {
+                        Integer n2 = meltTextGens.get(v);
+                        if (n2 == null || n2 != gen) return;
+                        meltTextAnims.remove(v);
+                        v.setAlpha(1f);
+                    }
+                    @Override public void onAnimationCancel(android.animation.Animator b) {
+                        Integer n2 = meltTextGens.get(v);
+                        if (n2 == null || n2 != gen) return;
+                        meltTextAnims.remove(v);
+                        v.setAlpha(1f);
+                    }
+                });
+                rise.start();
+            }
+            @Override public void onAnimationCancel(android.animation.Animator a) {
+                Integer now = meltTextGens.get(v);
+                if (now == null || now != gen) return;
+                meltTextAnims.remove(v);
+                v.setAlpha(1f);
+            }
+        });
+        dip.start();
+    }
+
+    // v15.40 (slice 1906): cancel an in-flight text melt — the
+    // gate's dismissBlock calls this for its three text views, so
+    // a melt's rise can never swap text onto a dead dialog, and
+    // the animator is freed at once instead of running out its
+    // 90/180ms on a detached view. The gen guard alone would
+    // already make the stale end a no-op; this is the prompt
+    // cleanup, mirroring meltSleepText's cancel helper.
+    public static void cancelMeltText(android.widget.TextView v) {
+        if (v == null) return;
+        Integer curGen = meltTextGens.get(v);
+        meltTextGens.put(v, (curGen == null ? 1 : curGen + 1));
+        android.animation.ObjectAnimator old = meltTextAnims.get(v);
+        if (old != null) old.cancel();
+        meltTextAnims.remove(v);
+        v.setAlpha(1f);
+    }
+
 }

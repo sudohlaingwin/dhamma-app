@@ -1347,6 +1347,13 @@ public class DownloadedActivity extends Activity {
     // while the shelf is empty (the fade-out branch) consumes the
     // arm harmlessly.
     private boolean dlFooterTrackChange59 = false;
+    // v15.40 (slice 1911): the playing row's live-suffix key —
+    // see the tick below. dlRowSufKey40 is the structural class
+    // of the sleep / ended suffixes ("-"/"C"/"S"/"F" +
+    // "-"/"E"); dlRowSufCur40 is the track it belongs to, so a
+    // track change adopts instead of fading.
+    private String dlRowSufKey40 = null;
+    private String dlRowSufCur40 = null;
     private boolean dlWasPaused = false;
     // v8.55: share-chooser suppress, mirroring Room suppressBgPause /
     // Talks suppressSharePause — the library's four share choosers
@@ -5127,14 +5134,21 @@ public class DownloadedActivity extends Activity {
                                     // Settings guard, so a remainder
                                     // orphaned by a turned-off setting
                                     // never shows as live.
+                                    // v15.40 (slice 1911): the structural class of the
+                                    // sleep suffix — the mm:ss digits inside the
+                                    // counting / suspended suffixes tick every second
+                                    // and are live, never structural, so the class
+                                    // keys on the conditions, not the digits.
+                                    String sufClass40 = "-";
                                     String sleepSuf = "";
                                     try {
                                         long lRem = service.getSleepRemainingMs();
                                         long lSusp = service.getSleepSuspendedMs();
-                                        if (service.isSleepFading()) sleepSuf = " · 😴 " + Lang.t(DownloadedActivity.this, "notif_sleep_fading");
-                                        else if (lRem > 0) sleepSuf = " · 😴 " + fmtDlTime((int) lRem);
-                                        else if (lSusp > 0 && Prefs.sleepMinutes(DownloadedActivity.this) > 0)
-                                            sleepSuf = " · 😴 ⏸ " + fmtDlTime((int) lSusp);
+                                        if (service.isSleepFading()) { sleepSuf = " · 😴 " + Lang.t(DownloadedActivity.this, "notif_sleep_fading"); sufClass40 = "F"; }
+                                        else if (lRem > 0) { sleepSuf = " · 😴 " + fmtDlTime((int) lRem); sufClass40 = "C"; }
+                                        else if (lSusp > 0 && Prefs.sleepMinutes(DownloadedActivity.this) > 0) {
+                                            sleepSuf = " · 😴 ⏸ " + fmtDlTime((int) lSusp); sufClass40 = "S";
+                                        }
                                     } catch (Exception ignored) {}
                                     // v4.29: a finished file used to
                                     // keep its live clock line
@@ -5145,14 +5159,40 @@ public class DownloadedActivity extends Activity {
                                     // as the sleep suffix above. A
                                     // replay clears the service flag
                                     // before the next tick.
-                                    String endedSuf = service.hasTrackEnded() ? " · " + Lang.t(DownloadedActivity.this, "notif_state_ended") : "";
+                                    boolean ended40 = service.hasTrackEnded();
+                                    String endedSuf = ended40 ? " · " + Lang.t(DownloadedActivity.this, "notif_state_ended") : "";
                                     String tickSd = libSayadawMap.get(tickEntry.file.getName());
+                                    // v15.40 (slice 1911): the sleep / ended suffixes
+                                    // are structural — they appear and disappear while
+                                    // the clock ticks every second, so a melt on the
+                                    // whole line would shimmer once a second (the
+                                    // 1909 rejection of Fx.meltText here). Gate on the
+                                    // suffix CLASS only (the 1716 footer idiom: strip
+                                    // the live parts, compare the skeleton): the key
+                                    // is built from the same conditions as the
+                                    // suffixes, so the ticking mm:ss / position /
+                                    // remaining digits can never false-fire it. A
+                                    // class change fades the line in once (250ms);
+                                    // the first tick for a track adopts, so a fresh
+                                    // row never fades under its own entrance, and a
+                                    // replayed track's ended-clear fades because the
+                                    // text really does change.
+                                    String sufKey40 = sufClass40 + (ended40 ? "E" : "-");
+                                    boolean sufFade40 = false;
+                                    if (dlRowSufKey40 == null || !cur.equals(dlRowSufCur40)) {
+                                        dlRowSufKey40 = sufKey40;
+                                        dlRowSufCur40 = cur;
+                                    } else if (!sufKey40.equals(dlRowSufKey40)) {
+                                        dlRowSufKey40 = sufKey40;
+                                        sufFade40 = true;
+                                    }
                                     sz.setText((tickSd != null ? tickSd + " · " : "") + String.format("%.1f MB · %s · %s / %s · −%s · %d/%d%s", mb,
                                             android.text.format.DateFormat.format("dd/MM/yyyy",
                                                     tickEntry.mod),
                                             fmtDlTime(service.getPosition()), fmtDlTime(dur),
                                             fmtDlTime(Math.max(0, dur - service.getPosition())),
                                             dispPos + 1, dispTotal, sleepSuf + endedSuf));
+                                    if (sufFade40) Fx.fadeIn(sz, 250);
                                 }
                             }
                     }

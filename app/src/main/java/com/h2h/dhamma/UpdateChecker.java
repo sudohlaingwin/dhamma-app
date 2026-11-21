@@ -70,6 +70,16 @@ public class UpdateChecker {
     private static volatile boolean downloadCancel = false;
     private static int lastProgress = -1;
     private static long lastPostAt = 0;
+    // v15.40 (slice 1906): gate live-state motion — refreshBlockUi
+    // tracks the gate's phase (0 idle, 1 downloading, 2 failed, 3
+    // perm, 4 installed) and whether it has drawn once. The first
+    // refresh adopts everything instantly (the window pour covers
+    // the entrance); a PHASE change melts the status/button/sub
+    // text, a percent tick inside the downloading phase writes at
+    // once. Reset in dismissBlock, so a rotation re-show adopts
+    // again instead of melting on top of the window pour.
+    private static boolean blockUiKnown40 = false;
+    private static int blockPhase40 = -1;
     private static File downloadedFile = null;
     private static boolean downloadFailed = false;
     // v13.89 (F5): true once fireInstaller actually launched the
@@ -104,6 +114,14 @@ public class UpdateChecker {
         try {
             if (blockDialog != null) blockDialog.dismiss();
         } catch (Exception ignored) {}
+        // v15.40 (slice 1906): cancel any in-flight gate text melt
+        // before the refs are dropped, and reset the phase/known
+        // state so the next gate session adopts on its first draw.
+        Fx.cancelMeltText(blockStatus);
+        Fx.cancelMeltText(blockBtn);
+        Fx.cancelMeltText(blockSub);
+        blockUiKnown40 = false;
+        blockPhase40 = -1;
         blockDialog = null;
         blockActivity = null;
         blockSub = null;
@@ -732,54 +750,103 @@ public class UpdateChecker {
         }
     }
 
+    // v15.40 (slice 1906): gate text writer — melt on a phase
+    // change, adopt at once on a percent tick or the first draw.
+    private static void setGateText40(android.widget.TextView v, String want, boolean phaseChanged40) {
+        if (v == null) return;
+        if (phaseChanged40) Fx.meltText(v, want);
+        else v.setText(want);
+    }
+
+    // v15.40 (slice 1906): the progress bar's first appearance
+    // fades in (250ms) once the gate has drawn; the first draw
+    // adopts. A later refresh finds it already VISIBLE and does
+    // nothing, so the 4-6 progress posts/sec never re-fade it.
+    private static void showGateBar40() {
+        if (blockBar == null) return;
+        if (blockBar.getVisibility() != android.view.View.VISIBLE) {
+            blockBar.setVisibility(android.view.View.VISIBLE);
+            if (blockUiKnown40) Fx.fadeIn(blockBar, 250);
+        }
+    }
+
+    // v15.40 (slice 1906): the skip escape's first appearance
+    // fades in (250ms) once the gate has drawn; the first draw
+    // adopts. Already VISIBLE on later refreshes, so no re-fade
+    // on progress ticks. Vanish never happens inside one gate
+    // session (the idle branch below is the only GONE writer).
+    private static void showGateSkip40() {
+        if (blockSkip == null) return;
+        if (blockSkip.getVisibility() != android.view.View.VISIBLE) {
+            blockSkip.setVisibility(android.view.View.VISIBLE);
+            if (blockUiKnown40) Fx.fadeIn(blockSkip, 250);
+        }
+    }
+
     private static void refreshBlockUi(Activity activity) {
         if (blockSub == null || blockBtn == null || blockSkip == null
                 || blockBar == null || blockStatus == null) return;
+        // v15.40 (slice 1906): phase + known. The first refresh
+        // (showBlock, before show()) adopts everything — the
+        // window pour (v15.30) covers the entrance. A later phase
+        // change melts the texts; percent ticks inside the
+        // downloading phase write at once (v14.95: melting a
+        // ticking value would flicker).
+        int phase40 = downloading ? 1 : downloadFailed ? 2 : waitingForPermission ? 3
+                : (downloadedFile != null && downloadedFile.exists()) ? 4 : 0;
+        boolean phaseChanged40 = blockUiKnown40 && phase40 != blockPhase40;
         if (downloading) {
-            blockSub.setText(Lang.t(activity, "upd_sub"));
+            setGateText40(blockSub, Lang.t(activity, "upd_sub"), phaseChanged40);
             int p = lastProgress < 0 ? 0 : lastProgress;
-            blockBar.setVisibility(View.VISIBLE);
-            blockBar.setProgress(p);
-            blockStatus.setText(Lang.t(activity, "upd_dl") + " " + p + "%");
+            showGateBar40();
+            // v15.40 (slice 1906): animated progress — the bar
+            // glides between the ~4-6 posts/sec instead of
+            // stepping per chunk (setProgress(p, true), API 24+,
+            // minSdk 24).
+            blockBar.setProgress(p, true);
+            String dl40 = Lang.t(activity, "upd_dl") + " " + p + "%";
+            setGateText40(blockStatus, dl40, phaseChanged40);
             blockBtn.setEnabled(false);
-            blockBtn.setText(Lang.t(activity, "upd_dl") + " " + p + "%");
+            setGateText40(blockBtn, dl40, phaseChanged40);
             // v13.50 (F2): the escape stays available while downloading — a
             // stalled download IS stuck, so the v13.10 rationale ("the escape
             // appears only once the update is actually stuck") now covers it.
             // onSkipButton cancels the download as well as dismissing.
-            blockSkip.setVisibility(View.VISIBLE);
+            showGateSkip40();
         } else if (downloadFailed) {
-            blockBar.setVisibility(View.VISIBLE);
-            blockBar.setProgress(0);
-            blockStatus.setText(Lang.t(activity, "upd_fail"));
+            showGateBar40();
+            blockBar.setProgress(0, true);
+            setGateText40(blockStatus, Lang.t(activity, "upd_fail"), phaseChanged40);
             blockBtn.setEnabled(true);
-            blockBtn.setText(Lang.t(activity, "upd_fail"));
-            blockSkip.setVisibility(View.VISIBLE);
+            setGateText40(blockBtn, Lang.t(activity, "upd_fail"), phaseChanged40);
+            showGateSkip40();
         } else if (waitingForPermission) {
             blockBar.setVisibility(View.INVISIBLE);
-            blockSub.setText(Lang.t(activity, "upd_perm_sub"));
-            blockStatus.setText(Lang.t(activity, "upd_perm"));
+            setGateText40(blockSub, Lang.t(activity, "upd_perm_sub"), phaseChanged40);
+            setGateText40(blockStatus, Lang.t(activity, "upd_perm"), phaseChanged40);
             blockBtn.setEnabled(true);
-            blockBtn.setText(Lang.t(activity, "upd_perm"));
-            blockSkip.setVisibility(View.VISIBLE);
+            setGateText40(blockBtn, Lang.t(activity, "upd_perm"), phaseChanged40);
+            showGateSkip40();
         } else if (downloadedFile != null && downloadedFile.exists()) {
-            blockBar.setVisibility(View.VISIBLE);
-            blockBar.setProgress(100);
-            blockStatus.setText(Lang.t(activity, "upd_inst"));
+            showGateBar40();
+            blockBar.setProgress(100, true);
+            setGateText40(blockStatus, Lang.t(activity, "upd_inst"), phaseChanged40);
             blockBtn.setEnabled(true);
-            blockBtn.setText(Lang.t(activity, "upd_inst"));
+            setGateText40(blockBtn, Lang.t(activity, "upd_inst"), phaseChanged40);
             // v13.10 (F2): the installer already opened once and the
             // user came back — the escape is available here too.
-            blockSkip.setVisibility(View.VISIBLE);
+            showGateSkip40();
         } else {
             blockBar.setVisibility(View.INVISIBLE);
-            blockSub.setText(Lang.t(activity, "upd_sub"));
-            blockStatus.setText("");
+            setGateText40(blockSub, Lang.t(activity, "upd_sub"), phaseChanged40);
+            setGateText40(blockStatus, "", phaseChanged40);
             blockBtn.setEnabled(true);
-            blockBtn.setText(Lang.t(activity, "upd_btn"));
+            setGateText40(blockBtn, Lang.t(activity, "upd_btn"), phaseChanged40);
             // v13.10 (F2): the update must be tried once before the
             // escape appears — the blocking update still comes first.
             blockSkip.setVisibility(View.GONE);
         }
+        blockUiKnown40 = true;
+        blockPhase40 = phase40;
     }
 }
