@@ -84,6 +84,14 @@ public class DownloadedActivity extends Activity {
     // overwrites it, and it must come back when the filter clears.
     private String origEmptyText = null;
     private ListView dlListView;
+    // v15.57 (slice 2002): jump-to-playing-file button state — the cached shelf + display indices of the live file (the 1994 Talks shape, restated for the library's two views: shelf order vs shown order differ under sort, and the queue-only view has no shelf row at all) and the change gate that keeps steady scrolls from re-touching the button.
+    private android.view.View dlPlayingBtn = null;
+    private int dlPlayingShelfIdx = -1;
+    private int dlPlayingDisplayIdx = -1;
+    private boolean dlPlayingShown = false;
+    // v15.57 (slice 2003): back-to-top button state — the button + the change gate that keeps steady scrolls from re-touching it (the 1940 Talks shape; the gate is the only state — the show rule is ScrollTop.visible, no cached target).
+    private android.view.View dlTopBtn = null;
+    private boolean dlTopShown = false;
     // v15.47 (slice 1950): Downloaded row swipe — the live drag
     // state. The card is what translates (cardInner); the row is
     // what getView must not reset mid-drag; the entry/path are the
@@ -1681,6 +1689,145 @@ public class DownloadedActivity extends Activity {
                 dlListView.smoothScrollToPosition(i);
                 return;
             }
+    }
+
+    // v15.57 (slice 2002): "Jump to the playing file" — the Downloaded list's floating gold ▶ button that glides to the sounding file when it has scrolled off-screen. The jump already existed two ways, both hidden or conditional — the header long-press (v4.15) and the fresh-open landing (v3.95) — but while browsing with a live session, a listener who scrolled away from the playing row had no visible way back: the header is off-screen exactly when the jump is needed, the same visible, reachable-form class as the Talks back-to-top (1940) and jump-to-playing (1994) buttons. The button sits at the list's bottom-end corner (88dp above the ↑, the Talks stacking — slice 2003). Pure index logic lives in DlJumpPlaying; the Activity owns the button, the scroll listener, the glide and the fade.
+    private void wireDlPlayingBtn() {
+        dlPlayingBtn = findViewById(R.id.dlPlayingBtn);
+        if (dlPlayingBtn != null) dlPlayingBtn.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                // v10.43: bound-trackless stop — liveSession stays true but the mirror is false, so toast instead of gliding to a stopped file (the v4.15 guard verbatim: no_file_playing, the library's own word).
+                if (dlListView == null || libDisplayCount() == 0 || !AudioService.liveSession || !AudioService.liveHasTrack) {
+                    android.widget.Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "no_file_playing"), android.widget.Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                try {
+                    String livePath = libRowPlayingPath;
+                    if (livePath == null || livePath.length() == 0) {
+                        android.widget.Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "no_file_playing"), android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    // Tap-time re-resolution over the fresh shelf (the v13.13 rule): the button can sit visible across a rebuild, so the cached shelf index may have moved; the display index is re-read from the live view below (the v4.58 mapping, so queue-only view reads queue order).
+                    java.util.ArrayList<String> shelfPaths02 = new java.util.ArrayList<String>();
+                    for (Entry e02 : entries) shelfPaths02.add(e02 == null ? null : e02.file.getAbsolutePath());
+                    int shelf02 = DlJumpPlaying.findIndex(shelfPaths02, livePath);
+                    if (shelf02 < 0) {
+                        android.widget.Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "no_file_playing"), android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    java.util.ArrayList<String> dispPaths02 = new java.util.ArrayList<String>();
+                    for (int i02 = 0; i02 < libDisplayCount(); i02++) {
+                        Entry de02 = libEntryAtDisplay(i02);
+                        dispPaths02.add(de02 == null ? null : de02.file.getAbsolutePath());
+                    }
+                    int disp02 = DlJumpPlaying.findIndex(dispPaths02, livePath);
+                    // v12.54: a shown target glides to its display position with the view untouched; only a target filtered OUT of the shown list (or hidden by the queue-only view — the playing file is never queued, v4.58) clears search/filter first, so the shelf index means something again. The clear mirrors the ✕ long-press reset (v4.19/v4.95): filter mode back to All with its hint, query cleared, queue view exited — no sort reset (sort never hides a row, the 1994 rule).
+                    if (DlJumpPlaying.needsClear(disp02, shelf02)) {
+                        if (libQueueOnly) libQueueOnly = false;
+                        boolean filterWas02 = dlFilterMode != 0;
+                        if (dlFilterMode != 0) { dlFilterMode = 0; refreshDlFavHint(); }
+                        if (dlSearchField != null && dlSearchField.getText().length() > 0) dlSearchField.setText("");
+                        if (filterWas02) { dlFilterChange = true; applyDlFilter(); updateTotal(); }
+                        else applyDlFilter();
+                    }
+                    Fx.tap(DownloadedActivity.this);
+                    Fx.morph(v);
+                    // v4.28: same keyboard rule as the header tap — a successful glide moves the list, so the keyboard hides with it; a refusal above keeps it, like the v4.22 empty-list refusals.
+                    hideKeyboard(v);
+                    glideToDlPath(livePath);
+                } catch (Exception ignored) {}
+            }
+        });
+        if (dlListView != null) dlListView.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
+            @Override public void onScrollStateChanged(android.widget.AbsListView v, int state) {}
+            @Override public void onScroll(android.widget.AbsListView v, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
+                // v15.57 (slice 2003): the top button paints on the same scroll (the 1940 Talks shape — its only show rule is the first visible row, so no laid-out-window guard; the threshold keeps it hidden until row 8 anyway).
+                paintDlTopBtn(firstVisibleItem);
+                // v15.57 (slice 2002): the jump button paints on the same scroll — off-screen is its only show rule, so a laid-out window is required (count 0 means no layout yet; the 1994 Talks shape).
+                if (visibleItemCount > 0) paintDlPlayingBtn(firstVisibleItem, firstVisibleItem + visibleItemCount - 1);
+            }
+        });
+    }
+
+    // v15.57 (slice 2002): refresh the jump button's cached target — the shelf index and the display index of the live file, from the tick-fresh libRowPlayingPath (a live lib session for a shelf file, or the v13.17 Room-session mirror — a streamed talk has no shelf row, so both stay -1). Runs on rebuild / sounding change only, never on scroll; -1 while nothing live plays a shelf file.
+    private void refreshDlPlayingTarget() {
+        dlPlayingShelfIdx = -1;
+        dlPlayingDisplayIdx = -1;
+        if (libRowPlayingPath == null || libRowPlayingPath.length() == 0) return;
+        java.util.ArrayList<String> shelfPaths = new java.util.ArrayList<String>();
+        for (Entry e : entries) shelfPaths.add(e == null ? null : e.file.getAbsolutePath());
+        dlPlayingShelfIdx = DlJumpPlaying.findIndex(shelfPaths, libRowPlayingPath);
+        if (dlPlayingShelfIdx < 0) return;
+        java.util.ArrayList<String> dispPaths = new java.util.ArrayList<String>();
+        for (int i = 0; i < libDisplayCount(); i++) {
+            Entry de = libEntryAtDisplay(i);
+            dispPaths.add(de == null ? null : de.file.getAbsolutePath());
+        }
+        dlPlayingDisplayIdx = DlJumpPlaying.findIndex(dispPaths, libRowPlayingPath);
+    }
+
+    // v15.57 (slice 2002): the jump-to-playing-file state — shown only while a live shelf file has a cached target AND that row is off-screen (above or below the visible window), or hidden from the shown list by a filter or the queue-only view (then the tap clears first — the 1994 shape). The change gate keeps steady scrolls and the rebuild/restore repaints from re-touching the button; the show/hide melts (Fx.fadeIn/fadeOut, 180ms) instead of snapping, and a cancelled fade never strands it half-transparent (the v2.62 gen guard, the 1940 shape). A stop clears libRowPlayingPath on the next tick, so the button hides within a tick of the session ending.
+    private void paintDlPlayingBtn(int firstVisible, int lastVisible) {
+        if (dlPlayingBtn == null) return;
+        boolean want = DlJumpPlaying.showFor(dlPlayingDisplayIdx, dlPlayingShelfIdx, firstVisible, lastVisible);
+        if (want == dlPlayingShown) return;
+        dlPlayingShown = want;
+        if (want) {
+            dlPlayingBtn.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(dlPlayingBtn, 180);
+        } else {
+            Fx.fadeOut(dlPlayingBtn, 180);
+        }
+    }
+
+    // v15.57 (slice 2002): repaint from the list's own position after a scroll-less change — a rebuild (load / search / filter / sort), a rotation restore, or a sounding change can move the playing row off-screen with no scroll event, so read the position after layout and paint from it. Posted, because the first / last visible rows are only valid once the list has laid out (the 1940 shape).
+    private void paintDlPlayingBtnFromList() {
+        if (dlListView == null) return;
+        dlListView.post(new Runnable() {
+            @Override public void run() {
+                if (dlListView == null) return;
+                paintDlPlayingBtn(dlListView.getFirstVisiblePosition(), dlListView.getLastVisiblePosition());
+            }
+        });
+    }
+
+    // v15.57 (slice 2003): "Back to top" — the Downloaded list's floating gold ↑ button, the 1940 Talks mirror: the header tap (v4.13) already jumps to the top, but the header is off-screen exactly when the jump is needed, so deep in a long library the listener had to drag all the way back by hand. The button sits at the list's bottom-end corner (16dp, the Talks 1940 slot) and the ▶ jump button moves up to 88dp above it (the Talks stacking). Pure threshold logic lives in ScrollTop; the Activity owns the button, the scroll listener, the glide and the fade.
+    private void wireDlTopBtn() {
+        dlTopBtn = findViewById(R.id.dlTopBtn);
+        if (dlTopBtn != null) dlTopBtn.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                Fx.tap(DownloadedActivity.this);
+                Fx.morph(v);
+                // v4.28: same keyboard rule as the header tap — a successful glide moves the list, so the keyboard hides with it (the 1940 Talks tap has no keyboard to hide; this screen's search field does).
+                hideKeyboard(v);
+                if (dlListView != null) dlListView.smoothScrollToPosition(0);
+            }
+        });
+    }
+
+    // v15.57 (slice 2003): the back-to-top state — shown once the first visible row passes ScrollTop's threshold, hidden at the top (the 1940 Talks shape verbatim: ScrollTop.visible, THRESHOLD 8 — about one screen of rows). The change gate keeps steady scrolls and the rebuild/restore repaints from re-touching the button; the show/hide melts (Fx.fadeIn/fadeOut, 180ms) instead of snapping, and a cancelled fade never strands it half-transparent (the v2.62 gen guard).
+    private void paintDlTopBtn(int firstVisible) {
+        if (dlTopBtn == null) return;
+        boolean want = ScrollTop.visible(firstVisible);
+        if (want == dlTopShown) return;
+        dlTopShown = want;
+        if (want) {
+            dlTopBtn.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(dlTopBtn, 180);
+        } else {
+            Fx.fadeOut(dlTopBtn, 180);
+        }
+    }
+
+    // v15.57 (slice 2003): repaint from the list's own position after a scroll-less change — a rebuild (load / search / filter / sort) or a rotation restore can land the list deep without a scroll event, so read the position after layout and paint from it. Posted, because the first visible row is only valid once the list has laid out (the 1940 shape). The rotation restore needs no separate hook: it setSelections inside loadList right after applyDlFilter(), whose tail already posts this repaint — the posted read sees the post-restore position.
+    private void paintDlTopBtnFromList() {
+        if (dlListView == null) return;
+        dlListView.post(new Runnable() {
+            @Override public void run() {
+                if (dlListView == null) return;
+                paintDlTopBtn(dlListView.getFirstVisiblePosition());
+            }
+        });
     }
 
     // v3.95: fresh-open glide to the playing file — the mirror of
@@ -5171,6 +5318,9 @@ public class DownloadedActivity extends Activity {
                 lastDlFailed = AudioService.liveTrackError;
                 if (soundTarget49.length() > 0) { dlSoundFadePath = soundTarget49; fadeSoundingDlRow(); }
                 if (prevSoundTarget61.length() > 0) { dlPrevSoundFadePath = prevSoundTarget61; fadePrevSoundDlRow(); }
+                // v15.57 (slice 2002): the sounding change above moves the playing file (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button (the 1994 Talks shape).
+                refreshDlPlayingTarget();
+                paintDlPlayingBtnFromList();
             }
             // v4.66: a Next landing while the shelf sits open used
             // to leave the footer's Up Next line pointing at the
@@ -6532,6 +6682,8 @@ public class DownloadedActivity extends Activity {
                 return true;
             }
         });
+        wireDlPlayingBtn(); // v15.57 (slice 2002): jump-to-playing-file button on this list
+        wireDlTopBtn(); // v15.57 (slice 2003): back-to-top button on this list
         // v2.19: premium library header entrance — the header used
         // to sit flat while the rows cascaded below it (v2.12), the
         // same top-dead pattern the Talks title (v2.16), Main header
@@ -8379,6 +8531,11 @@ public class DownloadedActivity extends Activity {
         if (tops84 != null) postDlSetGlide(tops84);
         // v15.33 (slice 1837): the ✕ follows the query on every filter pass — a watcher keystroke animates (dlSearchKeystroke is set only by the search watcher), sort/delete/loadList/rotation passes land instantly.
         refreshDlClear(dlSearchKeystroke);
+        // v15.57 (slice 2002): a rebuild can move the playing file (new list, new filter) — refresh the jump button's cached target, then repaint it from the new position (the 1994 Talks shape).
+        refreshDlPlayingTarget();
+        paintDlPlayingBtnFromList();
+        // v15.57 (slice 2003): a rebuild can also land the list deep (new list, new filter) — repaint the top button from the new position too (the 1940 Talks shape; the same posted read covers the rotation restore, which setSelections right after this filter pass in loadList).
+        paintDlTopBtnFromList();
     }
 
     // v15.45 (slice 1938): empty-library Browse button — show it
@@ -9762,6 +9919,8 @@ public class DownloadedActivity extends Activity {
         java.util.ArrayList<String> itemKeys = new java.util.ArrayList<String>();
         if (!playing && !queued) { items.add(Lang.t(DownloadedActivity.this, "menu_play_next_short")); itemKeys.add("menu_play_next_short"); items.add(Lang.t(DownloadedActivity.this, "menu_queue_add")); itemKeys.add("menu_queue_add"); }
         if (!playing) { items.add(Lang.t(DownloadedActivity.this, "menu_queue_from_here")); itemKeys.add("menu_queue_from_here"); }
+        // v15.57 (slice 2001): "Play from here" — the row menu's first play verb, right after queue-from-here (same !playing gate): queue this file + every shown file below it AND play the anchor now, so a run starts mid-shelf in one tap. The chooser gained the same verb in v15.45 (slice 1942); the library had only queue-from-here (queue, no playback) and the row tap (play one file, no run). Reuses the 1942 menu_play_from_here key — 0 new Lang keys.
+        if (!playing) { items.add(Lang.t(DownloadedActivity.this, "menu_play_from_here")); itemKeys.add("menu_play_from_here"); }
         // v15.46 (slice 1944): "go to sayadaw's talks" —
         // the row menu's first navigation verb: a
         // downloaded talk's sayadaw (shareSayadaw653,
@@ -11405,6 +11564,66 @@ public class DownloadedActivity extends Activity {
                             Toast.makeText(DownloadedActivity.this, added > 0
                                     ? Lang.t(DownloadedActivity.this, "queue_plain_prefix") + added + Lang.t(DownloadedActivity.this, "queue_added_suffix")
                                     : Lang.t(DownloadedActivity.this, "already_in_queue"), Toast.LENGTH_SHORT).show();
+                        } else if ("menu_play_from_here".equals(choiceKey)) {
+                            // v15.57 (slice 2001): "Play from here" — the row menu's first play verb: queue this file and every shown file below it (the v13.04 range) AND play the anchor now, so a run starts mid-shelf in one tap. The chooser gained the same verb in v15.45 (slice 1942); the library row menu had only queue-from-here (queue, no playback) and the row tap (play one file, no run). The handler mirrors the Talks funnel + the library queue-from-here loop.
+                            // v11.12/v11.14 tap-time sounding re-check — the offer gate ran at menu-build time, but the dialog can sit open across a library auto-advance, so this file can BE sounding by tap time. Leave the queue copy untouched on a hit (the shared save tail below is skipped by the return, so nothing is persisted).
+                            if (path.equals(cur)) {
+                                Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "queue_changed"), Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            // v11.65/v13.71 deleted-file guard — a file deleted after the scan must not reach service.play (bound taps only; the unbound pending flush toasts dl_file_gone itself, the row-tap shape).
+                            if (service != null && (!t.file.exists() || t.file.length() <= 0)) {
+                                Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "dl_file_gone"), Toast.LENGTH_SHORT).show();
+                                loadList();
+                                return;
+                            }
+                            // v13.13 tap-time re-resolution — the dialog can sit open across a search/filter rebuild, so the captured shownPos may have moved: rebuild the display path list fresh (the v4.58 mapping, so queue-only view reads queue order) and resolve the anchor by path, never by position. The pure pick skips nulls, already-queued paths and the sounding file.
+                            java.util.ArrayList<String> dispPaths01 = new java.util.ArrayList<String>();
+                            for (int i01 = 0; i01 < libDisplayCount(); i01++) {
+                                Entry de01 = libEntryAtDisplay(i01);
+                                dispPaths01.add(de01 == null ? null : de01.file.getAbsolutePath());
+                            }
+                            java.util.Set<String> queuedPaths01 = new java.util.HashSet<String>(q);
+                            java.util.List<Integer> picked01 = DlPlayFromHere.pick(dispPaths01, path, queuedPaths01, cur);
+                            int start01 = DlPlayFromHere.anchorIndex(dispPaths01, path);
+                            boolean wasQueued01 = queuedPaths01.contains(path);
+                            int preAnchorIdx01 = wasQueued01 ? q.indexOf(path) : -1;
+                            int added01 = 0;
+                            if (start01 < 0) {
+                                // Anchor filtered out while the dialog sat open: play it alone, never a stale range (the v13.04 fallback shape, adapted — the library never leaves a directly-played file in the hand queue, the v4.57 rule, so the fallback queues nothing and toasts nothing; the play + glide below is the feedback). The trim below still applies when the anchor was already queued.
+                            } else for (Integer dpBox01 : picked01) {
+                                int dp01 = dpBox01.intValue();
+                                Entry de01 = libEntryAtDisplay(dp01);
+                                if (de01 == null) continue;
+                                String u01 = de01.file.getAbsolutePath();
+                                // The anchor itself is never queued — it plays directly below (the row-tap v4.57 rule: a file that plays directly is not left in the hand queue, or the advance would replay it once it is no longer sounding — takeLibQueueHead skips a sounding file but pops it on a later advance).
+                                if (u01.equals(path)) continue;
+                                if (q.contains(u01)) continue;
+                                q.add(u01);
+                                added01++;
+                            }
+                            // Row-tap trim (v4.57) on the working copy: a queued anchor drops the queue ahead of it INCLUDING itself — the run starts at the anchor, so entries after it are the run's up-next and the newly appended below-anchor files follow them. Measured before the appends above (the appends land at the end, past the trim range). A fresh anchor leaves the old queue untouched (the v4.57 fresh-file rule).
+                            if (preAnchorIdx01 >= 0) {
+                                for (int ti01 = preAnchorIdx01; ti01 >= 0; ti01--) q.remove(ti01);
+                            }
+                            // The count toast belongs to the run that was actually queued — the filtered-out fallback queued nothing, so it toasts nothing (the play below is its feedback); a queued anchor with nothing new below still reports already_in_queue, the Talks shape (it WAS queued at tap time; the trim above moved it to playing).
+                            if (start01 >= 0) {
+                                Toast.makeText(DownloadedActivity.this, added01 > 0
+                                        ? Lang.t(DownloadedActivity.this, "queue_plain_prefix") + added01 + Lang.t(DownloadedActivity.this, "queue_added_suffix")
+                                        : Lang.t(DownloadedActivity.this, "already_in_queue"), Toast.LENGTH_SHORT).show();
+                            }
+                            // Play the anchor in place, at its saved spot (the row-tap shape, v1.90) — the shared save tail below persists the run; the glide is the visible feedback that the run starts here. Before the bind, queue the tap like a row tap (pendingDlRestart false — a resume, not a restart, the v1.62 shape) and still fall through to the tail, so the queue persists.
+                            if (service == null) {
+                                pendingDlPath = path;
+                                pendingDlTitle = t.title;
+                                pendingDlRestart = false;
+                            } else {
+                                saveLastLibrary(path, t.title);
+                                clearLibTrail13();
+                                service.play(path, t.title, savedPosForFile(path));
+                                if (adapter != null) adapter.notifyDataSetChanged();
+                                glideToDlPath(path);
+                            }
                         } else if ("menu_go_sayadaw".equals(choiceKey)) {
                             // v15.46 (slice 1944): go to the
                             // sayadaw's talks — the row menu's

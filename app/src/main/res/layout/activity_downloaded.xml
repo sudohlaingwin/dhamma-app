@@ -148,14 +148,49 @@
         android:layout_marginTop="16dp"
         android:text="◀ ပြန်သွားမယ်"
         android:visibility="gone" />
-    <ListView
-        android:id="@+id/list"
+    <!-- v15.57 (slice 2002): the list now sits in a FrameLayout so the jump-to-playing-file button can float over its bottom-end corner (the Talks 1994 shape) — the ListView keeps its id, divider and fast-scroll; the weight + top margin move to the frame, so the strip below still pins the same way. -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_marginTop="12dp"
-        android:layout_weight="1"
-        android:dividerHeight="1dp"
-        android:fastScrollEnabled="true" />
+        android:layout_weight="1">
+        <ListView
+            android:id="@+id/list"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:dividerHeight="1dp"
+            android:fastScrollEnabled="true" />
+        <!-- v15.57 (slice 2002): jump-to-playing-file button — the floating gold ▶ at the list's bottom-end corner (same 56dp oval, same maroon glyph, 88dp off the corner — stacked above the ↑ back-to-top (slice 2003)): the header long-press (v4.15) already jumps to the playing file, but the gesture is hidden and the header is off-screen exactly when the jump is needed — the same visible, reachable-form class as the Talks back-to-top (1940) and jump-to-playing (1994) buttons. GONE until a live session plays a shelf file AND that file's row has scrolled off-screen. -->
+        <TextView
+            android:id="@+id/dlPlayingBtn"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="88dp"
+            android:background="@drawable/top_btn_bg"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="▶"
+            android:textColor="@color/maroon"
+            android:textSize="24sp"
+            android:visibility="gone" />
+        <!-- v15.57 (slice 2003): back-to-top button — the floating gold ↑ at the list's bottom-end corner (the Talks 1940 block verbatim: same 56dp oval, same maroon glyph, 16dp off the corner): the header tap (v4.13) already jumps to the top, but the gesture is hidden and the header is off-screen exactly when the jump is needed — the same visible, reachable-form class as the Talks back-to-top (1940) and jump-to-playing (1994) buttons. GONE until the list has scrolled past eight rows. -->
+        <TextView
+            android:id="@+id/dlTopBtn"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/top_btn_bg"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="↑"
+            android:textColor="@color/maroon"
+            android:textSize="24sp"
+            android:visibility="gone" />
+    </FrameLayout>
     <!-- v4.86: queue preview above the strip — the library mirror
          of the Room's v4.83 preview: up to 3 following talks plus
          a gold count header, built by refreshLibQueuePreview on

@@ -344,6 +344,10 @@ public class MainActivity extends Activity {
     // resume) until the next flip. Tracked beside the other
     // tick trackers; steady ticks never touch the grid.
     private boolean mainGridPlaying = false;
+    // v15.57 (slice 2004): jump-to-sounding button state — the button + the cached shown-index of the sounding sayadaw + the change gate that keeps steady scrolls from re-touching it (the 1994 Talks shape).
+    private android.view.View mainJumpBtn = null;
+    private int mainJumpTargetIdx = -1;
+    private boolean mainJumpShown = false;
     // v15.41 (slice 1921): Main-grid new-talk dot — the pageUrls
     // whose card wears a ● before the name: sayadaws with new
     // talks since the last visit that nobody started or
@@ -743,6 +747,9 @@ public class MainActivity extends Activity {
         mainGridFailed = AudioService.liveTrackError; // v14.05
         mainGridBuffering = AudioService.liveBuffering; // v14.06
         mainGridPlaying = AudioService.livePlaying; // v15.33 (slice 1838)
+        // v15.57 (slice 2004): a return can bring a live session the tick never saw change (the tracker was just seeded to it) — refresh the jump target, then repaint from the current position (the 1994 Talks shape; the posted read sees the post-landing / post-restore position, since both run before this call in onCreate).
+        refreshMainJumpTarget();
+        paintMainJumpBtnFromList();
         refreshFavShelf(); // v13.74: shelf recolour on theme return
         refreshRecentRail(); // v15.43 (slice 1930): rail follows the shelf funnel
         refreshDlRecentRail(); // v15.49 (slice 1960): downloaded rail follows the shelf funnel
@@ -1118,6 +1125,75 @@ public class MainActivity extends Activity {
                 }
             }
         } catch (Exception ignored) {}
+    }
+
+    // v15.57 (slice 2004): "Jump to the sounding sayadaw" — the Main grid's floating gold ▶ button, the 1994 Talks / 2002 library mirror on the third live list: the title long-press (v4.18) already glides to the sounding sayadaw's card, but the gesture is hidden, and the fresh-open landing (v3.98) fires once and the return-glide (v3.97) only on a changed sayadaw — while browsing with a live session, a listener who scrolled away from the sounding card had no visible way back. The button sits at the grid's bottom-end corner (16dp, the single-button slot — this screen has no ↑ to stack above, the title tap v4.12 + Home tap v4.17 already own the top jump and are always visible, so no ↑ is added here). Pure index logic lives in MainJump (findIndex) + JumpPlaying.wantShown; the Activity owns the button, the scroll listener, the glide and the fade.
+    private void wireMainJumpBtn() {
+        mainJumpBtn = findViewById(R.id.mainJumpBtn);
+        if (mainJumpBtn != null) mainJumpBtn.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                // v10.43: bound-trackless stop — liveSession stays true but the mirror is false, so toast instead of gliding to a stopped sayadaw (the v4.18 guard verbatim).
+                String sounding = soundingSayadawNameVisual();
+                if (gridView == null || shown == null || shown.isEmpty() || sounding == null) {
+                    android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "no_playing_sayadaw"), android.widget.Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                java.util.ArrayList<String> names = new java.util.ArrayList<String>();
+                for (int i = 0; i < shown.size(); i++) names.add(shown.get(i).name);
+                int target = MainJump.findIndex(names, sounding);
+                if (target < 0) {
+                    android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "no_playing_sayadaw"), android.widget.Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                Fx.tap(MainActivity.this);
+                Fx.morph(v);
+                // v4.22: same keyboard rule as the title tap — a successful glide moves the grid under an open search field, so the keyboard hides with it.
+                hideKeyboard(v);
+                gridView.smoothScrollToPosition(target);
+            }
+        });
+        // v15.57 (slice 2004): the grid's first scroll listener — the grid had none (no setOnScrollListener anywhere in MainActivity): the jump button paints on scroll, off-screen is its only show rule, so a laid-out window is required (count 0 means no layout yet; the 1994 Talks shape).
+        if (gridView != null) gridView.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
+            @Override public void onScrollStateChanged(android.widget.AbsListView v, int scrollState) {}
+            @Override public void onScroll(android.widget.AbsListView v, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
+                if (visibleItemCount > 0) paintMainJumpBtn(firstVisibleItem, firstVisibleItem + visibleItemCount - 1);
+            }
+        });
+    }
+
+    // v15.57 (slice 2004): refresh the jump button's cached target — the shown-list index of the sounding sayadaw, from the tick-fresh mainGridSounding (a live Room or library session, the v12.86 visual gate baked into its own seeding). Runs on rebuild / sounding change / return only, never on scroll; -1 while nothing sounds or the sounding sayadaw is filtered out of the shown grid.
+    private void refreshMainJumpTarget() {
+        mainJumpTargetIdx = -1;
+        if (mainGridSounding == null || shown == null) return;
+        java.util.ArrayList<String> names = new java.util.ArrayList<String>();
+        for (int i = 0; i < shown.size(); i++) names.add(shown.get(i).name);
+        mainJumpTargetIdx = MainJump.findIndex(names, mainGridSounding);
+    }
+
+    // v15.57 (slice 2004): the jump-to-sounding state — shown only while a live session has a cached target AND that card is off-screen (above or below the visible window). The change gate keeps steady scrolls and the rebuild/restore repaints from re-touching the button; the show/hide melts (Fx.fadeIn/fadeOut, 180ms) instead of snapping, and a cancelled fade never strands it half-transparent (the v2.62 gen guard, the 1940 shape). A stop clears the target on the next tick, so the button hides within a tick of the session ending.
+    private void paintMainJumpBtn(int firstVisible, int lastVisible) {
+        if (mainJumpBtn == null) return;
+        boolean want = mainJumpTargetIdx >= 0
+                && JumpPlaying.wantShown(mainJumpTargetIdx, firstVisible, lastVisible);
+        if (want == mainJumpShown) return;
+        mainJumpShown = want;
+        if (want) {
+            mainJumpBtn.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(mainJumpBtn, 180);
+        } else {
+            Fx.fadeOut(mainJumpBtn, 180);
+        }
+    }
+
+    // v15.57 (slice 2004): repaint from the grid's own position after a scroll-less change — a rebuild (load / search / filter / sort), a rotation restore, a return, or a sounding change can move the sounding card off-screen with no scroll event, so read the position after layout and paint from it. Posted, because the first / last visible rows are only valid once the grid has laid out (the 1940 shape). The rotation restore needs no separate hook: it setSelections right after applyFilter(), whose tail already posts this repaint — the posted read sees the post-restore position.
+    private void paintMainJumpBtnFromList() {
+        if (gridView == null) return;
+        gridView.post(new Runnable() {
+            @Override public void run() {
+                if (gridView == null) return;
+                paintMainJumpBtn(gridView.getFirstVisiblePosition(), gridView.getLastVisiblePosition());
+            }
+        });
     }
 
     // v3.97: Main return-glide to a changed sayadaw — the mirror of
@@ -2309,6 +2385,9 @@ public class MainActivity extends Activity {
                         refreshNewTalkRail(); // v15.50 (slice 1966): sounding flip moves the new-talks rail too
                         refreshFavNewRow(); // v15.44 (slice 1934): sounding flip moves the fav-new row too
                         refreshShuffleRow(); // v15.50 (slice 1965): sounding flip moves the shuffle row too
+                        // v15.57 (slice 2004): a sounding change moves the jump target — refresh it, then repaint from the new position (the 1994 Talks shape).
+                        refreshMainJumpTarget();
+                        paintMainJumpBtnFromList();
                     }
                     // v15.36 (slice 1851): the shelf chip ring breath's
                     // second driver — refreshFavShelf's change gate
@@ -3144,6 +3223,7 @@ public class MainActivity extends Activity {
         if (noResultsText != null) noResultsText.setText(Lang.t(this, "sayadaw_not_found"));
         adapter = new SayadawAdapter();
         if (gridView != null) gridView.setAdapter(adapter);
+        wireMainJumpBtn(); // v15.57 (slice 2004): jump-to-sounding button on this grid
         // v15.44 (slice 1936): restore the grid's shape — the
         // stored list/grid mode (default grid). Columns +
         // spacings only; the button paints later through
@@ -5980,9 +6060,11 @@ public class MainActivity extends Activity {
                     // is the chooser/drawer dialog shape
                     // (AlertDialog with a parallel key list, dispatch
                     // on keys — the v13.15 language-proof rule),
-                    // with the four verbs that are safe from Main:
+                    // with the five verbs that are safe from Main:
                     // share / copy link / favourite toggle / go to
-                    // sayadaw's talks. The verbs read the talk
+                    // sayadaw's talks / download (v15.57, slice 2000
+                    // — the fifth verb, appended last after go). The
+                    // verbs read the talk
                     // (c.e) — the saved spot stays the tap's job
                     // (openFavTalk1964 lands the Room on it), so the
                     // share carries the bare title, not the
@@ -6013,6 +6095,21 @@ public class MainActivity extends Activity {
                     boolean fav90 = RailMenu.isFav(ft90, c.e.url);
                     boolean go90 = GoSayadaw.canGo(new String[]{s.group, s.url, s.photo});
                     java.util.List<String> keys90 = RailMenu.keys(fav90, go90, RoomCopyLink.canOffer(c.e.url));
+                    // v15.57 (slice 2000): "Download" — the Favourite
+                    // talks rail menu's fifth verb, appended last
+                    // (after go): a starred talk, one tap to
+                    // download it from Main. Offered only while
+                    // the talk is neither downloaded (the shared
+                    // DlLanded definition) nor already queued
+                    // (MainDl.isQueued — the sameTalk scan, so a
+                    // queued entry spelled under the other scheme
+                    // still blocks a double enqueue). Rail-only,
+                    // NOT in RailMenu.keys — the download family is
+                    // now complete on every Main rail (New talks
+                    // 1997 + Recently played 1998 + Bookmarks 1999
+                    // + Favourite talks 2000, the last rail without
+                    // it) — the 1992/1993 rail-only-verb precedent.
+                    if (MainDl.canOffer(mainIsDownloaded(c.e.url), mainIsDlQueued(c.e.url))) keys90.add("dl_btn_download");
                     final String[] opt90 = new String[keys90.size()];
                     for (int i90 = 0; i90 < keys90.size(); i90++) opt90[i90] = Lang.t(MainActivity.this, keys90.get(i90));
                     final String[] key90 = keys90.toArray(new String[0]);
@@ -6054,6 +6151,37 @@ public class MainActivity extends Activity {
                                             Fx.tap(MainActivity.this);
                                             Fx.go(MainActivity.this, gi90);
                                         }
+                                    } else if ("dl_btn_download".equals(key90[which])) {
+                                        // v15.57 (slice 2000): "Download" — the v11.70 verb on the Favourite talks rail: the menu could share a starred talk, copy its link, un-star it, or open its sayadaw's full list, but never download it — the one tap that saves the talk for offline listening had to wait until the talk was found again in Talks or the library. Same verb the Talks chooser has had since v11.70 and the History row since v13.77, through the same rules, so the six surfaces can never disagree: tap-time re-checks (a Wi-Fi job can land, or another path can queue this talk, while the dialog sits open), a Wi-Fi-only DownloadManager request (NETWORK_WIFI, so a tap here can never silently spend mobile data — the data-saver rule), the filename from the shared Fx.stripDownloadFileName rule, and the record under DlLock in ONE apply (dlMap + dlSayadaw + dlQueued, identityUrl banking). The card stays on this rail either way (a favourite-set projection, not a downloaded projection — the refresh early-returns on the unchanged key; the Downloaded rail picks the talk up once it lands); the toast is the feedback. No sounding gate (FavTalkRail.pick excludes the sounding talk, the sameTalk skip); no pause guard (no sheet is left to return from). The saved spot (c.posMs) stays the tap's job — the download needs no minute.
+                                        if (mainIsDownloaded(c.e.url)) {
+                                            refreshFavTalkRail();
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "downloaded_talk"), android.widget.Toast.LENGTH_SHORT).show();
+                                            return;
+                                        }
+                                        if (mainIsDlQueued(c.e.url)) {
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "dl_already_queued"), android.widget.Toast.LENGTH_LONG).show();
+                                            return;
+                                        }
+                                        String file90 = Fx.stripDownloadFileName(getSharedPreferences("dhamma", MODE_PRIVATE), c.e.url);
+                                        try {
+                                            android.app.DownloadManager dm90 = (android.app.DownloadManager) getSystemService(android.content.Context.DOWNLOAD_SERVICE);
+                                            android.app.DownloadManager.Request req90 = new android.app.DownloadManager.Request(android.net.Uri.parse(SiteHttp.siteUrl(c.e.url)));
+                                            req90.setTitle(c.e.title != null && c.e.title.length() > 0 ? c.e.title : c.e.url);
+                                            req90.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                                            // Wi-Fi-only, exactly like Talks' chooser enqueue and History's row enqueue — on Wi-Fi it starts at once, on mobile data it waits for Wi-Fi, so a tap here can never silently spend mobile data.
+                                            req90.setAllowedNetworkTypes(android.app.DownloadManager.Request.NETWORK_WIFI);
+                                            req90.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, "Dhamma/" + file90);
+                                            dm90.enqueue(req90);
+                                            mainRecordDownload(c.e.url, file90, c.e.sayadaw);
+                                        } catch (Exception ex90) {
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "download_failed") + Fx.errDetail(ex90), android.widget.Toast.LENGTH_LONG).show();
+                                            return;
+                                        }
+                                        refreshFavTalkRail();
+                                        if (Fx.stripIsWifi(MainActivity.this))
+                                            android.widget.Toast.makeText(MainActivity.this, "\u2B07 " + (c.e.title != null && c.e.title.length() > 0 ? c.e.title : c.e.url) + Lang.t(MainActivity.this, "dl_downloading_suffix"), android.widget.Toast.LENGTH_SHORT).show();
+                                        else
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "dl_room_wifi_queued"), android.widget.Toast.LENGTH_LONG).show();
                                     }
                                 }
                             }).show();
@@ -7437,6 +7565,9 @@ public class MainActivity extends Activity {
         refreshNewTalkRail(); // v15.50 (slice 1966): new-talks rail follows the shelf funnel
         refreshFavNewRow(); // v15.44 (slice 1934): fav-new row follows the shelf funnel
         refreshShuffleRow(); // v15.50 (slice 1965): shuffle row follows the shelf funnel
+        // v15.57 (slice 2004): a rebuild can move the sounding card (new list, new filter) — refresh the jump button's cached target, then repaint it from the new position (the 1994 Talks shape).
+        refreshMainJumpTarget();
+        paintMainJumpBtnFromList();
         if (allowToast && setChanged && gridView != null && gridView.getFirstVisiblePosition() > 0)
             gridView.setSelection(0);
         // v2.02: a search matching no sayadaw used to leave a

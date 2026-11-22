@@ -432,6 +432,21 @@
             android:textColor="@color/muted"
             android:textSize="16sp"
             android:visibility="gone" />
+        <!-- v15.57 (slice 2004): jump-to-sounding button — the floating gold ▶ at the grid's bottom-end corner (the Talks 1994 block verbatim: same 56dp oval, same maroon glyph, 16dp off the corner — the single-button slot, this screen has no ↑ to stack above: the title tap v4.12 + Home tap v4.17 already own the top jump and are always visible). GONE until a live session sounds AND the sounding sayadaw's card has scrolled off-screen. -->
+        <TextView
+            android:id="@+id/mainJumpBtn"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/top_btn_bg"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="▶"
+            android:textColor="@color/maroon"
+            android:textSize="24sp"
+            android:visibility="gone" />
     </FrameLayout>
     <LinearLayout
         android:id="@+id/nowStrip"
