@@ -1644,6 +1644,23 @@ public class Prefs {
         sp(c).edit().putInt("favSortMode", v).apply();
     }
 
+    // v15.68 (slice 2068): History sort choice, kept across
+    // reopenings — the Favourites favSortMode shape (v15.66, slice
+    // 2056, itself the Bookmarks bmSortMode shape, v15.65 slice
+    // 2051, itself the downloaded-library dlSortMode shape,
+    // v1.47): 0 most-recent first, 1 oldest first, 2 sayadaw A-Z.
+    // No legacy migration (a fresh pref); a corrupt stored value
+    // clamps to 0 (the v11.89 dlSortMode clamp class).
+    public static int hsSortMode(Context c) {
+        android.content.SharedPreferences s = sp(c);
+        if (s.contains("hsSortMode")) { int v = s.getInt("hsSortMode", 0); return v < 0 || v > 2 ? 0 : v; }
+        return 0;
+    }
+
+    public static void setHsSortMode(Context c, int v) {
+        sp(c).edit().putInt("hsSortMode", v).apply();
+    }
+
     // v7.57: Room playing list + index for background auto-advance
     // (step 1: write-only this run — no reader yet, see
     // RoomActivity.savePlayList57). Lines "url<TAB>title", index

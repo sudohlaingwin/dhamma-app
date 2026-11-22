@@ -109,6 +109,15 @@ public class HistoryActivity extends Activity {
     private android.view.View hsClearBtn = null;
     private String hsQuery = "";
     private boolean hsSearchKeystroke = false;
+    // v15.68 (slice 2068): sort on this screen — the button and the
+    // persisted mode (the Downloaded dlSortMode shape, v1.47/v4.24,
+    // itself the Bookmarks bmSortMode shape, v15.65 slice 2051).
+    // The mode is read from Prefs in wireHsSort(); the button label
+    // names the CURRENT order (hsSortLabel), so the order reads in
+    // a still. Rotation recreates the activity and re-reads the
+    // persisted mode — no watcher or saved-state needed.
+    private android.widget.Button hsSortBtn = null;
+    private int hsSortMode = 0;
     // v15.67 (slice 2063): "Jump to the playing talk" — the
     // floating gold ▶ over the list's bottom-end corner; hsPlayingShown is the last-painted state
     // for the painter's change gate, and hsJumpTargetIdx is the
@@ -192,6 +201,7 @@ public class HistoryActivity extends Activity {
         }
         wireHsSearch(); // v15.65 (slice 2050): search on this screen, before the first refresh
         wireHsJumpBtn(); // v15.67 (slice 2063): jump-to-playing button on this list
+        wireHsSort(); // v15.68 (slice 2068): sort on this screen, before the first refresh
         refresh();
         wireHistoryStrip(); // v13.54: real mini-player below the list
     }
@@ -222,6 +232,47 @@ public class HistoryActivity extends Activity {
         Fx.cancelMeltText(streakValue);
         Fx.cancelMeltText(topValue);
         Fx.cancelMeltText(topSub);
+    }
+
+    // v15.68 (slice 2068): sort on this screen — the Downloaded
+    // sort-button shape (v1.47 label + v2.90 premium label dip +
+    // v4.22 keyboard hide): the button names the CURRENT order
+    // (hsSortLabel), a tap morphs the button, hides the search
+    // keyboard, advances the mode (recent -> oldest -> sayadaw),
+    // persists it, and dips the header row while the label swaps
+    // (Fx.themeDip on hsHeaderRow, the dlBtnRow shape — the dip
+    // runs on the row, never on the tapped button, so its alpha
+    // channel never cancels the morph's scale channel; themeDip
+    // null-guards, so a missing row still swaps the label). The
+    // sort re-runs applyHsSearch() at once (it only reads
+    // hsSortMode, like the Settings syncLiveService pattern), so
+    // the list re-orders in place with no re-read. The mode
+    // survives rotation through Prefs, like the Downloaded sort
+    // (v1.47).
+    private void wireHsSort() {
+        hsSortBtn = findViewById(R.id.btnHsSort);
+        hsSortMode = Prefs.hsSortMode(this);
+        if (hsSortBtn != null) hsSortBtn.setText(hsSortLabel());
+        if (hsSortBtn != null) hsSortBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.morph(v);
+                android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+                if (imm != null) imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                hsSortMode = (hsSortMode + 1) % 3;
+                Prefs.setHsSortMode(HistoryActivity.this, hsSortMode);
+                Fx.themeDip(findViewById(R.id.hsHeaderRow), new Runnable() { @Override public void run() { if (hsSortBtn != null) hsSortBtn.setText(hsSortLabel()); } });
+                applyHsSearch();
+            }
+        });
+    }
+
+    // v15.68 (slice 2068): the sort label — the Downloaded
+    // dlSortLabel shape (1 method, 3 returns): most-recent first,
+    // oldest first, sayadaw A-Z.
+    private String hsSortLabel() {
+        if (hsSortMode == 1) return Lang.t(HistoryActivity.this, "hs_sort_oldest");
+        if (hsSortMode == 2) return Lang.t(HistoryActivity.this, "hs_sort_sayadaw");
+        return Lang.t(HistoryActivity.this, "hs_sort_recent");
     }
 
     private int titleColor() { return night ? 0xFFFFFFFF : 0xFF3B2314; }
@@ -475,7 +526,15 @@ public class HistoryActivity extends Activity {
     // the full run. The stat cards stay unfiltered — the search
     // filters only the recent list beneath them.
     private void applyHsSearch() {
-        items = HistSearch.filter(hsAllItems, hsQuery);
+        // v15.68 (slice 2068): the sort rides the search pass — the
+        // shown list is the filtered list in the chosen order, so a
+        // keystroke re-sorts in memory and the sort tap re-runs this
+        // pass instead of re-reading the pick. The playing-row mark
+        // needs nothing here, like the search (2050): itemRow
+        // re-reads the sounding identities per bind. The stat cards
+        // stay unfiltered — the sort orders only the recent list
+        // beneath them.
+        items = HistSort.sort(HistSearch.filter(hsAllItems, hsQuery), hsSortMode);
         if (adapter != null) adapter.notifyDataSetChanged();
         refreshHsClear(hsSearchKeystroke);
         if (emptyText == null) return;

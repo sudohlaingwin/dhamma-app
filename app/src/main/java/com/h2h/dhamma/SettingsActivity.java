@@ -797,6 +797,7 @@ public class SettingsActivity extends Activity {
                                         || Prefs.bmSortMode(SettingsActivity.this) != 0
                                         || Prefs.newSortMode(SettingsActivity.this) != 0
                                         || Prefs.favSortMode(SettingsActivity.this) != 0
+                                        || Prefs.hsSortMode(SettingsActivity.this) != 0
                                         || Prefs.sleepMinutes(SettingsActivity.this) != 0
                                         || !Prefs.fxEnabled(SettingsActivity.this)
                                         || !Prefs.dataSaver(SettingsActivity.this)

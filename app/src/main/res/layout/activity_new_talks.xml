@@ -22,9 +22,22 @@
             android:textColor="@color/maroon"
             android:textSize="20sp"
             android:textStyle="bold" />
-        <!-- v15.65 (slice 2047): Play all new — the chooser's v13.76 Play All on this screen's header: one tap queues the whole shown run in order and opens the Room on the first new talk at 0:00. GONE until applyNewSearch() shows it; the label comes from Lang pl_play_all in code, so no literal here. -->
+        <!-- v15.65 (slice 2047): Play all new — the chooser's v13.76 Play All on this screen's header: one tap queues the whole shown run in order and opens the Room on the first new talk at 0:00. GONE until applyNewSearch() shows it; the label comes from Lang pl_play_all in code, so no literal here. Shuffle button beside it since v15.68 (slice 2066, the chooser's v13.93 shuffle-play — the shown run in random order). -->
         <Button
             android:id="@+id/btnNewPlayAll"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:textSize="14sp"
+            android:visibility="gone" />
+        <!-- v15.68 (slice 2066): Shuffle play — the chooser's v13.93
+             shuffle-play on this screen's header: one tap shuffles
+             the shown new-talk run into the queue and opens the Room
+             on the first shuffled talk at 0:00. GONE until
+             applyNewSearch() shows it, beside Play-all; the label
+             comes from Lang "shuffle" in code, so no literal here. -->
+        <Button
+            android:id="@+id/btnNewShuffle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"

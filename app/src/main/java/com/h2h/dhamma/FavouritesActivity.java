@@ -100,6 +100,26 @@ public class FavouritesActivity extends Activity {
     private long lastFavPlayAllMs = 0;
     private android.widget.Button btnFavPlayAll = null;
     private Boolean lastFavPlayAllVisible = null;
+    // v15.68 (slice 2065): "Shuffle play" on this screen — the
+    // chooser's v13.93 shuffle-play, the first of the three
+    // full-list screens to get it: one tap shuffles the shown
+    // starred run into the queue and opens the Room on the first
+    // shuffled talk. lastFavShuffleMs is the handler's own 700ms
+    // clock (the chooser's v12.28 rule — a separate clock from
+    // Play-all's, so a Shuffle tap never eats a Play-all tap);
+    // btnFavShuffle is the header button beside Play-all (GONE
+    // until a list lands, the same gate, the same change-only
+    // snapshot — syncFavPlayAllBtn paints both).
+    private long lastFavShuffleMs = 0;
+    private android.widget.Button btnFavShuffle = null;
+    // v15.68 (slice 2069): row long-press menu on this screen — the
+    // Favourites screen had search, sort, play-all, shuffle, jump,
+    // mark and strip, but no row menu at all: a listener could
+    // un-star a talk only by leaving the screen, and nothing started
+    // a run mid-list. lastFavPlayFromHereMs is the handler's own
+    // 700ms clock (the chooser's v12.28 rule — a separate clock from
+    // Play-all's, so a Play-from-here tap never eats a Play-all tap).
+    private long lastFavPlayFromHereMs = 0;
     // v15.65 (slice 2048): search on this screen — the field, the
     // clear ✕, the live query and the keystroke flag (the
     // Downloaded dlSearchField / dlClearBtn / dlQuery /
@@ -166,6 +186,18 @@ public class FavouritesActivity extends Activity {
                     playFav(items.get(pos), v);
                 }
             });
+            // v15.68 (slice 2069): the row's long-press menu — tap
+            // still plays; a long-press opens Play-from-here /
+            // Remove-from-favourites (showFavRowMenu). The History
+            // v13.77 shape: Fx.tap blip, then the menu, return true.
+            listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+                @Override public boolean onItemLongClick(AdapterView<?> p, View v, int pos, long id) {
+                    if (pos < 0 || pos >= items.size()) return false;
+                    Fx.tap(FavouritesActivity.this);
+                    showFavRowMenu(items.get(pos));
+                    return true;
+                }
+            });
             // v15.67 (slice 2060): the jump button paints on the same scroll — off-screen is its only show rule, so a laid-out window is required (count 0 means no layout yet).
             listView.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
                 @Override public void onScrollStateChanged(android.widget.AbsListView v, int scrollState) {}
@@ -192,6 +224,21 @@ public class FavouritesActivity extends Activity {
             }
         });
         if (btnFavPlayAll != null) Fx.press(btnFavPlayAll);
+        // v15.68 (slice 2065): wire the Shuffle button the same
+        // way — one tap shuffles the shown run into the queue and
+        // starts the first shuffled talk (shufflePlayFav). The
+        // label is the pre-existing Lang "shuffle" key, so no new
+        // key and no literal here. The button stays GONE until
+        // refresh() shows it (syncFavPlayAllBtn below).
+        btnFavShuffle = findViewById(R.id.btnFavShuffle);
+        if (btnFavShuffle != null) btnFavShuffle.setText(Lang.t(this, "shuffle"));
+        if (btnFavShuffle != null) btnFavShuffle.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.tap(FavouritesActivity.this);
+                shufflePlayFav(v);
+            }
+        });
+        if (btnFavShuffle != null) Fx.press(btnFavShuffle);
         wireFavouritesStrip(); // v15.63 (slice 2038): real mini-player below the list
     }
 
@@ -566,6 +613,9 @@ public class FavouritesActivity extends Activity {
     // FavPlayAll.hasPlayable: at least one starred talk with a usable
     // URL that is not the sounding talk. lastFavPlayAllVisible is the
     // change-only snapshot — steady 1s ticks never touch the button.
+    // v15.68 (slice 2065): the Shuffle button rides the same gate
+    // and the same snapshot — the two header verbs show and hide
+    // together.
     private void syncFavPlayAllBtn(boolean skipFade) {
         if (btnFavPlayAll == null) return;
         boolean show = FavPlayAll.hasPlayable(items, favPlayingUrl, favPlayingLibUrl);
@@ -583,6 +633,26 @@ public class FavouritesActivity extends Activity {
             }
         } else if (btnFavPlayAll.getVisibility() == android.view.View.VISIBLE) {
             Fx.fadeOut(btnFavPlayAll, 200);
+        }
+        // v15.68 (slice 2065): the Shuffle button rides the same
+        // gate and the same change-only snapshot, so the two header
+        // verbs show and hide together; a null button simply never
+        // paints (both buttons live in the same layout, so they
+        // exist or miss together — this guard is belt and braces).
+        if (btnFavShuffle != null) {
+            if (skipFade) {
+                btnFavShuffle.setVisibility(show ? android.view.View.VISIBLE : android.view.View.GONE);
+                btnFavShuffle.setAlpha(1f);
+            } else if (show) {
+                if (btnFavShuffle.getVisibility() != android.view.View.VISIBLE) {
+                    btnFavShuffle.setVisibility(android.view.View.VISIBLE);
+                    Fx.fadeIn(btnFavShuffle, 250);
+                } else if (btnFavShuffle.getAlpha() < 0.999f) {
+                    Fx.fadeIn(btnFavShuffle, 250);
+                }
+            } else if (btnFavShuffle.getVisibility() == android.view.View.VISIBLE) {
+                Fx.fadeOut(btnFavShuffle, 200);
+            }
         }
     }
 
@@ -681,6 +751,361 @@ public class FavouritesActivity extends Activity {
                 : Lang.t(FavouritesActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
         Fx.morph(v);
         if (!firstSounds44) playFav(first44, v);
+    }
+
+    // v15.68 (slice 2065): "Shuffle play" — the Favourites mirror
+    // of the chooser's shufflePlayShown (v13.93). The starred talks
+    // used to play in screen order only (Play-all, v15.64); one tap
+    // here shuffles the SHOWN run into the queue in random order
+    // (FavShuffle.shuffleCards over the filtered + sorted list —
+    // the 2047 rule: the shown run is the run) and opens the Room
+    // on the first shuffled talk at its saved spot (playFav's own
+    // route). Same guards as the chooser: empty list refuses with
+    // the same words, the 700ms debounce has its own clock (an
+    // invalid tap never consumes the window, v12.28), the sounding
+    // talk is never re-queued (the stay-put branch: the rest queue
+    // behind it, no restart), already-queued talks stay where they
+    // are, and the count toast counts queued lines only. The anchor
+    // sayadaw is the FIRST SHUFFLED card's sayadaw, healed exactly
+    // like playFav (catalog + the sayadawForTalk heal). No catalog,
+    // no run: the queue is untouched. The shuffled queue IS the
+    // shuffle — the global shuffle-continuous toggle is left alone,
+    // so a user who deliberately left it off is not surprised, and
+    // after the queue drains normal advance resumes.
+    private void shufflePlayFav(android.view.View v) {
+        if (items == null || items.isEmpty()) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        long now65 = android.os.SystemClock.uptimeMillis();
+        if (now65 - lastFavShuffleMs < 700) return;
+        lastFavShuffleMs = now65;
+        refreshFavouritesPlayingMarks(); // tap-time sounding identities
+        java.util.List<FavTalkRail.Card> shuffled65 = FavShuffle.shuffleCards(items, new java.util.Random());
+        if (shuffled65.isEmpty()) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final FavTalkRail.Card first65 = shuffled65.get(0);
+        if (first65 == null || first65.e == null || first65.e.url == null || first65.e.url.length() == 0) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String sd65 = first65.e.sayadaw;
+        String[] cat65 = catalogFor(sd65);
+        if (cat65 == null || cat65[1] == null || cat65[1].length() == 0) {
+            String owner65 = Prefs.sayadawForTalk(this, "lib", first65.e.url, "");
+            if (owner65 != null && owner65.length() > 0 && !owner65.equals(sd65)) {
+                sd65 = owner65;
+                cat65 = catalogFor(sd65);
+            }
+        }
+        if (cat65 == null || cat65[1] == null || cat65[1].length() == 0) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "pl_no_play"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        boolean firstSounds65 = (favPlayingUrl.length() > 0 && SiteHttp.sameTalk(first65.e.url, favPlayingUrl))
+                || (favPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(first65.e.url, favPlayingLibUrl));
+        // The anchor sayadaw's current queue, as identities — the
+        // pick skips talks already queued (they stay where they are).
+        // Saved lines are carried verbatim (histQueueAdd's discipline),
+        // so a foreign line the Room drawer moved mid-queue survives
+        // the write.
+        java.util.Set<String> queuedIds65 = new java.util.HashSet<String>();
+        java.util.ArrayList<String> saved65 = new java.util.ArrayList<String>();
+        try {
+            String savedRaw65 = Prefs.savedQueue(this, sd65);
+            if (savedRaw65 != null && savedRaw65.length() > 0) {
+                for (String ln65 : savedRaw65.split("\n")) {
+                    if (ln65.length() == 0) continue;
+                    saved65.add(ln65);
+                    QueueEntry qe65 = QueueEntry.parse(ln65);
+                    if (qe65 != null && qe65.url.length() > 0)
+                        queuedIds65.add(SiteHttp.identityUrl(qe65.url));
+                }
+            }
+        } catch (Exception ignored) {}
+        // The shuffled order flows through FavPlayAll.lines (it keeps
+        // its input order): the run is the shuffled run, deduped,
+        // sounding-skipped and already-queued-skipped exactly like
+        // Play-all's.
+        java.util.List<String> run65 = FavPlayAll.lines(shuffled65, queuedIds65, favPlayingUrl, favPlayingLibUrl);
+        int added65 = 0;
+        for (String ln65 : run65) {
+            QueueEntry qe65 = QueueEntry.parse(ln65);
+            if (qe65 == null || qe65.url.length() == 0) continue;
+            boolean dup65 = false;
+            for (String ex65 : saved65) {
+                QueueEntry qx65 = QueueEntry.parse(ex65);
+                if (qx65 != null && SiteHttp.sameTalk(qx65.url, qe65.url)) { dup65 = true; break; }
+            }
+            if (dup65) continue;
+            saved65.add(ln65);
+            added65++;
+        }
+        Prefs.saveQueue(this, sd65, saved65);
+        android.widget.Toast.makeText(FavouritesActivity.this, added65 > 0
+                ? Lang.t(FavouritesActivity.this, "queue_plain_prefix") + added65 + Lang.t(FavouritesActivity.this, "queue_added_suffix")
+                : Lang.t(FavouritesActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
+        Fx.morph(v);
+        if (!firstSounds65) playFav(first65, v);
+    }
+
+    // v15.68 (slice 2069): row long-press menu on this screen — the
+    // Favourites screen had no row menu at all (no long-press, no
+    // dialog, no per-row un-star): stars were removed per-row from
+    // the rail/chooser/library menus only (the 2035 header note),
+    // and nothing started a run mid-list (Play-all starts at the
+    // top, a tap plays one talk). The menu opens with the two verbs
+    // this screen needs: "Play from here" (the chooser's 1942 /
+    // History's 2030 verb — queue the shown run from this row
+    // onward and open the Room on it) and "Remove from favourites"
+    // (the screen's own removal verb — the row leaves the list at
+    // once). Share / go-to-sayadaw / queue / download are future
+    // verbs on this same menu (the History menu grew the same way:
+    // 1981, 1982, 1995, 2030). The offer comes from the pure
+    // FavRowMenu core (sameTalk sounding gate, path-form rows offer
+    // remove only); the dialog is History's AlertDialog shape
+    // (title = the card's title, key-dispatched handler); every
+    // verb re-checks its offer at tap time, so a dialog left open
+    // across a refresh can never act on a stale row.
+    private void showFavRowMenu(final FavTalkRail.Card c) {
+        if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return;
+        refreshFavouritesPlayingMarks();
+        final String url = c.e.url;
+        final String sd = c.e.sayadaw;
+        java.util.List<String> keys69 = FavRowMenu.menuKeys(url, sd, favPlayingUrl, favPlayingLibUrl);
+        java.util.ArrayList<String> opts = new java.util.ArrayList<String>();
+        for (String k69 : keys69) opts.add(Lang.t(this, k69));
+        final String[] optArr = opts.toArray(new String[0]);
+        final String[] keyArr = keys69.toArray(new String[0]);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(c.e.title != null && c.e.title.length() > 0 ? c.e.title : url)
+                .setItems(optArr, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        if ("menu_play_from_here".equals(keyArr[which])) {
+                            playFromHereFav(c);
+                        } else if ("menu_fav_remove".equals(keyArr[which])) {
+                            removeFavFromMenu(c);
+                        }
+                    }
+                })
+                .show();
+    }
+
+    // v15.68 (slice 2069): "Play from here" on this screen — the
+    // row menu's first play verb (the chooser's menu_play_from_here,
+    // v15.45 slice 1942, and History's histPlayFromHere, v15.62
+    // slice 2030): queue the SHOWN run from the long-pressed row
+    // onward (the 2047 rule — the filtered + sorted list is the
+    // run) and open the Room on it, in one tap. The run is built
+    // with the chooser's PlayFromHere.pick (anchor onward, minus
+    // the sounding talk and minus already-queued talks) and
+    // History's HistPlayFromHere.lines (v2 lines carrying each
+    // talk's OWN sayadaw, so the Room renders the other sayadaws'
+    // talks as foreign rows). The anchor sayadaw is healed exactly
+    // like the row tap (catalog + the sayadawForTalk heal) — the
+    // queue key and the Room name must be the healed name, never a
+    // stale banked one. No catalog, no run: the queue is untouched.
+    // The Room opens with the row tap's own intent, built inline —
+    // NOT through the row-tap method, which carries its own 700ms
+    // tap debounce, and the menu tap is not a row tap, so routing
+    // through it could swallow the open (histPlayFromHere builds
+    // its intent inline for the same reason). A queued anchor plays
+    // from its queue spot; a sounding anchor never re-opens
+    // (stay-put).
+    private void playFromHereFav(final FavTalkRail.Card c) {
+        if (items == null || items.isEmpty() || c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        long now69 = android.os.SystemClock.uptimeMillis();
+        if (now69 - lastFavPlayFromHereMs < 700) return;
+        lastFavPlayFromHereMs = now69;
+        // Tap-time re-checks (the dialog's own shape): the anchor
+        // may have lost its stream URL or its sayadaw while the
+        // dialog sat open, turned into the sounding talk, or left
+        // the list (un-starred from another screen).
+        refreshFavouritesPlayingMarks();
+        final String streamUrl = c.e.url;
+        if (streamUrl.startsWith("/")) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if ((favPlayingUrl.length() > 0 && SiteHttp.sameTalk(streamUrl, favPlayingUrl))
+                || (favPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(streamUrl, favPlayingLibUrl))) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String sd69 = c.e.sayadaw;
+        String[] cat69 = catalogFor(sd69);
+        if (cat69 == null || cat69[1] == null || cat69[1].length() == 0) {
+            String owner69 = Prefs.sayadawForTalk(this, "lib", streamUrl, "");
+            if (owner69 != null && owner69.length() > 0 && !owner69.equals(sd69)) {
+                sd69 = owner69;
+                cat69 = catalogFor(sd69);
+            }
+        }
+        if (cat69 == null || cat69[1] == null || cat69[1].length() == 0) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "pl_no_play"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // The anchor's display position, re-resolved by identity —
+        // the dialog can sit open across a search/sort/refresh, so
+        // the captured position may have moved (the v13.13 rule).
+        int anchorIdx69 = -1;
+        for (int i69 = 0; i69 < items.size(); i69++) {
+            FavTalkRail.Card r69 = items.get(i69);
+            if (r69 == null || r69.e == null || r69.e.url == null) continue;
+            if (SiteHttp.sameTalk(r69.e.url, streamUrl)) { anchorIdx69 = i69; break; }
+        }
+        // Display-order identity list from the anchor onward (the
+        // PlayFromHere pick's input), each row carrying its own
+        // sayadaw + title for the v2 lines. A path-form row reads as
+        // null and the pick skips it (a card is a stream URL by
+        // FavAll's construction, but the gate costs nothing).
+        java.util.List<String> ids69 = new java.util.ArrayList<String>();
+        java.util.List<String> sds69 = new java.util.ArrayList<String>();
+        java.util.List<String> titles69 = new java.util.ArrayList<String>();
+        if (anchorIdx69 < 0) {
+            // Anchor gone from the list while the dialog sat open:
+            // queue just the anchor itself, never a stale range.
+            ids69.add(SiteHttp.identityUrl(streamUrl));
+            sds69.add(sd69);
+            titles69.add(c.e.title);
+        } else {
+            for (int i69 = anchorIdx69; i69 < items.size(); i69++) {
+                FavTalkRail.Card r69 = items.get(i69);
+                if (r69 == null || r69.e == null) { ids69.add(null); sds69.add(""); titles69.add(""); continue; }
+                String u69 = r69.e.url;
+                ids69.add(u69 != null && u69.length() > 0 && !u69.startsWith("/") ? SiteHttp.identityUrl(u69) : null);
+                sds69.add(r69.e.sayadaw != null ? r69.e.sayadaw : "");
+                titles69.add(r69.e.title != null ? r69.e.title : "");
+            }
+            // The anchor's own line carries the healed sayadaw.
+            sds69.set(0, sd69);
+        }
+        // The anchor sayadaw's current queue, as identities — the
+        // pick skips talks already queued (they stay where they
+        // are). Saved lines are carried verbatim (histQueueAdd's
+        // discipline), so a foreign line the Room drawer moved
+        // mid-queue survives the write.
+        java.util.Set<String> queuedIds69 = new java.util.HashSet<String>();
+        java.util.ArrayList<String> saved69 = new java.util.ArrayList<String>();
+        try {
+            String savedRaw69 = Prefs.savedQueue(this, sd69);
+            if (savedRaw69 != null && savedRaw69.length() > 0) {
+                for (String ln69 : savedRaw69.split("\n")) {
+                    if (ln69.length() == 0) continue;
+                    saved69.add(ln69);
+                    QueueEntry qe69 = QueueEntry.parse(ln69);
+                    if (qe69 != null && qe69.url.length() > 0)
+                        queuedIds69.add(SiteHttp.identityUrl(qe69.url));
+                }
+            }
+        } catch (Exception ignored) {}
+        java.util.List<Integer> picked69 = PlayFromHere.pick(ids69,
+                SiteHttp.identityUrl(streamUrl), queuedIds69,
+                favPlayingUrl, favPlayingLibUrl);
+        java.util.List<String> run69 = HistPlayFromHere.lines(ids69, sds69, titles69, picked69);
+        int added69 = 0;
+        for (String ln69 : run69) {
+            QueueEntry qe69 = QueueEntry.parse(ln69);
+            if (qe69 == null || qe69.url.length() == 0) continue;
+            boolean dup69 = false;
+            for (String ex69 : saved69) {
+                QueueEntry qx69 = QueueEntry.parse(ex69);
+                if (qx69 != null && SiteHttp.sameTalk(qx69.url, qe69.url)) { dup69 = true; break; }
+            }
+            if (dup69) continue;
+            saved69.add(ln69);
+            added69++;
+        }
+        Prefs.saveQueue(this, sd69, saved69);
+        android.widget.Toast.makeText(FavouritesActivity.this, added69 > 0
+                ? Lang.t(FavouritesActivity.this, "queue_plain_prefix") + added69 + Lang.t(FavouritesActivity.this, "queue_added_suffix")
+                : Lang.t(FavouritesActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
+        // Open the Room on the anchor (the row tap's own intent,
+        // built inline — see the header note): a queued anchor plays
+        // from its queue spot.
+        android.content.Intent it69 = new android.content.Intent(this, RoomActivity.class);
+        it69.putExtra("name", sd69);
+        it69.putExtra("group", cat69[0]);
+        it69.putExtra("url", cat69[1]);
+        it69.putExtra("photo", cat69[2]);
+        it69.putExtra("autoUrl", c.e.url);
+        it69.putExtra("autoTitle", c.e.title);
+        Fx.tap(this);
+        Fx.go(this, it69);
+    }
+
+    // v15.68 (slice 2069): "Remove from favourites" — the row
+    // menu's removal verb (the screen's own: the 2035 header note
+    // says stars are removed per-row from the rail/chooser/library
+    // menus, and this screen is none of those, so until now a
+    // starred talk could only be un-starred by leaving the screen).
+    // The tap-time re-check reads the live fav set (readFavTalks)
+    // and flips only when the talk is still starred — a dialog left
+    // open across an un-star elsewhere must never re-add it (the
+    // toggle flips both ways, so a blind toggle is a re-add). The
+    // removal is confirmed by re-reading the set after the flip,
+    // never by trusting the toggle's return alone. The row leaves
+    // the list at once (refresh() re-picks, re-sorts and re-paints
+    // the jump target), and the toast names the outcome (the
+    // History hs_remove_one shape: removed ? fav_removed :
+    // nothing_to_delete). A removed sounding talk keeps playing —
+    // the star is not playback — but the Room's card star flips,
+    // so the notification card is refreshed (the Talks v10.03
+    // shape, through this screen's own sounding identities).
+    private void removeFavFromMenu(final FavTalkRail.Card c) {
+        if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return;
+        boolean starred = false;
+        try {
+            for (String f : readFavTalks()) {
+                if (f != null && SiteHttp.sameTalk(f, c.e.url)) { starred = true; break; }
+            }
+        } catch (Exception ignored) {}
+        boolean removed = false;
+        if (starred) {
+            Fx.toggleFavTalk(this, c.e.url);
+            boolean stillStarred = false;
+            try {
+                for (String f : readFavTalks()) {
+                    if (f != null && SiteHttp.sameTalk(f, c.e.url)) { stillStarred = true; break; }
+                }
+            } catch (Exception ignored) {}
+            removed = !stillStarred;
+        }
+        refreshFavouritesPlayingMarks();
+        if (removed) {
+            boolean cardTalk = (favPlayingUrl.length() > 0 && SiteHttp.sameTalk(c.e.url, favPlayingUrl))
+                    || (favPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(c.e.url, favPlayingLibUrl));
+            if (cardTalk) {
+                android.content.Intent rsv = new android.content.Intent(this, AudioService.class);
+                rsv.setAction(AudioService.ACTION_REFRESH_NOTIFICATION);
+                startService(rsv);
+            }
+        }
+        refresh();
+        android.widget.Toast.makeText(this,
+                Lang.t(this, removed ? "fav_removed" : "nothing_to_delete"),
+                android.widget.Toast.LENGTH_SHORT).show();
     }
 
     private void playFav(final FavTalkRail.Card c, android.view.View v) {

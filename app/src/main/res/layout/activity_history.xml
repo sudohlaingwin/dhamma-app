@@ -8,6 +8,7 @@
     android:orientation="vertical"
     android:padding="16dp">
     <LinearLayout
+        android:id="@+id/hsHeaderRow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
@@ -20,6 +21,19 @@
             android:textColor="@color/maroon"
             android:textSize="20sp"
             android:textStyle="bold" />
+        <!-- v15.68 (slice 2068): Sort — the Bookmarks 2051
+             three-state cycle on this screen's header: tap to
+             cycle most-recent first / oldest first / sayadaw A-Z.
+             The label comes from Lang hs_sort_* in code, so no
+             literal here; styled like its Clear sibling. -->
+        <Button
+            android:id="@+id/btnHsSort"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="8dp"
+            android:background="@drawable/glass_btn_dark"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp" />
         <Button
             android:id="@+id/hsClearBtn"
             android:layout_width="wrap_content"

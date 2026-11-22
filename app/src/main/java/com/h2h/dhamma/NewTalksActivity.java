@@ -133,6 +133,18 @@ public class NewTalksActivity extends Activity {
     private long lastNewPlayAllMs = 0;
     private android.widget.Button btnNewPlayAll = null;
     private Boolean lastNewPlayAllVisible = null;
+    // v15.68 (slice 2066): "Shuffle play" on this screen — the
+    // chooser's v13.93 shuffle-play, the second of the three
+    // full-list screens to get it: one tap shuffles the shown
+    // new-talk run into the queue and opens the Room on the first
+    // shuffled talk at 0:00. lastNewShuffleMs is the handler's own
+    // 700ms clock (the chooser's v12.28 rule — a separate clock
+    // from Play-all-new's, so a Shuffle tap never eats a Play-all
+    // tap); btnNewShuffle is the header button beside Play-all
+    // (GONE until a list lands, the same gate, the same
+    // change-only snapshot — syncNewPlayAllBtn paints both).
+    private long lastNewShuffleMs = 0;
+    private android.widget.Button btnNewShuffle = null;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -194,6 +206,21 @@ public class NewTalksActivity extends Activity {
             }
         });
         if (btnNewPlayAll != null) Fx.press(btnNewPlayAll);
+        // v15.68 (slice 2066): wire the Shuffle button the same
+        // way — one tap shuffles the shown run into the queue and
+        // starts the first shuffled talk (shufflePlayNew). The
+        // label is the pre-existing Lang "shuffle" key, so no new
+        // key and no literal here. The button stays GONE until
+        // applyNewSearch() shows it (syncNewPlayAllBtn below).
+        btnNewShuffle = findViewById(R.id.btnNewShuffle);
+        if (btnNewShuffle != null) btnNewShuffle.setText(Lang.t(this, "shuffle"));
+        if (btnNewShuffle != null) btnNewShuffle.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.tap(NewTalksActivity.this);
+                shufflePlayNew(v);
+            }
+        });
+        if (btnNewShuffle != null) Fx.press(btnNewShuffle);
         wireNewTalksStrip(); // v15.63 (slice 2039): real mini-player below the list
     }
 
@@ -571,6 +598,9 @@ public class NewTalksActivity extends Activity {
     // sounding talk (the screen's three sounding identities, the
     // 2043 mark rule). lastNewPlayAllVisible is the change-only
     // snapshot — steady 1s ticks never touch the button.
+    // v15.68 (slice 2066): the Shuffle button rides the same gate
+    // and the same snapshot — the two header verbs show and hide
+    // together.
     private void syncNewPlayAllBtn(boolean skipFade) {
         if (btnNewPlayAll == null) return;
         boolean show = NewPlayAll.hasPlayable(items, newPlayingUrl, newPlayingLibUrl, newPlayingLibPath);
@@ -588,6 +618,26 @@ public class NewTalksActivity extends Activity {
             }
         } else if (btnNewPlayAll.getVisibility() == android.view.View.VISIBLE) {
             Fx.fadeOut(btnNewPlayAll, 200);
+        }
+        // v15.68 (slice 2066): the Shuffle button rides the same
+        // gate and the same change-only snapshot, so the two header
+        // verbs show and hide together; a null button simply never
+        // paints (both buttons live in the same layout, so they
+        // exist or miss together — this guard is belt and braces).
+        if (btnNewShuffle != null) {
+            if (skipFade) {
+                btnNewShuffle.setVisibility(show ? android.view.View.VISIBLE : android.view.View.GONE);
+                btnNewShuffle.setAlpha(1f);
+            } else if (show) {
+                if (btnNewShuffle.getVisibility() != android.view.View.VISIBLE) {
+                    btnNewShuffle.setVisibility(android.view.View.VISIBLE);
+                    Fx.fadeIn(btnNewShuffle, 250);
+                } else if (btnNewShuffle.getAlpha() < 0.999f) {
+                    Fx.fadeIn(btnNewShuffle, 250);
+                }
+            } else if (btnNewShuffle.getVisibility() == android.view.View.VISIBLE) {
+                Fx.fadeOut(btnNewShuffle, 200);
+            }
         }
     }
 
@@ -691,6 +741,121 @@ public class NewTalksActivity extends Activity {
                 : Lang.t(NewTalksActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
         Fx.morph(v);
         if (!firstSounds47) playNew(first47, v);
+    }
+
+    // v15.68 (slice 2066): "Shuffle play" — the New talks mirror
+    // of the chooser's shufflePlayShown (v13.93). The new talks
+    // used to play in catalogue order only (Play-all-new, v15.65);
+    // one tap here shuffles the SHOWN run into the queue in random
+    // order (NewShuffle.shuffleCards over the filtered + sorted
+    // list — the 2047 rule: the shown run is the run) and opens
+    // the Room on the first shuffled talk at 0:00 (playNew's own
+    // route — the 1921 gate only ever picks talks nobody started,
+    // so there is no saved spot). Same guards as the chooser:
+    // empty list refuses with the same words, the 700ms debounce
+    // has its own clock (an invalid tap never consumes the window,
+    // v12.28), the sounding talk is never re-queued (the stay-put
+    // branch: the rest queue behind it, no restart — this screen's
+    // THREE sounding identities, the 2043 mark rule), already-queued
+    // talks stay where they are, and the count toast counts queued
+    // lines only. The anchor sayadaw is the FIRST SHUFFLED card's
+    // sayadaw, healed exactly like playNew (catalog + the
+    // sayadawForTalk heal). No catalog, no run: the queue is
+    // untouched. The first card is always a stream URL by NewAll's
+    // own construction, so no library leg is needed here. The
+    // shuffled queue IS the shuffle — the global shuffle-continuous
+    // toggle is left alone, so a user who deliberately left it off
+    // is not surprised, and after the queue drains normal advance
+    // resumes. playNew's own 700ms row-tap clock stands: a row tap
+    // under 700ms before this tap swallows the Room open while the
+    // queue still writes (the same class as playAllNew, accepted
+    // in 2047).
+    private void shufflePlayNew(android.view.View v) {
+        if (items == null || items.isEmpty()) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        long now66 = android.os.SystemClock.uptimeMillis();
+        if (now66 - lastNewShuffleMs < 700) return;
+        lastNewShuffleMs = now66;
+        refreshNewTalksPlayingMarks(); // tap-time sounding identities
+        java.util.List<NewTalkRail.Card> shuffled66 = NewShuffle.shuffleCards(items, new java.util.Random());
+        if (shuffled66.isEmpty()) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final NewTalkRail.Card first66 = shuffled66.get(0);
+        if (first66 == null || first66.e == null || first66.e.url == null || first66.e.url.length() == 0) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String sd66 = first66.e.sayadaw;
+        String[] cat66 = catalogFor(sd66);
+        if (cat66 == null || cat66[1] == null || cat66[1].length() == 0) {
+            String owner66 = Prefs.sayadawForTalk(this, "lib", first66.e.url, "");
+            if (owner66 != null && owner66.length() > 0 && !owner66.equals(sd66)) {
+                sd66 = owner66;
+                cat66 = catalogFor(sd66);
+            }
+        }
+        if (cat66 == null || cat66[1] == null || cat66[1].length() == 0) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "pl_no_play"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        boolean firstSounds66 = (newPlayingUrl.length() > 0 && SiteHttp.sameTalk(first66.e.url, newPlayingUrl))
+                || (newPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(first66.e.url, newPlayingLibUrl))
+                || (newPlayingLibPath.length() > 0 && first66.e.url.equals(newPlayingLibPath));
+        // The anchor sayadaw's current queue, as identities — the
+        // pick skips talks already queued (they stay where they are).
+        // Saved lines are carried verbatim (histQueueAdd's discipline),
+        // so a foreign line the Room drawer moved mid-queue survives
+        // the write.
+        java.util.Set<String> queuedIds66 = new java.util.HashSet<String>();
+        java.util.ArrayList<String> saved66 = new java.util.ArrayList<String>();
+        try {
+            String savedRaw66 = Prefs.savedQueue(this, sd66);
+            if (savedRaw66 != null && savedRaw66.length() > 0) {
+                for (String ln66 : savedRaw66.split("\n")) {
+                    if (ln66.length() == 0) continue;
+                    saved66.add(ln66);
+                    QueueEntry qe66 = QueueEntry.parse(ln66);
+                    if (qe66 != null && qe66.url.length() > 0)
+                        queuedIds66.add(SiteHttp.identityUrl(qe66.url));
+                }
+            }
+        } catch (Exception ignored) {}
+        // The shuffled order flows through NewPlayAll.lines (it keeps
+        // its input order): the run is the shuffled run, deduped,
+        // sounding-skipped and already-queued-skipped exactly like
+        // Play-all-new's.
+        java.util.List<String> run66 = NewPlayAll.lines(shuffled66, queuedIds66, newPlayingUrl, newPlayingLibUrl, newPlayingLibPath);
+        int added66 = 0;
+        for (String ln66 : run66) {
+            QueueEntry qe66 = QueueEntry.parse(ln66);
+            if (qe66 == null || qe66.url.length() == 0) continue;
+            boolean dup66 = false;
+            for (String ex66 : saved66) {
+                QueueEntry qx66 = QueueEntry.parse(ex66);
+                if (qx66 != null && SiteHttp.sameTalk(qx66.url, qe66.url)) { dup66 = true; break; }
+            }
+            if (dup66) continue;
+            saved66.add(ln66);
+            added66++;
+        }
+        Prefs.saveQueue(this, sd66, saved66);
+        android.widget.Toast.makeText(NewTalksActivity.this, added66 > 0
+                ? Lang.t(NewTalksActivity.this, "queue_plain_prefix") + added66 + Lang.t(NewTalksActivity.this, "queue_added_suffix")
+                : Lang.t(NewTalksActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
+        Fx.morph(v);
+        if (!firstSounds66) playNew(first66, v);
     }
 
     private void playNew(final NewTalkRail.Card c, android.view.View v) {

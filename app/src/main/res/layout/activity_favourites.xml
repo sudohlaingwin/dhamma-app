@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- v15.63 (slice 2035): "See all" on the Main "Favourite talks" rail — the full list of every starred talk; tap a row to land the Room at the saved spot. Title + search row since v15.65 (slice 2048) + list + mini-player strip since v15.63 (slice 2038, the History v13.54 precedent); no stat cards, no clear-all — a bulk destructive verb, the 2016-rejected class). Play-all button in the header since v15.64 (slice 2044, the chooser's v13.76 Play All — the whole starred run, in order, at the saved spots). Rows are built in code (FavouritesActivity), like History / Bookmarks. -->
+<!-- v15.63 (slice 2035): "See all" on the Main "Favourite talks" rail — the full list of every starred talk; tap a row to land the Room at the saved spot. Title + search row since v15.65 (slice 2048) + list + mini-player strip since v15.63 (slice 2038, the History v13.54 precedent); no stat cards, no clear-all — a bulk destructive verb, the 2016-rejected class). Play-all button in the header since v15.64 (slice 2044, the chooser's v13.76 Play All — the whole starred run, in order, at the saved spots). Shuffle button beside it since v15.68 (slice 2065, the chooser's v13.93 shuffle-play — the shown run in random order). Rows are built in code (FavouritesActivity), like History / Bookmarks. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/favRoot"
     android:layout_width="match_parent"
@@ -25,6 +25,19 @@
         <!-- v15.64 (slice 2044): Play all — the chooser's v13.76 Play All on this screen's header: one tap queues the whole starred run in order and opens the Room on the first starred talk. GONE until refresh() shows it; the label comes from Lang pl_play_all in code, so no literal here. -->
         <Button
             android:id="@+id/btnFavPlayAll"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:textSize="14sp"
+            android:visibility="gone" />
+        <!-- v15.68 (slice 2065): Shuffle play — the chooser's v13.93
+             shuffle-play on this screen's header: one tap shuffles
+             the shown starred run into the queue and opens the Room
+             on the first shuffled talk. GONE until refresh() shows
+             it, beside Play-all; the label comes from Lang "shuffle"
+             in code, so no literal here. -->
+        <Button
+            android:id="@+id/btnFavShuffle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"

@@ -109,6 +109,18 @@ public class BookmarksActivity extends Activity {
     private android.widget.Button btnBmPlayAll = null;
     private long lastBmPlayAllMs = 0;
     private Boolean lastBmPlayAllVisible = null;
+    // v15.68 (slice 2067): "Shuffle play" on this screen — the
+    // chooser's v13.93 shuffle-play, the third of the three
+    // full-list screens to get it: one tap shuffles the shown run
+    // of marks into the queue and opens the Room on the first
+    // shuffled mark at its minute. lastBmShuffleMs is the handler's
+    // own 700ms clock (the chooser's v12.28 rule — a separate clock
+    // from Play-all-marks', so a Shuffle tap never eats a Play-all
+    // tap); btnBmShuffle is the header button beside Play-all
+    // (GONE until a list lands, the same gate, the same
+    // change-only snapshot — syncBmPlayAllBtn paints both).
+    private long lastBmShuffleMs = 0;
+    private android.widget.Button btnBmShuffle = null;
     private java.util.List<BmPlayAll.Item> bmItems =
             new java.util.ArrayList<BmPlayAll.Item>();
     // v15.67 (slice 2062): "Jump to the playing talk" — the
@@ -177,6 +189,21 @@ public class BookmarksActivity extends Activity {
             }
         });
         if (btnBmPlayAll != null) Fx.press(btnBmPlayAll);
+        // v15.68 (slice 2067): wire the Shuffle button the same
+        // way — one tap shuffles the shown run of marks into the
+        // queue and starts the first shuffled mark (shufflePlayBm).
+        // The label is the pre-existing Lang "shuffle" key, so no
+        // new key and no literal here. The button stays GONE until
+        // applyBmSearch() shows it (syncBmPlayAllBtn below).
+        btnBmShuffle = findViewById(R.id.btnBmShuffle);
+        if (btnBmShuffle != null) btnBmShuffle.setText(Lang.t(this, "shuffle"));
+        if (btnBmShuffle != null) btnBmShuffle.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.tap(BookmarksActivity.this);
+                shufflePlayBm(v);
+            }
+        });
+        if (btnBmShuffle != null) Fx.press(btnBmShuffle);
         refresh();
         wireBookmarksStrip(); // v15.63 (slice 2037): real mini-player below the list
     }
@@ -546,6 +573,9 @@ public class BookmarksActivity extends Activity {
     // URL and sayadaw, a real minute, that is not the sounding talk.
     // lastBmPlayAllVisible is the change-only snapshot — steady 1s
     // ticks never touch the button.
+    // v15.68 (slice 2067): the Shuffle button rides the same gate
+    // and the same snapshot — the two header verbs show and hide
+    // together.
     private void syncBmPlayAllBtn(boolean skipFade) {
         if (btnBmPlayAll == null) return;
         boolean show = BmPlayAll.hasPlayable(bmItems, bmPlayingUrl, bmPlayingLibUrl);
@@ -563,6 +593,26 @@ public class BookmarksActivity extends Activity {
             }
         } else if (btnBmPlayAll.getVisibility() == android.view.View.VISIBLE) {
             Fx.fadeOut(btnBmPlayAll, 200);
+        }
+        // v15.68 (slice 2067): the Shuffle button rides the same
+        // gate and the same change-only snapshot, so the two header
+        // verbs show and hide together; a null button simply never
+        // paints (both buttons live in the same layout, so they
+        // exist or miss together — this guard is belt and braces).
+        if (btnBmShuffle != null) {
+            if (skipFade) {
+                btnBmShuffle.setVisibility(show ? android.view.View.VISIBLE : android.view.View.GONE);
+                btnBmShuffle.setAlpha(1f);
+            } else if (show) {
+                if (btnBmShuffle.getVisibility() != android.view.View.VISIBLE) {
+                    btnBmShuffle.setVisibility(android.view.View.VISIBLE);
+                    Fx.fadeIn(btnBmShuffle, 250);
+                } else if (btnBmShuffle.getAlpha() < 0.999f) {
+                    Fx.fadeIn(btnBmShuffle, 250);
+                }
+            } else if (btnBmShuffle.getVisibility() == android.view.View.VISIBLE) {
+                Fx.fadeOut(btnBmShuffle, 200);
+            }
         }
     }
 
@@ -671,6 +721,134 @@ public class BookmarksActivity extends Activity {
                 : Lang.t(BookmarksActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
         Fx.morph(v);
         if (!firstSounds55) playBookmark(first55, v);
+    }
+
+    // v15.68 (slice 2067): "Shuffle play" — the Bookmarks mirror
+    // of the chooser's shufflePlayShown (v13.93). The marks used
+    // to play in screen order only (Play-all-marks, v15.66); one
+    // tap here shuffles the SHOWN run of marks into the queue in
+    // random order (BmShuffle.shuffleRows over the filtered +
+    // sorted list — the 2047 rule: the shown run is the run; a
+    // talk with three marks is three rows, so the marks play in
+    // random order, each at its own minute) and opens the Room on
+    // the first shuffled mark at its minute (playBookmark's own
+    // route — the mark was written into the talk's resume spot by
+    // the openBmTalk1962 rule, so the Room resumes there, v1.56;
+    // the queued v3 head for that same mark is dropped on real
+    // play by the v4.43 ahead-drop, by URL). Same guards as the
+    // chooser: empty list refuses with the same words, the 700ms
+    // debounce has its own clock (an invalid tap never consumes
+    // the window, v12.28), the sounding talk's marks are never
+    // re-queued (the stay-put branch: the rest queue behind it, no
+    // restart — this screen's sounding identities, the 2041 mark
+    // rule), already-queued talks stay where they are, and the
+    // count toast counts queued lines only. The anchor sayadaw is
+    // the FIRST SHUFFLED mark's sayadaw, healed exactly like
+    // playBookmark (catalog + the sayadawForTalk heal). No
+    // catalog, no run: the queue is untouched. The dup check is
+    // per MARK, not per talk — a sameTalk-only check (the 2044
+    // shape) would drop the second mark of a talk the moment the
+    // first landed in the run; a saved v2 line (posMs -1) never
+    // matches a v3 line's minute, and the core already skipped
+    // talks queued in any form, so this loop only guards the
+    // race. The first row is always a stream URL by
+    // buildBmItems' construction (a path-form row resolves
+    // through streamUrlFor or drops out), so no library leg is
+    // needed here. The shuffled queue IS the shuffle — the global
+    // shuffle-continuous toggle is left alone, so a user who
+    // deliberately left it off is not surprised, and after the
+    // queue drains normal advance resumes. playBookmark's own
+    // 700ms row-tap clock stands: a row tap under 700ms before
+    // this tap swallows the Room open while the queue still
+    // writes (the same class as playAllBm, accepted in 2055).
+    private void shufflePlayBm(android.view.View v) {
+        if (items == null || items.isEmpty()) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        long now67 = android.os.SystemClock.uptimeMillis();
+        if (now67 - lastBmShuffleMs < 700) return;
+        lastBmShuffleMs = now67;
+        refreshBookmarksPlayingMarks(); // tap-time sounding identities
+        java.util.List<BmAll.Row> shuffled67 = BmShuffle.shuffleRows(items, new java.util.Random());
+        if (shuffled67.isEmpty()) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final BmAll.Row first67 = shuffled67.get(0);
+        if (first67 == null || first67.e == null || first67.e.url == null || first67.e.url.length() == 0) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String sd67 = first67.e.sayadaw;
+        String[] cat67 = catalogFor(sd67);
+        if (cat67 == null || cat67[1] == null || cat67[1].length() == 0) {
+            String owner67 = Prefs.sayadawForTalk(this, "lib", first67.e.url, "");
+            if (owner67 != null && owner67.length() > 0 && !owner67.equals(sd67)) {
+                sd67 = owner67;
+                cat67 = catalogFor(sd67);
+            }
+        }
+        if (cat67 == null || cat67[1] == null || cat67[1].length() == 0) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "pl_no_play"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        boolean firstSounds67 = (bmPlayingUrl.length() > 0 && SiteHttp.sameTalk(first67.e.url, bmPlayingUrl))
+                || (bmPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(first67.e.url, bmPlayingLibUrl));
+        // The anchor sayadaw's current queue, as identities — the
+        // pick skips talks already queued (they stay where they are).
+        // Saved lines are carried verbatim (histQueueAdd's discipline),
+        // so a foreign line the Room drawer moved mid-queue survives
+        // the write.
+        java.util.Set<String> queuedIds67 = new java.util.HashSet<String>();
+        java.util.ArrayList<String> saved67 = new java.util.ArrayList<String>();
+        try {
+            String savedRaw67 = Prefs.savedQueue(this, sd67);
+            if (savedRaw67 != null && savedRaw67.length() > 0) {
+                for (String ln67 : savedRaw67.split("\n")) {
+                    if (ln67.length() == 0) continue;
+                    saved67.add(ln67);
+                    QueueEntry qe67 = QueueEntry.parse(ln67);
+                    if (qe67 != null && qe67.url.length() > 0)
+                        queuedIds67.add(SiteHttp.identityUrl(qe67.url));
+                }
+            }
+        } catch (Exception ignored) {}
+        // The shuffled order flows through BmPlayAll.lines (it keeps
+        // its input order): the run is the shuffled run, deduped,
+        // sounding-skipped and already-queued-skipped exactly like
+        // Play-all-marks'. buildBmItems resolves the shuffled rows
+        // to stream URLs first, so a path-form mark still plays.
+        java.util.List<BmPlayAll.Item> shuffledItems67 = buildBmItems(shuffled67);
+        java.util.List<String> run67 = BmPlayAll.lines(shuffledItems67, queuedIds67, bmPlayingUrl, bmPlayingLibUrl);
+        int added67 = 0;
+        for (String ln67 : run67) {
+            QueueEntry qe67 = QueueEntry.parse(ln67);
+            if (qe67 == null || qe67.url.length() == 0) continue;
+            boolean dup67 = false;
+            for (String ex67 : saved67) {
+                QueueEntry qx67 = QueueEntry.parse(ex67);
+                if (qx67 != null && qx67.posMs == qe67.posMs
+                        && SiteHttp.sameTalk(qx67.url, qe67.url)) { dup67 = true; break; }
+            }
+            if (dup67) continue;
+            saved67.add(ln67);
+            added67++;
+        }
+        Prefs.saveQueue(this, sd67, saved67);
+        android.widget.Toast.makeText(BookmarksActivity.this, added67 > 0
+                ? Lang.t(BookmarksActivity.this, "queue_plain_prefix") + added67 + Lang.t(BookmarksActivity.this, "queue_added_suffix")
+                : Lang.t(BookmarksActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
+        Fx.morph(v);
+        if (!firstSounds67) playBookmark(first67, v);
     }
 
     // v15.66 (slice 2055): the shown rows as resolved Items — one

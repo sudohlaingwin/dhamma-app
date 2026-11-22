@@ -22,9 +22,22 @@
             android:textColor="@color/maroon"
             android:textSize="20sp"
             android:textStyle="bold" />
-        <!-- v15.66 (slice 2055): "Play all marks" — the Favourites 2044 Play All on this screen's header: one tap queues the whole shown run of marks in order and opens the Room on the first mark at its minute. GONE until refresh() shows it; the label comes from Lang pl_play_all in code, so no literal here. -->
+        <!-- v15.66 (slice 2055): "Play all marks" — the Favourites 2044 Play All on this screen's header: one tap queues the whole shown run of marks in order and opens the Room on the first mark at its minute. GONE until refresh() shows it; the label comes from Lang pl_play_all in code, so no literal here. Shuffle button beside it since v15.68 (slice 2067, the chooser's v13.93 shuffle-play — the shown run of marks in random order). -->
         <Button
             android:id="@+id/btnBmPlayAll"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="8dp"
+            android:textSize="14sp"
+            android:visibility="gone" />
+        <!-- v15.68 (slice 2067): Shuffle play — the chooser's v13.93
+             shuffle-play on this screen's header: one tap shuffles
+             the shown run of marks into the queue and opens the Room
+             on the first shuffled mark at its minute. GONE until
+             refresh() shows it, beside Play-all; the label comes
+             from Lang "shuffle" in code, so no literal here. -->
+        <Button
+            android:id="@+id/btnBmShuffle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginLeft="8dp"
