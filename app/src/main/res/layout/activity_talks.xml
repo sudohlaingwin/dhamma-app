@@ -413,6 +413,30 @@
             android:divider="@color/surface"
             android:dividerHeight="1dp"
             android:fastScrollEnabled="true" />
+        <!-- v15.58 (slice 2005): jump-to-first-unheard button — the
+             floating gold ↓ stacked above the ▶ (same 56dp oval,
+             same maroon glyph, 16dp off the corner): the Continue
+             row (1932) covers only the in-progress talk and the
+             Play-new row (1933) plays only ●-dotted new arrivals,
+             so a listener who finished the first talks and started
+             none of the rest had no visible way to the next fresh
+             talk — the "New" filter narrows the list instead of
+             gliding within it. GONE until a first unheard talk
+             exists AND its row has scrolled off-screen. -->
+        <TextView
+            android:id="@+id/talkUnheardBtn"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="160dp"
+            android:background="@drawable/top_btn_bg"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="↓"
+            android:textColor="@color/maroon"
+            android:textSize="24sp"
+            android:visibility="gone" />
         <!-- v15.55 (slice 1994): jump-to-playing button — the
              floating gold ▶ stacked above the ↑ (same 56dp oval,
              same maroon glyph, 16dp off the corner): the title

@@ -2007,6 +2007,17 @@ public class TalksActivity extends Activity {
     private android.view.View talkPlayingBtn = null;
     private boolean talkPlayingShown = false;
     private int playingTargetIdx = -1;
+    // v15.58 (slice 2005): "Jump to the first unheard talk"
+    // — the floating gold ↓ stacked above the ▶; talkUnheardShown
+    // is the last-painted state for the painter's change gate,
+    // and unheardTargetIdx is the cached DISPLAY position of
+    // the first unheard talk (recomputed on rebuild / mark /
+    // sounding change, never on scroll — the 1994 pattern
+    // with a display cache, so a fling never pays a resume
+    // scan per scroll event).
+    private android.view.View talkUnheardBtn = null;
+    private boolean talkUnheardShown = false;
+    private int unheardTargetIdx = -1;
     // v15.43 (slice 1932): "Continue listening" row — the
     // one-tap return to this sayadaw's in-progress talk.
     // Shares no gate with the Play row: it hides while a
@@ -2130,6 +2141,9 @@ public class TalksActivity extends Activity {
         // v15.55 (slice 1994): a rebuild can also move the playing talk (new list, new filter) — refresh the jump button's cached target, then repaint it from the new position.
         refreshJumpPlayingTarget();
         paintTalkPlayingBtnFromList();
+        // v15.58 (slice 2005): a rebuild can also move the first unheard talk (new list, new filter, a mark) — refresh the ↓ button's cached target, then repaint it from the new position.
+        refreshUnheardTarget();
+        paintTalkUnheardBtnFromList();
     }
     private void rebuildFilter() {
         if (filterMode == 0) {
@@ -2694,6 +2708,8 @@ public class TalksActivity extends Activity {
                 paintTalkTopBtn(firstVisibleItem);
                 // v15.55 (slice 1994): the jump button paints on the same scroll — off-screen is its only show rule, so a laid-out window is required (count 0 means no layout yet).
                 if (visibleItemCount > 0) paintTalkPlayingBtn(firstVisibleItem, firstVisibleItem + visibleItemCount - 1);
+                // v15.58 (slice 2005): the ↓ button paints on the same scroll — off-screen is its only show rule, so the same laid-out-window guard.
+                if (visibleItemCount > 0) paintTalkUnheardBtn(firstVisibleItem, firstVisibleItem + visibleItemCount - 1);
             }
         });
     }
@@ -2839,6 +2855,115 @@ public class TalksActivity extends Activity {
             @Override public void run() {
                 if (talkList == null) return;
                 paintTalkPlayingBtn(talkList.getFirstVisiblePosition(), talkList.getLastVisiblePosition());
+            }
+        });
+    }
+
+    // v15.58 (slice 2005): wire the ↓ button — one tap glides
+    // to the first unheard talk (not finished, not started past
+    // 5s, not sounding — the 1920 dot gate minus the new-set).
+    // The tap re-resolves everything fresh — the display ids,
+    // the resume map, the first index — so a finish or a mark
+    // while the button sat visible can never glide to a stale
+    // row; the target is by construction in the shown list,
+    // so no search/filter clear is ever needed (unlike 1994).
+    // Any guard failure toasts all_listened (the 1926 word),
+    // never scrolls nowhere. A missing button simply never wires.
+    private void wireTalkUnheardBtn() {
+        talkUnheardBtn = findViewById(R.id.talkUnheardBtn);
+        if (talkUnheardBtn != null) talkUnheardBtn.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                if (talkList == null || talks == null || talks.isEmpty()) {
+                    android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "all_listened"), android.widget.Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                try {
+                    refreshUnheardTarget();
+                    if (unheardTargetIdx < 0) {
+                        android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "all_listened"), android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    Fx.tap(TalksActivity.this);
+                    Fx.morph(v);
+                    talkList.smoothScrollToPosition(unheardTargetIdx);
+                } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    // v15.58 (slice 2005): refresh the ↓ button's cached target
+    // — the display position of the first unheard talk, from the
+    // tick-fresh played cache (talkPlayedCache) + the row's own
+    // resume rule (resumeMsForContinue, the getView ↺ leg
+    // verbatim) + the sounding exclusion (talkPlayingUrl /
+    // talkPlayingLibUrl, the PlayNewPick shape minus the new-set).
+    // Runs on rebuild / mark / sounding change only, never on
+    // scroll; -1 while every shown talk is finished, started,
+    // or sounding. The scan is over DISPLAY positions
+    // (visibleHits order when narrowed, full order otherwise),
+    // so the cached index is the glide position directly — no
+    // full/display split and no needsClear, unlike 1994: the
+    // target is by construction in the shown list.
+    private void refreshUnheardTarget() {
+        unheardTargetIdx = -1;
+        if (talks == null || talks.isEmpty()) return;
+        java.util.ArrayList<String> ids = new java.util.ArrayList<String>();
+        java.util.Map<String, Integer> resumeById = new java.util.HashMap<String, Integer>();
+        if (visibleHits == null) {
+            for (int i = 0; i < talks.size(); i++) {
+                String id = talks.get(i) == null ? null : SiteHttp.identityUrl(talks.get(i).url);
+                ids.add(id);
+                if (id != null && !resumeById.containsKey(id))
+                    resumeById.put(id, Integer.valueOf(resumeMsForContinue(talks.get(i))));
+            }
+        } else {
+            for (Integer fi : visibleHits) {
+                int i = fi.intValue();
+                if (i < 0 || i >= talks.size()) continue;
+                String id = talks.get(i) == null ? null : SiteHttp.identityUrl(talks.get(i).url);
+                ids.add(id);
+                if (id != null && !resumeById.containsKey(id))
+                    resumeById.put(id, Integer.valueOf(resumeMsForContinue(talks.get(i))));
+            }
+        }
+        unheardTargetIdx = JumpUnheard.firstIndex(ids, talkPlayedCache, resumeById, talkPlayingUrl, talkPlayingLibUrl);
+    }
+
+    // v15.58 (slice 2005): the ↓ state — shown only while a
+    // first unheard talk exists AND its row is off-screen (above
+    // or below the visible window, the REUSED JumpPlaying.
+    // wantShown gate). The change gate keeps steady scrolls and
+    // the rebuild/restore repaints from re-touching the button;
+    // the show/hide melts (Fx.fadeIn/fadeOut, 180ms), the 1940
+    // shape. A finish moves the target on the next change tick,
+    // so the button hides within a tick of the last fresh talk
+    // being heard.
+    private void paintTalkUnheardBtn(int firstVisible, int lastVisible) {
+        if (talkUnheardBtn == null) return;
+        boolean want = unheardTargetIdx >= 0
+                && JumpPlaying.wantShown(unheardTargetIdx, firstVisible, lastVisible);
+        if (want == talkUnheardShown) return;
+        talkUnheardShown = want;
+        if (want) {
+            talkUnheardBtn.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(talkUnheardBtn, 180);
+        } else {
+            Fx.fadeOut(talkUnheardBtn, 180);
+        }
+    }
+
+    // v15.58 (slice 2005): repaint from the list's own position
+    // after a scroll-less change — a rebuild (load / search /
+    // filter / sort), a rotation restore, or a sounding change
+    // can move the first unheard row off-screen with no scroll
+    // event. Posted, because the first / last visible rows are
+    // only valid once the list has laid out (the 1940 shape).
+    private void paintTalkUnheardBtnFromList() {
+        if (talkList == null) return;
+        talkList.post(new Runnable() {
+            @Override public void run() {
+                if (talkList == null) return;
+                paintTalkUnheardBtn(talkList.getFirstVisiblePosition(), talkList.getLastVisiblePosition());
             }
         });
     }
@@ -3619,6 +3744,7 @@ public class TalksActivity extends Activity {
         wirePullRefresh(); // v15.34 (slice 1841): pull-to-refresh on this list
         wireTalkTopBtn(); // v15.45 (slice 1940): back-to-top button on this list
         wireTalkPlayingBtn(); // v15.55 (slice 1994): jump-to-playing button on this list
+        wireTalkUnheardBtn(); // v15.58 (slice 2005): jump-to-first-unheard button on this list
         wireSearchBox(); // v4.93: talk title search under the header
         if (list != null) list.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
@@ -4741,6 +4867,9 @@ public class TalksActivity extends Activity {
                 // v15.55 (slice 1994): same restore rule for the jump button — refresh its cached target, then repaint it from the restored position.
                 refreshJumpPlayingTarget();
                 paintTalkPlayingBtnFromList();
+                // v15.58 (slice 2005): same restore rule for the ↓ button — refresh its cached target, then repaint it from the restored position.
+                refreshUnheardTarget();
+                paintTalkUnheardBtnFromList();
                 restored = true;
                 // v12.54: restore the return-scroll anchor saved above,
                 // so a rotation does not re-glide to the same talk.
@@ -6969,6 +7098,9 @@ public class TalksActivity extends Activity {
             // v15.55 (slice 1994): the sounding change above moves the playing talk (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button.
             refreshJumpPlayingTarget();
             paintTalkPlayingBtnFromList();
+            // v15.58 (slice 2005): a finish moves the first unheard talk too (the finished row leaves the pick) — refresh the ↓ button's cached target and repaint it. Change-only: steady ticks never touch the button.
+            refreshUnheardTarget();
+            paintTalkUnheardBtnFromList();
         }
         // v14.48 (slice 1705): first tick evaluation adopts the
         // trackers silently — the arm above only ever reads the

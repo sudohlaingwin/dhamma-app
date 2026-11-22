@@ -89,6 +89,17 @@ public class DownloadedActivity extends Activity {
     private int dlPlayingShelfIdx = -1;
     private int dlPlayingDisplayIdx = -1;
     private boolean dlPlayingShown = false;
+    // v15.58 (slice 2007): "Jump to the first unheard file"
+    // — the floating gold ↓ stacked above the ▶; dlUnheardShown
+    // is the last-painted state for the painter's change gate,
+    // and dlUnheardTargetIdx is the cached DISPLAY position of
+    // the first unheard file (recomputed on rebuild / mark /
+    // sounding change, never on scroll — the 2002 pattern
+    // with a display cache, so a fling never pays a mark-
+    // cache scan per scroll event).
+    private android.view.View dlUnheardBtn = null;
+    private boolean dlUnheardShown = false;
+    private int dlUnheardTargetIdx = -1;
     // v15.57 (slice 2003): back-to-top button state — the button + the change gate that keeps steady scrolls from re-touching it (the 1940 Talks shape; the gate is the only state — the show rule is ScrollTop.visible, no cached target).
     private android.view.View dlTopBtn = null;
     private boolean dlTopShown = false;
@@ -1745,6 +1756,8 @@ public class DownloadedActivity extends Activity {
                 paintDlTopBtn(firstVisibleItem);
                 // v15.57 (slice 2002): the jump button paints on the same scroll — off-screen is its only show rule, so a laid-out window is required (count 0 means no layout yet; the 1994 Talks shape).
                 if (visibleItemCount > 0) paintDlPlayingBtn(firstVisibleItem, firstVisibleItem + visibleItemCount - 1);
+                // v15.58 (slice 2007): the ↓ button paints on the same scroll — off-screen is its only show rule, so the same laid-out-window guard.
+                if (visibleItemCount > 0) paintDlUnheardBtn(firstVisibleItem, firstVisibleItem + visibleItemCount - 1);
             }
         });
     }
@@ -1787,6 +1800,111 @@ public class DownloadedActivity extends Activity {
             @Override public void run() {
                 if (dlListView == null) return;
                 paintDlPlayingBtn(dlListView.getFirstVisiblePosition(), dlListView.getLastVisiblePosition());
+            }
+        });
+    }
+
+    // v15.58 (slice 2007): wire the ↓ button — one tap glides
+    // to the first unheard file (not finished, not started past
+    // 5s, not sounding — the 1920 dot gate minus the new-set,
+    // restated for the library's own machinery: finished is a
+    // filename in libListenedFiles, started is a spot in
+    // libResumeMap, sounding is libRowPlayingPath). The tap
+    // re-resolves everything fresh — the display paths, the
+    // first index — so a finish or a mark while the button sat
+    // visible can never glide to a stale row; the target is by
+    // construction in the shown list, so no search/filter clear
+    // is ever needed (unlike 2002). Any guard failure toasts
+    // all_listened (the 1926 word), never scrolls nowhere. A
+    // missing button simply never wires.
+    private void wireDlUnheardBtn() {
+        dlUnheardBtn = findViewById(R.id.dlUnheardBtn);
+        if (dlUnheardBtn != null) dlUnheardBtn.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                if (dlListView == null || libDisplayCount() == 0) {
+                    android.widget.Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "all_listened"), android.widget.Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                try {
+                    refreshDlUnheardTarget();
+                    if (dlUnheardTargetIdx < 0) {
+                        android.widget.Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "all_listened"), android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    Entry target07 = libEntryAtDisplay(dlUnheardTargetIdx);
+                    if (target07 == null || target07.file == null) {
+                        android.widget.Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "all_listened"), android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    Fx.tap(DownloadedActivity.this);
+                    Fx.morph(v);
+                    // v4.28: same keyboard rule as the header tap — a successful glide moves the list, so the keyboard hides with it (the 1940 Talks tap has no keyboard to hide; this screen's search field does).
+                    hideKeyboard(v);
+                    glideToDlPath(target07.file.getAbsolutePath());
+                } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    // v15.58 (slice 2007): refresh the ↓ button's cached target
+    // — the display position of the first unheard file, from the
+    // per-load mark caches (libListenedFiles + libResumeMap,
+    // refreshLibMarkCache) + the sounding exclusion
+    // (libRowPlayingPath, exact-path equality — the DlJumpPlaying
+    // world, no URL twins: the library queue holds paths, never
+    // URLs). Runs on rebuild / mark / sounding change only, never
+    // on scroll; -1 while every shown file is finished, started,
+    // or sounding. The scan is over DISPLAY positions
+    // (libDisplayCount / libEntryAtDisplay order), so the cached
+    // index is the glide position directly — no shelf/display
+    // split and no needsClear, unlike 2002: the target is by
+    // construction in the shown list.
+    private void refreshDlUnheardTarget() {
+        dlUnheardTargetIdx = -1;
+        if (libDisplayCount() == 0) return;
+        java.util.ArrayList<String> dispPaths07 = new java.util.ArrayList<String>();
+        for (int i07 = 0; i07 < libDisplayCount(); i07++) {
+            Entry de07 = libEntryAtDisplay(i07);
+            dispPaths07.add(de07 == null ? null : de07.file.getAbsolutePath());
+        }
+        dlUnheardTargetIdx = DlJumpUnheard.firstIndex(dispPaths07, libListenedFiles, libResumeMap, libRowPlayingPath);
+    }
+
+    // v15.58 (slice 2007): the ↓ state — shown only while a
+    // first unheard file exists AND its row is off-screen (above
+    // or below the visible window, the REUSED DlJumpPlaying.
+    // wantShown gate). The change gate keeps steady scrolls and
+    // the rebuild/restore repaints from re-touching the button;
+    // the show/hide melts (Fx.fadeIn/fadeOut, 180ms), the 1940
+    // shape. A finish moves the target on the next change tick,
+    // so the button hides within a tick of the last fresh file
+    // being heard.
+    private void paintDlUnheardBtn(int firstVisible, int lastVisible) {
+        if (dlUnheardBtn == null) return;
+        boolean want = dlUnheardTargetIdx >= 0
+                && DlJumpPlaying.wantShown(dlUnheardTargetIdx, firstVisible, lastVisible);
+        if (want == dlUnheardShown) return;
+        dlUnheardShown = want;
+        if (want) {
+            dlUnheardBtn.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(dlUnheardBtn, 180);
+        } else {
+            Fx.fadeOut(dlUnheardBtn, 180);
+        }
+    }
+
+    // v15.58 (slice 2007): repaint from the list's own position
+    // after a scroll-less change — a rebuild (load / search /
+    // filter / sort), a rotation restore, or a sounding change
+    // can move the first unheard row off-screen with no scroll
+    // event. Posted, because the first / last visible rows are
+    // only valid once the list has laid out (the 1940 shape).
+    private void paintDlUnheardBtnFromList() {
+        if (dlListView == null) return;
+        dlListView.post(new Runnable() {
+            @Override public void run() {
+                if (dlListView == null) return;
+                paintDlUnheardBtn(dlListView.getFirstVisiblePosition(), dlListView.getLastVisiblePosition());
             }
         });
     }
@@ -5321,6 +5439,9 @@ public class DownloadedActivity extends Activity {
                 // v15.57 (slice 2002): the sounding change above moves the playing file (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button (the 1994 Talks shape).
                 refreshDlPlayingTarget();
                 paintDlPlayingBtnFromList();
+                // v15.58 (slice 2007): a finish moves the first unheard file too (the finished row leaves the pick) — refresh the ↓ button's cached target and repaint it. Change-only: steady ticks never touch the button.
+                refreshDlUnheardTarget();
+                paintDlUnheardBtnFromList();
             }
             // v4.66: a Next landing while the shelf sits open used
             // to leave the footer's Up Next line pointing at the
@@ -6684,6 +6805,7 @@ public class DownloadedActivity extends Activity {
         });
         wireDlPlayingBtn(); // v15.57 (slice 2002): jump-to-playing-file button on this list
         wireDlTopBtn(); // v15.57 (slice 2003): back-to-top button on this list
+        wireDlUnheardBtn(); // v15.58 (slice 2007): jump-to-first-unheard button on this list
         // v2.19: premium library header entrance — the header used
         // to sit flat while the rows cascaded below it (v2.12), the
         // same top-dead pattern the Talks title (v2.16), Main header
@@ -8534,6 +8656,9 @@ public class DownloadedActivity extends Activity {
         // v15.57 (slice 2002): a rebuild can move the playing file (new list, new filter) — refresh the jump button's cached target, then repaint it from the new position (the 1994 Talks shape).
         refreshDlPlayingTarget();
         paintDlPlayingBtnFromList();
+        // v15.58 (slice 2007): a rebuild can also move the first unheard file (new list, new filter, a mark) — refresh the ↓ button's cached target, then repaint it from the new position.
+        refreshDlUnheardTarget();
+        paintDlUnheardBtnFromList();
         // v15.57 (slice 2003): a rebuild can also land the list deep (new list, new filter) — repaint the top button from the new position too (the 1940 Talks shape; the same posted read covers the rotation restore, which setSelections right after this filter pass in loadList).
         paintDlTopBtnFromList();
     }

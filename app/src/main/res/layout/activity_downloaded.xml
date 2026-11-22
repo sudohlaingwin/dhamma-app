@@ -160,6 +160,30 @@
             android:layout_height="match_parent"
             android:dividerHeight="1dp"
             android:fastScrollEnabled="true" />
+        <!-- v15.58 (slice 2007): jump-to-first-unheard button — the
+             floating gold ↓ stacked above the ▶ (same 56dp oval,
+             same maroon glyph, 16dp off the corner): the Continue
+             strip (v4.60) covers only the one in-progress talk and
+             the unlistened-only filter (mode 2, v4.95) narrows the
+             list instead of gliding within it, so a listener who
+             finished the first files and started none of the rest
+             had no visible way to the next fresh file. GONE until
+             a first unheard file exists AND its row has scrolled
+             off-screen. -->
+        <TextView
+            android:id="@+id/dlUnheardBtn"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="160dp"
+            android:background="@drawable/top_btn_bg"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="↓"
+            android:textColor="@color/maroon"
+            android:textSize="24sp"
+            android:visibility="gone" />
         <!-- v15.57 (slice 2002): jump-to-playing-file button — the floating gold ▶ at the list's bottom-end corner (same 56dp oval, same maroon glyph, 88dp off the corner — stacked above the ↑ back-to-top (slice 2003)): the header long-press (v4.15) already jumps to the playing file, but the gesture is hidden and the header is off-screen exactly when the jump is needed — the same visible, reachable-form class as the Talks back-to-top (1940) and jump-to-playing (1994) buttons. GONE until a live session plays a shelf file AND that file's row has scrolled off-screen. -->
         <TextView
             android:id="@+id/dlPlayingBtn"

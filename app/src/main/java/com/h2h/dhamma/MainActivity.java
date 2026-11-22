@@ -5294,6 +5294,26 @@ public class MainActivity extends Activity {
                     boolean fav87 = RailMenu.isFav(ft87, e.url);
                     boolean go87 = GoSayadaw.canGo(new String[]{s.group, s.url, s.photo});
                     java.util.List<String> keys87 = RailMenu.keys(fav87, go87, RoomCopyLink.canOffer(e.url));
+                    // v15.58 (slice 2006): "Share the audio file" —
+                    // the Recently played rail menu's file-share verb:
+                    // the card could share its text (menu_share
+                    // above) and copy its link (dl_menu_copy_link,
+                    // slice 1977) but never send the actual .mp3.
+                    // Gated on DlLanded.downloadedFileName (v13.69
+                    // — the ONE shared definition of downloaded),
+                    // so the offer can never disagree with the
+                    // library, the drawer, the chooser, History or
+                    // the Downloaded rail (1996); false in the
+                    // common case (a streamed just-heard talk) and
+                    // true exactly when the file is on disk, so a
+                    // file deleted externally while Main sits open
+                    // never offers a dead verb. Inserted at index 1,
+                    // right after menu_share, so the share verbs sit
+                    // together (the 1955/1986 drawer precedent).
+                    // Rail-only, not in RailMenu.keys — the other
+                    // rails' cards are streamed in the common case
+                    // (the 1992/1993 precedent).
+                    if (DlLanded.downloadedFileName(MainActivity.this, e.url, null, null) != null) keys87.add(1, "dl_menu_share_file");
                     // v15.56 (slice 1998): "Download" — the Recently
                     // played rail menu's fifth verb, appended last
                     // (after go): a just-heard talk, one tap to
@@ -5321,6 +5341,20 @@ public class MainActivity extends Activity {
                                         send87.setType("text/plain");
                                         send87.putExtra(android.content.Intent.EXTRA_TEXT, RailMenu.shareText(s.name, e.title, e.url, Lang.t(MainActivity.this, "share_source")));
                                         startActivity(android.content.Intent.createChooser(send87, Lang.t(MainActivity.this, "share_talk")));
+                                    } else if ("dl_menu_share_file".equals(key87[which])) {
+                                        // v15.58 (slice 2006): "Share the audio file" — the 1954 verb on the Recently played rail: the menu could share the talk's text (menu_share above) and copy its link (dl_menu_copy_link, slice 1977) but never send the actual .mp3 — a listener who had just heard a downloaded talk and wanted the file itself in another app had to find it in Downloads/Dhamma by hand. Same verb the library per-row menu has had since v15.48 (slice 1954), the Room drawer since slice 1955, the Talks chooser since slice 1956, the History row since slice 1982 and the Downloaded rail since v15.56 (slice 1996), through the same TalkFileShare core (same rule, so the six surfaces can never disagree); the offer gate is DlLanded.downloadedFileName (v13.69 — the ONE shared definition of downloaded: dlMap name or filename candidate, length-gated, never a live job's destination), re-checked fresh at tap time, and the URI is built through TalkFileShare.shareUriFor (resolve + uriStringFor), so a name that no longer resolves to a file on disk toasts the existing talk_no_longer_in_list, never a guessed URI. No pause guard (the text share beside it sets none, the 1982 rule). A share mutates nothing — the rail card stays, the queue stays.
+                                        java.io.File dir06 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+                                        String fn06 = DlLanded.downloadedFileName(MainActivity.this, e.url, null, null);
+                                        String uri06 = TalkFileShare.shareUriFor(dir06, fn06);
+                                        if (uri06 == null) {
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "talk_no_longer_in_list"), android.widget.Toast.LENGTH_SHORT).show();
+                                        } else {
+                                            android.content.Intent send06 = new android.content.Intent(android.content.Intent.ACTION_SEND);
+                                            send06.setType("audio/mpeg");
+                                            send06.putExtra(android.content.Intent.EXTRA_STREAM, android.net.Uri.parse(uri06));
+                                            send06.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                            startActivity(android.content.Intent.createChooser(send06, Lang.t(MainActivity.this, "share_talk")));
+                                        }
                                     } else if ("dl_menu_copy_link".equals(key87[which])) {
                                         // v15.52 (slice 1977) shape: the tap-time gate re-checks the offer, so the two can never disagree; no pause guard (no sheet is left to return from) and no file gate (a link is not a file).
                                         if (RoomCopyLink.canOffer(e.url)) {
@@ -5782,6 +5816,30 @@ public class MainActivity extends Activity {
                     java.util.List<String> keys89 = RailMenu.keys(fav89, go89, RoomCopyLink.canOffer(c.e.url));
                     // v15.55 (slice 1992): the remove verb is appended here, not in RailMenu.keys — it is bm-rail-only (only bm cards carry a mark minute to delete) and it sits LAST (destructive last, after go-to-sayadaw).
                     keys89.add("bm_menu_remove");
+                    // v15.58 (slice 2008): "Share the audio file" —
+                    // the Bookmarks rail menu's file-share verb, the
+                    // 2006 port to the keys89 site: the card could
+                    // share its text (menu_share above), share it at
+                    // its minute (bm_menu_share_minute, slice 1993)
+                    // and copy its link (dl_menu_copy_link, slice
+                    // 1977) but never send the actual .mp3.
+                    // Gated on DlLanded.downloadedFileName (v13.69
+                    // — the ONE shared definition of downloaded),
+                    // so the offer can never disagree with the
+                    // library, the drawer, the chooser, History or
+                    // the other rails (2006); false in the common
+                    // case (a streamed marked talk) and true exactly
+                    // when the file is on disk, so a file deleted
+                    // externally while Main sits open never offers a
+                    // dead verb. Inserted at index 1, right after
+                    // menu_share; the minute-share insert below
+                    // (1993) then pushes it to index 2, so the share
+                    // verbs sit together in the order text, minute,
+                    // file (the 1955/1986 drawer precedent).
+                    // Rail-only, not in RailMenu.keys — the other
+                    // rails' cards are streamed in the common case
+                    // (the 1992/1993 precedent).
+                    if (DlLanded.downloadedFileName(MainActivity.this, c.e.url, null, null) != null) keys89.add(1, "dl_menu_share_file");
                     // v15.56 (slice 1999): "Download" — the Bookmarks
                     // rail menu's seventh verb, inserted right before
                     // bm_menu_remove (the destructive verb stays last,
@@ -5814,6 +5872,20 @@ public class MainActivity extends Activity {
                                         send89.setType("text/plain");
                                         send89.putExtra(android.content.Intent.EXTRA_TEXT, RailMenu.shareText(s.name, c.e.title, c.e.url, Lang.t(MainActivity.this, "share_source")));
                                         startActivity(android.content.Intent.createChooser(send89, Lang.t(MainActivity.this, "share_talk")));
+                                    } else if ("dl_menu_share_file".equals(key89[which])) {
+                                        // v15.58 (slice 2008): "Share the audio file" — the 1954 verb on the Bookmarks rail: the menu could share the talk's text (menu_share above), share it at its minute (bm_menu_share_minute, slice 1993) and copy its link (dl_menu_copy_link, slice 1977) but never send the actual .mp3 — a listener who had marked a downloaded talk and wanted the file itself in another app had to find it in Downloads/Dhamma by hand. Same verb the library per-row menu has had since v15.48 (slice 1954), the Room drawer since slice 1955, the Talks chooser since slice 1956, the History row since slice 1982, the Downloaded rail since v15.56 (slice 1996) and the Recently played rail since v15.58 (slice 2006), through the same TalkFileShare core (same rule, so the seven surfaces can never disagree); the offer gate is DlLanded.downloadedFileName (v13.69 — the ONE shared definition of downloaded: dlMap name or filename candidate, length-gated, never a live job's destination), re-checked fresh at tap time, and the URI is built through TalkFileShare.shareUriFor (resolve + uriStringFor), so a name that no longer resolves to a file on disk toasts the existing talk_no_longer_in_list, never a guessed URI. No pause guard (the text share beside it sets none, the 1982 rule). A share mutates nothing — the rail card stays, the queue stays, and the mark minute (c.posMs) stays the tap's job: the file share needs no minute.
+                                        java.io.File dir08 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+                                        String fn08 = DlLanded.downloadedFileName(MainActivity.this, c.e.url, null, null);
+                                        String uri08 = TalkFileShare.shareUriFor(dir08, fn08);
+                                        if (uri08 == null) {
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "talk_no_longer_in_list"), android.widget.Toast.LENGTH_SHORT).show();
+                                        } else {
+                                            android.content.Intent send08 = new android.content.Intent(android.content.Intent.ACTION_SEND);
+                                            send08.setType("audio/mpeg");
+                                            send08.putExtra(android.content.Intent.EXTRA_STREAM, android.net.Uri.parse(uri08));
+                                            send08.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                            startActivity(android.content.Intent.createChooser(send08, Lang.t(MainActivity.this, "share_talk")));
+                                        }
                                     } else if ("bm_menu_share_minute".equals(key89[which])) {
                                         // v15.55 (slice 1993): share this bookmark — the minute-share verb (the other 1989 candidate): the share text is the chooser shape with the card's own "12:34 · title" rendering in the title slot (BmShare.shareAtMinuteText), so the friend sees exactly which minute matters. The link stays the talk's original link (no minute in the URL — the site serves plain .mp3 links, nothing to deep-link into); the minute lives in the text. Chooser title is share_talk, like the plain share. No pause guard (no sheet is left to return from, like the 1975 copy verb and the 1985 go verb). No tap-time re-check: the minute is the card's own capture (c.posMs, guaranteed > 0 by BmRail.pick); the only deleter (the Room bookmark list's ✕) cannot run while the modal menu sits open, and a stale minute in shared text is harmless — the link stays valid and the minute is still a real position in the talk.
                                         android.content.Intent send89m = new android.content.Intent(android.content.Intent.ACTION_SEND);
@@ -6095,6 +6167,26 @@ public class MainActivity extends Activity {
                     boolean fav90 = RailMenu.isFav(ft90, c.e.url);
                     boolean go90 = GoSayadaw.canGo(new String[]{s.group, s.url, s.photo});
                     java.util.List<String> keys90 = RailMenu.keys(fav90, go90, RoomCopyLink.canOffer(c.e.url));
+                    // v15.58 (slice 2009): "Share the audio file" —
+                    // the Favourite talks rail menu's file-share verb:
+                    // the card could share its text (menu_share
+                    // above) and copy its link (dl_menu_copy_link,
+                    // slice 1977) but never send the actual .mp3.
+                    // Gated on DlLanded.downloadedFileName (v13.69
+                    // — the ONE shared definition of downloaded),
+                    // so the offer can never disagree with the
+                    // library, the drawer, the chooser, History or
+                    // the other rails (1996/2006/2008); false in the
+                    // common case (a streamed starred talk) and
+                    // true exactly when the file is on disk, so a
+                    // file deleted externally while Main sits open
+                    // never offers a dead verb. Inserted at index 1,
+                    // right after menu_share, so the share verbs sit
+                    // together (the 1955/1986 drawer precedent).
+                    // Rail-only, not in RailMenu.keys — the other
+                    // rails' cards are streamed in the common case
+                    // (the 1992/1993 precedent).
+                    if (DlLanded.downloadedFileName(MainActivity.this, c.e.url, null, null) != null) keys90.add(1, "dl_menu_share_file");
                     // v15.57 (slice 2000): "Download" — the Favourite
                     // talks rail menu's fifth verb, appended last
                     // (after go): a starred talk, one tap to
@@ -6122,6 +6214,20 @@ public class MainActivity extends Activity {
                                         send90.setType("text/plain");
                                         send90.putExtra(android.content.Intent.EXTRA_TEXT, RailMenu.shareText(s.name, c.e.title, c.e.url, Lang.t(MainActivity.this, "share_source")));
                                         startActivity(android.content.Intent.createChooser(send90, Lang.t(MainActivity.this, "share_talk")));
+                                    } else if ("dl_menu_share_file".equals(key90[which])) {
+                                        // v15.58 (slice 2009): "Share the audio file" — the 1954 verb on the Favourite talks rail: the menu could share a starred talk, copy its link, un-star it, or open its sayadaw's full list, but never send the actual .mp3 — a listener who had starred a downloaded talk and wanted the file itself in another app had to find it in Downloads/Dhamma by hand. Same verb the library per-row menu has had since v15.48 (slice 1954), the Room drawer since slice 1955, the Talks chooser since slice 1956, the History row since slice 1982, the Downloaded rail since v15.56 (slice 1996), the Recently played rail since slice 2006 and the Bookmarks rail since slice 2008, through the same TalkFileShare core (same rule, so the eight surfaces can never disagree); the offer gate is DlLanded.downloadedFileName (v13.69 — the ONE shared definition of downloaded: dlMap name or filename candidate, length-gated, never a live job's destination), re-checked fresh at tap time, and the URI is built through TalkFileShare.shareUriFor (resolve + uriStringFor), so a name that no longer resolves to a file on disk toasts the existing talk_no_longer_in_list, never a guessed URI. No pause guard (the text share beside it sets none, the 1982 rule). A share mutates nothing — the rail card stays, the queue stays.
+                                        java.io.File dir09 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+                                        String fn09 = DlLanded.downloadedFileName(MainActivity.this, c.e.url, null, null);
+                                        String uri09 = TalkFileShare.shareUriFor(dir09, fn09);
+                                        if (uri09 == null) {
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "talk_no_longer_in_list"), android.widget.Toast.LENGTH_SHORT).show();
+                                        } else {
+                                            android.content.Intent send09 = new android.content.Intent(android.content.Intent.ACTION_SEND);
+                                            send09.setType("audio/mpeg");
+                                            send09.putExtra(android.content.Intent.EXTRA_STREAM, android.net.Uri.parse(uri09));
+                                            send09.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                            startActivity(android.content.Intent.createChooser(send09, Lang.t(MainActivity.this, "share_talk")));
+                                        }
                                     } else if ("dl_menu_copy_link".equals(key90[which])) {
                                         // v15.52 (slice 1977) shape: the tap-time gate re-checks the offer, so the two can never disagree; no pause guard (no sheet is left to return from) and no file gate (a link is not a file).
                                         if (RoomCopyLink.canOffer(c.e.url)) {
