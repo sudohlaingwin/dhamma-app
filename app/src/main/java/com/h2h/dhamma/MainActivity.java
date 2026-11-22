@@ -5183,6 +5183,32 @@ public class MainActivity extends Activity {
         }
     }
 
+    // v15.60 (slice 2020): the "Recently played" rail card's listened-progress fraction — the Talks-row rule (v13.97, slice 1092) for a rail card: the saved spot over the stored duration, 0 when the talk was never meaningfully heard (spot at or below 5s) or no duration was ever stored. Two legs, stream then downloaded path, exactly like the Talks row: a spot written while streaming has no path form when the file was downloaded after the listen, and a spot written from the library has no stream form when dlMap never claimed the file — so a stream spot at/below 5s falls through to the path form (the DlLanded leg runs only on that leg, never per card unconditionally). The maps come from the caller (one parse per refresh, the v5.69 lesson). Never the sounding talk — the caller picks through RecentRail.pick, which already excludes it, so no playing gate is needed here (unlike the Talks row, whose sounding row is painted by the same getView). The fraction itself is RailHair.fraction — the Talks-row rule verbatim.
+    private float recentHairFrac20(java.util.Map<String, Integer> pos20,
+            java.util.Map<String, Integer> dur20, Prefs.HistEntry e) {
+        if (e == null || e.url == null || pos20 == null || dur20 == null) return 0f;
+        String id20 = SiteHttp.identityUrl(e.url);
+        Integer rpI20 = id20 == null ? null : pos20.get(id20);
+        int rp20 = rpI20 == null ? 0 : rpI20.intValue();
+        String dlPath20 = null;
+        if (rp20 <= 5000) {
+            String fn20 = DlLanded.downloadedFileName(MainActivity.this, e.url, null, null);
+            if (fn20 != null) {
+                dlPath20 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + fn20).getAbsolutePath();
+                Integer rpP20 = pos20.get(dlPath20);
+                if (rpP20 != null) rp20 = rpP20.intValue();
+            }
+        }
+        Integer durI20 = null;
+        if (rp20 > 5000) {
+            durI20 = dur20.get(e.url);
+            if (durI20 == null && id20 != null) durI20 = dur20.get(id20);
+            if (durI20 == null && dlPath20 != null) durI20 = dur20.get(dlPath20);
+        }
+        return RailHair.fraction(rp20, durI20 == null ? 0 : durI20.intValue());
+    }
+
     private void refreshRecentRail() {
         if (recentRailWrap == null || recentRail == null) return;
         boolean show = query != null && query.length() == 0 && !favOnly && !newOnly && all != null;
@@ -5195,9 +5221,13 @@ public class MainActivity extends Activity {
                     ? AudioService.liveUrl : null;
             picked = RecentRail.pick(Prefs.statsRecent(this), names, sounding);
         }
+        // v15.60 (slice 2020): the hairline's inputs, parsed once for the whole refresh — the v5.69 lesson (never talkPosGet per card, it re-splits the whole map on every lookup; the same reason Prefs.talkDurMap exists as one-parse-for-a-list). readTalkPos1964 is identity-keyed (first line per identity wins, the talkPosGet first-match rule); a downloaded path keeps its own key (identityUrl(path) == path), so the path leg in recentHairFrac20 below reads from the same map. Both parses fail closed to empty maps, so a missing store paints no line, never a crash.
+        java.util.Map<String, Integer> pos20 = readTalkPos1964();
+        java.util.Map<String, Integer> dur20 = Prefs.talkDurMap(this);
         StringBuilder kb = new StringBuilder();
         kb.append(cachedNight ? "N" : "D");
-        for (Prefs.HistEntry e : picked) kb.append('|').append(SiteHttp.identityUrl(e.url));
+        // v15.60 (slice 2020): the key carries the painted fraction, not just the URL — a resume spot moves while a talk plays, and the rail repaints only when this key moves, so a spot-only change (same five talks, one heard further, back on Main) must move the key or the line would freeze at its first paint. The fraction is the card's own helper, so key and paint can never disagree; Float.toString is deterministic for the same value, so equal fractions never repaint.
+        for (Prefs.HistEntry e : picked) kb.append('|').append(SiteHttp.identityUrl(e.url)).append(':').append(recentHairFrac20(pos20, dur20, e));
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (recentRailWrap.getVisibility() != android.view.View.GONE)
@@ -5214,8 +5244,8 @@ public class MainActivity extends Activity {
             final Sayadaw s = sayadawByName1930(e.sayadaw);
             if (s == null) continue;
             android.widget.LinearLayout card = new android.widget.LinearLayout(this);
-            card.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-            card.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            // v15.60 (slice 2020): the card is now a vertical stack — the photo+text row above, the listened-progress hairline below it (the Talks-row line, v13.97, on the rail for the first time). The background, padding and press stay on the card, so the tap target and the glass look are unchanged; the row below carries the old horizontal shape (CENTER_VERTICAL, photo + text column) untouched. The DlRecentRail card builder below is byte-identical to this one and stays horizontal — its line is a later slice, not this one.
+            card.setOrientation(android.widget.LinearLayout.VERTICAL);
             card.setBackgroundResource(R.drawable.nav_glass);
             int pad = (int) (10 * d);
             card.setPadding(pad, (int) (8 * d), pad, (int) (8 * d));
@@ -5224,6 +5254,12 @@ public class MainActivity extends Activity {
                             android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
             cp.setMargins(0, 0, (int) (8 * d), 0);
             card.setLayoutParams(cp);
+            android.widget.LinearLayout row20 = new android.widget.LinearLayout(this);
+            row20.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+            row20.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            row20.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT));
             CircleImageView photo = new CircleImageView(this);
             int px = (int) (44 * d);
             android.widget.LinearLayout.LayoutParams pp =
@@ -5232,7 +5268,7 @@ public class MainActivity extends Activity {
             photo.setLayoutParams(pp);
             photo.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
             ImageLoader.load(this, s.photo, s.name, photo);
-            card.addView(photo);
+            row20.addView(photo);
             android.widget.LinearLayout col = new android.widget.LinearLayout(this);
             col.setOrientation(android.widget.LinearLayout.VERTICAL);
             col.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0,
@@ -5253,7 +5289,30 @@ public class MainActivity extends Activity {
             title.setMaxLines(1);
             title.setEllipsize(android.text.TextUtils.TruncateAt.END);
             col.addView(title);
-            card.addView(col);
+            row20.addView(col);
+            card.addView(row20);
+            // v15.60 (slice 2020): the hairline — the row_talk.xml line in code: 3dp tall, 4dp below the row, faint-gold track (#33C9A227) with a solid-gold fill (#C9A227, @color/gold) split by weight, weightSum 1. GONE unless a fraction was set; Fx.crossfadeHairline (v15.25) owns the show/hide — on these freshly built cards it seeds instantly (no recorded state yet), so no melt ever plays here, and a rebuild repaints from scratch like the rest of the card. The fraction is recentHairFrac20 below (the key block above already called it for the change gate, so key and paint agree). No download-progress override here — the 1928 override stays a Talks-row behaviour; the rail repaints only on a real change, so a download's 1s ticks never reach it.
+            float hairFrac20 = recentHairFrac20(pos20, dur20, e);
+            android.widget.LinearLayout hairTrack20 = new android.widget.LinearLayout(this);
+            hairTrack20.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+            hairTrack20.setBackgroundColor(android.graphics.Color.parseColor("#33C9A227"));
+            hairTrack20.setWeightSum(1f);
+            android.widget.LinearLayout.LayoutParams htp20 =
+                    new android.widget.LinearLayout.LayoutParams(
+                            android.widget.LinearLayout.LayoutParams.MATCH_PARENT, (int) (3 * d));
+            htp20.topMargin = (int) (4 * d);
+            hairTrack20.setLayoutParams(htp20);
+            android.view.View hairFill20 = new android.view.View(this);
+            hairFill20.setBackgroundColor(android.graphics.Color.parseColor("#C9A227"));
+            hairFill20.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0,
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT, hairFrac20));
+            android.view.View hairSpace20 = new android.view.View(this);
+            hairSpace20.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0,
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1f - hairFrac20));
+            hairTrack20.addView(hairFill20);
+            hairTrack20.addView(hairSpace20);
+            Fx.crossfadeHairline(hairTrack20, hairFrac20 > 0f);
+            card.addView(hairTrack20);
             Fx.press(card);
             card.setOnClickListener(new android.view.View.OnClickListener() {
                 @Override public void onClick(android.view.View v) {
@@ -5458,6 +5517,32 @@ public class MainActivity extends Activity {
     // landing while Main is foreground moves the rail at once);
     // hides while searching/filtering and while nothing is
     // downloaded yet, like the played rail.
+    // v15.60 (slice 2021): the "Downloaded" rail card's listened-progress fraction — the Talks-row rule (v13.97, slice 1092) for a rail card, the Recent rail's helper (2020) verbatim over the shared RailHair.fraction. Two legs, stream then downloaded path: a spot written while streaming sits under the stream key, a spot written from the downloaded file sits under the path key — and a stream spot at/below 5s falls through to the path form (the DlLanded leg runs only on that leg, never per card unconditionally). The rail's entries are dlMap-claimed finished .mp3s, so the path leg is the common case here. The maps come from the caller (one parse per refresh, the v5.69 lesson). Never the sounding talk — the caller picks through DlRecentRail.pick, which already excludes it (line 120), so no playing gate is needed here (unlike the Talks row, whose sounding row is painted by the same getView). The fraction itself is RailHair.fraction — the Talks-row rule verbatim.
+    private float dlRecentHairFrac21(java.util.Map<String, Integer> pos21,
+            java.util.Map<String, Integer> dur21, Prefs.HistEntry e) {
+        if (e == null || e.url == null || pos21 == null || dur21 == null) return 0f;
+        String id21 = SiteHttp.identityUrl(e.url);
+        Integer rpI21 = id21 == null ? null : pos21.get(id21);
+        int rp21 = rpI21 == null ? 0 : rpI21.intValue();
+        String dlPath21 = null;
+        if (rp21 <= 5000) {
+            String fn21 = DlLanded.downloadedFileName(MainActivity.this, e.url, null, null);
+            if (fn21 != null) {
+                dlPath21 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + fn21).getAbsolutePath();
+                Integer rpP21 = pos21.get(dlPath21);
+                if (rpP21 != null) rp21 = rpP21.intValue();
+            }
+        }
+        Integer durI21 = null;
+        if (rp21 > 5000) {
+            durI21 = dur21.get(e.url);
+            if (durI21 == null && id21 != null) durI21 = dur21.get(id21);
+            if (durI21 == null && dlPath21 != null) durI21 = dur21.get(dlPath21);
+        }
+        return RailHair.fraction(rp21, durI21 == null ? 0 : durI21.intValue());
+    }
+
     private void refreshDlRecentRail() {
         if (dlRecentRailWrap == null || dlRecentRail == null) return;
         boolean show = query != null && query.length() == 0 && !favOnly && !newOnly && all != null;
@@ -5471,9 +5556,13 @@ public class MainActivity extends Activity {
             picked = DlRecentRail.pick(scanDlRecentFiles1960(), readDlMap1960(),
                     readDlSayadaw1960(), readDlQueued1960(), names, sounding);
         }
+        // v15.60 (slice 2021): the hairline's inputs, parsed once for the whole refresh — the v5.69 lesson (never talkPosGet per card, it re-splits the whole map on every lookup; the same reason Prefs.talkDurMap exists as one-parse-for-a-list). readTalkPos1964 is identity-keyed (first line per identity wins, the talkPosGet first-match rule); a downloaded path keeps its own key (identityUrl(path) == path), so the path leg in dlRecentHairFrac21 below reads from the same map. Both parses fail closed to empty maps, so a missing store paints no line, never a crash.
+        java.util.Map<String, Integer> pos21 = readTalkPos1964();
+        java.util.Map<String, Integer> dur21 = Prefs.talkDurMap(this);
         StringBuilder kb = new StringBuilder();
         kb.append(cachedNight ? "N" : "D");
-        for (Prefs.HistEntry e : picked) kb.append('|').append(SiteHttp.identityUrl(e.url));
+        // v15.60 (slice 2021): the key carries the painted fraction, not just the URL — a resume spot moves while a talk plays, and the rail repaints only when this key moves, so a spot-only change (same five talks, one heard further, back on Main) must move the key or the line would freeze at its first paint. The fraction is the card's own helper, so key and paint can never disagree; Float.toString is deterministic for the same value, so equal fractions never repaint.
+        for (Prefs.HistEntry e : picked) kb.append('|').append(SiteHttp.identityUrl(e.url)).append(':').append(dlRecentHairFrac21(pos21, dur21, e));
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (dlRecentRailWrap.getVisibility() != android.view.View.GONE)
@@ -5490,8 +5579,8 @@ public class MainActivity extends Activity {
             final Sayadaw s = sayadawByName1930(e.sayadaw);
             if (s == null) continue;
             android.widget.LinearLayout card = new android.widget.LinearLayout(this);
-            card.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-            card.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            // v15.60 (slice 2021): the card is now a vertical stack — the photo+text row above, the listened-progress hairline below it (the Talks-row line, v13.97, on the second Main rail). The background, padding and press stay on the card, so the tap target and the glass look are unchanged; the row below carries the old horizontal shape (CENTER_VERTICAL, photo + text column) untouched. The other three rails (Bookmarks, Favourite-talks, New-talks) keep their plain horizontal cards — their lines are later slices, not this one.
+            card.setOrientation(android.widget.LinearLayout.VERTICAL);
             card.setBackgroundResource(R.drawable.nav_glass);
             int pad = (int) (10 * d);
             card.setPadding(pad, (int) (8 * d), pad, (int) (8 * d));
@@ -5500,6 +5589,12 @@ public class MainActivity extends Activity {
                             android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
             cp.setMargins(0, 0, (int) (8 * d), 0);
             card.setLayoutParams(cp);
+            android.widget.LinearLayout row21 = new android.widget.LinearLayout(this);
+            row21.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+            row21.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            row21.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT));
             CircleImageView photo = new CircleImageView(this);
             int px = (int) (44 * d);
             android.widget.LinearLayout.LayoutParams pp =
@@ -5508,7 +5603,7 @@ public class MainActivity extends Activity {
             photo.setLayoutParams(pp);
             photo.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
             ImageLoader.load(this, s.photo, s.name, photo);
-            card.addView(photo);
+            row21.addView(photo);
             android.widget.LinearLayout col = new android.widget.LinearLayout(this);
             col.setOrientation(android.widget.LinearLayout.VERTICAL);
             col.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0,
@@ -5529,7 +5624,30 @@ public class MainActivity extends Activity {
             title.setMaxLines(1);
             title.setEllipsize(android.text.TextUtils.TruncateAt.END);
             col.addView(title);
-            card.addView(col);
+            row21.addView(col);
+            card.addView(row21);
+            // v15.60 (slice 2021): the hairline — the row_talk.xml line in code: 3dp tall, 4dp below the row, faint-gold track (#33C9A227) with a solid-gold fill (#C9A227, @color/gold) split by weight, weightSum 1. GONE unless a fraction was set; Fx.crossfadeHairline (v15.25) owns the show/hide — on these freshly built cards it seeds instantly (no recorded state yet), so no melt ever plays here, and a rebuild repaints from scratch like the rest of the card. The fraction is dlRecentHairFrac21 below (the key block above already called it for the change gate, so key and paint agree). No download-progress override here — the 1928 override stays a Talks-row behaviour; the rail repaints only on a real change, so a download's 1s ticks never reach it.
+            float hairFrac21 = dlRecentHairFrac21(pos21, dur21, e);
+            android.widget.LinearLayout hairTrack21 = new android.widget.LinearLayout(this);
+            hairTrack21.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+            hairTrack21.setBackgroundColor(android.graphics.Color.parseColor("#33C9A227"));
+            hairTrack21.setWeightSum(1f);
+            android.widget.LinearLayout.LayoutParams htp21 =
+                    new android.widget.LinearLayout.LayoutParams(
+                            android.widget.LinearLayout.LayoutParams.MATCH_PARENT, (int) (3 * d));
+            htp21.topMargin = (int) (4 * d);
+            hairTrack21.setLayoutParams(htp21);
+            android.view.View hairFill21 = new android.view.View(this);
+            hairFill21.setBackgroundColor(android.graphics.Color.parseColor("#C9A227"));
+            hairFill21.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0,
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT, hairFrac21));
+            android.view.View hairSpace21 = new android.view.View(this);
+            hairSpace21.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0,
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1f - hairFrac21));
+            hairTrack21.addView(hairFill21);
+            hairTrack21.addView(hairSpace21);
+            Fx.crossfadeHairline(hairTrack21, hairFrac21 > 0f);
+            card.addView(hairTrack21);
             Fx.press(card);
             card.setOnClickListener(new android.view.View.OnClickListener() {
                 @Override public void onClick(android.view.View v) {
@@ -6042,21 +6160,51 @@ public class MainActivity extends Activity {
     // Main, so the return-to-Main refresh is the update path; no
     // download-receiver call — downloads never change stars);
     // hides while searching/filtering and while no star resolves.
+    // v15.60 (slice 2022): the "Favourite talks" rail card's listened-progress fraction — the Talks-row rule (v13.97, slice 1092) for a rail card, the Recent rail's helper (2020) verbatim over the shared RailHair.fraction. Two legs, stream then downloaded path: a spot written while streaming sits under the stream key, a spot written from the downloaded file sits under the path key — and a stream spot at/below 5s falls through to the path form (the DlLanded leg runs only on that leg, never per card unconditionally). The maps come from the caller (one parse per refresh, the v5.69 lesson — the pick shares the same pos map). Never the sounding talk — the caller picks through FavTalkRail.pick, which already excludes it (:50), so no playing gate is needed here (unlike the Talks row, whose sounding row is painted by the same getView). The fraction itself is RailHair.fraction — the Talks-row rule verbatim.
+    private float favTalkHairFrac22(java.util.Map<String, Integer> pos22,
+            java.util.Map<String, Integer> dur22, Prefs.HistEntry e) {
+        if (e == null || e.url == null || pos22 == null || dur22 == null) return 0f;
+        String id22 = SiteHttp.identityUrl(e.url);
+        Integer rpI22 = id22 == null ? null : pos22.get(id22);
+        int rp22 = rpI22 == null ? 0 : rpI22.intValue();
+        String dlPath22 = null;
+        if (rp22 <= 5000) {
+            String fn22 = DlLanded.downloadedFileName(MainActivity.this, e.url, null, null);
+            if (fn22 != null) {
+                dlPath22 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + fn22).getAbsolutePath();
+                Integer rpP22 = pos22.get(dlPath22);
+                if (rpP22 != null) rp22 = rpP22.intValue();
+            }
+        }
+        Integer durI22 = null;
+        if (rp22 > 5000) {
+            durI22 = dur22.get(e.url);
+            if (durI22 == null && id22 != null) durI22 = dur22.get(id22);
+            if (durI22 == null && dlPath22 != null) durI22 = dur22.get(dlPath22);
+        }
+        return RailHair.fraction(rp22, durI22 == null ? 0 : durI22.intValue());
+    }
+
     private void refreshFavTalkRail() {
         if (favTalkRailWrap == null || favTalkRail == null) return;
         boolean show = query != null && query.length() == 0 && !favOnly && !newOnly && all != null;
         java.util.List<FavTalkRail.Card> picked =
                 new java.util.ArrayList<FavTalkRail.Card>();
+        // v15.60 (slice 2022): the hairline's inputs, parsed once for the whole refresh — the v5.69 lesson (never talkPosGet per card, it re-splits the whole map on every lookup; the same reason Prefs.talkDurMap exists as one-parse-for-a-list). The pos map is parsed once here and shared by the pick (its posById) and the hairline helper below, so the refresh parses it once, not twice. readTalkPos1964 is identity-keyed (first line per identity wins, the talkPosGet first-match rule); a downloaded path keeps its own key (identityUrl(path) == path), so the path leg in favTalkHairFrac22 below reads from the same map. Both parses fail closed to empty maps, so a missing store paints no line, never a crash.
+        java.util.Map<String, Integer> pos22 = readTalkPos1964();
         if (show) {
             java.util.Set<String> names = new java.util.HashSet<String>();
             for (Sayadaw s : all) if (s != null && s.name != null) names.add(s.name);
             String sounding = (AudioService.liveSession && AudioService.liveHasTrack)
                     ? AudioService.liveUrl : null;
-            picked = FavTalkRail.pick(readFavTalks1964(), Prefs.statsRecent(this), names, sounding, readTalkPos1964());
+            picked = FavTalkRail.pick(readFavTalks1964(), Prefs.statsRecent(this), names, sounding, pos22);
         }
+        java.util.Map<String, Integer> dur22 = Prefs.talkDurMap(this);
         StringBuilder kb = new StringBuilder();
         kb.append(cachedNight ? "N" : "D");
-        for (FavTalkRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(c.posMs);
+        // v15.60 (slice 2022): the key carries the painted fraction as well as the saved spot — the card's title renders the saved spot ("↺ 12:34 · title"), so the key must keep c.posMs or a spot-only title change would not repaint; and a resume spot moves while a talk plays, so the fraction must ride too or a spot-only change would freeze the line at its first paint (the 2020 lesson). The fraction is the card's own helper, so key and paint can never disagree; Float.toString is deterministic for the same value, so equal fractions never repaint.
+        for (FavTalkRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(c.posMs).append(':').append(favTalkHairFrac22(pos22, dur22, c.e));
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (favTalkRailWrap.getVisibility() != android.view.View.GONE)
@@ -6073,8 +6221,8 @@ public class MainActivity extends Activity {
             final Sayadaw s = sayadawByName1930(c.e.sayadaw);
             if (s == null) continue;
             android.widget.LinearLayout card = new android.widget.LinearLayout(this);
-            card.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-            card.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            // v15.60 (slice 2022): the card is now a vertical stack — the photo+text row above, the listened-progress hairline below it (the Talks-row line, v13.97, on the third Main rail). The background, padding and press stay on the card, so the tap target and the glass look are unchanged; the row below carries the old horizontal shape (CENTER_VERTICAL, photo + text column) untouched. The other two rails (Bookmarks, New-talks) keep their plain horizontal cards — Bookmarks is the next line in the family, its own slice, not this one; New-talks stays plain per the 2017 adjudication (its membership IS the unheard state, so a line there would rarely paint).
+            card.setOrientation(android.widget.LinearLayout.VERTICAL);
             card.setBackgroundResource(R.drawable.nav_glass);
             int pad = (int) (10 * d);
             card.setPadding(pad, (int) (8 * d), pad, (int) (8 * d));
@@ -6083,6 +6231,12 @@ public class MainActivity extends Activity {
                             android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
             cp.setMargins(0, 0, (int) (8 * d), 0);
             card.setLayoutParams(cp);
+            android.widget.LinearLayout row22 = new android.widget.LinearLayout(this);
+            row22.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+            row22.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            row22.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT));
             CircleImageView photo = new CircleImageView(this);
             int px = (int) (44 * d);
             android.widget.LinearLayout.LayoutParams pp =
@@ -6091,7 +6245,7 @@ public class MainActivity extends Activity {
             photo.setLayoutParams(pp);
             photo.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
             ImageLoader.load(this, s.photo, s.name, photo);
-            card.addView(photo);
+            row22.addView(photo);
             android.widget.LinearLayout col = new android.widget.LinearLayout(this);
             col.setOrientation(android.widget.LinearLayout.VERTICAL);
             col.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0,
@@ -6112,7 +6266,30 @@ public class MainActivity extends Activity {
             title.setMaxLines(1);
             title.setEllipsize(android.text.TextUtils.TruncateAt.END);
             col.addView(title);
-            card.addView(col);
+            row22.addView(col);
+            card.addView(row22);
+            // v15.60 (slice 2022): the hairline — the row_talk.xml line in code: 3dp tall, 4dp below the row, faint-gold track (#33C9A227) with a solid-gold fill (#C9A227, @color/gold) split by weight, weightSum 1. GONE unless a fraction was set; Fx.crossfadeHairline (v15.25) owns the show/hide — on these freshly built cards it seeds instantly (no recorded state yet), so no melt ever plays here, and a rebuild repaints from scratch like the rest of the card. The fraction is favTalkHairFrac22 below (the key block above already called it for the change gate, so key and paint agree). No download-progress override here — the 1928 override stays a Talks-row behaviour; the rail repaints only on a real change, so a download's 1s ticks never reach it.
+            float hairFrac22 = favTalkHairFrac22(pos22, dur22, c.e);
+            android.widget.LinearLayout hairTrack22 = new android.widget.LinearLayout(this);
+            hairTrack22.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+            hairTrack22.setBackgroundColor(android.graphics.Color.parseColor("#33C9A227"));
+            hairTrack22.setWeightSum(1f);
+            android.widget.LinearLayout.LayoutParams htp22 =
+                    new android.widget.LinearLayout.LayoutParams(
+                            android.widget.LinearLayout.LayoutParams.MATCH_PARENT, (int) (3 * d));
+            htp22.topMargin = (int) (4 * d);
+            hairTrack22.setLayoutParams(htp22);
+            android.view.View hairFill22 = new android.view.View(this);
+            hairFill22.setBackgroundColor(android.graphics.Color.parseColor("#C9A227"));
+            hairFill22.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0,
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT, hairFrac22));
+            android.view.View hairSpace22 = new android.view.View(this);
+            hairSpace22.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0,
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1f - hairFrac22));
+            hairTrack22.addView(hairFill22);
+            hairTrack22.addView(hairSpace22);
+            Fx.crossfadeHairline(hairTrack22, hairFrac22 > 0f);
+            card.addView(hairTrack22);
             Fx.press(card);
             card.setOnClickListener(new android.view.View.OnClickListener() {
                 @Override public void onClick(android.view.View v) {
