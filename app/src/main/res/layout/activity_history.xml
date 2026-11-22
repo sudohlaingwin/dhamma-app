@@ -177,6 +177,30 @@
             android:textColor="@color/muted"
             android:textSize="15sp"
             android:visibility="gone" />
+        <!-- v15.67 (slice 2063): jump-to-playing button — the
+             floating gold ▶ over the list's bottom-end corner (same
+             56dp oval, same maroon glyph, 16dp off the corner as
+             the chooser's 1994 button and Bookmarks' 2062 button;
+             the strip is a sibling BELOW this FrameLayout, so the
+             button stacks above nothing): the rows carry the
+             sounding gold mark since slice v13.55, but a listener
+             who scrolled away from the marked row had no visible
+             way back. GONE until a live session sounds AND that
+             talk's first shown listen has scrolled off-screen. -->
+        <TextView
+            android:id="@+id/hsPlayingBtn"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/top_btn_bg"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="▶"
+            android:textColor="@color/maroon"
+            android:textSize="24sp"
+            android:visibility="gone" />
     </FrameLayout>
     <!-- v13.54: real mini-player, the same strip as Talks' (v4.31) —
          GONE while nothing plays, so the history stays list-only. A

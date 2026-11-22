@@ -121,6 +121,16 @@ public class FavouritesActivity extends Activity {
     // saved-state needed.
     private android.widget.Button favSortBtn = null;
     private int favSortMode = 0;
+    // v15.67 (slice 2060): "Jump to the playing talk" — the
+    // floating gold ▶ over the list's bottom-end corner; favPlayingShown is the last-painted state
+    // for the painter's change gate, and favJumpTargetIdx is the
+    // cached SHOWN-list index of the sounding talk (recomputed on
+    // search/sort/refresh and on sounding change, never on scroll
+    // — the 1994 pattern with a cache, so a fling never pays a
+    // sameTalk scan per scroll event).
+    private android.view.View favPlayingBtn = null;
+    private boolean favPlayingShown = false;
+    private int favJumpTargetIdx = -1;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -156,9 +166,17 @@ public class FavouritesActivity extends Activity {
                     playFav(items.get(pos), v);
                 }
             });
+            // v15.67 (slice 2060): the jump button paints on the same scroll — off-screen is its only show rule, so a laid-out window is required (count 0 means no layout yet).
+            listView.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
+                @Override public void onScrollStateChanged(android.widget.AbsListView v, int scrollState) {}
+                @Override public void onScroll(android.widget.AbsListView v, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
+                    if (visibleItemCount > 0) paintFavJumpBtn(firstVisibleItem, firstVisibleItem + visibleItemCount - 1);
+                }
+            });
         }
         wireFavSearch(); // v15.65 (slice 2048): search on this screen, before the first refresh
         wireFavSort(); // v15.66 (slice 2056): sort on this screen, before the first refresh
+        wireFavJumpBtn(); // v15.67 (slice 2060): jump-to-playing button on this list
         refresh();
         // v15.64 (slice 2044): wire the Play-all button the same way
         // as the chooser's Play All (v13.76) — one tap plays the whole
@@ -239,6 +257,9 @@ public class FavouritesActivity extends Activity {
         if (empty) emptyText.setText(Lang.t(this,
                 favQuery.length() > 0 ? "no_search_match" : "no_fav_talk"));
         syncFavPlayAllBtn(true); // v15.65 (slice 2048): Play-all follows the FILTERED list — the shown run is the run. First paint here (refresh() calls applyFavSearch), and every keystroke re-syncs it with the shown run; instant, never faded, the clear-X silent-pass rule.
+        // v15.67 (slice 2060): a search / sort / refresh re-shows the list — the jump button's cached target moves with it (new list, new filter), so refresh the target and repaint from the new position.
+        refreshFavJumpTarget();
+        paintFavJumpBtnFromList();
     }
 
     // v15.65 (slice 2048): search on this screen — the Downloaded
@@ -357,6 +378,101 @@ public class FavouritesActivity extends Activity {
                 Prefs.setFavSortMode(FavouritesActivity.this, favSortMode);
                 Fx.themeDip(findViewById(R.id.favHeaderRow), new Runnable() { @Override public void run() { if (favSortBtn != null) favSortBtn.setText(favSortLabel()); } });
                 applyFavSearch();
+            }
+        });
+    }
+
+    // v15.67 (slice 2060): wire the jump-to-playing button — one
+    // tap glides to the sounding talk (the chooser's v4.15 title
+    // long-press glide, in a visible button — this screen has no
+    // long-press jump at all). The tap re-resolves everything
+    // fresh — live guards, the shown-list index — so a track change
+    // while the button sat visible can never glide to a stale row;
+    // a filtered-out target clears the search first (the v12.54
+    // rule, in this screen's setText("") clear shape — the watcher
+    // re-runs applyFavSearch at once, the v1.51 rule), a shown
+    // target keeps the view. Any guard failure toasts
+    // no_talk_playing (the v4.15 word), never scrolls nowhere. A
+    // missing button simply never wires.
+    private void wireFavJumpBtn() {
+        favPlayingBtn = findViewById(R.id.favPlayingBtn);
+        if (favPlayingBtn != null) favPlayingBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                // v10.43: bound-trackless stop — liveSession stays true but the mirror is false, so toast instead of gliding to a stopped talk; the v11.15 gate: an ended talk is not playing either (its mark lifts, so there is no row to jump to).
+                if (listView == null || items.isEmpty() || !AudioService.liveSession || !AudioService.liveHasTrack || AudioService.liveEnded) {
+                    android.widget.Toast.makeText(FavouritesActivity.this, Lang.t(FavouritesActivity.this, "no_talk_playing"), android.widget.Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                try {
+                    refreshFavouritesPlayingMarks();
+                    int target = FavJumpPlaying.findShownIndex(items, favPlayingUrl, favPlayingLibUrl, favPlayingLibPath, AudioService.liveEnded);
+                    // v12.54: a shown target glides with the view untouched; only a target filtered OUT of the shown list clears the search first, so the shown index means something again.
+                    if (target < 0 && favQuery != null && favQuery.length() > 0 && favSearchField != null) {
+                        favSearchField.setText("");
+                        refreshFavouritesPlayingMarks();
+                        target = FavJumpPlaying.findShownIndex(items, favPlayingUrl, favPlayingLibUrl, favPlayingLibPath, AudioService.liveEnded);
+                    }
+                    if (target < 0) {
+                        android.widget.Toast.makeText(FavouritesActivity.this, Lang.t(FavouritesActivity.this, "no_talk_playing"), android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    Fx.tap(FavouritesActivity.this);
+                    Fx.morph(v);
+                    listView.smoothScrollToPosition(target);
+                } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    // v15.67 (slice 2060): refresh the jump button's cached
+    // target — the shown-list index of the sounding talk, from the
+    // tick-fresh sounding identities (refreshFavouritesPlayingMarks
+    // runs first on every path that calls this: refresh() before
+    // applyFavSearch, the strip-tick change branch, the tap's own
+    // re-resolution). Runs on search/sort/refresh and on sounding
+    // change only, never on scroll; -1 while nothing live sounds
+    // among the shown rows.
+    private void refreshFavJumpTarget() {
+        favJumpTargetIdx = FavJumpPlaying.findShownIndex(items, favPlayingUrl, favPlayingLibUrl, favPlayingLibPath, AudioService.liveEnded);
+    }
+
+    // v15.67 (slice 2060): the jump-to-playing state — shown only
+    // while a live talk has a cached target AND that row is
+    // off-screen (above or below the visible window, the
+    // JumpPlaying.wantShown rule, the 1994 shape). The change gate
+    // keeps steady scrolls and the search/sort/refresh repaints
+    // from re-touching the button; the show/hide melts (Fx.fadeIn/
+    // fadeOut, 180ms) instead of snapping, and a cancelled fade
+    // never strands it half-transparent (the v2.62 gen guard, the
+    // 1940 shape). A stop clears the identities on the next tick,
+    // so the button hides within a tick of the session ending.
+    private void paintFavJumpBtn(int firstVisible, int lastVisible) {
+        if (favPlayingBtn == null) return;
+        boolean want = favJumpTargetIdx >= 0
+                && JumpPlaying.wantShown(favJumpTargetIdx, firstVisible, lastVisible);
+        if (want == favPlayingShown) return;
+        favPlayingShown = want;
+        if (want) {
+            favPlayingBtn.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(favPlayingBtn, 180);
+        } else {
+            Fx.fadeOut(favPlayingBtn, 180);
+        }
+    }
+
+    // v15.67 (slice 2060): repaint from the list's own position
+    // after a scroll-less change — a search/sort/refresh, a
+    // rotation restore, or a sounding change can move the playing
+    // row off-screen with no scroll event, so read the position
+    // after layout and paint from it. Posted, because the first /
+    // last visible rows are only valid once the list has laid out
+    // (the 1940 shape).
+    private void paintFavJumpBtnFromList() {
+        if (listView == null) return;
+        listView.post(new Runnable() {
+            @Override public void run() {
+                if (listView == null) return;
+                paintFavJumpBtn(listView.getFirstVisiblePosition(), listView.getLastVisiblePosition());
             }
         });
     }
@@ -758,6 +874,9 @@ public class FavouritesActivity extends Activity {
             favRowPlayingLibPath = favPlayingLibPath;
             favRowEnded = AudioService.liveEnded;
             adapter.notifyDataSetChanged();
+            // v15.67 (slice 2060): the sounding change above moves the playing talk (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button.
+            refreshFavJumpTarget();
+            paintFavJumpBtnFromList();
         }
         syncFavPlayAllBtn(false); // v15.64 (slice 2044): the sounding talk moved under the list — re-show or hide Play-all with the mark, change-only
         android.view.View strip = findViewById(R.id.nowStrip);

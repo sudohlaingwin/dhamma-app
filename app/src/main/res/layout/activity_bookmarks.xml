@@ -84,6 +84,30 @@
             android:textColor="@color/muted"
             android:textSize="15sp"
             android:visibility="gone" />
+        <!-- v15.67 (slice 2062): jump-to-playing button — the
+             floating gold ▶ over the list's bottom-end corner (same
+             56dp oval, same maroon glyph, 16dp off the corner as
+             the chooser's 1994 button and Favourites' 2060 button;
+             the strip is a sibling BELOW this FrameLayout, so the
+             button stacks above nothing): the rows carry the
+             sounding gold mark since slice 2041, but a listener
+             who scrolled away from the marked row had no visible
+             way back. GONE until a live session sounds AND that
+             talk's first shown mark has scrolled off-screen. -->
+        <TextView
+            android:id="@+id/bmPlayingBtn"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/top_btn_bg"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="▶"
+            android:textColor="@color/maroon"
+            android:textSize="24sp"
+            android:visibility="gone" />
     </FrameLayout>
     <!-- v15.63 (slice 2037): real mini-player, the History v13.54 strip — GONE while nothing
          plays, so the bookmarks stay list-only. Whatever talk is playing now shows here: tap

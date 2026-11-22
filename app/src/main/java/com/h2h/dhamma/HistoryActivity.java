@@ -109,6 +109,16 @@ public class HistoryActivity extends Activity {
     private android.view.View hsClearBtn = null;
     private String hsQuery = "";
     private boolean hsSearchKeystroke = false;
+    // v15.67 (slice 2063): "Jump to the playing talk" — the
+    // floating gold ▶ over the list's bottom-end corner; hsPlayingShown is the last-painted state
+    // for the painter's change gate, and hsJumpTargetIdx is the
+    // cached SHOWN-list index of the sounding talk (recomputed on
+    // search/refresh and on sounding change, never on scroll —
+    // the 1994 pattern with a cache, so a fling never pays a
+    // sameTalk scan per scroll event).
+    private android.view.View hsPlayingBtn = null;
+    private boolean hsPlayingShown = false;
+    private int hsJumpTargetIdx = -1;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -172,8 +182,16 @@ public class HistoryActivity extends Activity {
                     return true;
                 }
             });
+            // v15.67 (slice 2063): the jump button paints on the same scroll — off-screen is its only show rule, so a laid-out window is required (count 0 means no layout yet).
+            listView.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
+                @Override public void onScrollStateChanged(android.widget.AbsListView v, int scrollState) {}
+                @Override public void onScroll(android.widget.AbsListView v, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
+                    if (visibleItemCount > 0) paintHsJumpBtn(firstVisibleItem, firstVisibleItem + visibleItemCount - 1);
+                }
+            });
         }
         wireHsSearch(); // v15.65 (slice 2050): search on this screen, before the first refresh
+        wireHsJumpBtn(); // v15.67 (slice 2063): jump-to-playing button on this list
         refresh();
         wireHistoryStrip(); // v13.54: real mini-player below the list
     }
@@ -254,6 +272,101 @@ public class HistoryActivity extends Activity {
                 hsSearchKeystroke = true;
                 applyHsSearch();
                 hsSearchKeystroke = false;
+            }
+        });
+    }
+
+    // v15.67 (slice 2063): wire the jump-to-playing button — one
+    // tap glides to the sounding talk's first shown listen (the
+    // chooser's v4.15 title long-press glide, in a visible button
+    // — this screen has no long-press jump at all). The tap
+    // re-resolves everything fresh — live guards, the shown-list
+    // index — so a track change while the button sat visible can
+    // never glide to a stale row; a filtered-out target clears
+    // the search first (the v12.54 rule, in this screen's
+    // setText("") clear shape — the watcher re-runs applyHsSearch
+    // at once, the v1.51 rule), a shown target keeps the view. Any
+    // guard failure toasts no_talk_playing (the v4.15 word), never
+    // scrolls nowhere. A missing button simply never wires.
+    private void wireHsJumpBtn() {
+        hsPlayingBtn = findViewById(R.id.hsPlayingBtn);
+        if (hsPlayingBtn != null) hsPlayingBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                // v10.43: bound-trackless stop — liveSession stays true but the mirror is false, so toast instead of gliding to a stopped talk; the v11.15 gate: an ended talk is not playing either (its mark lifts, so there is no row to jump to).
+                if (listView == null || items.isEmpty() || !AudioService.liveSession || !AudioService.liveHasTrack || AudioService.liveEnded) {
+                    android.widget.Toast.makeText(HistoryActivity.this, Lang.t(HistoryActivity.this, "no_talk_playing"), android.widget.Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                try {
+                    refreshHistoryPlayingMarks();
+                    int target = HistJumpPlaying.findShownIndex(items, histPlayingUrl, histPlayingLibUrl, histPlayingLibPath, AudioService.liveEnded);
+                    // v12.54: a shown target glides with the view untouched; only a target filtered OUT of the shown list clears the search first, so the shown index means something again.
+                    if (target < 0 && hsQuery != null && hsQuery.length() > 0 && hsSearchField != null) {
+                        hsSearchField.setText("");
+                        refreshHistoryPlayingMarks();
+                        target = HistJumpPlaying.findShownIndex(items, histPlayingUrl, histPlayingLibUrl, histPlayingLibPath, AudioService.liveEnded);
+                    }
+                    if (target < 0) {
+                        android.widget.Toast.makeText(HistoryActivity.this, Lang.t(HistoryActivity.this, "no_talk_playing"), android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    Fx.tap(HistoryActivity.this);
+                    Fx.morph(v);
+                    listView.smoothScrollToPosition(target);
+                } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    // v15.67 (slice 2063): refresh the jump button's cached
+    // target — the shown-list index of the sounding talk, from the
+    // tick-fresh sounding identities (refreshHistoryPlayingMarks
+    // runs first on every path that calls this: refresh() before
+    // applyHsSearch, the strip-tick change branch, the tap's own
+    // re-resolution). Runs on search/refresh and on sounding
+    // change only, never on scroll; -1 while nothing live sounds
+    // among the shown rows.
+    private void refreshHsJumpTarget() {
+        hsJumpTargetIdx = HistJumpPlaying.findShownIndex(items, histPlayingUrl, histPlayingLibUrl, histPlayingLibPath, AudioService.liveEnded);
+    }
+
+    // v15.67 (slice 2063): the jump-to-playing state — shown only
+    // while a live talk has a cached target AND that row is
+    // off-screen (above or below the visible window, the
+    // JumpPlaying.wantShown rule, the 1994 shape). The change gate
+    // keeps steady scrolls and the search/refresh repaints from
+    // re-touching the button; the show/hide melts (Fx.fadeIn/
+    // fadeOut, 180ms) instead of snapping, and a cancelled fade
+    // never strands it half-transparent (the v2.62 gen guard, the
+    // 1940 shape). A stop clears the identities on the next tick,
+    // so the button hides within a tick of the session ending.
+    private void paintHsJumpBtn(int firstVisible, int lastVisible) {
+        if (hsPlayingBtn == null) return;
+        boolean want = hsJumpTargetIdx >= 0
+                && JumpPlaying.wantShown(hsJumpTargetIdx, firstVisible, lastVisible);
+        if (want == hsPlayingShown) return;
+        hsPlayingShown = want;
+        if (want) {
+            hsPlayingBtn.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(hsPlayingBtn, 180);
+        } else {
+            Fx.fadeOut(hsPlayingBtn, 180);
+        }
+    }
+
+    // v15.67 (slice 2063): repaint from the list's own position
+    // after a scroll-less change — a search/refresh, a rotation
+    // restore, or a sounding change can move the playing row
+    // off-screen with no scroll event, so read the position
+    // after layout and paint from it. Posted, because the first /
+    // last visible rows are only valid once the list has laid out
+    // (the 1940 shape).
+    private void paintHsJumpBtnFromList() {
+        if (listView == null) return;
+        listView.post(new Runnable() {
+            @Override public void run() {
+                if (listView == null) return;
+                paintHsJumpBtn(listView.getFirstVisiblePosition(), listView.getLastVisiblePosition());
             }
         });
     }
@@ -370,6 +483,9 @@ public class HistoryActivity extends Activity {
         emptyText.setVisibility(empty ? View.VISIBLE : View.GONE);
         if (empty) emptyText.setText(Lang.t(this,
                 hsQuery.length() > 0 ? "no_search_match" : "hs_empty"));
+        // v15.67 (slice 2063): a search / refresh re-shows the list — the jump button's cached target moves with it (new list, new filter), so refresh the target and repaint from the new position.
+        refreshHsJumpTarget();
+        paintHsJumpBtnFromList();
     }
 
     private View itemRow(final int position) {
@@ -1479,6 +1595,9 @@ public class HistoryActivity extends Activity {
             histRowEnded = AudioService.liveEnded;
             histFavSet = hsFavNow77;
             adapter.notifyDataSetChanged();
+            // v15.67 (slice 2063): the sounding change above moves the playing talk (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button.
+            refreshHsJumpTarget();
+            paintHsJumpBtnFromList();
         }
         android.view.View strip = findViewById(R.id.nowStrip);
         if (strip == null) return;

@@ -13935,7 +13935,9 @@ if (snd67q >= 0) currentIndex = snd67q;
     private void noteGatedAdvanceTarget(int nx) {
         if (nx < 0 || nx >= talks.size()) return;
         if (!needsDataGate(talks.get(nx))) return;
-        AudioService.awaitAdvanceSet(RoomActivity.this, talks.get(nx).url, talks.get(nx).title);
+        // v15.67 (slice 2059): the next talk may itself be a queued v3 mark (peekNextIndex names the queued head first) — its minute rides the record, so the landed re-fire plays the mark at its minute, not at the saved spot. minuteFor's first-line rule already reads -1 for a v2 line ahead of a mark line, and the setter normalises the rest.
+        AudioService.awaitAdvanceSetAt(RoomActivity.this, talks.get(nx).url, talks.get(nx).title,
+                QueueHeadMinute.minuteFor(queueUrls, talks.get(nx).url));
     }
 
     // v12.12 (B2 foreign extension): the v7.18 gated-stop half for a FOREIGN head — same
@@ -13949,7 +13951,8 @@ if (snd67q >= 0) currentIndex = snd67q;
         if (fe == null || fe.url == null || fe.url.length() == 0) return;
         if (fe.sayadaw == null || fe.sayadaw.length() == 0) return;
         String t12 = fe.title != null && fe.title.length() > 0 ? fe.title : fe.url;
-        AudioService.awaitAdvanceSetForeign(RoomActivity.this, fe.url, t12, fe.sayadaw);
+        // v15.67 (slice 2059): the gated foreign head's minute rides the record — a v3 head re-fires at its mark (Case B), not at the saved spot. The setter normalises anything <= 0 to -1.
+        AudioService.awaitAdvanceSetForeignAt(RoomActivity.this, fe.url, t12, fe.sayadaw, fe.posMs);
     }
 
     // v12.10: the DownloadManager id of a live job downloading this URL, or -1 — for the

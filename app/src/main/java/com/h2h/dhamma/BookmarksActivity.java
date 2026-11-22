@@ -111,6 +111,16 @@ public class BookmarksActivity extends Activity {
     private Boolean lastBmPlayAllVisible = null;
     private java.util.List<BmPlayAll.Item> bmItems =
             new java.util.ArrayList<BmPlayAll.Item>();
+    // v15.67 (slice 2062): "Jump to the playing talk" — the
+    // floating gold ▶ over the list's bottom-end corner; bmPlayingShown is the last-painted state
+    // for the painter's change gate, and bmJumpTargetIdx is the
+    // cached SHOWN-list index of the sounding talk (recomputed on
+    // search/sort/refresh and on sounding change, never on scroll
+    // — the 1994 pattern with a cache, so a fling never pays a
+    // sameTalk scan per scroll event).
+    private android.view.View bmPlayingBtn = null;
+    private boolean bmPlayingShown = false;
+    private int bmJumpTargetIdx = -1;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -146,9 +156,17 @@ public class BookmarksActivity extends Activity {
                     playBookmark(items.get(pos), v);
                 }
             });
+            // v15.67 (slice 2062): the jump button paints on the same scroll — off-screen is its only show rule, so a laid-out window is required (count 0 means no layout yet).
+            listView.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
+                @Override public void onScrollStateChanged(android.widget.AbsListView v, int scrollState) {}
+                @Override public void onScroll(android.widget.AbsListView v, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
+                    if (visibleItemCount > 0) paintBmJumpBtn(firstVisibleItem, firstVisibleItem + visibleItemCount - 1);
+                }
+            });
         }
         wireBmSearch(); // v15.65 (slice 2049): search on this screen, before the first refresh
         wireBmSort(); // v15.65 (slice 2051): sort on this screen, before the first refresh
+        wireBmJumpBtn(); // v15.67 (slice 2062): jump-to-playing button on this list
         // v15.66 (slice 2055): "Play all marks" — the Favourites 2044 wiring, before the first refresh so the button shows on first paint; the label is the chooser's own pl_play_all key, so no new string. The button stays GONE until applyBmSearch shows it (syncBmPlayAllBtn below).
         btnBmPlayAll = findViewById(R.id.btnBmPlayAll);
         if (btnBmPlayAll != null) btnBmPlayAll.setText(Lang.t(this, "pl_play_all"));
@@ -215,6 +233,9 @@ public class BookmarksActivity extends Activity {
         items = BmSort.sort(BmSearch.filter(bmAllItems, bmQuery), bmSortMode);
         bmItems = buildBmItems(items);
         syncBmPlayAllBtn(true); // v15.66 (slice 2055): Play-all follows the FILTERED list — the shown run is the run. First paint here (refresh() calls applyBmSearch), and every keystroke re-syncs it with the shown run; instant, never faded, the clear-X silent-pass rule.
+        // v15.67 (slice 2062): a search / sort / refresh re-shows the list — the jump button's cached target moves with it (new list, new filter), so refresh the target and repaint from the new position.
+        refreshBmJumpTarget();
+        paintBmJumpBtnFromList();
         if (adapter != null) adapter.notifyDataSetChanged();
         refreshBmClear(bmSearchKeystroke);
         if (emptyText == null) return;
@@ -340,6 +361,101 @@ public class BookmarksActivity extends Activity {
                 Prefs.setBmSortMode(BookmarksActivity.this, bmSortMode);
                 Fx.themeDip(findViewById(R.id.bmHeaderRow), new Runnable() { @Override public void run() { if (bmSortBtn != null) bmSortBtn.setText(bmSortLabel()); } });
                 applyBmSearch();
+            }
+        });
+    }
+
+    // v15.67 (slice 2062): wire the jump-to-playing button — one
+    // tap glides to the sounding talk's first shown mark (the
+    // chooser's v4.15 title long-press glide, in a visible button
+    // — this screen has no long-press jump at all). The tap
+    // re-resolves everything fresh — live guards, the shown-list
+    // index — so a track change while the button sat visible can
+    // never glide to a stale row; a filtered-out target clears
+    // the search first (the v12.54 rule, in this screen's
+    // setText("") clear shape — the watcher re-runs applyBmSearch
+    // at once, the v1.51 rule), a shown target keeps the view. Any
+    // guard failure toasts no_talk_playing (the v4.15 word), never
+    // scrolls nowhere. A missing button simply never wires.
+    private void wireBmJumpBtn() {
+        bmPlayingBtn = findViewById(R.id.bmPlayingBtn);
+        if (bmPlayingBtn != null) bmPlayingBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                // v10.43: bound-trackless stop — liveSession stays true but the mirror is false, so toast instead of gliding to a stopped talk; the v11.15 gate: an ended talk is not playing either (its mark lifts, so there is no row to jump to).
+                if (listView == null || items.isEmpty() || !AudioService.liveSession || !AudioService.liveHasTrack || AudioService.liveEnded) {
+                    android.widget.Toast.makeText(BookmarksActivity.this, Lang.t(BookmarksActivity.this, "no_talk_playing"), android.widget.Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                try {
+                    refreshBookmarksPlayingMarks();
+                    int target = BmJumpPlaying.findShownIndex(items, bmPlayingUrl, bmPlayingLibUrl, bmPlayingLibPath, AudioService.liveEnded);
+                    // v12.54: a shown target glides with the view untouched; only a target filtered OUT of the shown list clears the search first, so the shown index means something again.
+                    if (target < 0 && bmQuery != null && bmQuery.length() > 0 && bmSearchField != null) {
+                        bmSearchField.setText("");
+                        refreshBookmarksPlayingMarks();
+                        target = BmJumpPlaying.findShownIndex(items, bmPlayingUrl, bmPlayingLibUrl, bmPlayingLibPath, AudioService.liveEnded);
+                    }
+                    if (target < 0) {
+                        android.widget.Toast.makeText(BookmarksActivity.this, Lang.t(BookmarksActivity.this, "no_talk_playing"), android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    Fx.tap(BookmarksActivity.this);
+                    Fx.morph(v);
+                    listView.smoothScrollToPosition(target);
+                } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    // v15.67 (slice 2062): refresh the jump button's cached
+    // target — the shown-list index of the sounding talk, from the
+    // tick-fresh sounding identities (refreshBookmarksPlayingMarks
+    // runs first on every path that calls this: refresh() before
+    // applyBmSearch, the strip-tick change branch, the tap's own
+    // re-resolution). Runs on search/sort/refresh and on sounding
+    // change only, never on scroll; -1 while nothing live sounds
+    // among the shown rows.
+    private void refreshBmJumpTarget() {
+        bmJumpTargetIdx = BmJumpPlaying.findShownIndex(items, bmPlayingUrl, bmPlayingLibUrl, bmPlayingLibPath, AudioService.liveEnded);
+    }
+
+    // v15.67 (slice 2062): the jump-to-playing state — shown only
+    // while a live talk has a cached target AND that row is
+    // off-screen (above or below the visible window, the
+    // JumpPlaying.wantShown rule, the 1994 shape). The change gate
+    // keeps steady scrolls and the search/sort/refresh repaints
+    // from re-touching the button; the show/hide melts (Fx.fadeIn/
+    // fadeOut, 180ms) instead of snapping, and a cancelled fade
+    // never strands it half-transparent (the v2.62 gen guard, the
+    // 1940 shape). A stop clears the identities on the next tick,
+    // so the button hides within a tick of the session ending.
+    private void paintBmJumpBtn(int firstVisible, int lastVisible) {
+        if (bmPlayingBtn == null) return;
+        boolean want = bmJumpTargetIdx >= 0
+                && JumpPlaying.wantShown(bmJumpTargetIdx, firstVisible, lastVisible);
+        if (want == bmPlayingShown) return;
+        bmPlayingShown = want;
+        if (want) {
+            bmPlayingBtn.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(bmPlayingBtn, 180);
+        } else {
+            Fx.fadeOut(bmPlayingBtn, 180);
+        }
+    }
+
+    // v15.67 (slice 2062): repaint from the list's own position
+    // after a scroll-less change — a search/sort/refresh, a
+    // rotation restore, or a sounding change can move the playing
+    // row off-screen with no scroll event, so read the position
+    // after layout and paint from it. Posted, because the first /
+    // last visible rows are only valid once the list has laid out
+    // (the 1940 shape).
+    private void paintBmJumpBtnFromList() {
+        if (listView == null) return;
+        listView.post(new Runnable() {
+            @Override public void run() {
+                if (listView == null) return;
+                paintBmJumpBtn(listView.getFirstVisiblePosition(), listView.getLastVisiblePosition());
             }
         });
     }
@@ -773,6 +889,9 @@ public class BookmarksActivity extends Activity {
             bmRowPlayingLibPath = bmPlayingLibPath;
             bmRowEnded = AudioService.liveEnded;
             adapter.notifyDataSetChanged();
+            // v15.67 (slice 2062): the sounding change above moves the playing talk (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button.
+            refreshBmJumpTarget();
+            paintBmJumpBtnFromList();
         }
         android.view.View strip = findViewById(R.id.nowStrip);
         if (strip == null) return;

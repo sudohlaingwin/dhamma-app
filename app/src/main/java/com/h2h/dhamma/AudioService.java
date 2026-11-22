@@ -210,15 +210,23 @@ public class AudioService extends Service {
     private static final String AWAIT_JOB10 = "awaitAdvanceJob";
     private static final String AWAIT_KIND12 = "awaitAdvanceKind";
     private static final String AWAIT_SAYADAW12 = "awaitAdvanceSayadaw";
+    // v15.67 (slice 2059): the minute (ms) the awaited talk must start at — -1 = none (every pre-2059 record, every list pick). Stored as an int; a pre-2059 record has no such field and reads as -1, so old records re-fire exactly as before.
+    private static final String AWAIT_POS59 = "awaitAdvancePosMs";
 
     public static void awaitAdvanceSet(android.content.Context c, String url, String title) {
+        awaitAdvanceSetAt(c, url, title, -1);
+    }
+
+    // v15.67 (slice 2059): the in-list half of the record above, carrying the minute — the gated pick's v3 minute (or -1 when it has none). The setter normalises through AwaitMinute.record, so call sites pass the raw minute and never store a 0. The three list-pick record sites (forward / shuffle / list-next) keep the old setter, which delegates here with -1, so they re-fire at the saved spot exactly as before.
+    public static void awaitAdvanceSetAt(android.content.Context c, String url, String title, int posMs) {
         try {
             c.getSharedPreferences("dhamma", android.content.Context.MODE_PRIVATE).edit()
                     .putString(AWAIT_URL10, url == null ? "" : url)
                     .putString(AWAIT_TITLE10, title == null ? "" : title)
                     .putString(AWAIT_KIND12, "")
                     .remove(AWAIT_SAYADAW12)
-                    .putLong(AWAIT_JOB10, -1).apply();
+                    .putLong(AWAIT_JOB10, -1)
+                    .putInt(AWAIT_POS59, AwaitMinute.record(posMs)).apply();
         } catch (Exception ignored) {}
     }
 
@@ -228,13 +236,20 @@ public class AudioService extends Service {
     // against (the new key the Room's handover moved the head into).
     public static void awaitAdvanceSetForeign(android.content.Context c, String url,
             String title, String sayadaw) {
+        awaitAdvanceSetForeignAt(c, url, title, sayadaw, -1);
+    }
+
+    // v15.67 (slice 2059): the foreign half of the record above, carrying the minute — the gated foreign head's v3 minute (or -1 when it has none). Same normalisation as the in-list setter: the record stores a real minute or -1, never a 0.
+    public static void awaitAdvanceSetForeignAt(android.content.Context c, String url,
+            String title, String sayadaw, int posMs) {
         try {
             c.getSharedPreferences("dhamma", android.content.Context.MODE_PRIVATE).edit()
                     .putString(AWAIT_URL10, url == null ? "" : url)
                     .putString(AWAIT_TITLE10, title == null ? "" : title)
                     .putString(AWAIT_SAYADAW12, sayadaw == null ? "" : sayadaw)
                     .putString(AWAIT_KIND12, "foreign")
-                    .putLong(AWAIT_JOB10, -1).apply();
+                    .putLong(AWAIT_JOB10, -1)
+                    .putInt(AWAIT_POS59, AwaitMinute.record(posMs)).apply();
         } catch (Exception ignored) {}
     }
 
@@ -251,7 +266,7 @@ public class AudioService extends Service {
         try {
             c.getSharedPreferences("dhamma", android.content.Context.MODE_PRIVATE).edit()
                     .remove(AWAIT_URL10).remove(AWAIT_TITLE10).remove(AWAIT_JOB10)
-                    .remove(AWAIT_KIND12).remove(AWAIT_SAYADAW12).apply();
+                    .remove(AWAIT_KIND12).remove(AWAIT_SAYADAW12).remove(AWAIT_POS59).apply();
         } catch (Exception ignored) {}
     }
 
@@ -274,6 +289,14 @@ public class AudioService extends Service {
             return c.getSharedPreferences("dhamma", android.content.Context.MODE_PRIVATE)
                     .getString(AWAIT_URL10, "");
         } catch (Exception ignored) { return ""; }
+    }
+
+    // v15.67 (slice 2059): the minute (ms) the awaited talk must start at, or -1 when the record carries none (every pre-2059 record and every list pick). Read beside the URL, before any clear consumes the record.
+    public static int awaitAdvancePosMs(android.content.Context c) {
+        try {
+            return c.getSharedPreferences("dhamma", android.content.Context.MODE_PRIVATE)
+                    .getInt(AWAIT_POS59, -1);
+        } catch (Exception ignored) { return -1; }
     }
 
     // v12.62 (AudioService audit Finding 4): the in-progress download
@@ -338,6 +361,8 @@ public class AudioService extends Service {
         try {
             android.content.SharedPreferences sp = getSharedPreferences("dhamma", MODE_PRIVATE);
             String awaitUrl = sp.getString(AWAIT_URL10, "");
+            // v15.67 (slice 2059): the minute the awaited talk must start at — read beside the URL, before any clear consumes the record (the plain clear below and the foreign helper's own consume both run before the play). -1 = no minute: the re-fire falls back to the saved spot. Passed to the foreign helper, so the record is read exactly once.
+            int awaitPos59 = awaitAdvancePosMs(this);
             // v13.57 (audit-1371 F2 second half + audit-1370 C3): the job id is
             // NOT the identity check — the COLUMN_URI check below is (v12.18) —
             // so a completion for the awaited URL re-fires even when no job was
@@ -419,7 +444,7 @@ public class AudioService extends Service {
                 // re-fires post-handover (Case B). The helper consumes or abandons the
                 // record itself; this path returns either way.
                 if ("foreign".equals(sp.getString(AWAIT_KIND12, ""))) {
-                    onAwaitedForeignComplete12(sp, awaitUrl, title, landed);
+                    onAwaitedForeignComplete12(sp, awaitUrl, title, landed, awaitPos59);
                     return;
                 }
                 // Consume before playing: play() clears the record again (harmless), and a
@@ -493,7 +518,8 @@ public class AudioService extends Service {
                         }
                     }
                 } catch (Exception ignored) {}
-                play(landed.getAbsolutePath(), title == null ? "" : title, savedSeekFor(awaitUrl));
+                // v15.67 (slice 2059): a gated mark re-fires at its minute, not at the saved spot — the minute rides the seek argument only, talkPos is never written. A -1 (list pick, pre-2059 record) falls back to the saved spot exactly as before.
+                play(landed.getAbsolutePath(), title == null ? "" : title, AwaitMinute.seek(awaitPos59, savedSeekFor(awaitUrl)));
                 // v13.87: the forward pop-or-clear above ran BEFORE play(), so a
                 // failed prepare would lose the redo step for good — arm the
                 // pre-mutation stack (null after-value = no mutation, nothing to
@@ -555,7 +581,7 @@ public class AudioService extends Service {
     // foreign Room's poll syncs to a talk in its own list; deferring here would leave
     // the listener staring at the landed download with nothing playing.
     private void onAwaitedForeignComplete12(android.content.SharedPreferences sp,
-            String awaitUrl, String title, java.io.File landed) {
+            String awaitUrl, String title, java.io.File landed, int awaitPos59) {
         try {
             String awaitSayadaw = sp.getString(AWAIT_SAYADAW12, "");
             if (awaitSayadaw.length() == 0) { awaitAdvanceClear(this); return; }
@@ -704,7 +730,8 @@ public class AudioService extends Service {
                     }
                 }
             } catch (Exception ignored) {}
-            play(landed.getAbsolutePath(), titleB12, savedSeekFor(awaitUrl));
+            // v15.67 (slice 2059): Case B — the head is a bare v3 line in the new key, so its minute rides the record (the Room's noteGatedForeignAdvanceTarget recorded it); it re-fires at the mark, not at the saved spot. A -1 falls back to the saved spot exactly as before. Case A never reaches here: its head plays through playForeignHead11, which already honours the minute (2054).
+            play(landed.getAbsolutePath(), titleB12, AwaitMinute.seek(awaitPos59, savedSeekFor(awaitUrl)));
             // v13.14 (Q10): the head is already popped above — if this prepare fails,
             // the head returns to the front of its sayadaw's queue instead of vanishing.
             armPendingQueueHead14(newQLines12[barePos12], awaitSayadaw);
@@ -5204,9 +5231,10 @@ public class AudioService extends Service {
                         // returns; a hidden end left the gated foreign head
                         // unrecorded, so its Wi-Fi download landed silently.
                         // Title fallback mirrors the Room's (title, else URL).
-                        awaitAdvanceSetForeign(this, qu,
+                        // v15.67 (slice 2059): the gated foreign head's minute rides the record — a v3 head re-fires at its mark (Case B), not at the saved spot. qe.posMs is -1 for a v2 line, and the setter normalises anything <= 0 to -1.
+                        awaitAdvanceSetForeignAt(this, qu,
                                 qe.title != null && qe.title.length() > 0 ? qe.title : qu,
-                                qe.sayadaw);
+                                qe.sayadaw, qe.posMs);
                         if (manual) toastGateDeferred58();
                         return true;
                     }
@@ -5259,7 +5287,8 @@ public class AudioService extends Service {
                 // unrecorded, so its Wi-Fi download landed silently. The
                 // head is peeked, never popped (v7.23), so the receiver's
                 // re-fire still finds it first in the queue.
-                awaitAdvanceSet(this, headUrl, hTitle);
+                // v15.67 (slice 2059): the gated queue head's minute rides the record — headPosMs54 already holds the head line's minute (2054), so the landed re-fire plays the mark at its minute, not at the saved spot. The setter normalises anything <= 0 to -1.
+                awaitAdvanceSetAt(this, headUrl, hTitle, headPosMs54);
                 if (manual) toastGateDeferred58();
                 return true;
             }
