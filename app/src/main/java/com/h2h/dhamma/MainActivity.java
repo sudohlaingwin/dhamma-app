@@ -5191,9 +5191,11 @@ public class MainActivity extends Activity {
                     // again in Talks / the library). The menu is the
                     // chooser/drawer dialog shape (AlertDialog with a
                     // parallel key list, dispatch on keys — the
-                    // v13.15 language-proof rule), with the four verbs
+                    // v13.15 language-proof rule), with the five verbs
                     // that are safe from Main: share / copy link /
-                    // favourite toggle / go to sayadaw's talks. Queue
+                    // favourite toggle / go to sayadaw's talks /
+                    // download (v15.56, slice 1998 — the fifth verb,
+                    // appended last after go). Queue
                     // verbs stay OUT (the queue is keyed per sayadaw
                     // Room and Main holds no live-session queue handle
                     // — planting a line under this sayadaw's key while
@@ -5212,6 +5214,21 @@ public class MainActivity extends Activity {
                     boolean fav87 = RailMenu.isFav(ft87, e.url);
                     boolean go87 = GoSayadaw.canGo(new String[]{s.group, s.url, s.photo});
                     java.util.List<String> keys87 = RailMenu.keys(fav87, go87, RoomCopyLink.canOffer(e.url));
+                    // v15.56 (slice 1998): "Download" — the Recently
+                    // played rail menu's fifth verb, appended last
+                    // (after go): a just-heard talk, one tap to
+                    // download it from Main. Offered only while
+                    // the talk is neither downloaded (the shared
+                    // DlLanded definition) nor already queued
+                    // (MainDl.isQueued — the sameTalk scan, so a
+                    // queued entry spelled under the other scheme
+                    // still blocks a double enqueue). Rail-only,
+                    // NOT in RailMenu.keys — the same verb on the
+                    // Bookmarks / Favourite-talks rails is the next
+                    // slice's work (their cards carry different
+                    // shapes; each rail menu site is its own wiring
+                    // — the 1992/1993 rail-only-verb precedent).
+                    if (MainDl.canOffer(mainIsDownloaded(e.url), mainIsDlQueued(e.url))) keys87.add("dl_btn_download");
                     final String[] opt87 = new String[keys87.size()];
                     for (int i87 = 0; i87 < keys87.size(); i87++) opt87[i87] = Lang.t(MainActivity.this, keys87.get(i87));
                     final String[] key87 = keys87.toArray(new String[0]);
@@ -5253,6 +5270,37 @@ public class MainActivity extends Activity {
                                             Fx.tap(MainActivity.this);
                                             Fx.go(MainActivity.this, gi87);
                                         }
+                                    } else if ("dl_btn_download".equals(key87[which])) {
+                                        // v15.56 (slice 1998): "Download" — the v11.70 verb on the Recently played rail: the menu could share a just-heard talk, copy its link, star it, or open its sayadaw's full list, but never download it — the one tap that saves the talk for offline listening had to wait until the talk was found again in Talks or the library. Same verb the Talks chooser has had since v11.70 and the History row since v13.77, through the same rules, so the four surfaces can never disagree: tap-time re-checks (a Wi-Fi job can land, or another path can queue this talk, while the dialog sits open), a Wi-Fi-only DownloadManager request (NETWORK_WIFI, so a tap here can never silently spend mobile data — the data-saver rule), the filename from the shared Fx.stripDownloadFileName rule, and the record under DlLock in ONE apply (dlMap + dlSayadaw + dlQueued, identityUrl banking). The card stays on this rail either way (a recent-set projection, not a downloaded projection — the refresh early-returns on the unchanged key; the Downloaded rail picks the talk up once it lands); the toast is the feedback. No sounding gate (RecentRail.pick excludes the sounding talk, the sameTalk skip); no pause guard (no sheet is left to return from).
+                                        if (mainIsDownloaded(e.url)) {
+                                            refreshRecentRail();
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "downloaded_talk"), android.widget.Toast.LENGTH_SHORT).show();
+                                            return;
+                                        }
+                                        if (mainIsDlQueued(e.url)) {
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "dl_already_queued"), android.widget.Toast.LENGTH_LONG).show();
+                                            return;
+                                        }
+                                        String file87 = Fx.stripDownloadFileName(getSharedPreferences("dhamma", MODE_PRIVATE), e.url);
+                                        try {
+                                            android.app.DownloadManager dm87 = (android.app.DownloadManager) getSystemService(android.content.Context.DOWNLOAD_SERVICE);
+                                            android.app.DownloadManager.Request req87 = new android.app.DownloadManager.Request(android.net.Uri.parse(SiteHttp.siteUrl(e.url)));
+                                            req87.setTitle(e.title != null && e.title.length() > 0 ? e.title : e.url);
+                                            req87.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                                            // Wi-Fi-only, exactly like Talks' chooser enqueue and History's row enqueue — on Wi-Fi it starts at once, on mobile data it waits for Wi-Fi, so a tap here can never silently spend mobile data.
+                                            req87.setAllowedNetworkTypes(android.app.DownloadManager.Request.NETWORK_WIFI);
+                                            req87.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, "Dhamma/" + file87);
+                                            dm87.enqueue(req87);
+                                            mainRecordDownload(e.url, file87, e.sayadaw);
+                                        } catch (Exception ex87) {
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "download_failed") + Fx.errDetail(ex87), android.widget.Toast.LENGTH_LONG).show();
+                                            return;
+                                        }
+                                        refreshRecentRail();
+                                        if (Fx.stripIsWifi(MainActivity.this))
+                                            android.widget.Toast.makeText(MainActivity.this, "\u2B07 " + (e.title != null && e.title.length() > 0 ? e.title : e.url) + Lang.t(MainActivity.this, "dl_downloading_suffix"), android.widget.Toast.LENGTH_SHORT).show();
+                                        else
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "dl_room_wifi_queued"), android.widget.Toast.LENGTH_LONG).show();
                                     }
                                 }
                             }).show();
@@ -5408,6 +5456,26 @@ public class MainActivity extends Activity {
                     boolean fav88 = RailMenu.isFav(ft88, e.url);
                     boolean go88 = GoSayadaw.canGo(new String[]{s.group, s.url, s.photo});
                     java.util.List<String> keys88 = RailMenu.keys(fav88, go88, RoomCopyLink.canOffer(e.url));
+                    // v15.56 (slice 1996): "Share the audio file" —
+                    // the Downloaded rail menu's file-share verb:
+                    // the card could share its text (menu_share
+                    // above) and copy its link (dl_menu_copy_link,
+                    // slice 1977) but never send the actual .mp3.
+                    // Gated on DlLanded.downloadedFileName (v13.69
+                    // — the ONE shared definition of downloaded),
+                    // so the offer can never disagree with the
+                    // library, the drawer, the chooser or History;
+                    // DlRecentRail.pick is dlMap-claimed finished
+                    // .mp3 only, so the gate is true in the common
+                    // case and still protects the edge (a file
+                    // deleted externally while Main sits open).
+                    // Inserted at index 1, right after menu_share,
+                    // so the share verbs sit together (the
+                    // 1955/1986 drawer precedent). Rail-only, not
+                    // in RailMenu.keys — the other rails' cards are
+                    // streamed in the common case (the 1992/1993
+                    // precedent).
+                    if (DlLanded.downloadedFileName(MainActivity.this, e.url, null, null) != null) keys88.add(1, "dl_menu_share_file");
                     final String[] opt88 = new String[keys88.size()];
                     for (int i88 = 0; i88 < keys88.size(); i88++) opt88[i88] = Lang.t(MainActivity.this, keys88.get(i88));
                     final String[] key88 = keys88.toArray(new String[0]);
@@ -5420,6 +5488,20 @@ public class MainActivity extends Activity {
                                         send88.setType("text/plain");
                                         send88.putExtra(android.content.Intent.EXTRA_TEXT, RailMenu.shareText(s.name, e.title, e.url, Lang.t(MainActivity.this, "share_source")));
                                         startActivity(android.content.Intent.createChooser(send88, Lang.t(MainActivity.this, "share_talk")));
+                                    } else if ("dl_menu_share_file".equals(key88[which])) {
+                                        // v15.56 (slice 1996): "Share the audio file" — the 1954 verb on the Downloaded rail: the menu could share the talk's text (menu_share above) and copy its link (dl_menu_copy_link, slice 1977) but never send the actual .mp3 — a listener who had just downloaded a talk and wanted the file itself in another app had to find it in Downloads/Dhamma by hand. Same verb the library per-row menu has had since v15.48 (slice 1954), the Room drawer since slice 1955, the Talks chooser since slice 1956 and the History row since slice 1982, through the same TalkFileShare core (same rule, so the five surfaces can never disagree); the offer gate is DlLanded.downloadedFileName (v13.69 — the ONE shared definition of downloaded: dlMap name or filename candidate, length-gated, never a live job's destination), re-checked fresh at tap time, and the URI is built through TalkFileShare.shareUriFor (resolve + uriStringFor), so a name that no longer resolves to a file on disk toasts the existing talk_no_longer_in_list, never a guessed URI. No pause guard (the text share beside it sets none, the 1982 rule). A share mutates nothing — the rail card stays, the queue stays.
+                                        java.io.File dir96 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+                                        String fn96 = DlLanded.downloadedFileName(MainActivity.this, e.url, null, null);
+                                        String uri96 = TalkFileShare.shareUriFor(dir96, fn96);
+                                        if (uri96 == null) {
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "talk_no_longer_in_list"), android.widget.Toast.LENGTH_SHORT).show();
+                                        } else {
+                                            android.content.Intent send96 = new android.content.Intent(android.content.Intent.ACTION_SEND);
+                                            send96.setType("audio/mpeg");
+                                            send96.putExtra(android.content.Intent.EXTRA_STREAM, android.net.Uri.parse(uri96));
+                                            send96.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                            startActivity(android.content.Intent.createChooser(send96, Lang.t(MainActivity.this, "share_talk")));
+                                        }
                                     } else if ("dl_menu_copy_link".equals(key88[which])) {
                                         // v15.52 (slice 1977) shape: the tap-time gate re-checks the offer, so the two can never disagree; no pause guard (no sheet is left to return from) and no file gate (a link is not a file).
                                         if (RoomCopyLink.canOffer(e.url)) {
@@ -5581,12 +5663,14 @@ public class MainActivity extends Activity {
                     // the library). The menu is the chooser/drawer
                     // dialog shape (AlertDialog with a parallel key
                     // list, dispatch on keys — the v13.15
-                    // language-proof rule), with the six verbs that
-                    // are safe from Main: share / share this bookmark /
-                    // copy link / favourite toggle / go to sayadaw's
-                    // talks / remove this bookmark (v15.55, slice
-                    // 1992 — destructive, last, with the library
-                    // delete's confirm). The
+                    // language-proof rule), with the seven verbs
+                    // that are safe from Main: share / share this
+                    // bookmark / copy link / favourite toggle / go
+                    // to sayadaw's talks / download (v15.56, slice
+                    // 1999 — the seventh verb, before the
+                    // destructive remove) / remove this bookmark
+                    // (v15.55, slice 1992 — destructive, last,
+                    // with the library delete's confirm). The
                     // verbs read the talk (c.e) — the mark minute
                     // stays the tap's job (openBmTalk1962 lands the
                     // Room on the mark), so the plain share carries
@@ -5618,6 +5702,23 @@ public class MainActivity extends Activity {
                     java.util.List<String> keys89 = RailMenu.keys(fav89, go89, RoomCopyLink.canOffer(c.e.url));
                     // v15.55 (slice 1992): the remove verb is appended here, not in RailMenu.keys — it is bm-rail-only (only bm cards carry a mark minute to delete) and it sits LAST (destructive last, after go-to-sayadaw).
                     keys89.add("bm_menu_remove");
+                    // v15.56 (slice 1999): "Download" — the Bookmarks
+                    // rail menu's seventh verb, inserted right before
+                    // bm_menu_remove (the destructive verb stays last,
+                    // the 1992 rule): a marked talk, one tap to
+                    // download it from Main. Offered only while
+                    // the talk is neither downloaded (the shared
+                    // DlLanded definition) nor already queued
+                    // (MainDl.isQueued — the sameTalk scan, so a
+                    // queued entry spelled under the other scheme
+                    // still blocks a double enqueue). Rail-only,
+                    // NOT in RailMenu.keys — the same verb on the
+                    // Favourite-talks rail is the last rail without
+                    // it (its card carries a different shape; each
+                    // rail menu site is its own wiring — the
+                    // 1992/1993 rail-only-verb precedent).
+                    int di89 = keys89.indexOf("bm_menu_remove");
+                    if (di89 >= 0 && MainDl.canOffer(mainIsDownloaded(c.e.url), mainIsDlQueued(c.e.url))) keys89.add(di89, "dl_btn_download");
                     // v15.55 (slice 1993): the minute-share verb is inserted here, not in RailMenu.keys — it is bm-rail-only (only bm cards carry a mark minute to share at) and it sits right after menu_share (the share verbs sit together, the 1955/1986 drawer precedent).
                     int si89 = keys89.indexOf("menu_share");
                     if (si89 >= 0) keys89.add(si89 + 1, "bm_menu_share_minute");
@@ -5668,6 +5769,37 @@ public class MainActivity extends Activity {
                                             Fx.tap(MainActivity.this);
                                             Fx.go(MainActivity.this, gi89);
                                         }
+                                    } else if ("dl_btn_download".equals(key89[which])) {
+                                        // v15.56 (slice 1999): "Download" — the v11.70 verb on the Bookmarks rail: the menu could share a marked talk, share it at its minute, copy its link, star it, open its sayadaw's full list, or delete the mark, but never download it — the one tap that saves the talk for offline listening had to wait until the talk was found again in Talks or the library. Same verb the Talks chooser has had since v11.70 and the History row since v13.77, through the same rules, so the five surfaces can never disagree: tap-time re-checks (a Wi-Fi job can land, or another path can queue this talk, while the dialog sits open), a Wi-Fi-only DownloadManager request (NETWORK_WIFI, so a tap here can never silently spend mobile data — the data-saver rule), the filename from the shared Fx.stripDownloadFileName rule, and the record under DlLock in ONE apply (dlMap + dlSayadaw + dlQueued, identityUrl banking). The card stays on this rail either way (a bookmarks-set projection, not a downloaded projection — the refresh early-returns on the unchanged key; the Downloaded rail picks the talk up once it lands); the toast is the feedback. No sounding gate (BmRail.pick excludes the sounding talk, the sameTalk skip); no pause guard (no sheet is left to return from). The mark minute (c.posMs) stays the tap's job — the download needs no minute.
+                                        if (mainIsDownloaded(c.e.url)) {
+                                            refreshBmRail();
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "downloaded_talk"), android.widget.Toast.LENGTH_SHORT).show();
+                                            return;
+                                        }
+                                        if (mainIsDlQueued(c.e.url)) {
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "dl_already_queued"), android.widget.Toast.LENGTH_LONG).show();
+                                            return;
+                                        }
+                                        String file89 = Fx.stripDownloadFileName(getSharedPreferences("dhamma", MODE_PRIVATE), c.e.url);
+                                        try {
+                                            android.app.DownloadManager dm89 = (android.app.DownloadManager) getSystemService(android.content.Context.DOWNLOAD_SERVICE);
+                                            android.app.DownloadManager.Request req89 = new android.app.DownloadManager.Request(android.net.Uri.parse(SiteHttp.siteUrl(c.e.url)));
+                                            req89.setTitle(c.e.title != null && c.e.title.length() > 0 ? c.e.title : c.e.url);
+                                            req89.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                                            // Wi-Fi-only, exactly like Talks' chooser enqueue and History's row enqueue — on Wi-Fi it starts at once, on mobile data it waits for Wi-Fi, so a tap here can never silently spend mobile data.
+                                            req89.setAllowedNetworkTypes(android.app.DownloadManager.Request.NETWORK_WIFI);
+                                            req89.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, "Dhamma/" + file89);
+                                            dm89.enqueue(req89);
+                                            mainRecordDownload(c.e.url, file89, c.e.sayadaw);
+                                        } catch (Exception ex89) {
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "download_failed") + Fx.errDetail(ex89), android.widget.Toast.LENGTH_LONG).show();
+                                            return;
+                                        }
+                                        refreshBmRail();
+                                        if (Fx.stripIsWifi(MainActivity.this))
+                                            android.widget.Toast.makeText(MainActivity.this, "\u2B07 " + (c.e.title != null && c.e.title.length() > 0 ? c.e.title : c.e.url) + Lang.t(MainActivity.this, "dl_downloading_suffix"), android.widget.Toast.LENGTH_SHORT).show();
+                                        else
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "dl_room_wifi_queued"), android.widget.Toast.LENGTH_LONG).show();
                                     } else if ("bm_menu_remove".equals(key89[which])) {
                                         // v15.55 (slice 1992): remove this bookmark — the Bookmarks rail's first destructive verb and the only way to drop a mark without opening the Room bookmark list (the list's ✕ deletes, v12.64, but only from inside the Room). The confirm is the library delete's own (del_one_title + del_one_btn / del_btn_no, the 1986 drawer shape) and its message names the exact minute (BmRemove.confirmMessage — the card's "12:34 · title" rendering, so a talk with several marks never deletes the wrong one). The remove is Prefs.bookmarkRemoveBoth — the Room ✕ delete's own call, both http/https forms — then refreshBmRail() drops the card at once and the toast is bm_deleted. No pause guard (no sheet is left to return from, like the 1975 copy verb and the 1985 go verb). No tap-time re-check is needed: no concurrent deleter can run while the modal menu/confirm sits open (the Room bookmark list needs Main dismissed first), and bookmarkRemoveBoth is idempotent anyway.
                                         new android.app.AlertDialog.Builder(MainActivity.this)
@@ -6004,6 +6136,72 @@ public class MainActivity extends Activity {
         openRecentTalk1930(s, c.e, v);
     }
 
+    // v15.56 (slice 1997): Main-local download helpers for the
+    // "Download" verb on the New talks rail — the Talks chooser
+    // (v11.70) and the History row (v13.77) each own their local
+    // trio, and Main held none at all (only the strip's
+    // DlLanded.isDownloaded read in pruneMainQueuedDownloads1020),
+    // so the verb needs its own port as Main-local helpers, not a
+    // clean single-verb slice. The landed check is the shared
+    // DlLanded definition (v13.69) with null exclusion sets — Main
+    // holds no live-job set on this screen, and the dlQueued check
+    // is the live-job guard: a Wi-Fi-waiting job has a dlQueued
+    // entry, while a RUNNING job's partial file reads as landed
+    // and hides the offer until it lands (the History offer's same
+    // edge). The filename is the shared Fx.stripDownloadFileName
+    // rule (mapped name via DlLanded.mappedName's three-form
+    // lookup, else basename + .mp3 + the 8-hex MD5 claim suffix),
+    // called at the dispatch site — no fourth local copy. The
+    // record is the History shape verbatim (DlLock, ONE apply,
+    // identityUrl banking, dlSayadaw from the card's sayadaw).
+    private boolean mainIsDownloaded(String url) {
+        if (url == null || url.length() == 0) return false;
+        return DlLanded.isDownloaded(this, url, null, null);
+    }
+
+    private boolean mainIsDlQueued(String url) {
+        if (url == null || url.length() == 0) return false;
+        try {
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONArray qa = new org.json.JSONArray(sp.getString("dlQueued", "[]"));
+            java.util.ArrayList<String> ql97 = new java.util.ArrayList<String>();
+            for (int i = 0; i < qa.length(); i++) ql97.add(qa.optString(i));
+            return MainDl.isQueued(ql97, url);
+        } catch (Exception ignored) { return false; }
+    }
+
+    private void mainRecordDownload(String url, String file, String sd) {
+        synchronized (DlLock.LOCK) {
+        try {
+            url = SiteHttp.identityUrl(url);
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            map.put(url, file);
+            String sayStr97 = null;
+            if (sd != null && sd.length() > 0) {
+                try {
+                    org.json.JSONObject sm = new org.json.JSONObject(sp.getString("dlSayadaw", "{}"));
+                    sm.put(url, sd);
+                    sayStr97 = sm.toString();
+                } catch (Exception ignored) {}
+            }
+            org.json.JSONArray queued = new org.json.JSONArray(sp.getString("dlQueued", "[]"));
+            boolean found = false;
+            for (int i = 0; i < queued.length(); i++) {
+                if (SiteHttp.sameTalk(url, queued.optString(i))) { found = true; break; }
+            }
+            if (!found) queued.put(url);
+            android.content.SharedPreferences.Editor ed = sp.edit()
+                    .putString("dlMap", map.toString())
+                    .putString("dlQueued", queued.toString());
+            if (sayStr97 != null) ed.putString("dlSayadaw", sayStr97);
+            ed.apply();
+        } catch (Exception ignored) {}
+        }
+    }
+
     // v15.50 (slice 1966): "New talks" rail — the talks that arrived
     // since the last visit, as tappable cards below the
     // favourite-talks rail (1964), one tap straight into the Room
@@ -6114,10 +6312,12 @@ public class MainActivity extends Activity {
                     // Talks / the library). The menu is the
                     // chooser/drawer dialog shape (AlertDialog with
                     // a parallel key list, dispatch on keys — the
-                    // v13.15 language-proof rule), with the four
+                    // v13.15 language-proof rule), with the five
                     // verbs that are safe from Main: share / copy
                     // link / favourite toggle / go to sayadaw's
-                    // talks. The verbs read the talk (c.e) — the
+                    // talks / download (v15.56, slice 1997 — the
+                    // fifth verb, appended last after go). The
+                    // verbs read the talk (c.e) — the
                     // card renders the sayadaw name + the talk
                     // title (no saved spot — the 1921 gate only
                     // ever picks talks nobody started), so the
@@ -6154,6 +6354,22 @@ public class MainActivity extends Activity {
                     boolean fav91 = RailMenu.isFav(ft91, c.e.url);
                     boolean go91 = GoSayadaw.canGo(new String[]{s.group, s.url, s.photo});
                     java.util.List<String> keys91 = RailMenu.keys(fav91, go91, RoomCopyLink.canOffer(c.e.url));
+                    // v15.56 (slice 1997): "Download" — the New
+                    // talks rail menu's fifth verb, appended last
+                    // (after go): a brand-new talk, one tap to
+                    // download it from Main. Offered only while
+                    // the talk is neither downloaded (the shared
+                    // DlLanded definition) nor already queued
+                    // (MainDl.isQueued — the sameTalk scan, so a
+                    // queued entry spelled under the other scheme
+                    // still blocks a double enqueue). Rail-only,
+                    // NOT in RailMenu.keys — the same verb on the
+                    // Recent / Bookmarks / Favourite-talks rails
+                    // is the next slice's work (their cards carry
+                    // different shapes; each rail menu site is its
+                    // own wiring — the 1992/1993 rail-only-verb
+                    // precedent).
+                    if (MainDl.canOffer(mainIsDownloaded(c.e.url), mainIsDlQueued(c.e.url))) keys91.add("dl_btn_download");
                     final String[] opt91 = new String[keys91.size()];
                     for (int i91 = 0; i91 < keys91.size(); i91++) opt91[i91] = Lang.t(MainActivity.this, keys91.get(i91));
                     final String[] key91 = keys91.toArray(new String[0]);
@@ -6195,6 +6411,37 @@ public class MainActivity extends Activity {
                                             Fx.tap(MainActivity.this);
                                             Fx.go(MainActivity.this, gi91);
                                         }
+                                    } else if ("dl_btn_download".equals(key91[which])) {
+                                        // v15.56 (slice 1997): "Download" — the v11.70 verb on the New talks rail: the menu could share a new talk, copy its link, star it, or open its sayadaw's full list, but never download it — the one tap that saves the talk for offline listening had to wait until the talk was found again in Talks or the library. Same verb the Talks chooser has had since v11.70 and the History row since v13.77, through the same rules, so the three surfaces can never disagree: tap-time re-checks (a Wi-Fi job can land, or another path can queue this talk, while the dialog sits open), a Wi-Fi-only DownloadManager request (NETWORK_WIFI, so a tap here can never silently spend mobile data — the data-saver rule), the filename from the shared Fx.stripDownloadFileName rule, and the record under DlLock in ONE apply (dlMap + dlSayadaw + dlQueued, identityUrl banking). The card stays on this rail either way (a new-set projection, not a downloaded projection — the refresh early-returns on the unchanged key; the Downloaded rail picks the talk up once it lands); the toast is the feedback. No sounding gate (NewTalkRail.pick excludes the sounding talk, the 1921 gate); no pause guard (no sheet is left to return from).
+                                        if (mainIsDownloaded(c.e.url)) {
+                                            refreshNewTalkRail();
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "downloaded_talk"), android.widget.Toast.LENGTH_SHORT).show();
+                                            return;
+                                        }
+                                        if (mainIsDlQueued(c.e.url)) {
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "dl_already_queued"), android.widget.Toast.LENGTH_LONG).show();
+                                            return;
+                                        }
+                                        String file97 = Fx.stripDownloadFileName(getSharedPreferences("dhamma", MODE_PRIVATE), c.e.url);
+                                        try {
+                                            android.app.DownloadManager dm97 = (android.app.DownloadManager) getSystemService(android.content.Context.DOWNLOAD_SERVICE);
+                                            android.app.DownloadManager.Request req97 = new android.app.DownloadManager.Request(android.net.Uri.parse(SiteHttp.siteUrl(c.e.url)));
+                                            req97.setTitle(c.e.title != null && c.e.title.length() > 0 ? c.e.title : c.e.url);
+                                            req97.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                                            // Wi-Fi-only, exactly like Talks' chooser enqueue and History's row enqueue — on Wi-Fi it starts at once, on mobile data it waits for Wi-Fi, so a tap here can never silently spend mobile data.
+                                            req97.setAllowedNetworkTypes(android.app.DownloadManager.Request.NETWORK_WIFI);
+                                            req97.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, "Dhamma/" + file97);
+                                            dm97.enqueue(req97);
+                                            mainRecordDownload(c.e.url, file97, c.e.sayadaw);
+                                        } catch (Exception ex97) {
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "download_failed") + Fx.errDetail(ex97), android.widget.Toast.LENGTH_LONG).show();
+                                            return;
+                                        }
+                                        refreshNewTalkRail();
+                                        if (Fx.stripIsWifi(MainActivity.this))
+                                            android.widget.Toast.makeText(MainActivity.this, "\u2B07 " + (c.e.title != null && c.e.title.length() > 0 ? c.e.title : c.e.url) + Lang.t(MainActivity.this, "dl_downloading_suffix"), android.widget.Toast.LENGTH_SHORT).show();
+                                        else
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "dl_room_wifi_queued"), android.widget.Toast.LENGTH_LONG).show();
                                     }
                                 }
                             }).show();

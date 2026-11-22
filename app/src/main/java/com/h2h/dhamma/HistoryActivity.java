@@ -489,6 +489,48 @@ public class HistoryActivity extends Activity {
         return owner != null ? owner : "";
     }
 
+    // v15.56 (slice 1995): the bundled-catalog entry for a sayadaw
+    // name (RoomActivity.catalogEntryForSayadaw, byte-identical
+    // shape): exact-name match over assets/sayadaws.json,
+    // returning {group, page, photo} or null. A bad row never hides
+    // the rows after it (the v13.30 skip); a missing asset or a bad
+    // file reads as null, never a crash. The History row menu uses
+    // it for the "go to sayadaw's talks" verb.
+    private String[] catalogEntryForSayadaw(String name) {
+        if (name == null || name.length() == 0) return null;
+        java.io.InputStream in = null;
+        try {
+            in = getAssets().open("sayadaws.json");
+            java.io.ByteArrayOutputStream baos =
+                    new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int read;
+            while ((read = in.read(buf)) > 0) baos.write(buf, 0, read);
+            org.json.JSONArray arr = new org.json.JSONArray(
+                    new String(baos.toByteArray(), "UTF-8"));
+            for (int i = 0; i < arr.length(); i++) {
+                // v13.30 (Catalog F3): a bad row must not hide every
+                // sayadaw after it — skip a non-object entry instead
+                // of aborting the whole loop out of getJSONObject.
+                org.json.JSONObject o;
+                try { o = arr.getJSONObject(i); } catch (Exception ignored) { continue; }
+                if (!name.equals(o.optString("name", ""))) continue;
+                String group = o.optString("group", "");
+                String page = o.isNull("page_url") ? ""
+                        : o.optString("page_url", "");
+                String photo = o.isNull("photo_url") ? ""
+                        : o.optString("photo_url", "");
+                if (photo.length() == 0 && !o.isNull("photo"))
+                    photo = o.optString("photo", "");
+                return new String[]{group, page, photo};
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (in != null) { try { in.close(); } catch (Exception ignored) {} }
+        }
+        return null;
+    }
+
     // v13.77: the favourite set, fresh from prefs (identity-form
     // keys, the toggleFavTalk canonical form). The legacy-http
     // migration runs here so a stale http key can never hide a star.
@@ -736,6 +778,13 @@ public class HistoryActivity extends Activity {
             if (RoomCopyLink.canOffer(streamUrl)) { opts.add(Lang.t(this, "dl_menu_copy_link")); keys.add("dl_menu_copy_link"); }
             // v15.53 (slice 1982): share this one DOWNLOADED FILE — the History row menu's file-share verb: the menu could share the talk's text (menu_share above) and copy its link (dl_menu_copy_link, slice 1981) but never send the actual .mp3 — a listener who had just heard a talk and wanted the file itself in another app had to find it in Downloads/Dhamma by hand. Same verb the library per-row menu has had since v15.48 (slice 1954), the Room drawer since slice 1955 and the Talks chooser since slice 1956, through the same TalkFileShare core (same rule, so the four surfaces can never disagree); the offer gate is History's own histIsDownloaded (v13.77 — dlMap mapped file + length gate, plus the basename leg), so a streamed-only talk never offers it. Sits right after the copy-link offer, so the share/copy/file trio sits together, like the chooser's. The sounding row keeps it (it touches neither playback nor the queue, like the share beside it); a row with no resolvable stream URL never reaches this block, so it offers remove only. The 1956 note's "share family complete on every surface that has a text share" is corrected here — History had a text share all along and was the one surface still missing its file share.
             if (histIsDownloaded(streamUrl)) { opts.add(Lang.t(this, "dl_menu_share_file")); keys.add("dl_menu_share_file"); }
+            // v15.56 (slice 1995): this row's sayadaw resolved
+            // through the bundled catalog for the "go to
+            // sayadaw's talks" verb below — one asset parse per
+            // menu open, the same cost the share block above
+            // already pays for its reverse lookups. A miss reads
+            // as no-go (never a crash, never a dead tap).
+            final String[] goCat95 = catalogEntryForSayadaw(sd);
             boolean fav = false;
             try {
                 java.util.Set<String> ft = getSharedPreferences("dhamma", MODE_PRIVATE)
@@ -744,6 +793,22 @@ public class HistoryActivity extends Activity {
             } catch (Exception ignored) {}
             opts.add(Lang.t(this, fav ? "menu_fav_remove" : "menu_fav_add"));
             keys.add(fav ? "menu_fav_remove" : "menu_fav_add");
+            // v15.56 (slice 1995): "go to sayadaw's talks" —
+            // the row menu's first navigation verb: a heard
+            // talk's sayadaw (sd, the healed row name)
+            // resolved through the bundled catalog opens that
+            // sayadaw's Talks list inside the app, so a
+            // listener who liked a just-heard talk can reach
+            // the full catalogue without going back to Main
+            // and searching. Offered on any row whose sayadaw
+            // resolves to a page URL — sounding or not, the
+            // navigation never touches playback — and hidden
+            // while the sayadaw is unknown or unlisted
+            // (HistGo.canOffer). Sits after the favourite
+            // toggle — the other per-talk state toggle — and
+            // before the queue verb, the drawer foreign
+            // dialog's shape (1985).
+            if (HistGo.canOffer(sd, goCat95)) { opts.add(Lang.t(this, "menu_go_sayadaw")); keys.add("menu_go_sayadaw"); }
         }
         if (streamUrl.length() > 0 && sd.length() > 0 && !sounding) {
             boolean queued = histQueueHas(sd, streamUrl);
@@ -825,6 +890,20 @@ public class HistoryActivity extends Activity {
                             Toast.makeText(HistoryActivity.this,
                                     Lang.t(HistoryActivity.this, added ? "fav_added" : "fav_removed"),
                                     Toast.LENGTH_SHORT).show();
+                        } else if ("menu_go_sayadaw".equals(keyArr[which])) {
+                            // v15.56 (slice 1995): "Go to sayadaw's talks" — the 1944 verb on the History surface: re-resolve the sayadaw through the bundled catalog at tap time (the offer and the tap can never disagree), toast no_sayadaw_page on a failed re-read, else open that sayadaw's Talks list inside the app with Main's own intent extras (name/group/url/photo). The name is the row's own sayadaw (histSayadawFor's heal, never the catalog's — the catalog entry carries no name slot). A navigation mutates nothing: no history, queue or resume change, no pause guard (no sheet is left to return from).
+                            String[] cat95 = catalogEntryForSayadaw(sd);
+                            if (!GoSayadaw.canGo(cat95)) {
+                                android.widget.Toast.makeText(HistoryActivity.this, Lang.t(HistoryActivity.this, "no_sayadaw_page"), android.widget.Toast.LENGTH_SHORT).show();
+                            } else {
+                                android.content.Intent gi95 = new android.content.Intent(HistoryActivity.this, TalksActivity.class);
+                                gi95.putExtra("name", sd);
+                                gi95.putExtra("group", GoSayadaw.group(cat95));
+                                gi95.putExtra("url", GoSayadaw.page(cat95));
+                                gi95.putExtra("photo", GoSayadaw.photo(cat95));
+                                Fx.tap(HistoryActivity.this);
+                                Fx.go(HistoryActivity.this, gi95);
+                            }
                         } else if ("menu_queue_add".equals(keyArr[which])) {
                             // Tap-time sounding re-check (Talks v11.14): the dialog can sit open
                             // across an auto-advance, and queueing the sounding talk would replay it.
