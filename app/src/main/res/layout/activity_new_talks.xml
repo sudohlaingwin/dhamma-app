@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v15.63 (slice 2036): "See all" on the Main "New talks" rail — the full list of every new talk; tap a row to land the Room at the start. Title + list + mini-player strip since v15.63 (slice 2039, the History v13.54 precedent); no stat cards, no clear-all — a bulk destructive verb, the 2016-rejected class). Rows are built in code (NewTalksActivity), like History / Bookmarks / Favourites. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/newRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg"
+    android:orientation="vertical"
+    android:padding="16dp">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+        <TextView
+            android:id="@+id/newTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@color/maroon"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+    <!-- v14.06 (F5, sixth pass slice 5): the empty text used to sit AFTER the weight-1 list in History, so it rendered at the very bottom of the screen. The FrameLayout centers it in the list area instead; same shape here. -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_weight="1">
+        <ListView
+            android:id="@+id/newList"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+        <TextView
+            android:id="@+id/newEmpty"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:textColor="@color/muted"
+            android:textSize="15sp"
+            android:visibility="gone" />
+    </FrameLayout>
+    <!-- v15.63 (slice 2039): real mini-player, the History v13.54 strip — GONE while nothing
+         plays, so the new talks stay list-only. Whatever talk is playing now shows here: tap
+         opens its Room, play/pause works from here, live state always correct; a dead session
+         with a saved spot shows the resume strip instead. -->
+    <LinearLayout
+        android:id="@+id/nowStrip"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/nav_glass"
+        android:orientation="vertical"
+        android:padding="10dp"
+        android:visibility="gone">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <!-- v13.90 (slice 1082): strip portrait sounding gold ring —
+                 the 44dp portrait now sits in a 48dp frame whose
+                 background is the shelf ring drawable (reused, no new
+                 drawable) while a live session sounds, so the sounding
+                 sayadaw reads in a still screenshot on every strip.
+                 Same 4dp geometry as the Room header's 52/48dp frame
+                 (v13.88) and the chooser header's 60/56dp frame
+                 (v13.89); the 10dp gap moved to the frame, so the row
+                 spacing is unchanged and the photo never moves or
+                 shrinks. The frame owns visibility now (gone when no
+                 sayadaw is recorded); the ring is off in resume mode
+                 (nothing sounds) and while a talk has ended. -->
+            <FrameLayout
+                android:id="@+id/nowStripPhotoRing"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginEnd="10dp"
+                android:visibility="gone">
+                <com.h2h.dhamma.CircleImageView
+                    android:id="@+id/nowStripPhoto"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:layout_gravity="center"
+                    android:scaleType="centerCrop"
+                    android:transitionName="roomSayadawPhoto" />
+            </FrameLayout>
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/nowStripText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/gold"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/nowStripSub"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/muted"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_horizontal"
+            android:orientation="horizontal">
+            <TextView
+                android:id="@+id/nowStripPrev"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:layout_margin="2dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="⏮"
+                android:textColor="#FFFFFF"
+                android:textSize="24sp" />
+            <TextView
+                android:id="@+id/nowStripToggle"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:layout_margin="2dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="▶"
+                android:textColor="#FFFFFF"
+                android:textSize="24sp" />
+            <TextView
+                android:id="@+id/nowStripNext"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:layout_margin="2dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="⏭"
+                android:textColor="#FFFFFF"
+                android:textSize="24sp" />
+        </LinearLayout>
+        <ProgressBar
+            android:id="@+id/nowStripProgress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            android:layout_marginTop="6dp"
+            android:max="1000"
+            android:progress="0"
+            android:progressBackgroundTint="#40C9A227"
+            android:progressTint="#C9A227" />
+    </LinearLayout>
+</LinearLayout>

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.h2h.dhamma"
-    android:versionCode="1562"
-    android:versionName="15.62">
+    android:versionCode="1563"
+    android:versionName="15.63">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
     <supports-screens
         android:smallScreens="true"
@@ -44,6 +44,8 @@
         <activity android:name=".PlaylistActivity" android:exported="false" />
         <activity android:name=".HistoryActivity" android:exported="false" />
         <activity android:name=".BookmarksActivity" android:exported="false" />
+        <activity android:name=".FavouritesActivity" android:exported="false" />
+        <activity android:name=".NewTalksActivity" android:exported="false" />
         <service android:name=".AudioService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />

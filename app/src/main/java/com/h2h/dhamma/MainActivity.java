@@ -3241,9 +3241,43 @@ public class MainActivity extends Activity {
         favTalkRailWrap = findViewById(R.id.favTalkRailWrap);
         favTalkRail = findViewById(R.id.favTalkRail);
         favTalkRailLabel = findViewById(R.id.favTalkRailLabel);
+        // v15.63 (slice 2035): the Favourite talks rail header is a
+        // "See all" — tap opens FavouritesActivity (the full list
+        // of every starred talk, across all sayadaws). The rail
+        // shows 5 cards (FavTalkRail.MAX_CARDS); the screen lists
+        // every star, each jumping to its saved spot. The label is
+        // a plain TextView; the listener makes it clickable. Press
+        // feedback is the card taps' Fx.press; the 700ms guard
+        // lives in openFavourites2035 on the shared lastRailTapMs
+        // clock.
+        if (favTalkRailLabel != null) {
+            Fx.press(favTalkRailLabel);
+            favTalkRailLabel.setOnClickListener(new android.view.View.OnClickListener() {
+                @Override public void onClick(android.view.View v) {
+                    openFavourites2035(v);
+                }
+            });
+        }
         newTalkRailWrap = findViewById(R.id.newTalkRailWrap);
         newTalkRail = findViewById(R.id.newTalkRail);
         newTalkRailLabel = findViewById(R.id.newTalkRailLabel);
+        // v15.63 (slice 2036): the New talks rail header is a
+        // "See all" — tap opens NewTalksActivity (the full list
+        // of every new talk, across all sayadaws). The rail
+        // shows 5 cards (NewTalkRail.MAX_CARDS); the screen lists
+        // every new arrival, each jumping to the Room at the
+        // start. The label is a plain TextView; the listener
+        // makes it clickable. Press feedback is the card taps'
+        // Fx.press; the 700ms guard lives in openNewTalks2036 on
+        // the shared lastRailTapMs clock.
+        if (newTalkRailLabel != null) {
+            Fx.press(newTalkRailLabel);
+            newTalkRailLabel.setOnClickListener(new android.view.View.OnClickListener() {
+                @Override public void onClick(android.view.View v) {
+                    openNewTalks2036(v);
+                }
+            });
+        }
         favNewRow = findViewById(R.id.favNewRow);
         favNewRowCount = findViewById(R.id.favNewRowCount);
         shuffleRow = findViewById(R.id.shuffleRow);
@@ -6796,7 +6830,7 @@ public class MainActivity extends Activity {
         }
         lastFavTalkRailKey = key;
         if (favTalkRailLabel != null)
-            favTalkRailLabel.setText(Lang.t(MainActivity.this, "hs_fav_talks"));
+            favTalkRailLabel.setText(RailSeeAll.label(Lang.t(MainActivity.this, "hs_fav_talks")));
         if (favTalkRailWrap.getVisibility() != android.view.View.VISIBLE) {
             favTalkRailWrap.setVisibility(android.view.View.VISIBLE);
             Fx.fadeIn(favTalkRailWrap, 250);
@@ -7290,7 +7324,7 @@ public class MainActivity extends Activity {
         }
         lastNewTalkRailKey = key;
         if (newTalkRailLabel != null)
-            newTalkRailLabel.setText("● " + Lang.t(MainActivity.this, "hs_new_talks"));
+            newTalkRailLabel.setText(RailSeeAll.label("● " + Lang.t(MainActivity.this, "hs_new_talks")));
         if (newTalkRailWrap.getVisibility() != android.view.View.VISIBLE) {
             newTalkRailWrap.setVisibility(android.view.View.VISIBLE);
             Fx.fadeIn(newTalkRailWrap, 250);
@@ -7515,6 +7549,44 @@ public class MainActivity extends Activity {
         Fx.morph(v);
         Fx.tap(MainActivity.this);
         Fx.go(MainActivity.this, new Intent(MainActivity.this, BookmarksActivity.class));
+    }
+
+    // v15.63 (slice 2035): "See all" on the Favourite talks rail
+    // header — the rail shows 5 cards (FavTalkRail.MAX_CARDS)
+    // while FavouritesActivity holds every starred talk; the
+    // header tap is the only way in (no Intent to
+    // FavouritesActivity exists anywhere else — the Downloaded
+    // favourites filter is a filter, not a list). Same 700ms guard
+    // as the card taps (openRecentTalk1930, via RailSeeAll.allowTap
+    // on the shared lastRailTapMs clock) and the same morph + tap
+    // + plain Fx.go open. No extras: no jumpPath, no action — the
+    // screen reads its own store.
+    private void openFavourites2035(android.view.View v) {
+        long now = android.os.SystemClock.uptimeMillis();
+        if (!RailSeeAll.allowTap(lastRailTapMs, now)) return;
+        lastRailTapMs = now;
+        Fx.morph(v);
+        Fx.tap(MainActivity.this);
+        Fx.go(MainActivity.this, new Intent(MainActivity.this, FavouritesActivity.class));
+    }
+
+    // v15.63 (slice 2036): "See all" on the New talks rail
+    // header — the rail shows 5 cards (NewTalkRail.MAX_CARDS)
+    // while NewTalksActivity holds every new talk; the header
+    // tap is the only way in (no Intent to NewTalksActivity
+    // exists anywhere else — the grid's dots are per-sayadaw,
+    // the Talks chooser is per-sayadaw). Same 700ms guard as
+    // the card taps (openRecentTalk1930, via RailSeeAll.allowTap
+    // on the shared lastRailTapMs clock) and the same morph + tap
+    // + plain Fx.go open. No extras: no jumpPath, no action — the
+    // screen reads its own store.
+    private void openNewTalks2036(android.view.View v) {
+        long now = android.os.SystemClock.uptimeMillis();
+        if (!RailSeeAll.allowTap(lastRailTapMs, now)) return;
+        lastRailTapMs = now;
+        Fx.morph(v);
+        Fx.tap(MainActivity.this);
+        Fx.go(MainActivity.this, new Intent(MainActivity.this, NewTalksActivity.class));
     }
 
     // v15.36 (slice 1851): sounding shelf chip ring breath — the
