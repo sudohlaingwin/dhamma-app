@@ -38,6 +38,12 @@ public class FavouritesActivity extends Activity {
     private TextView emptyText;
     private java.util.List<FavTalkRail.Card> items =
             new java.util.ArrayList<FavTalkRail.Card>();
+    // v15.65 (slice 2048): the search keeps the unfiltered pick
+    // beside the shown list — a keystroke re-filters in memory
+    // (the Downloaded applyDlFilter shape), never re-reading the
+    // cache files per keystroke.
+    private java.util.List<FavTalkRail.Card> favAllItems =
+            new java.util.ArrayList<FavTalkRail.Card>();
     private BaseAdapter adapter;
     private boolean night;
     private java.util.Map<String, String[]> catCache;
@@ -94,6 +100,17 @@ public class FavouritesActivity extends Activity {
     private long lastFavPlayAllMs = 0;
     private android.widget.Button btnFavPlayAll = null;
     private Boolean lastFavPlayAllVisible = null;
+    // v15.65 (slice 2048): search on this screen — the field, the
+    // clear ✕, the live query and the keystroke flag (the
+    // Downloaded dlSearchField / dlClearBtn / dlQuery /
+    // dlSearchKeystroke shape, v1.51 + v15.33). The query is the
+    // trimmed field text; the flag is true only while the watcher
+    // drives a pass, so the ✕ melts on keystrokes and lands
+    // instantly on silent passes (rotation / restore / onResume).
+    private android.widget.EditText favSearchField = null;
+    private android.view.View favClearBtn = null;
+    private String favQuery = "";
+    private boolean favSearchKeystroke = false;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -130,6 +147,7 @@ public class FavouritesActivity extends Activity {
                 }
             });
         }
+        wireFavSearch(); // v15.65 (slice 2048): search on this screen, before the first refresh
         refresh();
         // v15.64 (slice 2044): wire the Play-all button the same way
         // as the chooser's Play All (v13.76) — one tap plays the whole
@@ -169,14 +187,127 @@ public class FavouritesActivity extends Activity {
 
     private void refresh() {
         java.util.Set<String> names = catalogNames();
-        items = FavAll.pickAll(readFavTalks(), Prefs.statsRecent(this), names, readTalkPos());
+        // v15.65 (slice 2048): the search keeps its own copy of the
+        // unfiltered pick — a keystroke re-filters in memory (the
+        // Downloaded applyDlFilter shape), never re-reading the
+        // cache files per keystroke.
+        favAllItems = FavAll.pickAll(readFavTalks(), Prefs.statsRecent(this), names, readTalkPos());
         refreshFavouritesPlayingMarks(); // v15.64 (slice 2042): mark right on first paint, not one tick late
-        syncFavPlayAllBtn(true); // v15.64 (slice 2044): Play-all shows on first paint too, no fade
+        applyFavSearch();
+    }
+
+    // v15.65 (slice 2048): the search pass — the filtered list,
+    // the adapter, the clear ✕ and the empty line, from the
+    // unfiltered pick. The watcher calls this per keystroke;
+    // refresh() calls it after a fresh pick; onResume's refresh()
+    // re-applies the live query after a Room return. A
+    // filtered-empty list says no_search_match (v8.94) — there ARE
+    // starred talks, just none matching — while a blank query with
+    // an empty list still says no_fav_talk. The playing-row mark
+    // needs nothing here: itemRow re-reads the sounding
+    // identities per bind, so a filtered-out sounding talk simply
+    // has no row to mark and a re-shown one marks at once.
+    // Play-all follows the filtered list (the 2047 rule): the
+    // shown run is the run — a search-narrowed list plays the
+    // narrowed run, clearing the search restores the full run.
+    private void applyFavSearch() {
+        items = FavSearch.filter(favAllItems, favQuery);
         if (adapter != null) adapter.notifyDataSetChanged();
+        refreshFavClear(favSearchKeystroke);
         if (emptyText == null) return;
         boolean empty = items.isEmpty();
         emptyText.setVisibility(empty ? View.VISIBLE : View.GONE);
-        if (empty) emptyText.setText(Lang.t(this, "no_fav_talk"));
+        if (empty) emptyText.setText(Lang.t(this,
+                favQuery.length() > 0 ? "no_search_match" : "no_fav_talk"));
+        syncFavPlayAllBtn(true); // v15.65 (slice 2048): Play-all follows the FILTERED list — the shown run is the run. First paint here (refresh() calls applyFavSearch), and every keystroke re-syncs it with the shown run; instant, never faded, the clear-X silent-pass rule.
+    }
+
+    // v15.65 (slice 2048): search on this screen — the Downloaded
+    // search shape (v1.51 field + v4.20 Search-key dismiss + v15.33
+    // clear ✕): the hint is the Talks chooser's own
+    // talks_search_hint (v9.88), the filter is the ONE rule
+    // (Fx.titleMatches through FavSearch, title or sayadaw), and a
+    // keystroke re-filters the in-memory pick without re-reading
+    // the cache files. Rotation restore rides the watcher (the
+    // v1.51 rule): the system's restored text fires afterTextChanged
+    // after onStart, so the filter re-runs with the restored query
+    // before onResume's refresh. The clear ✕ clears through
+    // setText("") so the watcher re-runs the filter exactly like a
+    // keystroke (the Main v15.33 shape, slice 1836); it is GONE
+    // with an empty query, so a tap can only land on a real query.
+    private void wireFavSearch() {
+        favSearchField = findViewById(R.id.favSearch);
+        favClearBtn = findViewById(R.id.btnClearFavSearch);
+        if (favSearchField != null)
+            favSearchField.setHint(Lang.t(this, "talks_search_hint"));
+        if (favSearchField != null)
+            favSearchField.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        if (favSearchField != null) favSearchField.setSingleLine(true);
+        if (favSearchField != null) favSearchField.setOnEditorActionListener(new android.widget.TextView.OnEditorActionListener() {
+            @Override public boolean onEditorAction(android.widget.TextView v, int actionId, android.view.KeyEvent event) {
+                if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+                        || actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                    android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                    return true;
+                }
+                return false;
+            }
+        });
+        if (favClearBtn != null) favClearBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.morph(v);
+                if (favSearchField != null) favSearchField.setText("");
+            }
+        });
+        if (favSearchField != null) favSearchField.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(android.text.Editable s) {
+                favQuery = s.toString().trim();
+                favSearchKeystroke = true;
+                applyFavSearch();
+                favSearchKeystroke = false;
+            }
+        });
+    }
+
+    // v15.65 (slice 2048): the search clear ✕ melts with the query
+    // — the Downloaded refreshDlClear shape verbatim (v15.33, slice
+    // 1837): fades in 250ms (the app's settled Fx.fadeIn) when a
+    // keystroke-driven pass leaves a non-empty query, and fades out
+    // 200ms (the v14.33 sleep-line rhythm) when the query empties;
+    // silent passes (rotation / restore / onResume) land instantly,
+    // the v1.53 rule. Shown for a non-empty query only — the ✕ is a
+    // clear control, not a no-match marker, so it never waits on
+    // the entries or the results. A mid-fadeOut re-show flows back
+    // on from its current alpha (Fx.fadeIn is restart-safe, v3.52,
+    // and its gen bump stands the fade-out's end action down, so it
+    // can never strand the view GONE), and a silent pass on a
+    // mid-fadeOut view parks it at full alpha instead.
+    private void refreshFavClear(boolean animate) {
+        if (favClearBtn == null) return;
+        if (favQuery != null && favQuery.length() > 0) {
+            if (favClearBtn.getVisibility() != android.view.View.VISIBLE) {
+                favClearBtn.setVisibility(android.view.View.VISIBLE);
+                if (animate) Fx.fadeIn(favClearBtn, 250);
+                else favClearBtn.setAlpha(1f);
+            } else if (animate && favClearBtn.getAlpha() < 0.999f) {
+                Fx.fadeIn(favClearBtn, 250);
+            } else if (!animate) {
+                favClearBtn.animate().cancel();
+                favClearBtn.setAlpha(1f);
+            }
+        } else {
+            if (favClearBtn.getVisibility() == android.view.View.VISIBLE) {
+                if (animate) Fx.fadeOut(favClearBtn, 200);
+                else {
+                    favClearBtn.animate().cancel();
+                    favClearBtn.setVisibility(android.view.View.GONE);
+                    favClearBtn.setAlpha(1f);
+                }
+            }
+        }
     }
 
     private int goldColor() { return 0xFFC9A227; } // v15.64 (slice 2042): History's gold, the playing-row mark

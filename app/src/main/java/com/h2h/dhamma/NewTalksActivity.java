@@ -97,6 +97,22 @@ public class NewTalksActivity extends Activity {
     private android.view.View newClearBtn = null;
     private String newQuery = "";
     private boolean newSearchKeystroke = false;
+    // v15.65 (slice 2047): "Play all new" on this screen (the
+    // chooser's v13.76 Play All + the library's v15.50
+    // play-listened + Favourites' v15.64 play-all, the fourth list
+    // that deserves the verb) — the new talks used to play one row
+    // tap at a time; one tap here queues the whole shown run
+    // across sayadaws (NewPlayAll v2 lines) and opens the Room on
+    // the first new talk at 0:00. lastNewPlayAllMs is the handler's
+    // own 700ms clock (the chooser's v12.28 rule); btnNewPlayAll
+    // is the header button (GONE until a list lands, the chooser's
+    // refreshTalkPlayAllRow shape); lastNewPlayAllVisible is the
+    // change-only snapshot — the sync lives in applyNewSearch
+    // (the filtered list IS the run) and in the 1s strip-tick
+    // head, so steady ticks never touch the button.
+    private long lastNewPlayAllMs = 0;
+    private android.widget.Button btnNewPlayAll = null;
+    private Boolean lastNewPlayAllVisible = null;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -135,6 +151,20 @@ public class NewTalksActivity extends Activity {
         }
         wireNewSearch(); // v15.64 (slice 2045): search on this screen, before the first refresh
         refresh();
+        // v15.65 (slice 2047): wire the Play-all button the same way
+        // as the chooser's Play All (v13.76) — one tap plays the whole
+        // shown new-talk run in order; the label is the chooser's own
+        // pl_play_all key, so no new string. The button stays GONE
+        // until applyNewSearch() shows it (syncNewPlayAllBtn below).
+        btnNewPlayAll = findViewById(R.id.btnNewPlayAll);
+        if (btnNewPlayAll != null) btnNewPlayAll.setText(Lang.t(this, "pl_play_all"));
+        if (btnNewPlayAll != null) btnNewPlayAll.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.tap(NewTalksActivity.this);
+                playAllNew(v);
+            }
+        });
+        if (btnNewPlayAll != null) Fx.press(btnNewPlayAll);
         wireNewTalksStrip(); // v15.63 (slice 2039): real mini-player below the list
     }
 
@@ -191,6 +221,7 @@ public class NewTalksActivity extends Activity {
         emptyText.setVisibility(empty ? View.VISIBLE : View.GONE);
         if (empty) emptyText.setText(Lang.t(this,
                 newQuery.length() > 0 ? "no_search_match" : "no_new_talk"));
+        syncNewPlayAllBtn(true); // v15.65 (slice 2047): Play-all follows the FILTERED list — the shown run is the run. First paint here (refresh() calls applyNewSearch), and every keystroke re-syncs it with the shown run; instant, never faded, the clear-X silent-pass rule.
     }
 
     // v15.64 (slice 2045): search on this screen — the Downloaded
@@ -352,6 +383,136 @@ public class NewTalksActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
         return row;
+    }
+
+    // v15.65 (slice 2047): Play-all visibility — the chooser's
+    // refreshTalkPlayAllRow shape (v13.76): GONE until a list lands,
+    // fading in/out on change, instant on first paint and on
+    // keystroke passes. The gate is NewPlayAll.hasPlayable: at
+    // least one shown talk with a usable URL that is not the
+    // sounding talk (the screen's three sounding identities, the
+    // 2043 mark rule). lastNewPlayAllVisible is the change-only
+    // snapshot — steady 1s ticks never touch the button.
+    private void syncNewPlayAllBtn(boolean skipFade) {
+        if (btnNewPlayAll == null) return;
+        boolean show = NewPlayAll.hasPlayable(items, newPlayingUrl, newPlayingLibUrl, newPlayingLibPath);
+        if (lastNewPlayAllVisible != null && lastNewPlayAllVisible.booleanValue() == show) return;
+        lastNewPlayAllVisible = Boolean.valueOf(show);
+        if (skipFade) {
+            btnNewPlayAll.setVisibility(show ? android.view.View.VISIBLE : android.view.View.GONE);
+            btnNewPlayAll.setAlpha(1f);
+        } else if (show) {
+            if (btnNewPlayAll.getVisibility() != android.view.View.VISIBLE) {
+                btnNewPlayAll.setVisibility(android.view.View.VISIBLE);
+                Fx.fadeIn(btnNewPlayAll, 250);
+            } else if (btnNewPlayAll.getAlpha() < 0.999f) {
+                Fx.fadeIn(btnNewPlayAll, 250);
+            }
+        } else if (btnNewPlayAll.getVisibility() == android.view.View.VISIBLE) {
+            Fx.fadeOut(btnNewPlayAll, 200);
+        }
+    }
+
+    // v15.65 (slice 2047): "Play all new" — the New talks mirror of
+    // the chooser's playAllShown (v13.76), History's histPlayFromHere
+    // (v15.62, slice 2030) and Favourites' playAllFav (v15.64, slice
+    // 2044). The new talks used to play one row tap at a time; one
+    // tap here queues the whole SHOWN run in screen order, across
+    // sayadaws (every line carries its own sayadaw, the
+    // HistPlayFromHere v2 shape), and opens the Room on the first
+    // shown talk at 0:00 (playNew's own route — the 1921 gate only
+    // ever picks talks nobody started, so there is no saved spot).
+    // Same guards as the chooser: empty list refuses with the same
+    // words, the 700ms debounce has its own clock (an invalid tap
+    // never consumes the window, v12.28), the sounding talk is never
+    // re-queued (the stay-put branch: the rest queue behind it, no
+    // restart), already-queued talks stay where they are, and the
+    // count toast counts queued lines only. The anchor sayadaw is
+    // healed exactly like playNew (catalog + the sayadawForTalk
+    // heal) — the queue key and the Room name must be the healed
+    // name, never a stale banked one. No catalog, no run: the queue
+    // is untouched. The first card is always a stream URL by
+    // NewAll's own construction (cached [title, url] pairs are
+    // site URLs, matched by sameTalk — NewTalkRail carries no path
+    // handling), so no library leg is needed here. playNew's own
+    // 700ms row-tap clock stands: a row tap under 700ms before
+    // this tap swallows the Room open while the queue still writes
+    // (the same class as playAllFav/playFav, accepted in 2044).
+    private void playAllNew(android.view.View v) {
+        if (items == null || items.isEmpty()) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        long now47 = android.os.SystemClock.uptimeMillis();
+        if (now47 - lastNewPlayAllMs < 700) return;
+        lastNewPlayAllMs = now47;
+        refreshNewTalksPlayingMarks(); // tap-time sounding identities
+        final NewTalkRail.Card first47 = items.get(0);
+        if (first47 == null || first47.e == null || first47.e.url == null || first47.e.url.length() == 0) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String sd47 = first47.e.sayadaw;
+        String[] cat47 = catalogFor(sd47);
+        if (cat47 == null || cat47[1] == null || cat47[1].length() == 0) {
+            String owner47 = Prefs.sayadawForTalk(this, "lib", first47.e.url, "");
+            if (owner47 != null && owner47.length() > 0 && !owner47.equals(sd47)) {
+                sd47 = owner47;
+                cat47 = catalogFor(sd47);
+            }
+        }
+        if (cat47 == null || cat47[1] == null || cat47[1].length() == 0) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "pl_no_play"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        boolean firstSounds47 = (newPlayingUrl.length() > 0 && SiteHttp.sameTalk(first47.e.url, newPlayingUrl))
+                || (newPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(first47.e.url, newPlayingLibUrl))
+                || (newPlayingLibPath.length() > 0 && first47.e.url.equals(newPlayingLibPath));
+        // The anchor sayadaw's current queue, as identities — the
+        // pick skips talks already queued (they stay where they are).
+        // Saved lines are carried verbatim (histQueueAdd's discipline),
+        // so a foreign line the Room drawer moved mid-queue survives
+        // the write.
+        java.util.Set<String> queuedIds47 = new java.util.HashSet<String>();
+        java.util.ArrayList<String> saved47 = new java.util.ArrayList<String>();
+        try {
+            String savedRaw47 = Prefs.savedQueue(this, sd47);
+            if (savedRaw47 != null && savedRaw47.length() > 0) {
+                for (String ln47 : savedRaw47.split("\n")) {
+                    if (ln47.length() == 0) continue;
+                    saved47.add(ln47);
+                    QueueEntry qe47 = QueueEntry.parse(ln47);
+                    if (qe47 != null && qe47.url.length() > 0)
+                        queuedIds47.add(SiteHttp.identityUrl(qe47.url));
+                }
+            }
+        } catch (Exception ignored) {}
+        java.util.List<String> run47 = NewPlayAll.lines(items, queuedIds47, newPlayingUrl, newPlayingLibUrl, newPlayingLibPath);
+        int added47 = 0;
+        for (String ln47 : run47) {
+            QueueEntry qe47 = QueueEntry.parse(ln47);
+            if (qe47 == null || qe47.url.length() == 0) continue;
+            boolean dup47 = false;
+            for (String ex47 : saved47) {
+                QueueEntry qx47 = QueueEntry.parse(ex47);
+                if (qx47 != null && SiteHttp.sameTalk(qx47.url, qe47.url)) { dup47 = true; break; }
+            }
+            if (dup47) continue;
+            saved47.add(ln47);
+            added47++;
+        }
+        Prefs.saveQueue(this, sd47, saved47);
+        android.widget.Toast.makeText(NewTalksActivity.this, added47 > 0
+                ? Lang.t(NewTalksActivity.this, "queue_plain_prefix") + added47 + Lang.t(NewTalksActivity.this, "queue_added_suffix")
+                : Lang.t(NewTalksActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
+        Fx.morph(v);
+        if (!firstSounds47) playNew(first47, v);
     }
 
     private void playNew(final NewTalkRail.Card c, android.view.View v) {
@@ -546,6 +707,7 @@ public class NewTalksActivity extends Activity {
             newRowEnded = AudioService.liveEnded;
             adapter.notifyDataSetChanged();
         }
+        syncNewPlayAllBtn(false); // v15.65 (slice 2047): the sounding talk moved under the list — re-show or hide Play-all with the mark, change-only
         android.view.View strip = findViewById(R.id.nowStrip);
         if (strip == null) return;
         int navText = night ? android.graphics.Color.WHITE

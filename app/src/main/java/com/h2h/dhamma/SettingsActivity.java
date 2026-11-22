@@ -794,6 +794,7 @@ public class SettingsActivity extends Activity {
                                         || Prefs.keepScreenOn(SettingsActivity.this)
                                         || !Prefs.autoTheme(SettingsActivity.this)
                                         || Prefs.dlSortMode(SettingsActivity.this) != 0
+                                        || Prefs.bmSortMode(SettingsActivity.this) != 0
                                         || Prefs.sleepMinutes(SettingsActivity.this) != 0
                                         || !Prefs.fxEnabled(SettingsActivity.this)
                                         || !Prefs.dataSaver(SettingsActivity.this)
@@ -821,6 +822,10 @@ public class SettingsActivity extends Activity {
                                 // downloaded-library sort (v1.47) and the
                                 // sleep default (v1.48) were left behind.
                                 Prefs.setDlSortMode(SettingsActivity.this, 0);
+                                // v15.65 (slice 2051): same left-behind class — the
+                                // Bookmarks sort (v15.65) must reset to most-recent
+                                // first too, or "reset all" lies about it.
+                                Prefs.setBmSortMode(SettingsActivity.this, 0);
                                 Prefs.setSleepMinutes(SettingsActivity.this, 0);
                                 // v1.53: and the FX toggle (v1.52) — reset
                                 // used to leave sounds/vibration off- or

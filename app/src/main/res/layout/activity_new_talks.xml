@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- v15.63 (slice 2036): "See all" on the Main "New talks" rail — the full list of every new talk; tap a row to land the Room at the start. Title + search row since v15.64 (slice 2045) + list + mini-player strip since v15.63 (slice 2039, the History v13.54 precedent); no stat cards, no clear-all — a bulk destructive verb, the 2016-rejected class). Rows are built in code (NewTalksActivity), like History / Bookmarks / Favourites. -->
+<!-- v15.63 (slice 2036): "See all" on the Main "New talks" rail — the full list of every new talk; tap a row to land the Room at the start. Title + search row since v15.64 (slice 2045) + Play-all button in the header since v15.65 (slice 2047, the chooser's v13.76 Play All — the whole shown run, in order, at 0:00) + list + mini-player strip since v15.63 (slice 2039, the History v13.54 precedent); no stat cards, no clear-all — a bulk destructive verb, the 2016-rejected class). Rows are built in code (NewTalksActivity), like History / Bookmarks / Favourites. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/newRoot"
     android:layout_width="match_parent"
@@ -20,6 +20,14 @@
             android:textColor="@color/maroon"
             android:textSize="20sp"
             android:textStyle="bold" />
+        <!-- v15.65 (slice 2047): Play all new — the chooser's v13.76 Play All on this screen's header: one tap queues the whole shown run in order and opens the Room on the first new talk at 0:00. GONE until applyNewSearch() shows it; the label comes from Lang pl_play_all in code, so no literal here. -->
+        <Button
+            android:id="@+id/btnNewPlayAll"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:textSize="14sp"
+            android:visibility="gone" />
     </LinearLayout>
     <!-- v15.64 (slice 2045): search on this screen — the Downloaded
          dlSearchRow shape (v1.51 + the v15.33 clear ✕): the

@@ -33,6 +33,12 @@ public class BookmarksActivity extends Activity {
     private TextView emptyText;
     private java.util.List<BmAll.Row> items =
             new java.util.ArrayList<BmAll.Row>();
+    // v15.65 (slice 2049): the search keeps the unfiltered pick
+    // beside the shown list — a keystroke re-filters in memory
+    // (the Downloaded applyDlFilter shape), never re-reading the
+    // cache files per keystroke.
+    private java.util.List<BmAll.Row> bmAllItems =
+            new java.util.ArrayList<BmAll.Row>();
     private BaseAdapter adapter;
     private boolean night;
     private java.util.Map<String, String[]> catCache;
@@ -74,6 +80,25 @@ public class BookmarksActivity extends Activity {
     private String bmRowPlayingLibUrl = null;
     private String bmRowPlayingLibPath = null;
     private boolean bmRowEnded = false;
+    // v15.65 (slice 2049): search on this screen — the field, the
+    // clear ✕, the live query and the keystroke flag (the
+    // Downloaded dlSearchField / dlClearBtn / dlQuery /
+    // dlSearchKeystroke shape, v1.51 + v15.33). The query is the
+    // trimmed field text; the flag is true only while the watcher
+    // drives a pass, so the ✕ melts on keystrokes and lands
+    // instantly on silent passes (rotation / restore / onResume).
+    private android.widget.EditText bmSearchField = null;
+    private android.view.View bmClearBtn = null;
+    private String bmQuery = "";
+    private boolean bmSearchKeystroke = false;
+    // v15.65 (slice 2051): sort on this screen — the button and the
+    // persisted mode (the Downloaded dlSortMode shape, v1.47/v4.24).
+    // The mode is read from Prefs in wireBmSort(); the button label
+    // names the CURRENT order (bmSortLabel), so the order reads in
+    // a still. Rotation recreates the activity and re-reads the
+    // persisted mode — no watcher or saved-state needed.
+    private android.widget.Button bmSortBtn = null;
+    private int bmSortMode = 0;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -110,6 +135,8 @@ public class BookmarksActivity extends Activity {
                 }
             });
         }
+        wireBmSearch(); // v15.65 (slice 2049): search on this screen, before the first refresh
+        wireBmSort(); // v15.65 (slice 2051): sort on this screen, before the first refresh
         refresh();
         wireBookmarksStrip(); // v15.63 (slice 2037): real mini-player below the list
     }
@@ -135,13 +162,173 @@ public class BookmarksActivity extends Activity {
 
     private void refresh() {
         java.util.Set<String> names = catalogNames();
-        items = BmAll.pickAll(readBookmarks(), Prefs.statsRecent(this), names);
+        // v15.65 (slice 2049): the search keeps its own copy of the
+        // unfiltered pick — a keystroke re-filters in memory (the
+        // Downloaded applyDlFilter shape), never re-reading the
+        // cache files per keystroke.
+        bmAllItems = BmAll.pickAll(readBookmarks(), Prefs.statsRecent(this), names);
         refreshBookmarksPlayingMarks(); // v15.64 (slice 2041): mark right on first paint, not one tick late
+        applyBmSearch();
+    }
+
+    // v15.65 (slice 2049): the search pass — the filtered list,
+    // the adapter, the clear ✕ and the empty line, from the
+    // unfiltered pick. The watcher calls this per keystroke;
+    // refresh() calls it after a fresh pick; onResume's refresh()
+    // re-applies the live query after a Room return. A
+    // filtered-empty list says no_search_match (v8.94) — there ARE
+    // saved marks, just none matching — while a blank query with
+    // an empty list still says bm_all_empty. The playing-row mark
+    // needs nothing here: itemRow re-reads the sounding
+    // identities per bind, so a filtered-out sounding talk simply
+    // has no row to mark and a re-shown one marks at once. No
+    // Play-all on this screen — the "Play all marks" design stays
+    // HELD (the 2047 scout: v2 queue lines carry no minute), so
+    // no sync call rides this pass.
+    private void applyBmSearch() {
+        // v15.65 (slice 2051): the sort rides the search pass — the
+        // shown list is the filtered list in the chosen order, so a
+        // keystroke re-sorts in memory and the sort tap re-runs this
+        // pass instead of re-reading the pick. The playing-row mark
+        // needs nothing here, like the search (2049): itemRow
+        // re-reads the sounding identities per bind.
+        items = BmSort.sort(BmSearch.filter(bmAllItems, bmQuery), bmSortMode);
         if (adapter != null) adapter.notifyDataSetChanged();
+        refreshBmClear(bmSearchKeystroke);
         if (emptyText == null) return;
         boolean empty = items.isEmpty();
         emptyText.setVisibility(empty ? View.VISIBLE : View.GONE);
-        if (empty) emptyText.setText(Lang.t(this, "bm_all_empty"));
+        if (empty) emptyText.setText(Lang.t(this,
+                bmQuery.length() > 0 ? "no_search_match" : "bm_all_empty"));
+    }
+
+    // v15.65 (slice 2049): search on this screen — the Downloaded
+    // search shape (v1.51 field + v4.20 Search-key dismiss + v15.33
+    // clear ✕): the hint is the Talks chooser's own
+    // talks_search_hint (v9.88), the filter is the ONE rule
+    // (Fx.titleMatches through BmSearch, title or sayadaw), and a
+    // keystroke re-filters the in-memory pick without re-reading
+    // the cache files. Rotation restore rides the watcher (the
+    // v1.51 rule): the system's restored text fires afterTextChanged
+    // after onStart, so the filter re-runs with the restored query
+    // before onResume's refresh. The clear ✕ clears through
+    // setText("") so the watcher re-runs the filter exactly like a
+    // keystroke (the Main v15.33 shape, slice 1836); it is GONE
+    // with an empty query, so a tap can only land on a real query.
+    private void wireBmSearch() {
+        bmSearchField = findViewById(R.id.bmSearch);
+        bmClearBtn = findViewById(R.id.btnClearBmSearch);
+        if (bmSearchField != null)
+            bmSearchField.setHint(Lang.t(this, "talks_search_hint"));
+        if (bmSearchField != null)
+            bmSearchField.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        if (bmSearchField != null) bmSearchField.setSingleLine(true);
+        if (bmSearchField != null) bmSearchField.setOnEditorActionListener(new android.widget.TextView.OnEditorActionListener() {
+            @Override public boolean onEditorAction(android.widget.TextView v, int actionId, android.view.KeyEvent event) {
+                if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+                        || actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                    android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                    return true;
+                }
+                return false;
+            }
+        });
+        if (bmClearBtn != null) bmClearBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.morph(v);
+                if (bmSearchField != null) bmSearchField.setText("");
+            }
+        });
+        if (bmSearchField != null) bmSearchField.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(android.text.Editable s) {
+                bmQuery = s.toString().trim();
+                bmSearchKeystroke = true;
+                applyBmSearch();
+                bmSearchKeystroke = false;
+            }
+        });
+    }
+
+    // v15.65 (slice 2049): the search clear ✕ melts with the query
+    // — the Downloaded refreshDlClear shape verbatim (v15.33, slice
+    // 1837): fades in 250ms (the app's settled Fx.fadeIn) when a
+    // keystroke-driven pass leaves a non-empty query, and fades out
+    // 200ms (the v14.33 sleep-line rhythm) when the query empties;
+    // silent passes (rotation / restore / onResume) land instantly,
+    // the v1.53 rule. Shown for a non-empty query only — the ✕ is a
+    // clear control, not a no-match marker, so it never waits on
+    // the entries or the results. A mid-fadeOut re-show flows back
+    // on from its current alpha (Fx.fadeIn is restart-safe, v3.52,
+    // and its gen bump stands the fade-out's end action down, so it
+    // can never strand the view GONE), and a silent pass on a
+    // mid-fadeOut view parks it at full alpha instead.
+    private void refreshBmClear(boolean animate) {
+        if (bmClearBtn == null) return;
+        if (bmQuery != null && bmQuery.length() > 0) {
+            if (bmClearBtn.getVisibility() != android.view.View.VISIBLE) {
+                bmClearBtn.setVisibility(android.view.View.VISIBLE);
+                if (animate) Fx.fadeIn(bmClearBtn, 250);
+                else bmClearBtn.setAlpha(1f);
+            } else if (animate && bmClearBtn.getAlpha() < 0.999f) {
+                Fx.fadeIn(bmClearBtn, 250);
+            } else if (!animate) {
+                bmClearBtn.animate().cancel();
+                bmClearBtn.setAlpha(1f);
+            }
+        } else {
+            if (bmClearBtn.getVisibility() == android.view.View.VISIBLE) {
+                if (animate) Fx.fadeOut(bmClearBtn, 200);
+                else {
+                    bmClearBtn.animate().cancel();
+                    bmClearBtn.setVisibility(android.view.View.GONE);
+                    bmClearBtn.setAlpha(1f);
+                }
+            }
+        }
+    }
+
+    // v15.65 (slice 2051): sort on this screen — the Downloaded
+    // sort-button shape (v1.47 label + v2.90 premium label dip +
+    // v4.22 keyboard hide): the button names the CURRENT order
+    // (bmSortLabel), a tap morphs the button, hides the search
+    // keyboard, advances the mode (recent -> oldest -> sayadaw),
+    // persists it, and dips the header row while the label swaps
+    // (Fx.themeDip on bmHeaderRow, the dlBtnRow shape — the dip
+    // runs on the row, never on the tapped button, so its alpha
+    // channel never cancels the morph's scale channel; themeDip
+    // null-guards, so a missing row still swaps the label). The
+    // sort re-runs applyBmSearch() at once (it only reads
+    // bmSortMode, like the Settings syncLiveService pattern), so
+    // the list re-orders in place with no re-read. The mode
+    // survives rotation through Prefs, like the Downloaded sort
+    // (v1.47).
+    private void wireBmSort() {
+        bmSortBtn = findViewById(R.id.btnBmSort);
+        bmSortMode = Prefs.bmSortMode(this);
+        if (bmSortBtn != null) bmSortBtn.setText(bmSortLabel());
+        if (bmSortBtn != null) bmSortBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.morph(v);
+                android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+                if (imm != null) imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                bmSortMode = (bmSortMode + 1) % 3;
+                Prefs.setBmSortMode(BookmarksActivity.this, bmSortMode);
+                Fx.themeDip(findViewById(R.id.bmHeaderRow), new Runnable() { @Override public void run() { if (bmSortBtn != null) bmSortBtn.setText(bmSortLabel()); } });
+                applyBmSearch();
+            }
+        });
+    }
+
+    // v15.65 (slice 2051): the sort button label names the CURRENT
+    // order — the Downloaded dlSortLabel shape (1 method, 3
+    // returns): most-recent first, oldest first, sayadaw A-Z.
+    private String bmSortLabel() {
+        if (bmSortMode == 1) return Lang.t(BookmarksActivity.this, "bm_sort_oldest");
+        if (bmSortMode == 2) return Lang.t(BookmarksActivity.this, "bm_sort_sayadaw");
+        return Lang.t(BookmarksActivity.this, "bm_sort_recent");
     }
 
     private int goldColor() { return 0xFFC9A227; } // v15.64 (slice 2041): History's gold, the playing-row mark

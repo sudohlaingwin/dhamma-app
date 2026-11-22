@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- v12.66: Listening history / stats (premium backlog #3) — total time, day streak and most-listened sayadaw as three gold stat cards on top, the recent talks beneath; tap a recent talk to play it. Rows are built in code (HistoryActivity), like the Playlist screen. -->
+<!-- v12.66: Listening history / stats (premium backlog #3) — total time, day streak and most-listened sayadaw as three gold stat cards on top, the recent talks beneath; tap a recent talk to play it. Search row under the recent label since v15.65 (slice 2050). Rows are built in code (HistoryActivity), like the Playlist screen. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/hsRoot"
     android:layout_width="match_parent"
@@ -125,6 +125,35 @@
         android:textColor="@color/maroon"
         android:textSize="16sp"
         android:textStyle="bold" />
+    <!-- v15.65 (slice 2050): search on this screen — the Downloaded
+         dlSearchRow shape (v1.51 + the v15.33 clear X): the recent
+         list can run to dozens, and no screen anywhere let the
+         listener find one recent talk by title or sayadaw without
+         scrolling. The hint is set in code (talks_search_hint,
+         v9.88) so no Burmese sits in the layout; the X clears
+         through setText("") so the watcher re-runs the filter. -->
+    <LinearLayout
+        android:id="@+id/hsSearchRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal">
+        <EditText
+            android:id="@+id/hsSearch"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:inputType="text"
+            android:textColor="@color/ink"
+            android:textColorHint="@color/muted" />
+        <Button
+            android:id="@+id/btnClearHsSearch"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="8dp"
+            android:text="✕"
+            android:visibility="gone" />
+    </LinearLayout>
     <!-- v14.06 (F5, sixth pass slice 5): the empty text used to
          sit AFTER the weight-1 list, so it rendered at the very
          bottom of the screen. The FrameLayout centers it in the

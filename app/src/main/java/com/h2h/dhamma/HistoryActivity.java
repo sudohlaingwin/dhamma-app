@@ -51,6 +51,12 @@ public class HistoryActivity extends Activity {
     private TextView emptyText;
     private java.util.List<Prefs.HistEntry> items =
             new java.util.ArrayList<Prefs.HistEntry>();
+    // v15.65 (slice 2050): the search keeps the unfiltered pick
+    // beside the shown list — a keystroke re-filters in memory
+    // (the Downloaded applyDlFilter shape), never re-reading the
+    // stats store per keystroke.
+    private java.util.List<Prefs.HistEntry> hsAllItems =
+            new java.util.ArrayList<Prefs.HistEntry>();
     private BaseAdapter adapter;
     private boolean night;
     private java.util.Map<String, String[]> catCache;
@@ -92,6 +98,17 @@ public class HistoryActivity extends Activity {
     // clock (the chooser's 700ms rule, v12.28: an invalid tap
     // never consumes the window).
     private long lastHistPlayFromHereMs = 0;
+    // v15.65 (slice 2050): search on this screen — the field, the
+    // clear X, the live query and the keystroke flag (the
+    // Downloaded dlSearchField / dlClearBtn / dlQuery /
+    // dlSearchKeystroke shape, v1.51 + v15.33). The query is the
+    // trimmed field text; the flag is true only while the watcher
+    // drives a pass, so the X melts on keystrokes and lands
+    // instantly on silent passes (rotation / restore / onResume).
+    private android.widget.EditText hsSearchField = null;
+    private android.view.View hsClearBtn = null;
+    private String hsQuery = "";
+    private boolean hsSearchKeystroke = false;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -156,6 +173,7 @@ public class HistoryActivity extends Activity {
                 }
             });
         }
+        wireHsSearch(); // v15.65 (slice 2050): search on this screen, before the first refresh
         refresh();
         wireHistoryStrip(); // v13.54: real mini-player below the list
     }
@@ -190,6 +208,94 @@ public class HistoryActivity extends Activity {
 
     private int titleColor() { return night ? 0xFFFFFFFF : 0xFF3B2314; }
     private int subColor() { return night ? 0xFFAAAAAA : 0xFF7A6A58; }
+    // v15.65 (slice 2050): search on this screen — the Downloaded
+    // search shape (v1.51 field + v4.20 Search-key dismiss + v15.33
+    // clear X): the hint is the Talks chooser's own
+    // talks_search_hint (v9.88), the filter is the ONE rule
+    // (Fx.titleMatches through HistSearch, title or sayadaw), and a
+    // keystroke re-filters the in-memory pick without re-reading
+    // the stats store. Rotation restore rides the watcher (the
+    // v1.51 rule): the system's restored text fires afterTextChanged
+    // after onStart, so the filter re-runs with the restored query
+    // before onResume's refresh. The clear X clears through
+    // setText("") so the watcher re-runs the filter exactly like a
+    // keystroke (the Main v15.33 shape, slice 1836); it is GONE
+    // with an empty query, so a tap can only land on a real query.
+    private void wireHsSearch() {
+        hsSearchField = findViewById(R.id.hsSearch);
+        hsClearBtn = findViewById(R.id.btnClearHsSearch);
+        if (hsSearchField != null)
+            hsSearchField.setHint(Lang.t(this, "talks_search_hint"));
+        if (hsSearchField != null)
+            hsSearchField.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        if (hsSearchField != null) hsSearchField.setSingleLine(true);
+        if (hsSearchField != null) hsSearchField.setOnEditorActionListener(new android.widget.TextView.OnEditorActionListener() {
+            @Override public boolean onEditorAction(android.widget.TextView v, int actionId, android.view.KeyEvent event) {
+                if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+                        || actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                    android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                    return true;
+                }
+                return false;
+            }
+        });
+        if (hsClearBtn != null) hsClearBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.morph(v);
+                if (hsSearchField != null) hsSearchField.setText("");
+            }
+        });
+        if (hsSearchField != null) hsSearchField.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(android.text.Editable s) {
+                hsQuery = s.toString().trim();
+                hsSearchKeystroke = true;
+                applyHsSearch();
+                hsSearchKeystroke = false;
+            }
+        });
+    }
+
+    // v15.65 (slice 2050): the search clear X melts with the query
+    // — the Downloaded refreshDlClear shape verbatim (v15.33, slice
+    // 1837): fades in 250ms (the app's settled Fx.fadeIn) when a
+    // keystroke-driven pass leaves a non-empty query, and fades out
+    // 200ms (the v14.33 sleep-line rhythm) when the query empties;
+    // silent passes (rotation / restore / onResume) land instantly,
+    // the v1.53 rule. Shown for a non-empty query only — the X is a
+    // clear control, not a no-match marker, so it never waits on
+    // the entries or the results. A mid-fadeOut re-show flows back
+    // on from its current alpha (Fx.fadeIn is restart-safe, v3.52,
+    // and its gen bump stands the fade-out's end action down, so it
+    // can never strand the view GONE), and a silent pass on a
+    // mid-fadeOut view parks it at full alpha instead.
+    private void refreshHsClear(boolean animate) {
+        if (hsClearBtn == null) return;
+        if (hsQuery != null && hsQuery.length() > 0) {
+            if (hsClearBtn.getVisibility() != android.view.View.VISIBLE) {
+                hsClearBtn.setVisibility(android.view.View.VISIBLE);
+                if (animate) Fx.fadeIn(hsClearBtn, 250);
+                else hsClearBtn.setAlpha(1f);
+            } else if (animate && hsClearBtn.getAlpha() < 0.999f) {
+                Fx.fadeIn(hsClearBtn, 250);
+            } else if (!animate) {
+                hsClearBtn.animate().cancel();
+                hsClearBtn.setAlpha(1f);
+            }
+        } else {
+            if (hsClearBtn.getVisibility() == android.view.View.VISIBLE) {
+                if (animate) Fx.fadeOut(hsClearBtn, 200);
+                else {
+                    hsClearBtn.animate().cancel();
+                    hsClearBtn.setVisibility(android.view.View.GONE);
+                    hsClearBtn.setAlpha(1f);
+                }
+            }
+        }
+    }
+
     private int goldColor() { return 0xFFC9A227; }
 
     // Numbers in Myanmar digits when the UI language is Burmese,
@@ -212,7 +318,11 @@ public class HistoryActivity extends Activity {
         long total = Prefs.statsTotal(this);
         int streak = Prefs.statsStreak(this);
         String[] top = Prefs.statsTopSayadaw(this);
-        items = Prefs.statsRecent(this);
+        // v15.65 (slice 2050): the search keeps its own copy of the
+        // unfiltered pick — a keystroke re-filters in memory (the
+        // Downloaded applyDlFilter shape), never re-reading the
+        // stats store per keystroke.
+        hsAllItems = Prefs.statsRecent(this);
         refreshHistFavSet(); // v13.77: rows bind their star mark from this snapshot
         if (totalValue != null) {
             meltStat40(totalValue, fmtDur(total));
@@ -232,11 +342,34 @@ public class HistoryActivity extends Activity {
         }
         hsStatsKnown40 = true;
         refreshHistoryPlayingMarks(); // v13.55: mark right on first paint, not one tick late
+        applyHsSearch();
+    }
+
+    // v15.65 (slice 2050): the search pass — the filtered list,
+    // the adapter, the clear X and the empty line, from the
+    // unfiltered pick. The watcher calls this per keystroke;
+    // refresh() calls it after a fresh pick; onResume's refresh()
+    // re-applies the live query after a Room return. A
+    // filtered-empty list says no_search_match (v8.94) — there ARE
+    // recent talks, just none matching — while a blank query with
+    // an empty list still says hs_empty. The playing-row mark
+    // needs nothing here: itemRow re-reads the sounding
+    // identities per bind, so a filtered-out sounding talk simply
+    // has no row to mark and a re-shown one marks at once.
+    // "Play from here" follows the filtered list (the 2047 rule):
+    // the shown run is the run — a search-narrowed list plays the
+    // narrowed run from the anchor, clearing the search restores
+    // the full run. The stat cards stay unfiltered — the search
+    // filters only the recent list beneath them.
+    private void applyHsSearch() {
+        items = HistSearch.filter(hsAllItems, hsQuery);
         if (adapter != null) adapter.notifyDataSetChanged();
+        refreshHsClear(hsSearchKeystroke);
         if (emptyText == null) return;
         boolean empty = items.isEmpty();
         emptyText.setVisibility(empty ? View.VISIBLE : View.GONE);
-        if (empty) emptyText.setText(Lang.t(this, "hs_empty"));
+        if (empty) emptyText.setText(Lang.t(this,
+                hsQuery.length() > 0 ? "no_search_match" : "hs_empty"));
     }
 
     private View itemRow(final int position) {
