@@ -926,6 +926,10 @@ public class MainActivity extends Activity {
                     @Override public void onReceive(android.content.Context c, android.content.Intent in) {
                         pruneMainQueuedAndRefreshCard1020(); // v10.20: Main prune leg
                         refreshDlRecentRail(); // v15.49 (slice 1960): a landing moves the rail at once
+                        refreshRecentRail(); // v15.61 (slice 2023): a landing moves this rail at once too — a download ordered from this rail's own menu (slice 1998) lands its ⬇ badge here without a return, so the badge is the download's feedback on the rail it was ordered from. The key carries the badge bit, so the refresh repaints exactly when a badge flips.
+                        refreshNewTalkRail(); // v15.61 (slice 2024): a landing moves this rail at once too — a download ordered from this rail's own menu (slice 1997) lands its ⬇ badge here without a return, so the badge is the download's feedback on the rail it was ordered from. The key carries the badge bit, so the refresh repaints exactly when a badge flips.
+                        refreshFavTalkRail(); // v15.61 (slice 2025): a landing moves this rail at once too — a download ordered from this rail's own menu (slice 2000) lands its ⬇ badge here without a return, so the badge is the download's feedback on the rail it was ordered from. The key carries the badge bit, so the refresh repaints exactly when a badge flips.
+                        refreshBmRail(); // v15.61 (slice 2026): a landing moves this rail at once too — a download ordered from this rail's own menu (slice 1999) lands its ⬇ badge here without a return, so the badge is the download's feedback on the rail it was ordered from. The key carries the badge bit, so the refresh repaints exactly when a badge flips.
                         // v12.35: a FAILED job used to die silently on
                         // this screen — the last receiver without the
                         // failed-download toast (Talks v12.29, Room +
@@ -5209,6 +5213,12 @@ public class MainActivity extends Activity {
         return RailHair.fraction(rp20, durI20 == null ? 0 : durI20.intValue());
     }
 
+    // v15.61 (slice 2023): the "Recently played" rail card's downloaded badge — the shared DlLanded definition (v13.69), the exact call the file-share offer on the same card makes (slice 2006, DlLanded.downloadedFileName with the null,null legs), so the badge and the offer can never disagree: a card shows ⬇ exactly when its menu offers the file share. No sounding gate needed — the caller picks through RecentRail.pick, which already excludes the sounding talk. The (null,null) legs are the menu's reading, not the Talks-row caches' full live-job exclusion: a mid-download partial file reads as landed, so a card can show ⬇ for a few seconds while its file is still arriving, exactly as the file-share verb already offers it. Cost is bounded: at most 5 cards, only on a rebuild (the key gate), one small dlMap JSON parse per card — the v5.69 distinction (a bounded 5-card rail, not an unbounded list).
+    private boolean recentDlBadge23(Prefs.HistEntry e) {
+        if (e == null || e.url == null) return false;
+        return DlLanded.downloadedFileName(MainActivity.this, e.url, null, null) != null;
+    }
+
     private void refreshRecentRail() {
         if (recentRailWrap == null || recentRail == null) return;
         boolean show = query != null && query.length() == 0 && !favOnly && !newOnly && all != null;
@@ -5227,7 +5237,8 @@ public class MainActivity extends Activity {
         StringBuilder kb = new StringBuilder();
         kb.append(cachedNight ? "N" : "D");
         // v15.60 (slice 2020): the key carries the painted fraction, not just the URL — a resume spot moves while a talk plays, and the rail repaints only when this key moves, so a spot-only change (same five talks, one heard further, back on Main) must move the key or the line would freeze at its first paint. The fraction is the card's own helper, so key and paint can never disagree; Float.toString is deterministic for the same value, so equal fractions never repaint.
-        for (Prefs.HistEntry e : picked) kb.append('|').append(SiteHttp.identityUrl(e.url)).append(':').append(recentHairFrac20(pos20, dur20, e));
+        // v15.61 (slice 2023): the key carries the downloaded badge bit beside the painted fraction — a download landing while Main sits open must move the key or the rail would freeze the card at its first paint (the 2020 lesson). The bit is the card's own helper, so key and paint can never disagree; a badge flip moves the key even when the fraction cannot.
+        for (Prefs.HistEntry e : picked) kb.append('|').append(SiteHttp.identityUrl(e.url)).append(':').append(recentHairFrac20(pos20, dur20, e)).append(':').append(recentDlBadge23(e) ? '1' : '0');
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (recentRailWrap.getVisibility() != android.view.View.GONE)
@@ -5283,7 +5294,8 @@ public class MainActivity extends Activity {
             name.setEllipsize(android.text.TextUtils.TruncateAt.END);
             col.addView(name);
             android.widget.TextView title = new android.widget.TextView(this);
-            title.setText(e.title);
+            // v15.61 (slice 2023): the downloaded ⬇ badge — the row convention (Room drawer rows, History rows): the U+2B07 glyph as a title prefix, "⬇ title", on a talk already on the phone. Same 12sp #7A6A58 title view, same single line with END ellipsis; the prefix only shortens the visible title by two cells. The gate is the helper below — the same shared DlLanded call the file-share offer on this card makes (slice 2006), so badge and offer can never disagree. No rail card anywhere showed download state before this slice.
+            title.setText(recentDlBadge23(e) ? "\u2B07 " + e.title : e.title);
             title.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
             title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
             title.setMaxLines(1);
@@ -5803,9 +5815,43 @@ public class MainActivity extends Activity {
     // spot (v1.56 re-entry), so the tap lands on the mark. Rides
     // the shelf funnel beside refreshRecentRail /
     // refreshDlRecentRail (a mark is added in the Room, never on
-    // Main, so the return-to-Main refresh is the update path; no
-    // download-receiver call — downloads never change marks);
+    // Main, so the return-to-Main refresh is the update path;
+    // downloads never change marks — but a landing now changes
+    // the card's ⬇ badge (slice 2026), so the download-complete
+    // receiver refreshes this rail too, the 1960/2023 precedent);
     // hides while searching/filtering and while no mark resolves.
+    // v15.61 (slice 2026): the "Bookmarks" rail card's downloaded badge — the shared DlLanded definition (v13.69), the exact call the file-share offer on the same card makes (slice 2008, DlLanded.downloadedFileName with the null,null legs), so the badge and the offer can never disagree: a card shows ⬇ exactly when its menu offers the file share. No sounding gate needed — the caller picks through BmRail.pick, which already excludes the sounding talk (the 1962 gate). The (null,null) legs are the menu's reading, not the Talks-row caches' full live-job exclusion: a mid-download partial file reads as landed, so a card can show ⬇ for a few seconds while its file is still arriving, exactly as the file-share verb already offers it. Cost is bounded: at most 5 cards, only on a rebuild (the key gate), one small dlMap JSON parse per card — the v5.69 distinction (a bounded 5-card rail, not an unbounded list).
+    // v15.61 (slice 2027): the "Bookmarks" rail card's listened-progress fraction — the Talks-row rule (v13.97, slice 1092) for a rail card, the Favourite-talks rail's helper (2022) verbatim over the shared RailHair.fraction. Two legs, stream then downloaded path: a spot written while streaming sits under the stream key, a spot written from the downloaded file sits under the path key — and a stream spot at/below 5s falls through to the path form (the DlLanded leg runs only on that leg, never per card unconditionally). The maps come from the caller (one parse per refresh, the v5.69 lesson — the pick shares nothing here, BmRail.pick takes no pos map, so the refresh parses it once for the key + paint). The fraction uses the talk's RESUME spot from the pos map, not the card's mark minute (c.posMs) — the mark is where the listener bookmarked, the resume spot is how far they got; a marked talk with no resume record paints no line. Never the sounding talk — the caller picks through BmRail.pick, which already excludes it (the 1962 gate), so no playing gate is needed here (unlike the Talks row, whose sounding row is painted by the same getView). The fraction itself is RailHair.fraction — the Talks-row rule verbatim.
+    private float bmHairFrac27(java.util.Map<String, Integer> pos27,
+            java.util.Map<String, Integer> dur27, Prefs.HistEntry e) {
+        if (e == null || e.url == null || pos27 == null || dur27 == null) return 0f;
+        String id27 = SiteHttp.identityUrl(e.url);
+        Integer rpI27 = id27 == null ? null : pos27.get(id27);
+        int rp27 = rpI27 == null ? 0 : rpI27.intValue();
+        String dlPath27 = null;
+        if (rp27 <= 5000) {
+            String fn27 = DlLanded.downloadedFileName(MainActivity.this, e.url, null, null);
+            if (fn27 != null) {
+                dlPath27 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + fn27).getAbsolutePath();
+                Integer rpP27 = pos27.get(dlPath27);
+                if (rpP27 != null) rp27 = rpP27.intValue();
+            }
+        }
+        Integer durI27 = null;
+        if (rp27 > 5000) {
+            durI27 = dur27.get(e.url);
+            if (durI27 == null && id27 != null) durI27 = dur27.get(id27);
+            if (durI27 == null && dlPath27 != null) durI27 = dur27.get(dlPath27);
+        }
+        return RailHair.fraction(rp27, durI27 == null ? 0 : durI27.intValue());
+    }
+
+    private boolean bmDlBadge26(Prefs.HistEntry e) {
+        if (e == null || e.url == null) return false;
+        return DlLanded.downloadedFileName(MainActivity.this, e.url, null, null) != null;
+    }
+
     private void refreshBmRail() {
         if (bmRailWrap == null || bmRail == null) return;
         boolean show = query != null && query.length() == 0 && !favOnly && !newOnly && all != null;
@@ -5820,7 +5866,12 @@ public class MainActivity extends Activity {
         }
         StringBuilder kb = new StringBuilder();
         kb.append(cachedNight ? "N" : "D");
-        for (BmRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(c.posMs);
+        // v15.61 (slice 2027): the hairline's inputs, parsed once for the whole refresh — the v5.69 lesson (never talkPosGet per card, it re-splits the whole map on every lookup; the same reason Prefs.talkDurMap exists as one-parse-for-a-list). readTalkPos1964 is identity-keyed (first line per identity wins, the talkPosGet first-match rule); a downloaded path keeps its own key (identityUrl(path) == path), so the path leg in bmHairFrac27 below reads from the same map. Both parses fail closed to empty maps, so a missing store paints no line, never a crash.
+        java.util.Map<String, Integer> pos27 = readTalkPos1964();
+        java.util.Map<String, Integer> dur27 = Prefs.talkDurMap(this);
+        // v15.61 (slice 2026): the key carries the downloaded badge bit beside the mark minute — a download landing while Main sits open must move the key or the rail would freeze the card at its first paint (the 2020 lesson). The bit is the card's own helper, so key and paint can never disagree; a badge flip moves the key even when the identity and the mark minute cannot. The key already carried identity + mark minute; the bit rides after the minute.
+        // v15.61 (slice 2027): the key carries the painted fraction between the mark minute and the badge bit — the card's title renders the mark minute ("12:34 · title"), so the key must keep c.posMs or a mark-only change would not repaint; and a resume spot moves while a talk plays, so the fraction must ride too or a spot-only change would freeze the line at its first paint (the 2020 lesson). The fraction is the card's own helper, so key and paint can never disagree; Float.toString is deterministic for the same value, so equal fractions never repaint.
+        for (BmRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(c.posMs).append(':').append(bmHairFrac27(pos27, dur27, c.e)).append(':').append(bmDlBadge26(c.e) ? '1' : '0');
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (bmRailWrap.getVisibility() != android.view.View.GONE)
@@ -5837,9 +5888,15 @@ public class MainActivity extends Activity {
             final Sayadaw s = sayadawByName1930(c.e.sayadaw);
             if (s == null) continue;
             android.widget.LinearLayout card = new android.widget.LinearLayout(this);
-            card.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-            card.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            // v15.61 (slice 2027): the card is now a vertical stack — the photo+text row above, the listened-progress hairline below it (the Talks-row line, v13.97, on the fourth Main rail). The background, padding and press stay on the card, so the tap target and the glass look are unchanged; the row below carries the old horizontal shape (CENTER_VERTICAL, photo + text column) untouched. The Downloaded rail is all-downloaded by definition and New-talks stays plain per the 2017 adjudication — with this slice the hairline family is complete on every Main rail where a line can paint.
+            card.setOrientation(android.widget.LinearLayout.VERTICAL);
             card.setBackgroundResource(R.drawable.nav_glass);
+            android.widget.LinearLayout row27 = new android.widget.LinearLayout(this);
+            row27.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+            row27.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            row27.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT));
             int pad = (int) (10 * d);
             card.setPadding(pad, (int) (8 * d), pad, (int) (8 * d));
             android.widget.LinearLayout.LayoutParams cp =
@@ -5855,7 +5912,7 @@ public class MainActivity extends Activity {
             photo.setLayoutParams(pp);
             photo.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
             ImageLoader.load(this, s.photo, s.name, photo);
-            card.addView(photo);
+            row27.addView(photo);
             android.widget.LinearLayout col = new android.widget.LinearLayout(this);
             col.setOrientation(android.widget.LinearLayout.VERTICAL);
             col.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0,
@@ -5870,13 +5927,37 @@ public class MainActivity extends Activity {
             name.setEllipsize(android.text.TextUtils.TruncateAt.END);
             col.addView(name);
             android.widget.TextView title = new android.widget.TextView(this);
-            title.setText(BmRail.fmtTime(c.posMs) + " · " + c.e.title);
+            // v15.61 (slice 2026): the downloaded ⬇ badge — the row convention (Room drawer rows, History rows, Recently-played rail cards since slice 2023, New-talks rail cards since slice 2024, Favourite-talks rail cards since slice 2025): the U+2B07 glyph as a title prefix on a talk already on the phone. This rail's title always renders the mark minute first ("12:34 · title" — BmRail.pick guarantees posMs > 0, so there is no bare-title variant), so the badge prefixes the WHOLE rendered title — "⬇ 12:34 · title" — the download mark outermost, the mark-minute rendering untouched byte for byte. Same 12sp #7A6A58 title view, same single line with END ellipsis; the prefix only shortens the visible title by two cells. The gate is the helper below — the same shared DlLanded call the file-share offer on this card makes (slice 2008), so badge and offer can never disagree. No rail card on this shelf showed download state before this slice.
+            title.setText((bmDlBadge26(c.e) ? "\u2B07 " : "") + BmRail.fmtTime(c.posMs) + " · " + c.e.title);
             title.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
             title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
             title.setMaxLines(1);
             title.setEllipsize(android.text.TextUtils.TruncateAt.END);
             col.addView(title);
-            card.addView(col);
+            row27.addView(col);
+            card.addView(row27);
+            // v15.61 (slice 2027): the hairline — the row_talk.xml line in code: 3dp tall, 4dp below the row, faint-gold track (#33C9A227) with a solid-gold fill (#C9A227, @color/gold) split by weight, weightSum 1. GONE unless a fraction was set; Fx.crossfadeHairline (v15.25) owns the show/hide — on these freshly built cards it seeds instantly (no recorded state yet), so no melt ever plays here, and a rebuild repaints from scratch like the rest of the card. The fraction is bmHairFrac27 above (the key block above already called it for the change gate, so key and paint agree). No download-progress override here — the 1928 override stays a Talks-row behaviour; the rail repaints only on a real change, so a download's 1s ticks never reach it.
+            float hairFrac27 = bmHairFrac27(pos27, dur27, c.e);
+            android.widget.LinearLayout hairTrack27 = new android.widget.LinearLayout(this);
+            hairTrack27.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+            hairTrack27.setBackgroundColor(android.graphics.Color.parseColor("#33C9A227"));
+            hairTrack27.setWeightSum(1f);
+            android.widget.LinearLayout.LayoutParams htp27 =
+                    new android.widget.LinearLayout.LayoutParams(
+                            android.widget.LinearLayout.LayoutParams.MATCH_PARENT, (int) (3 * d));
+            htp27.topMargin = (int) (4 * d);
+            hairTrack27.setLayoutParams(htp27);
+            android.view.View hairFill27 = new android.view.View(this);
+            hairFill27.setBackgroundColor(android.graphics.Color.parseColor("#C9A227"));
+            hairFill27.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0,
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT, hairFrac27));
+            android.view.View hairSpace27 = new android.view.View(this);
+            hairSpace27.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0,
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1f - hairFrac27));
+            hairTrack27.addView(hairFill27);
+            hairTrack27.addView(hairSpace27);
+            Fx.crossfadeHairline(hairTrack27, hairFrac27 > 0f);
+            card.addView(hairTrack27);
             Fx.press(card);
             card.setOnClickListener(new android.view.View.OnClickListener() {
                 @Override public void onClick(android.view.View v) {
@@ -6157,8 +6238,10 @@ public class MainActivity extends Activity {
     // beside refreshRecentRail / refreshDlRecentRail /
     // refreshBmRail (a star is added in the Talks row menus, the
     // Downloaded row menus and the Room drawer row menus, never on
-    // Main, so the return-to-Main refresh is the update path; no
-    // download-receiver call — downloads never change stars);
+    // Main, so the return-to-Main refresh is the update path;
+    // downloads never change stars — but a landing now changes
+    // the card's ⬇ badge (slice 2025), so the download-complete
+    // receiver refreshes this rail too, the 1960/2023 precedent);
     // hides while searching/filtering and while no star resolves.
     // v15.60 (slice 2022): the "Favourite talks" rail card's listened-progress fraction — the Talks-row rule (v13.97, slice 1092) for a rail card, the Recent rail's helper (2020) verbatim over the shared RailHair.fraction. Two legs, stream then downloaded path: a spot written while streaming sits under the stream key, a spot written from the downloaded file sits under the path key — and a stream spot at/below 5s falls through to the path form (the DlLanded leg runs only on that leg, never per card unconditionally). The maps come from the caller (one parse per refresh, the v5.69 lesson — the pick shares the same pos map). Never the sounding talk — the caller picks through FavTalkRail.pick, which already excludes it (:50), so no playing gate is needed here (unlike the Talks row, whose sounding row is painted by the same getView). The fraction itself is RailHair.fraction — the Talks-row rule verbatim.
     private float favTalkHairFrac22(java.util.Map<String, Integer> pos22,
@@ -6186,6 +6269,12 @@ public class MainActivity extends Activity {
         return RailHair.fraction(rp22, durI22 == null ? 0 : durI22.intValue());
     }
 
+    // v15.61 (slice 2025): the "Favourite talks" rail card's downloaded badge — the shared DlLanded definition (v13.69), the exact call the file-share offer on the same card makes (slice 2009, DlLanded.downloadedFileName with the null,null legs), so the badge and the offer can never disagree: a card shows ⬇ exactly when its menu offers the file share. No sounding gate needed — the caller picks through FavTalkRail.pick, which already excludes the sounding talk (the 1964 gate). The (null,null) legs are the menu's reading, not the Talks-row caches' full live-job exclusion: a mid-download partial file reads as landed, so a card can show ⬇ for a few seconds while its file is still arriving, exactly as the file-share verb already offers it. Cost is bounded: at most 5 cards, only on a rebuild (the key gate), one small dlMap JSON parse per card — the v5.69 distinction (a bounded 5-card rail, not an unbounded list).
+    private boolean favDlBadge25(Prefs.HistEntry e) {
+        if (e == null || e.url == null) return false;
+        return DlLanded.downloadedFileName(MainActivity.this, e.url, null, null) != null;
+    }
+
     private void refreshFavTalkRail() {
         if (favTalkRailWrap == null || favTalkRail == null) return;
         boolean show = query != null && query.length() == 0 && !favOnly && !newOnly && all != null;
@@ -6204,7 +6293,8 @@ public class MainActivity extends Activity {
         StringBuilder kb = new StringBuilder();
         kb.append(cachedNight ? "N" : "D");
         // v15.60 (slice 2022): the key carries the painted fraction as well as the saved spot — the card's title renders the saved spot ("↺ 12:34 · title"), so the key must keep c.posMs or a spot-only title change would not repaint; and a resume spot moves while a talk plays, so the fraction must ride too or a spot-only change would freeze the line at its first paint (the 2020 lesson). The fraction is the card's own helper, so key and paint can never disagree; Float.toString is deterministic for the same value, so equal fractions never repaint.
-        for (FavTalkRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(c.posMs).append(':').append(favTalkHairFrac22(pos22, dur22, c.e));
+        // v15.61 (slice 2025): the key carries the downloaded badge bit beside the painted fraction — a download landing while Main sits open must move the key or the rail would freeze the card at its first paint (the 2020 lesson). The bit is the card's own helper, so key and paint can never disagree; a badge flip moves the key even when the identity, the saved spot and the fraction cannot. The 2022 key already carried identity + saved spot + fraction; the bit rides after the fraction.
+        for (FavTalkRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(c.posMs).append(':').append(favTalkHairFrac22(pos22, dur22, c.e)).append(':').append(favDlBadge25(c.e) ? '1' : '0');
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (favTalkRailWrap.getVisibility() != android.view.View.GONE)
@@ -6221,7 +6311,7 @@ public class MainActivity extends Activity {
             final Sayadaw s = sayadawByName1930(c.e.sayadaw);
             if (s == null) continue;
             android.widget.LinearLayout card = new android.widget.LinearLayout(this);
-            // v15.60 (slice 2022): the card is now a vertical stack — the photo+text row above, the listened-progress hairline below it (the Talks-row line, v13.97, on the third Main rail). The background, padding and press stay on the card, so the tap target and the glass look are unchanged; the row below carries the old horizontal shape (CENTER_VERTICAL, photo + text column) untouched. The other two rails (Bookmarks, New-talks) keep their plain horizontal cards — Bookmarks is the next line in the family, its own slice, not this one; New-talks stays plain per the 2017 adjudication (its membership IS the unheard state, so a line there would rarely paint).
+            // v15.60 (slice 2022): the card is now a vertical stack — the photo+text row above, the listened-progress hairline below it (the Talks-row line, v13.97, on the third Main rail). The background, padding and press stay on the card, so the tap target and the glass look are unchanged; the row below carries the old horizontal shape (CENTER_VERTICAL, photo + text column) untouched. Bookmarks got its line in slice 2027, so the hairline family is now complete on every Main rail where a line can paint; New-talks stays plain per the 2017 adjudication (its membership IS the unheard state, so a line there would rarely paint).
             card.setOrientation(android.widget.LinearLayout.VERTICAL);
             card.setBackgroundResource(R.drawable.nav_glass);
             int pad = (int) (10 * d);
@@ -6260,7 +6350,8 @@ public class MainActivity extends Activity {
             name.setEllipsize(android.text.TextUtils.TruncateAt.END);
             col.addView(name);
             android.widget.TextView title = new android.widget.TextView(this);
-            title.setText(c.posMs > 0 ? "\u21BA " + FavTalkRail.fmtTime(c.posMs) + " · " + c.e.title : c.e.title);
+            // v15.61 (slice 2025): the downloaded ⬇ badge — the row convention (Room drawer rows, History rows, Recently-played rail cards since slice 2023, New-talks rail cards since slice 2024): the U+2B07 glyph as a title prefix on a talk already on the phone. This rail's title already renders the saved spot first ("↺ 12:34 · title", bare title when never started), so the badge prefixes the WHOLE rendered title — "⬇ ↺ 12:34 · title", "⬇ title" when never started — the download mark outermost, the resume mark untouched byte for byte. Same 12sp #7A6A58 title view, same single line with END ellipsis; the prefix only shortens the visible title by two cells. The gate is the helper below — the same shared DlLanded call the file-share offer on this card makes (slice 2009), so badge and offer can never disagree. No rail card on this shelf showed download state before this slice.
+            title.setText((favDlBadge25(c.e) ? "\u2B07 " : "") + (c.posMs > 0 ? "\u21BA " + FavTalkRail.fmtTime(c.posMs) + " · " + c.e.title : c.e.title));
             title.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
             title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
             title.setMaxLines(1);
@@ -6674,9 +6765,17 @@ public class MainActivity extends Activity {
     // funnel beside refreshRecentRail / refreshDlRecentRail /
     // refreshBmRail / refreshFavTalkRail (a Talks visit is what
     // stores a new-set, so the return-to-Main refresh is the update
-    // path; no download-receiver call — downloads never change
-    // new-sets); hides while searching/filtering and while no new
-    // talk waits.
+    // path; downloads never change new-sets — but a landing now
+    // changes the card's ⬇ badge (slice 2024), so the
+    // download-complete receiver refreshes this rail too, the
+    // 1960/2023 precedent); hides while searching/filtering and
+    // while no new talk waits.
+    // v15.61 (slice 2024): the "New talks" rail card's downloaded badge — the shared DlLanded definition (v13.69), the exact call the file-share offer on the same card makes (slice 2010, DlLanded.downloadedFileName with the null,null legs), so the badge and the offer can never disagree: a card shows ⬇ exactly when its menu offers the file share. No sounding gate needed — the caller picks through NewTalkRail.pick, which already excludes the sounding talk (the 1921 gate). The (null,null) legs are the menu's reading, not the Talks-row caches' full live-job exclusion: a mid-download partial file reads as landed, so a card can show ⬇ for a few seconds while its file is still arriving, exactly as the file-share verb already offers it. Cost is bounded: at most 5 cards, only on a rebuild (the key gate), one small dlMap JSON parse per card — the v5.69 distinction (a bounded 5-card rail, not an unbounded list).
+    private boolean newDlBadge24(Prefs.HistEntry e) {
+        if (e == null || e.url == null) return false;
+        return DlLanded.downloadedFileName(MainActivity.this, e.url, null, null) != null;
+    }
+
     private void refreshNewTalkRail() {
         if (newTalkRailWrap == null || newTalkRail == null) return;
         boolean show = query != null && query.length() == 0 && !favOnly && !newOnly && all != null;
@@ -6693,7 +6792,8 @@ public class MainActivity extends Activity {
         }
         StringBuilder kb = new StringBuilder();
         kb.append(cachedNight ? "N" : "D");
-        for (NewTalkRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url));
+        // v15.61 (slice 2024): the key carries the downloaded badge bit beside the identity — a download landing while Main sits open must move the key or the rail would freeze the card at its first paint (the 2020 lesson). The bit is the card's own helper, so key and paint can never disagree; a badge flip moves the key even when the identity cannot. This rail's key carried the identity only (no fraction — no hairline here, per the 2017 adjudication), so the bit rides directly after the identity.
+        for (NewTalkRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(newDlBadge24(c.e) ? '1' : '0');
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (newTalkRailWrap.getVisibility() != android.view.View.GONE)
@@ -6743,7 +6843,8 @@ public class MainActivity extends Activity {
             name.setEllipsize(android.text.TextUtils.TruncateAt.END);
             col.addView(name);
             android.widget.TextView title = new android.widget.TextView(this);
-            title.setText(c.e.title);
+            // v15.61 (slice 2024): the downloaded ⬇ badge — the row convention (Room drawer rows, History rows, Recently-played rail cards since slice 2023): the U+2B07 glyph as a title prefix, "⬇ title", on a talk already on the phone. Same 12sp #7A6A58 title view, same single line with END ellipsis; the prefix only shortens the visible title by two cells. The gate is the helper below — the same shared DlLanded call the file-share offer on this card makes (slice 2010), so badge and offer can never disagree. No rail card on this shelf showed download state before this slice; the card has no saved-spot prefix (the 1921 gate only ever picks talks nobody started), so the badge sits on the bare title.
+            title.setText(newDlBadge24(c.e) ? "\u2B07 " + c.e.title : c.e.title);
             title.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
             title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
             title.setMaxLines(1);
