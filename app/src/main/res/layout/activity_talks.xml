@@ -413,6 +413,29 @@
             android:divider="@color/surface"
             android:dividerHeight="1dp"
             android:fastScrollEnabled="true" />
+        <!-- v15.55 (slice 1994): jump-to-playing button — the
+             floating gold ▶ stacked above the ↑ (same 56dp oval,
+             same maroon glyph, 16dp off the corner): the title
+             long-press (v4.15) already jumps to the playing talk,
+             but the gesture is hidden and the title is off-screen
+             exactly when the jump is needed — the same visible,
+             reachable-form class as the 1940 back-to-top button.
+             GONE until a live session plays this sayadaw's talk
+             AND that talk's row has scrolled off-screen. -->
+        <TextView
+            android:id="@+id/talkPlayingBtn"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="88dp"
+            android:background="@drawable/top_btn_bg"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="▶"
+            android:textColor="@color/maroon"
+            android:textSize="24sp"
+            android:visibility="gone" />
         <TextView
             android:id="@+id/talkTopBtn"
             android:layout_width="56dp"

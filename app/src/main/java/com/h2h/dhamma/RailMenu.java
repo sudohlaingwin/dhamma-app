@@ -16,6 +16,30 @@ package com.h2h.dhamma;
 // core unchanged — its cards carry a BmRail.Card (a HistEntry +
 // a mark minute), and the four verbs read the talk (c.e), so the
 // same offer + text rules apply.
+// v15.55 (slice 1990): the Main "Favourite talks" rail reuses
+// this core unchanged — its cards carry a FavTalkRail.Card (a
+// HistEntry + a saved spot), and the four verbs read the talk
+// (c.e), so the same offer + text rules apply. Every card here
+// is starred by definition, so the fav verb always offers the
+// remove variant.
+// v15.55 (slice 1991): the Main "New talks" rail reuses
+// this core unchanged — its cards carry a NewTalkRail.Card (a
+// HistEntry, spot 0 — the 1921 gate only ever picks talks nobody
+// started), and the four verbs read the talk (c.e), so the same
+// offer + text rules apply. The fav verb usually offers the add
+// variant here.
+// v15.55 (slice 1992): the Main "Bookmarks" rail appends a fifth
+// verb after keys() — bm_menu_remove, the destructive "Remove
+// this bookmark" — because only bm cards carry a mark minute to
+// delete. The core stays unchanged: the four shared verbs keep
+// their order (share / copy / fav / go) and the remove verb sits
+// last, with its own confirm (the library delete's shape).
+// v15.55 (slice 1993): the Main "Bookmarks" rail appends a sixth
+// verb after menu_share — bm_menu_share_minute, "Share this
+// bookmark" — because only bm cards carry a mark minute to share
+// at. The text is BmShare.shareAtMinuteText (the card's own
+// "12:34 · title" rendering in the chooser share shape); the
+// core stays unchanged.
 public class RailMenu {
     // The offer order, fixed: share first (muscle memory from
     // the chooser/drawer dialogs, where share is always first),

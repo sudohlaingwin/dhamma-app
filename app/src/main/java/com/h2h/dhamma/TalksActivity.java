@@ -1996,6 +1996,17 @@ public class TalksActivity extends Activity {
     // painter's change gate.
     private android.view.View talkTopBtn = null;
     private boolean talkTopShown = false;
+    // v15.55 (slice 1994): "Jump to the playing talk" — the
+    // floating gold ▶ over the list's bottom-end corner, stacked
+    // above the ↑; talkPlayingShown is the last-painted state
+    // for the painter's change gate, and playingTargetIdx is the
+    // cached full-list index of the live track (recomputed on
+    // rebuild / sounding change, never on scroll — the 1940
+    // pattern with a cache, so a fling never pays a sameTalk
+    // scan per scroll event).
+    private android.view.View talkPlayingBtn = null;
+    private boolean talkPlayingShown = false;
+    private int playingTargetIdx = -1;
     // v15.43 (slice 1932): "Continue listening" row — the
     // one-tap return to this sayadaw's in-progress talk.
     // Shares no gate with the Play row: it hides while a
@@ -2116,6 +2127,9 @@ public class TalksActivity extends Activity {
         // without a scroll event (load / search / filter / sort)
         // — repaint the back-to-top button from the new position.
         paintTalkTopBtnFromList();
+        // v15.55 (slice 1994): a rebuild can also move the playing talk (new list, new filter) — refresh the jump button's cached target, then repaint it from the new position.
+        refreshJumpPlayingTarget();
+        paintTalkPlayingBtnFromList();
     }
     private void rebuildFilter() {
         if (filterMode == 0) {
@@ -2678,6 +2692,8 @@ public class TalksActivity extends Activity {
             @Override public void onScrollStateChanged(android.widget.AbsListView v, int state) {}
             @Override public void onScroll(android.widget.AbsListView v, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
                 paintTalkTopBtn(firstVisibleItem);
+                // v15.55 (slice 1994): the jump button paints on the same scroll — off-screen is its only show rule, so a laid-out window is required (count 0 means no layout yet).
+                if (visibleItemCount > 0) paintTalkPlayingBtn(firstVisibleItem, firstVisibleItem + visibleItemCount - 1);
             }
         });
     }
@@ -2714,6 +2730,115 @@ public class TalksActivity extends Activity {
             @Override public void run() {
                 if (talkList == null) return;
                 paintTalkTopBtn(talkList.getFirstVisiblePosition());
+            }
+        });
+    }
+
+    // v15.55 (slice 1994): wire the jump-to-playing button —
+    // one tap glides to the sounding talk (the v4.15 title
+    // long-press's glide, in a visible button). The tap
+    // re-resolves everything fresh — live guards, the full-list
+    // index, the display index — so a track change while the
+    // button sat visible can never glide to a stale row; a
+    // filtered-out target clears search/filter first (the
+    // v12.54 rule), a shown target keeps the view. Any guard
+    // failure toasts no_talk_playing (the v4.15 word), never
+    // scrolls nowhere. A missing button simply never wires.
+    private void wireTalkPlayingBtn() {
+        talkPlayingBtn = findViewById(R.id.talkPlayingBtn);
+        if (talkPlayingBtn != null) talkPlayingBtn.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                // v10.43: bound-trackless stop — liveSession stays true but the mirror is false, so toast instead of gliding to a stopped talk (the v4.15 guard verbatim).
+                if (talkList == null || talks.isEmpty() || !AudioService.liveSession || !AudioService.liveHasTrack) {
+                    android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "no_talk_playing"), android.widget.Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                try {
+                    android.content.SharedPreferences sp =
+                            getSharedPreferences("dhamma", MODE_PRIVATE);
+                    if (!"room".equals(sp.getString("lastKind", ""))
+                            || sayadawName == null
+                            || !sayadawName.equals(sp.getString("lastName", ""))) {
+                        android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "no_talk_playing"), android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    String liveUrl = sp.getString("lastUrl", "");
+                    java.util.ArrayList<String> urls = new java.util.ArrayList<String>();
+                    for (int i = 0; i < talks.size(); i++) urls.add(talks.get(i).url);
+                    int full = JumpPlaying.findFullIndex(urls, liveUrl);
+                    if (full < 0) {
+                        android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "no_talk_playing"), android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    // v12.54: a shown target glides to its display position with the view untouched; only a target filtered OUT of the shown list clears search/filter first, so the full-list index means something again.
+                    final int target;
+                    if (JumpPlaying.needsClear(visibleHits, full)) {
+                        clearSearch(); // v4.93: glide target is a full-list index
+                        clearFilter(); // v4.94: same rule for the filter view
+                        target = full;
+                    } else {
+                        target = JumpPlaying.displayIndex(visibleHits, full);
+                    }
+                    Fx.tap(TalksActivity.this);
+                    Fx.morph(v);
+                    talkList.smoothScrollToPosition(target);
+                } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    // v15.55 (slice 1994): refresh the jump button's cached
+    // target — the full-list index of the live track, from the
+    // tick-fresh talkPlayingUrl (a live Room session for THIS
+    // sayadaw, the v10.43 guards baked into its own refresh).
+    // Runs on rebuild / sounding change only, never on scroll;
+    // -1 while nothing live plays this sayadaw's talk.
+    private void refreshJumpPlayingTarget() {
+        playingTargetIdx = -1;
+        if (talkPlayingUrl == null || talkPlayingUrl.length() == 0) return;
+        java.util.ArrayList<String> urls = new java.util.ArrayList<String>();
+        for (int i = 0; i < talks.size(); i++) urls.add(talks.get(i).url);
+        playingTargetIdx = JumpPlaying.findFullIndex(urls, talkPlayingUrl);
+    }
+
+    // v15.55 (slice 1994): the jump-to-playing state — shown
+    // only while a live track for this sayadaw has a cached
+    // target AND that row is off-screen (above or below the
+    // visible window). The change gate keeps steady scrolls
+    // and the rebuild/restore repaints from re-touching the
+    // button; the show/hide melts (Fx.fadeIn/fadeOut, 180ms)
+    // instead of snapping, and a cancelled fade never strands
+    // it half-transparent (the v2.62 gen guard, the 1940
+    // shape). A stop clears talkPlayingUrl on the next tick,
+    // so the button hides within a tick of the session ending.
+    private void paintTalkPlayingBtn(int firstVisible, int lastVisible) {
+        if (talkPlayingBtn == null) return;
+        boolean want = playingTargetIdx >= 0
+                && talkPlayingUrl != null && talkPlayingUrl.length() > 0
+                && JumpPlaying.wantShown(playingTargetIdx, firstVisible, lastVisible);
+        if (want == talkPlayingShown) return;
+        talkPlayingShown = want;
+        if (want) {
+            talkPlayingBtn.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(talkPlayingBtn, 180);
+        } else {
+            Fx.fadeOut(talkPlayingBtn, 180);
+        }
+    }
+
+    // v15.55 (slice 1994): repaint from the list's own position
+    // after a scroll-less change — a rebuild (load / search /
+    // filter / sort), a rotation restore, or a sounding change
+    // can move the playing row off-screen with no scroll event,
+    // so read the position after layout and paint from it.
+    // Posted, because the first / last visible rows are only
+    // valid once the list has laid out (the 1940 shape).
+    private void paintTalkPlayingBtnFromList() {
+        if (talkList == null) return;
+        talkList.post(new Runnable() {
+            @Override public void run() {
+                if (talkList == null) return;
+                paintTalkPlayingBtn(talkList.getFirstVisiblePosition(), talkList.getLastVisiblePosition());
             }
         });
     }
@@ -3493,6 +3618,7 @@ public class TalksActivity extends Activity {
         if (list != null) list.setAdapter(adapter);
         wirePullRefresh(); // v15.34 (slice 1841): pull-to-refresh on this list
         wireTalkTopBtn(); // v15.45 (slice 1940): back-to-top button on this list
+        wireTalkPlayingBtn(); // v15.55 (slice 1994): jump-to-playing button on this list
         wireSearchBox(); // v4.93: talk title search under the header
         if (list != null) list.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
@@ -4612,6 +4738,9 @@ public class TalksActivity extends Activity {
                 // lands deep with no scroll event — repaint the
                 // back-to-top button from the restored position.
                 paintTalkTopBtnFromList();
+                // v15.55 (slice 1994): same restore rule for the jump button — refresh its cached target, then repaint it from the restored position.
+                refreshJumpPlayingTarget();
+                paintTalkPlayingBtnFromList();
                 restored = true;
                 // v12.54: restore the return-scroll anchor saved above,
                 // so a rotation does not re-glide to the same talk.
@@ -6837,6 +6966,9 @@ public class TalksActivity extends Activity {
             if (prevSoundTarget60.length() > 0) { prevSoundFadeUrl = prevSoundTarget60; fadePrevSoundTalkRow(); }
             if (upNextTarget55.length() > 0) { upNextFadeUrl = upNextTarget55; fadeUpNextTalkRow(); }
             if (syncChanged97 != null && !syncChanged97.isEmpty()) { syncMarksFadeUrls97 = syncChanged97; fadeSyncMarkedTalkRows97(); }
+            // v15.55 (slice 1994): the sounding change above moves the playing talk (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button.
+            refreshJumpPlayingTarget();
+            paintTalkPlayingBtnFromList();
         }
         // v14.48 (slice 1705): first tick evaluation adopts the
         // trackers silently — the arm above only ever reads the

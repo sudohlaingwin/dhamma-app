@@ -5581,13 +5581,18 @@ public class MainActivity extends Activity {
                     // the library). The menu is the chooser/drawer
                     // dialog shape (AlertDialog with a parallel key
                     // list, dispatch on keys — the v13.15
-                    // language-proof rule), with the four verbs that
-                    // are safe from Main: share / copy link /
-                    // favourite toggle / go to sayadaw's talks. The
+                    // language-proof rule), with the six verbs that
+                    // are safe from Main: share / share this bookmark /
+                    // copy link / favourite toggle / go to sayadaw's
+                    // talks / remove this bookmark (v15.55, slice
+                    // 1992 — destructive, last, with the library
+                    // delete's confirm). The
                     // verbs read the talk (c.e) — the mark minute
                     // stays the tap's job (openBmTalk1962 lands the
-                    // Room on the mark), so the share carries the bare
-                    // title, not the "12:34 · title" card rendering.
+                    // Room on the mark), so the plain share carries
+                    // the bare title while the minute-share (v15.55,
+                    // slice 1993) carries the "12:34 · title" card
+                    // rendering in the title slot.
                     // Queue verbs stay OUT (the queue is keyed per
                     // sayadaw Room and Main holds no live-session
                     // queue handle — planting a line under this
@@ -5596,7 +5601,11 @@ public class MainActivity extends Activity {
                     // v11.14 stale-queue class); the mark verb stays
                     // OUT (the rail card renders no listened tick, so
                     // it would be invisible on this surface); no new
-                    // view, no new Lang key, no sounding gate needed
+                    // view, two new Lang keys (bm_menu_remove, slice
+                    // 1992 — the remove verb's label;
+                    // bm_menu_share_minute, slice 1993 — the
+                    // minute-share verb's label), no sounding gate
+                    // needed
                     // (share/copy/fav/go are all sounding-safe — the
                     // rail already excludes the sounding talk at pick
                     // time, BmRail.pick).
@@ -5607,6 +5616,11 @@ public class MainActivity extends Activity {
                     boolean fav89 = RailMenu.isFav(ft89, c.e.url);
                     boolean go89 = GoSayadaw.canGo(new String[]{s.group, s.url, s.photo});
                     java.util.List<String> keys89 = RailMenu.keys(fav89, go89, RoomCopyLink.canOffer(c.e.url));
+                    // v15.55 (slice 1992): the remove verb is appended here, not in RailMenu.keys — it is bm-rail-only (only bm cards carry a mark minute to delete) and it sits LAST (destructive last, after go-to-sayadaw).
+                    keys89.add("bm_menu_remove");
+                    // v15.55 (slice 1993): the minute-share verb is inserted here, not in RailMenu.keys — it is bm-rail-only (only bm cards carry a mark minute to share at) and it sits right after menu_share (the share verbs sit together, the 1955/1986 drawer precedent).
+                    int si89 = keys89.indexOf("menu_share");
+                    if (si89 >= 0) keys89.add(si89 + 1, "bm_menu_share_minute");
                     final String[] opt89 = new String[keys89.size()];
                     for (int i89 = 0; i89 < keys89.size(); i89++) opt89[i89] = Lang.t(MainActivity.this, keys89.get(i89));
                     final String[] key89 = keys89.toArray(new String[0]);
@@ -5619,6 +5633,12 @@ public class MainActivity extends Activity {
                                         send89.setType("text/plain");
                                         send89.putExtra(android.content.Intent.EXTRA_TEXT, RailMenu.shareText(s.name, c.e.title, c.e.url, Lang.t(MainActivity.this, "share_source")));
                                         startActivity(android.content.Intent.createChooser(send89, Lang.t(MainActivity.this, "share_talk")));
+                                    } else if ("bm_menu_share_minute".equals(key89[which])) {
+                                        // v15.55 (slice 1993): share this bookmark — the minute-share verb (the other 1989 candidate): the share text is the chooser shape with the card's own "12:34 · title" rendering in the title slot (BmShare.shareAtMinuteText), so the friend sees exactly which minute matters. The link stays the talk's original link (no minute in the URL — the site serves plain .mp3 links, nothing to deep-link into); the minute lives in the text. Chooser title is share_talk, like the plain share. No pause guard (no sheet is left to return from, like the 1975 copy verb and the 1985 go verb). No tap-time re-check: the minute is the card's own capture (c.posMs, guaranteed > 0 by BmRail.pick); the only deleter (the Room bookmark list's ✕) cannot run while the modal menu sits open, and a stale minute in shared text is harmless — the link stays valid and the minute is still a real position in the talk.
+                                        android.content.Intent send89m = new android.content.Intent(android.content.Intent.ACTION_SEND);
+                                        send89m.setType("text/plain");
+                                        send89m.putExtra(android.content.Intent.EXTRA_TEXT, BmShare.shareAtMinuteText(s.name, c.e.title, c.e.url, c.posMs, Lang.t(MainActivity.this, "share_source")));
+                                        startActivity(android.content.Intent.createChooser(send89m, Lang.t(MainActivity.this, "share_talk")));
                                     } else if ("dl_menu_copy_link".equals(key89[which])) {
                                         // v15.52 (slice 1977) shape: the tap-time gate re-checks the offer, so the two can never disagree; no pause guard (no sheet is left to return from) and no file gate (a link is not a file).
                                         if (RoomCopyLink.canOffer(c.e.url)) {
@@ -5648,6 +5668,20 @@ public class MainActivity extends Activity {
                                             Fx.tap(MainActivity.this);
                                             Fx.go(MainActivity.this, gi89);
                                         }
+                                    } else if ("bm_menu_remove".equals(key89[which])) {
+                                        // v15.55 (slice 1992): remove this bookmark — the Bookmarks rail's first destructive verb and the only way to drop a mark without opening the Room bookmark list (the list's ✕ deletes, v12.64, but only from inside the Room). The confirm is the library delete's own (del_one_title + del_one_btn / del_btn_no, the 1986 drawer shape) and its message names the exact minute (BmRemove.confirmMessage — the card's "12:34 · title" rendering, so a talk with several marks never deletes the wrong one). The remove is Prefs.bookmarkRemoveBoth — the Room ✕ delete's own call, both http/https forms — then refreshBmRail() drops the card at once and the toast is bm_deleted. No pause guard (no sheet is left to return from, like the 1975 copy verb and the 1985 go verb). No tap-time re-check is needed: no concurrent deleter can run while the modal menu/confirm sits open (the Room bookmark list needs Main dismissed first), and bookmarkRemoveBoth is idempotent anyway.
+                                        new android.app.AlertDialog.Builder(MainActivity.this)
+                                                .setTitle(Lang.t(MainActivity.this, "del_one_title"))
+                                                .setMessage(BmRemove.confirmMessage(c.posMs, c.e.title, c.e.url))
+                                                .setPositiveButton(Lang.t(MainActivity.this, "del_one_btn"), new android.content.DialogInterface.OnClickListener() {
+                                                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                                                        Prefs.bookmarkRemoveBoth(MainActivity.this, c.e.url, c.posMs);
+                                                        refreshBmRail();
+                                                        android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "bm_deleted"), android.widget.Toast.LENGTH_SHORT).show();
+                                                    }
+                                                })
+                                                .setNegativeButton(Lang.t(MainActivity.this, "del_btn_no"), null)
+                                                .show();
                                     }
                                 }
                             }).show();
@@ -5799,6 +5833,99 @@ public class MainActivity extends Activity {
             card.setOnClickListener(new android.view.View.OnClickListener() {
                 @Override public void onClick(android.view.View v) {
                     openFavTalk1964(s, c, v);
+                }
+            });
+            card.setOnLongClickListener(new android.view.View.OnLongClickListener() {
+                @Override public boolean onLongClick(android.view.View v) {
+                    // v15.55 (slice 1990): long-press quick-actions on
+                    // the "Favourite talks" rail cards — the 1987 shape
+                    // on the fourth rail. The favourite-talks rail
+                    // (v15.50, slice 1964) had tap only; a listener
+                    // who wanted to share a starred talk, copy its
+                    // link, un-star it, or open its sayadaw's full
+                    // list had to open the Room first (or find the
+                    // talk again in Talks / the library). The menu
+                    // is the chooser/drawer dialog shape
+                    // (AlertDialog with a parallel key list, dispatch
+                    // on keys — the v13.15 language-proof rule),
+                    // with the four verbs that are safe from Main:
+                    // share / copy link / favourite toggle / go to
+                    // sayadaw's talks. The verbs read the talk
+                    // (c.e) — the saved spot stays the tap's job
+                    // (openFavTalk1964 lands the Room on it), so the
+                    // share carries the bare title, not the
+                    // "↺ 12:34 · title" card rendering. Every card
+                    // on this rail is starred by definition
+                    // (FavTalkRail.pick keeps only starred talks),
+                    // so the fav verb always offers the remove
+                    // variant; tapping it un-stars the talk and the
+                    // card vanishes from this rail at once on the
+                    // rebuild — that is the feedback, not a toast
+                    // alone. Queue verbs stay OUT (the queue is
+                    // keyed per sayadaw Room and Main holds no
+                    // live-session queue handle — planting a line
+                    // under this sayadaw's key while another Room
+                    // session sounds would be invisible to the live
+                    // session, the v11.14 stale-queue class); the
+                    // mark verb stays OUT (the rail card renders no
+                    // listened tick, so it would be invisible on
+                    // this surface); no new view, no new Lang key,
+                    // no sounding gate needed (share/copy/fav/go
+                    // are all sounding-safe — the rail already
+                    // excludes the sounding talk at pick time,
+                    // FavTalkRail.pick).
+                    java.util.Set<String> ft90 = null;
+                    try {
+                        ft90 = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favTalks", null);
+                    } catch (Exception ignored) {}
+                    boolean fav90 = RailMenu.isFav(ft90, c.e.url);
+                    boolean go90 = GoSayadaw.canGo(new String[]{s.group, s.url, s.photo});
+                    java.util.List<String> keys90 = RailMenu.keys(fav90, go90, RoomCopyLink.canOffer(c.e.url));
+                    final String[] opt90 = new String[keys90.size()];
+                    for (int i90 = 0; i90 < keys90.size(); i90++) opt90[i90] = Lang.t(MainActivity.this, keys90.get(i90));
+                    final String[] key90 = keys90.toArray(new String[0]);
+                    new android.app.AlertDialog.Builder(MainActivity.this)
+                            .setTitle(c.e.title != null && c.e.title.length() > 0 ? c.e.title : c.e.url)
+                            .setItems(opt90, new android.content.DialogInterface.OnClickListener() {
+                                @Override public void onClick(android.content.DialogInterface d, int which) {
+                                    if ("menu_share".equals(key90[which])) {
+                                        android.content.Intent send90 = new android.content.Intent(android.content.Intent.ACTION_SEND);
+                                        send90.setType("text/plain");
+                                        send90.putExtra(android.content.Intent.EXTRA_TEXT, RailMenu.shareText(s.name, c.e.title, c.e.url, Lang.t(MainActivity.this, "share_source")));
+                                        startActivity(android.content.Intent.createChooser(send90, Lang.t(MainActivity.this, "share_talk")));
+                                    } else if ("dl_menu_copy_link".equals(key90[which])) {
+                                        // v15.52 (slice 1977) shape: the tap-time gate re-checks the offer, so the two can never disagree; no pause guard (no sheet is left to return from) and no file gate (a link is not a file).
+                                        if (RoomCopyLink.canOffer(c.e.url)) {
+                                            try {
+                                                android.content.ClipboardManager cm90 = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                                                if (cm90 != null) cm90.setPrimaryClip(android.content.ClipData.newPlainText(Lang.t(MainActivity.this, "clip_talk"), RoomCopyLink.clipText(c.e.url)));
+                                                android.widget.Toast.makeText(MainActivity.this, RoomCopyLink.toastText(Lang.t(MainActivity.this, "link_copied_prefix"), c.e.title, c.e.url), android.widget.Toast.LENGTH_SHORT).show();
+                                            } catch (Exception ignored) {}
+                                        }
+                                    } else if ("menu_fav_add".equals(key90[which]) || "menu_fav_remove".equals(key90[which])) {
+                                        // The Talks chooser's toggle shape (v7.88): the toast reports the true new state; the fav rail rebuilds at once so the card appears/vanishes without a return. The flipped talk is never the sounding one (FavTalkRail.pick excludes it), so no notification-card sync is needed. On this rail the rebuild drops the un-starred card at once — every card here is starred by definition, so the verb always offers the remove variant.
+                                        boolean added90 = Fx.toggleFavTalk(MainActivity.this, c.e.url);
+                                        refreshFavTalkRail();
+                                        android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, added90 ? "fav_added" : "fav_removed"), android.widget.Toast.LENGTH_SHORT).show();
+                                    } else if ("menu_go_sayadaw".equals(key90[which])) {
+                                        // The 1944/1985 shape, Main-native: re-resolve the sayadaw fresh at tap time (the dialog can sit open; the offer and the tap can never disagree), toast no_sayadaw_page on a failed re-read, else open that sayadaw's Talks list with Main's own intent extras. Built directly, NOT through openSayadawCard — that method returns to the Room for a sounding sayadaw, but this verb promises the Talks list.
+                                        final Sayadaw gs90 = sayadawByName1930(c.e.sayadaw);
+                                        String[] cat90 = gs90 == null ? null : new String[]{gs90.group, gs90.url, gs90.photo};
+                                        if (!GoSayadaw.canGo(cat90)) {
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "no_sayadaw_page"), android.widget.Toast.LENGTH_SHORT).show();
+                                        } else {
+                                            android.content.Intent gi90 = new android.content.Intent(MainActivity.this, TalksActivity.class);
+                                            gi90.putExtra("name", gs90.name);
+                                            gi90.putExtra("group", GoSayadaw.group(cat90));
+                                            gi90.putExtra("url", GoSayadaw.page(cat90));
+                                            gi90.putExtra("photo", GoSayadaw.photo(cat90));
+                                            Fx.tap(MainActivity.this);
+                                            Fx.go(MainActivity.this, gi90);
+                                        }
+                                    }
+                                }
+                            }).show();
+                    return true;
                 }
             });
             favTalkRail.addView(card);
@@ -5973,6 +6100,105 @@ public class MainActivity extends Activity {
             card.setOnClickListener(new android.view.View.OnClickListener() {
                 @Override public void onClick(android.view.View v) {
                     openNewTalk1966(s, c, v);
+                }
+            });
+            card.setOnLongClickListener(new android.view.View.OnLongClickListener() {
+                @Override public boolean onLongClick(android.view.View v) {
+                    // v15.55 (slice 1991): long-press quick-actions on
+                    // the "New talks" rail cards — the 1987 shape
+                    // on the fifth and last rail. The new-talks rail
+                    // (v15.50) had tap only; a listener who wanted
+                    // to share a new talk, copy its link, star it,
+                    // or open its sayadaw's full list had to open
+                    // the Room first (or find the talk again in
+                    // Talks / the library). The menu is the
+                    // chooser/drawer dialog shape (AlertDialog with
+                    // a parallel key list, dispatch on keys — the
+                    // v13.15 language-proof rule), with the four
+                    // verbs that are safe from Main: share / copy
+                    // link / favourite toggle / go to sayadaw's
+                    // talks. The verbs read the talk (c.e) — the
+                    // card renders the sayadaw name + the talk
+                    // title (no saved spot — the 1921 gate only
+                    // ever picks talks nobody started), so the
+                    // share carries the bare title (the tap opens
+                    // the Room at the start, spot 0), not the
+                    // two-line card rendering. The fav verb
+                    // usually offers the add variant (a new talk
+                    // is unplayed and unstarted — a talk starred
+                    // from the Talks chooser before playing can
+                    // already be starred, so the offer is still
+                    // built from the live fav read, never
+                    // hardcoded); tapping it toggles the star and
+                    // the card stays on this rail either way (a
+                    // new-set projection, not a fav projection —
+                    // the refresh early-returns on the unchanged
+                    // key, the toast reports the true new state).
+                    // Queue verbs stay OUT (the queue is keyed per
+                    // sayadaw Room and Main holds no live-session
+                    // queue handle — planting a line under this
+                    // sayadaw's key while another Room session
+                    // sounds would be invisible to the live
+                    // session, the v11.14 stale-queue class); the
+                    // mark verb stays OUT (the rail card renders no
+                    // listened tick, so it would be invisible on
+                    // this surface); no new view, no new Lang key,
+                    // no sounding gate needed (share/copy/fav/go
+                    // are all sounding-safe — the rail already
+                    // excludes the sounding talk at pick time,
+                    // NewTalkRail.pick, the 1921 gate).
+                    java.util.Set<String> ft91 = null;
+                    try {
+                        ft91 = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favTalks", null);
+                    } catch (Exception ignored) {}
+                    boolean fav91 = RailMenu.isFav(ft91, c.e.url);
+                    boolean go91 = GoSayadaw.canGo(new String[]{s.group, s.url, s.photo});
+                    java.util.List<String> keys91 = RailMenu.keys(fav91, go91, RoomCopyLink.canOffer(c.e.url));
+                    final String[] opt91 = new String[keys91.size()];
+                    for (int i91 = 0; i91 < keys91.size(); i91++) opt91[i91] = Lang.t(MainActivity.this, keys91.get(i91));
+                    final String[] key91 = keys91.toArray(new String[0]);
+                    new android.app.AlertDialog.Builder(MainActivity.this)
+                            .setTitle(c.e.title != null && c.e.title.length() > 0 ? c.e.title : c.e.url)
+                            .setItems(opt91, new android.content.DialogInterface.OnClickListener() {
+                                @Override public void onClick(android.content.DialogInterface d, int which) {
+                                    if ("menu_share".equals(key91[which])) {
+                                        android.content.Intent send91 = new android.content.Intent(android.content.Intent.ACTION_SEND);
+                                        send91.setType("text/plain");
+                                        send91.putExtra(android.content.Intent.EXTRA_TEXT, RailMenu.shareText(s.name, c.e.title, c.e.url, Lang.t(MainActivity.this, "share_source")));
+                                        startActivity(android.content.Intent.createChooser(send91, Lang.t(MainActivity.this, "share_talk")));
+                                    } else if ("dl_menu_copy_link".equals(key91[which])) {
+                                        // v15.52 (slice 1977) shape: the tap-time gate re-checks the offer, so the two can never disagree; no pause guard (no sheet is left to return from) and no file gate (a link is not a file).
+                                        if (RoomCopyLink.canOffer(c.e.url)) {
+                                            try {
+                                                android.content.ClipboardManager cm91 = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                                                if (cm91 != null) cm91.setPrimaryClip(android.content.ClipData.newPlainText(Lang.t(MainActivity.this, "clip_talk"), RoomCopyLink.clipText(c.e.url)));
+                                                android.widget.Toast.makeText(MainActivity.this, RoomCopyLink.toastText(Lang.t(MainActivity.this, "link_copied_prefix"), c.e.title, c.e.url), android.widget.Toast.LENGTH_SHORT).show();
+                                            } catch (Exception ignored) {}
+                                        }
+                                    } else if ("menu_fav_add".equals(key91[which]) || "menu_fav_remove".equals(key91[which])) {
+                                        // The Talks chooser's toggle shape (v7.88): the toast reports the true new state; the rail refresh is called for symmetry but early-returns on the unchanged key (the fav flip changes no picked url), so the card stays on this rail either way — a new-set projection, not a fav projection. The flipped talk is never the sounding one (NewTalkRail.pick excludes it), so no notification-card sync is needed.
+                                        boolean added91 = Fx.toggleFavTalk(MainActivity.this, c.e.url);
+                                        refreshNewTalkRail();
+                                        android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, added91 ? "fav_added" : "fav_removed"), android.widget.Toast.LENGTH_SHORT).show();
+                                    } else if ("menu_go_sayadaw".equals(key91[which])) {
+                                        // The 1944/1985 shape, Main-native: re-resolve the sayadaw fresh at tap time (the dialog can sit open; the offer and the tap can never disagree), toast no_sayadaw_page on a failed re-read, else open that sayadaw's Talks list with Main's own intent extras. Built directly, NOT through openSayadawCard — that method returns to the Room for a sounding sayadaw, but this verb promises the Talks list.
+                                        final Sayadaw gs91 = sayadawByName1930(c.e.sayadaw);
+                                        String[] cat91 = gs91 == null ? null : new String[]{gs91.group, gs91.url, gs91.photo};
+                                        if (!GoSayadaw.canGo(cat91)) {
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "no_sayadaw_page"), android.widget.Toast.LENGTH_SHORT).show();
+                                        } else {
+                                            android.content.Intent gi91 = new android.content.Intent(MainActivity.this, TalksActivity.class);
+                                            gi91.putExtra("name", gs91.name);
+                                            gi91.putExtra("group", GoSayadaw.group(cat91));
+                                            gi91.putExtra("url", GoSayadaw.page(cat91));
+                                            gi91.putExtra("photo", GoSayadaw.photo(cat91));
+                                            Fx.tap(MainActivity.this);
+                                            Fx.go(MainActivity.this, gi91);
+                                        }
+                                    }
+                                }
+                            }).show();
+                    return true;
                 }
             });
             newTalkRail.addView(card);
