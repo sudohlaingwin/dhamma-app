@@ -58,6 +58,42 @@ public class FavouritesActivity extends Activity {
     private boolean favResumeStripMode = false;
     private String favStripPhotoName = null;
     private boolean lastFavStripPhotoRing = false;
+    // v15.64 (slice 2042): playing-row mark (History v13.55, Talks
+    // v4.89/v11.07, same rules) — the Favourites rows carried no live
+    // marks: a listener browsing starred talks could not spot the
+    // talk the strip is naming without remembering its title. The
+    // sounding identities below mirror History's
+    // refreshHistoryPlayingMarks playing half: favPlayingUrl for a
+    // Room session (lastUrl), favPlayingLibUrl for a library session
+    // via the dlMap reverse lookup (exactly-one claimant, v8.44),
+    // and favPlayingLibPath for a library session matched directly
+    // — a path-form row IS the file (playRecent v12.82 writes the
+    // same path), so no lookup is needed there. favRowPlayingUrl /
+    // favRowPlayingLibUrl / favRowPlayingLibPath / favRowEnded are the
+    // last bound snapshots; the 1s tick rebinds once when any of
+    // them changes.
+    private String favPlayingUrl = "";
+    private String favPlayingLibUrl = "";
+    private String favPlayingLibPath = "";
+    private String favRowPlayingUrl = null;
+    private String favRowPlayingLibUrl = null;
+    private String favRowPlayingLibPath = null;
+    private boolean favRowEnded = false;
+    // v15.64 (slice 2044): "Play all" on this screen (the chooser's
+    // v13.76 Play All + the library's v15.50 play-listened, the third
+    // list that deserves the verb) — the starred talks used to play
+    // one row tap at a time; one tap here queues the whole starred
+    // run across sayadaws (FavPlayAll v2 lines) and opens the Room
+    // on the first starred talk at its saved spot. lastFavPlayAllMs
+    // is the handler's own 700ms clock (the chooser's v12.28 rule);
+    // btnFavPlayAll is the header button (GONE until a list lands,
+    // the chooser's refreshTalkPlayAllRow shape); lastFavPlayAllVisible
+    // is the change-only snapshot — the 1s tick re-shows or hides the
+    // button when the sounding talk moves under the list, steady ticks
+    // never touch it.
+    private long lastFavPlayAllMs = 0;
+    private android.widget.Button btnFavPlayAll = null;
+    private Boolean lastFavPlayAllVisible = null;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -95,6 +131,20 @@ public class FavouritesActivity extends Activity {
             });
         }
         refresh();
+        // v15.64 (slice 2044): wire the Play-all button the same way
+        // as the chooser's Play All (v13.76) — one tap plays the whole
+        // starred list in order; the label is the chooser's own
+        // pl_play_all key, so no new string. The button stays GONE
+        // until refresh() shows it (syncFavPlayAllBtn below).
+        btnFavPlayAll = findViewById(R.id.btnFavPlayAll);
+        if (btnFavPlayAll != null) btnFavPlayAll.setText(Lang.t(this, "pl_play_all"));
+        if (btnFavPlayAll != null) btnFavPlayAll.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.tap(FavouritesActivity.this);
+                playAllFav(v);
+            }
+        });
+        if (btnFavPlayAll != null) Fx.press(btnFavPlayAll);
         wireFavouritesStrip(); // v15.63 (slice 2038): real mini-player below the list
     }
 
@@ -119,15 +169,17 @@ public class FavouritesActivity extends Activity {
 
     private void refresh() {
         java.util.Set<String> names = catalogNames();
-        String sounding = (AudioService.liveSession && AudioService.liveHasTrack)
-                ? AudioService.liveUrl : null;
-        items = FavAll.pickAll(readFavTalks(), Prefs.statsRecent(this), names, sounding, readTalkPos());
+        items = FavAll.pickAll(readFavTalks(), Prefs.statsRecent(this), names, readTalkPos());
+        refreshFavouritesPlayingMarks(); // v15.64 (slice 2042): mark right on first paint, not one tick late
+        syncFavPlayAllBtn(true); // v15.64 (slice 2044): Play-all shows on first paint too, no fade
         if (adapter != null) adapter.notifyDataSetChanged();
         if (emptyText == null) return;
         boolean empty = items.isEmpty();
         emptyText.setVisibility(empty ? View.VISIBLE : View.GONE);
         if (empty) emptyText.setText(Lang.t(this, "no_fav_talk"));
     }
+
+    private int goldColor() { return 0xFFC9A227; } // v15.64 (slice 2042): History's gold, the playing-row mark
 
     private View itemRow(final int position) {
         final FavTalkRail.Card c = items.get(position);
@@ -166,8 +218,20 @@ public class FavouritesActivity extends Activity {
         // The rail card's own title (MainActivity refreshFavTalkRail,
         // v15.50): the saved spot first, bare title when never
         // started. No downloaded badge here (the 2033 precedent).
-        tv.setText(c.posMs > 0 ? "\u21BA " + FavTalkRail.fmtTime(c.posMs) + " \u00b7 " + e.title : e.title);
-        tv.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
+        // v15.64 (slice 2042): the sounding row says so — "\u25b6 " ahead of its
+        // "\u21ba 12:34 \u00b7 title" line (or the bare title when never started) in gold
+        // (History v13.55, Talks v4.89/v11.07), for a Room session (URL match) or a
+        // library session on a URL-form row (dlMap exactly-one claimant); an ended talk
+        // is not playing (v11.15 gate), so its mark lifts at once. One row per talk here
+        // (not one per mark as on Bookmarks), so the mark reads on the one row of the
+        // sounding talk. Rows are built fresh per getView, but both text and colour
+        // rebind here so neither can leak onto the next talk.
+        boolean favRowPlaying = !AudioService.liveEnded
+                && ((favPlayingUrl.length() > 0 && SiteHttp.sameTalk(e.url, favPlayingUrl))
+                        || (favPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(e.url, favPlayingLibUrl))
+                        || (favPlayingLibPath.length() > 0 && e.url.equals(favPlayingLibPath)));
+        tv.setText((favRowPlaying ? "\u25b6 " : "") + (c.posMs > 0 ? "\u21BA " + FavTalkRail.fmtTime(c.posMs) + " \u00b7 " + e.title : e.title));
+        tv.setTextColor(favRowPlaying ? goldColor() : android.graphics.Color.parseColor("#7A6A58"));
         tv.setTextSize(12);
         tv.setMaxLines(1);
         tv.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -185,6 +249,129 @@ public class FavouritesActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
         return row;
+    }
+
+    // v15.64 (slice 2044): Play-all visibility — the chooser's
+    // refreshTalkPlayAllRow shape (v13.76): GONE until a list lands,
+    // fading in/out on change, instant on first paint. The gate is
+    // FavPlayAll.hasPlayable: at least one starred talk with a usable
+    // URL that is not the sounding talk. lastFavPlayAllVisible is the
+    // change-only snapshot — steady 1s ticks never touch the button.
+    private void syncFavPlayAllBtn(boolean skipFade) {
+        if (btnFavPlayAll == null) return;
+        boolean show = FavPlayAll.hasPlayable(items, favPlayingUrl, favPlayingLibUrl);
+        if (lastFavPlayAllVisible != null && lastFavPlayAllVisible.booleanValue() == show) return;
+        lastFavPlayAllVisible = Boolean.valueOf(show);
+        if (skipFade) {
+            btnFavPlayAll.setVisibility(show ? android.view.View.VISIBLE : android.view.View.GONE);
+            btnFavPlayAll.setAlpha(1f);
+        } else if (show) {
+            if (btnFavPlayAll.getVisibility() != android.view.View.VISIBLE) {
+                btnFavPlayAll.setVisibility(android.view.View.VISIBLE);
+                Fx.fadeIn(btnFavPlayAll, 250);
+            } else if (btnFavPlayAll.getAlpha() < 0.999f) {
+                Fx.fadeIn(btnFavPlayAll, 250);
+            }
+        } else if (btnFavPlayAll.getVisibility() == android.view.View.VISIBLE) {
+            Fx.fadeOut(btnFavPlayAll, 200);
+        }
+    }
+
+    // v15.64 (slice 2044): "Play all" — the Favourites mirror of the
+    // chooser's playAllShown (v13.76) and History's histPlayFromHere
+    // (v15.62, slice 2030). The starred talks used to play one row
+    // tap at a time; one tap here queues the whole starred run in
+    // screen order, across sayadaws (every line carries its own
+    // sayadaw, the HistPlayFromHere v2 shape), and opens the Room on
+    // the first starred talk at its saved spot (playFav's own route —
+    // the Room resumes where the listener left off, v1.56).
+    // Same guards as the chooser: empty list refuses with the same
+    // words, the 700ms debounce has its own clock (an invalid tap
+    // never consumes the window, v12.28), the sounding talk is never
+    // re-queued (the stay-put branch: the rest queue behind it, no
+    // restart), already-queued talks stay where they are, and the
+    // count toast counts queued lines only. The anchor sayadaw is
+    // healed exactly like playFav (catalog + the sayadawForTalk
+    // heal) — the queue key and the Room name must be the healed
+    // name, never a stale banked one. No catalog, no run: the queue
+    // is untouched. The first card is always a stream URL by
+    // FavAll's own construction (favUrls are canonical https, matched
+    // by sameTalk — a path-form recent row can never be a card), so
+    // no library leg is needed here.
+    private void playAllFav(android.view.View v) {
+        if (items == null || items.isEmpty()) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        long now44 = android.os.SystemClock.uptimeMillis();
+        if (now44 - lastFavPlayAllMs < 700) return;
+        lastFavPlayAllMs = now44;
+        refreshFavouritesPlayingMarks(); // tap-time sounding identities
+        final FavTalkRail.Card first44 = items.get(0);
+        if (first44 == null || first44.e == null || first44.e.url == null || first44.e.url.length() == 0) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String sd44 = first44.e.sayadaw;
+        String[] cat44 = catalogFor(sd44);
+        if (cat44 == null || cat44[1] == null || cat44[1].length() == 0) {
+            String owner44 = Prefs.sayadawForTalk(this, "lib", first44.e.url, "");
+            if (owner44 != null && owner44.length() > 0 && !owner44.equals(sd44)) {
+                sd44 = owner44;
+                cat44 = catalogFor(sd44);
+            }
+        }
+        if (cat44 == null || cat44[1] == null || cat44[1].length() == 0) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "pl_no_play"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        boolean firstSounds44 = (favPlayingUrl.length() > 0 && SiteHttp.sameTalk(first44.e.url, favPlayingUrl))
+                || (favPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(first44.e.url, favPlayingLibUrl));
+        // The anchor sayadaw's current queue, as identities — the
+        // pick skips talks already queued (they stay where they are).
+        // Saved lines are carried verbatim (histQueueAdd's discipline),
+        // so a foreign line the Room drawer moved mid-queue survives
+        // the write.
+        java.util.Set<String> queuedIds44 = new java.util.HashSet<String>();
+        java.util.ArrayList<String> saved44 = new java.util.ArrayList<String>();
+        try {
+            String savedRaw44 = Prefs.savedQueue(this, sd44);
+            if (savedRaw44 != null && savedRaw44.length() > 0) {
+                for (String ln44 : savedRaw44.split("\n")) {
+                    if (ln44.length() == 0) continue;
+                    saved44.add(ln44);
+                    QueueEntry qe44 = QueueEntry.parse(ln44);
+                    if (qe44 != null && qe44.url.length() > 0)
+                        queuedIds44.add(SiteHttp.identityUrl(qe44.url));
+                }
+            }
+        } catch (Exception ignored) {}
+        java.util.List<String> run44 = FavPlayAll.lines(items, queuedIds44, favPlayingUrl, favPlayingLibUrl);
+        int added44 = 0;
+        for (String ln44 : run44) {
+            QueueEntry qe44 = QueueEntry.parse(ln44);
+            if (qe44 == null || qe44.url.length() == 0) continue;
+            boolean dup44 = false;
+            for (String ex44 : saved44) {
+                QueueEntry qx44 = QueueEntry.parse(ex44);
+                if (qx44 != null && SiteHttp.sameTalk(qx44.url, qe44.url)) { dup44 = true; break; }
+            }
+            if (dup44) continue;
+            saved44.add(ln44);
+            added44++;
+        }
+        Prefs.saveQueue(this, sd44, saved44);
+        android.widget.Toast.makeText(FavouritesActivity.this, added44 > 0
+                ? Lang.t(FavouritesActivity.this, "queue_plain_prefix") + added44 + Lang.t(FavouritesActivity.this, "queue_added_suffix")
+                : Lang.t(FavouritesActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
+        Fx.morph(v);
+        if (!firstSounds44) playFav(first44, v);
     }
 
     private void playFav(final FavTalkRail.Card c, android.view.View v) {
@@ -231,8 +418,8 @@ public class FavouritesActivity extends Activity {
     // one pass, never a crash.
     // v15.63 (slice 2038): real mini-player on this screen — a
     // faithful mirror of History's v13.54 strip (the same strip as
-    // Talks' v4.31), minus the v13.55 row-mark head (a later piece:
-    // Favourites rows gain no playing mark this run). Live session:
+    // Talks' v4.31). The v13.55 row-mark head lives in
+    // syncFavouritesStrip below since v15.64 (slice 2042). Live session:
     // title + star/sleep/download/queue/ended marks, sayadaw + clock
     // sub line, seekable progress, play/pause glyph, portrait with
     // the sounding gold ring. Dead session with a saved spot (>5s):
@@ -240,6 +427,45 @@ public class FavouritesActivity extends Activity {
     // else: hidden, so the favourites stay list-only. The two
     // resume-match computations delegate to the pure StripResume
     // core; every other branch is History's body verbatim, renamed.
+    // v15.64 (slice 2042): sounding identities for the row mark —
+    // History's refreshHistoryPlayingMarks, minus the queue cache
+    // (Favourites has no queue marks). Room: liveSession +
+    // liveHasTrack (v10.43 bound-trackless stop: a stopped talk is
+    // never the playing talk) + lastKind room -> lastUrl. Library:
+    // same live guards + lastKind lib -> lastLibPath, plus the dlMap
+    // reverse lookup for URL-form rows (exactly-one claimant, v8.44
+    // — a dual-claimed file names no talk rather than the wrong one).
+    // Prefs only, never per bind.
+    private void refreshFavouritesPlayingMarks() {
+        favPlayingUrl = "";
+        favPlayingLibUrl = "";
+        favPlayingLibPath = "";
+        try {
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            if (AudioService.liveSession && AudioService.liveHasTrack
+                    && "room".equals(sp.getString("lastKind", "")))
+                favPlayingUrl = sp.getString("lastUrl", "");
+            if (AudioService.liveSession && AudioService.liveHasTrack
+                    && "lib".equals(sp.getString("lastKind", ""))) {
+                favPlayingLibPath = sp.getString("lastLibPath", "");
+                String libPath = favPlayingLibPath;
+                if (libPath.length() > 0) {
+                    String base = libPath.substring(libPath.lastIndexOf('/') + 1);
+                    org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+                    java.util.Iterator<String> keys = map.keys();
+                    String hit = null;
+                    int matches = 0;
+                    while (keys.hasNext()) {
+                        String k = keys.next();
+                        if (base.equals(map.optString(k, ""))) { hit = k; matches++; }
+                    }
+                    if (matches == 1) favPlayingLibUrl = hit;
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
     private void syncFavouritesStripPhoto(String name) {
         android.view.View pv = findViewById(R.id.nowStripPhoto);
         if (pv == null) return;
@@ -324,11 +550,23 @@ public class FavouritesActivity extends Activity {
     }
 
     private void syncFavouritesStrip() {
-        // v15.63 (slice 2038): NO playing-row rebind here — the
-        // v13.55 head (the playing-row rebind + the fav-set change
-        // detector) is History's row-mark machinery, a separate
-        // later piece for this screen. The strip syncs its own
-        // state; the rows gain no mark this run.
+        // v15.64 (slice 2042): playing-row mark — rebind once when the sounding talk changes under the list
+        // (History v13.55, Talks v4.89/v11.15, same change-only rule): auto-advance, a Next from the strip, a
+        // natural end (same URL, liveEnded flipped) or a stop moves the mark at once; steady ticks
+        // never touch the adapter, so scrolling stays undisturbed. Runs before the strip's own early
+        // returns, so a dead session clears the mark even while the strip hides.
+        refreshFavouritesPlayingMarks();
+        if (adapter != null && (!favPlayingUrl.equals(favRowPlayingUrl == null ? "" : favRowPlayingUrl)
+                || !favPlayingLibUrl.equals(favRowPlayingLibUrl == null ? "" : favRowPlayingLibUrl)
+                || !favPlayingLibPath.equals(favRowPlayingLibPath == null ? "" : favRowPlayingLibPath)
+                || AudioService.liveEnded != favRowEnded)) {
+            favRowPlayingUrl = favPlayingUrl;
+            favRowPlayingLibUrl = favPlayingLibUrl;
+            favRowPlayingLibPath = favPlayingLibPath;
+            favRowEnded = AudioService.liveEnded;
+            adapter.notifyDataSetChanged();
+        }
+        syncFavPlayAllBtn(false); // v15.64 (slice 2044): the sounding talk moved under the list — re-show or hide Play-all with the mark, change-only
         android.view.View strip = findViewById(R.id.nowStrip);
         if (strip == null) return;
         int navText = night ? android.graphics.Color.WHITE

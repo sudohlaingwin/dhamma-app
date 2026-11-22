@@ -6,12 +6,22 @@ package com.h2h.dhamma;
 // a talk with three marks is three rows, each jumping to its own
 // minute. Same store (Prefs.bookmarks64, "url\tposMs" lines,
 // most-recent first), same join (statsRecent for title + sayadaw,
-// catalog sayadaw, never the sounding talk), same fail-closed
-// parsing — the ONLY differences are no cap and the dedupe key:
-// (identity + posMs), so http/https twin lines for the same minute
-// still collapse to one row while two different minutes stay two.
+// catalog sayadaw), same fail-closed parsing — the ONLY
+// differences are no cap and the dedupe key: (identity + posMs),
+// so http/https twin lines for the same minute still collapse to
+// one row while two different minutes stay two.
+// v15.64 (slice 2041): the sounding skip is REVERSED here —
+// 2033 copied the rail's "never the sounding talk" rule, but the
+// rail hides the playing talk's card while the full list must SHOW
+// it: the playing-row mark (v13.55 mirror, this slice) has no row
+// to mark otherwise, and in the common case (Room session, a mark
+// on the sounding talk) the skip fired on exactly the rows the
+// mark would mark. The rail keeps its skip (BmRail.pick untouched
+// — the 1991/2017 rail rule stands on rails); only this full-list
+// pick lists the sounding talk's marks, marked "\u25b6 " in gold.
+// The soundingUrl parameter is gone with the skip.
 // Pure selection only: the Activity owns the catalog lookup, the
-// sounding skip's live URL, the resume-spot write and the Room open.
+// resume-spot write and the Room open.
 public class BmAll {
     public static class Row {
         public final Prefs.HistEntry e;
@@ -25,8 +35,7 @@ public class BmAll {
     static java.util.List<Row> pickAll(
             java.util.List<String> bookmarkLines,
             java.util.List<Prefs.HistEntry> recent,
-            java.util.Set<String> catalogNames,
-            String soundingUrl) {
+            java.util.Set<String> catalogNames) {
         java.util.List<Row> out = new java.util.ArrayList<Row>();
         if (bookmarkLines == null || recent == null || catalogNames == null) return out;
         java.util.Set<String> seen = new java.util.HashSet<String>();
@@ -53,7 +62,6 @@ public class BmAll {
             if (hit.title == null || hit.title.trim().length() == 0) continue;
             if (hit.sayadaw == null || hit.sayadaw.length() == 0) continue;
             if (!catalogNames.contains(hit.sayadaw)) continue;
-            if (soundingUrl != null && SiteHttp.sameTalk(url, soundingUrl)) continue;
             String id = SiteHttp.identityUrl(hit.url);
             if (id == null) continue;
             String key = id + ":" + pos;

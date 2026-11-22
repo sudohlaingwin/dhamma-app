@@ -53,6 +53,27 @@ public class BookmarksActivity extends Activity {
     private boolean bmResumeStripMode = false;
     private String bmStripPhotoName = null;
     private boolean lastBmStripPhotoRing = false;
+    // v15.64 (slice 2041): playing-row mark (History v13.55, Talks
+    // v4.89/v11.07, same rules) — the Bookmarks rows carried no live
+    // marks: a listener browsing saved minutes could not spot the
+    // talk the strip is naming without remembering its title. The
+    // sounding identities below mirror History's
+    // refreshHistoryPlayingMarks playing half: bmPlayingUrl for a
+    // Room session (lastUrl), bmPlayingLibUrl for a library session
+    // via the dlMap reverse lookup (exactly-one claimant, v8.44),
+    // and bmPlayingLibPath for a library session matched directly
+    // — a path-form row IS the file (playRecent v12.82 writes the
+    // same path), so no lookup is needed there. bmRowPlayingUrl /
+    // bmRowPlayingLibUrl / bmRowPlayingLibPath / bmRowEnded are the
+    // last bound snapshots; the 1s tick rebinds once when any of
+    // them changes.
+    private String bmPlayingUrl = "";
+    private String bmPlayingLibUrl = "";
+    private String bmPlayingLibPath = "";
+    private String bmRowPlayingUrl = null;
+    private String bmRowPlayingLibUrl = null;
+    private String bmRowPlayingLibPath = null;
+    private boolean bmRowEnded = false;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -114,15 +135,16 @@ public class BookmarksActivity extends Activity {
 
     private void refresh() {
         java.util.Set<String> names = catalogNames();
-        String sounding = (AudioService.liveSession && AudioService.liveHasTrack)
-                ? AudioService.liveUrl : null;
-        items = BmAll.pickAll(readBookmarks(), Prefs.statsRecent(this), names, sounding);
+        items = BmAll.pickAll(readBookmarks(), Prefs.statsRecent(this), names);
+        refreshBookmarksPlayingMarks(); // v15.64 (slice 2041): mark right on first paint, not one tick late
         if (adapter != null) adapter.notifyDataSetChanged();
         if (emptyText == null) return;
         boolean empty = items.isEmpty();
         emptyText.setVisibility(empty ? View.VISIBLE : View.GONE);
         if (empty) emptyText.setText(Lang.t(this, "bm_all_empty"));
     }
+
+    private int goldColor() { return 0xFFC9A227; } // v15.64 (slice 2041): History's gold, the playing-row mark
 
     private View itemRow(final int position) {
         final BmAll.Row r = items.get(position);
@@ -158,8 +180,21 @@ public class BookmarksActivity extends Activity {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
         TextView tv = new TextView(this);
-        tv.setText(BmRail.fmtTime(r.posMs) + " \u00b7 " + e.title);
-        tv.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
+        // v15.64 (slice 2041): the sounding row says so — "\u25b6 " ahead of its
+        // "12:34 \u00b7 title" line in gold (History v13.55, Talks v4.89/v11.07),
+        // for a Room session (URL match) or a library session on a
+        // URL-form row (dlMap exactly-one claimant); an ended talk is
+        // not playing (v11.15 gate), so its mark lifts at once. A talk
+        // with three marks is three rows, and the mark reads on all
+        // three — each row IS the sounding talk at its own minute.
+        // Rows are built fresh per getView, but both text and colour
+        // rebind here so neither can leak onto the next talk.
+        boolean bmRowPlaying = !AudioService.liveEnded
+                && ((bmPlayingUrl.length() > 0 && SiteHttp.sameTalk(e.url, bmPlayingUrl))
+                        || (bmPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(e.url, bmPlayingLibUrl))
+                        || (bmPlayingLibPath.length() > 0 && e.url.equals(bmPlayingLibPath)));
+        tv.setText((bmRowPlaying ? "\u25b6 " : "") + BmRail.fmtTime(r.posMs) + " \u00b7 " + e.title);
+        tv.setTextColor(bmRowPlaying ? goldColor() : android.graphics.Color.parseColor("#7A6A58"));
         tv.setTextSize(12);
         tv.setMaxLines(1);
         tv.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -227,8 +262,8 @@ public class BookmarksActivity extends Activity {
 
     // v15.63 (slice 2037): real mini-player on this screen — a
     // faithful mirror of History's v13.54 strip (the same strip as
-    // Talks' v4.31), minus the v13.55 row-mark head (a later piece:
-    // Bookmarks rows gain no playing mark this run). Live session:
+    // Talks' v4.31). The v13.55 row-mark head lives in
+    // syncBookmarksStrip below since v15.64 (slice 2041). Live session:
     // title + star/sleep/download/queue/ended marks, sayadaw + clock
     // sub line, seekable progress, play/pause glyph, portrait with
     // the sounding gold ring. Dead session with a saved spot (>5s):
@@ -236,6 +271,45 @@ public class BookmarksActivity extends Activity {
     // else: hidden, so the bookmarks stay list-only. The two
     // resume-match computations delegate to the pure StripResume
     // core; every other branch is History's body verbatim, renamed.
+    // v15.64 (slice 2041): sounding identities for the row mark —
+    // History's refreshHistoryPlayingMarks, minus the queue cache
+    // (Bookmarks has no queue marks). Room: liveSession +
+    // liveHasTrack (v10.43 bound-trackless stop: a stopped talk is
+    // never the playing talk) + lastKind room -> lastUrl. Library:
+    // same live guards + lastKind lib -> lastLibPath, plus the dlMap
+    // reverse lookup for URL-form rows (exactly-one claimant, v8.44
+    // — a dual-claimed file names no talk rather than the wrong one).
+    // Prefs only, never per bind.
+    private void refreshBookmarksPlayingMarks() {
+        bmPlayingUrl = "";
+        bmPlayingLibUrl = "";
+        bmPlayingLibPath = "";
+        try {
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            if (AudioService.liveSession && AudioService.liveHasTrack
+                    && "room".equals(sp.getString("lastKind", "")))
+                bmPlayingUrl = sp.getString("lastUrl", "");
+            if (AudioService.liveSession && AudioService.liveHasTrack
+                    && "lib".equals(sp.getString("lastKind", ""))) {
+                bmPlayingLibPath = sp.getString("lastLibPath", "");
+                String libPath = bmPlayingLibPath;
+                if (libPath.length() > 0) {
+                    String base = libPath.substring(libPath.lastIndexOf('/') + 1);
+                    org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+                    java.util.Iterator<String> keys = map.keys();
+                    String hit = null;
+                    int matches = 0;
+                    while (keys.hasNext()) {
+                        String k = keys.next();
+                        if (base.equals(map.optString(k, ""))) { hit = k; matches++; }
+                    }
+                    if (matches == 1) bmPlayingLibUrl = hit;
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
     private void syncBookmarksStripPhoto(String name) {
         android.view.View pv = findViewById(R.id.nowStripPhoto);
         if (pv == null) return;
@@ -320,11 +394,22 @@ public class BookmarksActivity extends Activity {
     }
 
     private void syncBookmarksStrip() {
-        // v15.63 (slice 2037): NO playing-row rebind here — the
-        // v13.55 head (the playing-row rebind + the fav-set change
-        // detector) is History's row-mark machinery, a separate
-        // later piece for this screen. The strip syncs its own
-        // state; the rows gain no mark this run.
+        // v15.64 (slice 2041): playing-row mark — rebind once when the sounding talk changes under the list
+        // (History v13.55, Talks v4.89/v11.15, same change-only rule): auto-advance, a Next from the strip, a
+        // natural end (same URL, liveEnded flipped) or a stop moves the mark at once; steady ticks
+        // never touch the adapter, so scrolling stays undisturbed. Runs before the strip's own early
+        // returns, so a dead session clears the mark even while the strip hides.
+        refreshBookmarksPlayingMarks();
+        if (adapter != null && (!bmPlayingUrl.equals(bmRowPlayingUrl == null ? "" : bmRowPlayingUrl)
+                || !bmPlayingLibUrl.equals(bmRowPlayingLibUrl == null ? "" : bmRowPlayingLibUrl)
+                || !bmPlayingLibPath.equals(bmRowPlayingLibPath == null ? "" : bmRowPlayingLibPath)
+                || AudioService.liveEnded != bmRowEnded)) {
+            bmRowPlayingUrl = bmPlayingUrl;
+            bmRowPlayingLibUrl = bmPlayingLibUrl;
+            bmRowPlayingLibPath = bmPlayingLibPath;
+            bmRowEnded = AudioService.liveEnded;
+            adapter.notifyDataSetChanged();
+        }
         android.view.View strip = findViewById(R.id.nowStrip);
         if (strip == null) return;
         int navText = night ? android.graphics.Color.WHITE

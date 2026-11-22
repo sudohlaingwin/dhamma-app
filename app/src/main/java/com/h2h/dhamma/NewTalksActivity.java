@@ -38,6 +38,12 @@ public class NewTalksActivity extends Activity {
     private TextView emptyText;
     private java.util.List<NewTalkRail.Card> items =
             new java.util.ArrayList<NewTalkRail.Card>();
+    // v15.64 (slice 2045): the search keeps the unfiltered pick
+    // beside the shown list — a keystroke re-filters in memory
+    // (the Downloaded applyDlFilter shape), never re-reading the
+    // cache files per keystroke.
+    private java.util.List<NewTalkRail.Card> newAllItems =
+            new java.util.ArrayList<NewTalkRail.Card>();
     private BaseAdapter adapter;
     private boolean night;
     private java.util.Map<String, String[]> catCache;
@@ -59,6 +65,38 @@ public class NewTalksActivity extends Activity {
     private boolean newResumeStripMode = false;
     private String newStripPhotoName = null;
     private boolean lastNewStripPhotoRing = false;
+    // v15.64 (slice 2043): playing-row mark (History v13.55, Talks
+    // v4.89/v11.07, same rules) — the New talks rows carried no live
+    // marks: a listener browsing new talks could not spot the
+    // talk the strip is naming without remembering its title. The
+    // sounding identities below mirror History's
+    // refreshHistoryPlayingMarks playing half: newPlayingUrl for a
+    // Room session (lastUrl), newPlayingLibUrl for a library session
+    // via the dlMap reverse lookup (exactly-one claimant, v8.44),
+    // and newPlayingLibPath for a library session matched directly
+    // — a path-form row IS the file (playRecent v12.82 writes the
+    // same path), so no lookup is needed there. newRowPlayingUrl /
+    // newRowPlayingLibUrl / newRowPlayingLibPath / newRowEnded are the
+    // last bound snapshots; the 1s tick rebinds once when any of
+    // them changes.
+    private String newPlayingUrl = "";
+    private String newPlayingLibUrl = "";
+    private String newPlayingLibPath = "";
+    private String newRowPlayingUrl = null;
+    private String newRowPlayingLibUrl = null;
+    private String newRowPlayingLibPath = null;
+    private boolean newRowEnded = false;
+    // v15.64 (slice 2045): search on this screen — the field, the
+    // clear ✕, the live query and the keystroke flag (the
+    // Downloaded dlSearchField / dlClearBtn / dlQuery /
+    // dlSearchKeystroke shape, v1.51 + v15.33). The query is the
+    // trimmed field text; the flag is true only while the watcher
+    // drives a pass, so the ✕ melts on keystrokes and lands
+    // instantly on silent passes (rotation / restore / onResume).
+    private android.widget.EditText newSearchField = null;
+    private android.view.View newClearBtn = null;
+    private String newQuery = "";
+    private boolean newSearchKeystroke = false;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -95,6 +133,7 @@ public class NewTalksActivity extends Activity {
                 }
             });
         }
+        wireNewSearch(); // v15.64 (slice 2045): search on this screen, before the first refresh
         refresh();
         wireNewTalksStrip(); // v15.63 (slice 2039): real mini-player below the list
     }
@@ -122,16 +161,127 @@ public class NewTalksActivity extends Activity {
         java.util.Set<String> played = readPlayedTalks();
         java.util.Set<String> resumeKeys = new java.util.HashSet<String>();
         try { resumeKeys = Prefs.talkPosKeysOver(this, 5000); } catch (Exception ignored) {}
-        String sounding = (AudioService.liveSession && AudioService.liveHasTrack)
-                ? AudioService.liveUrl : null;
-        items = NewAll.pickAll(collectNewTalkEntries(played, resumeKeys),
-                played, resumeKeys, sounding);
+        // v15.64 (slice 2045): the search keeps its own copy of the
+        // unfiltered pick — a keystroke re-filters in memory (the
+        // Downloaded applyDlFilter shape), never re-reading the
+        // cache files per keystroke.
+        newAllItems = NewAll.pickAll(collectNewTalkEntries(played, resumeKeys),
+                played, resumeKeys);
+        refreshNewTalksPlayingMarks(); // v15.64 (slice 2043): mark right on first paint, not one tick late
+        applyNewSearch();
+    }
+
+    // v15.64 (slice 2045): the search pass — the filtered list,
+    // the adapter, the clear ✕ and the empty line, from the
+    // unfiltered pick. The watcher calls this per keystroke;
+    // refresh() calls it after a fresh pick; onResume's refresh()
+    // re-applies the live query after a Room return. A
+    // filtered-empty list says no_search_match (v8.94) — there ARE
+    // new talks, just none matching — while a blank query with an
+    // empty list still says no_new_talk. The playing-row mark
+    // needs nothing here: itemRow re-reads the sounding
+    // identities per bind, so a filtered-out sounding talk simply
+    // has no row to mark and a re-shown one marks at once.
+    private void applyNewSearch() {
+        items = NewSearch.filter(newAllItems, newQuery);
         if (adapter != null) adapter.notifyDataSetChanged();
+        refreshNewClear(newSearchKeystroke);
         if (emptyText == null) return;
         boolean empty = items.isEmpty();
         emptyText.setVisibility(empty ? View.VISIBLE : View.GONE);
-        if (empty) emptyText.setText(Lang.t(this, "no_new_talk"));
+        if (empty) emptyText.setText(Lang.t(this,
+                newQuery.length() > 0 ? "no_search_match" : "no_new_talk"));
     }
+
+    // v15.64 (slice 2045): search on this screen — the Downloaded
+    // search shape (v1.51 field + v4.20 Search-key dismiss + v15.33
+    // clear ✕): the hint is the Talks chooser's own
+    // talks_search_hint (v9.88), the filter is the ONE rule
+    // (Fx.titleMatches through NewSearch, title or sayadaw), and a
+    // keystroke re-filters the in-memory pick without re-reading
+    // the cache files. Rotation restore rides the watcher (the
+    // v1.51 rule): the system's restored text fires afterTextChanged
+    // after onStart, so the filter re-runs with the restored query
+    // before onResume's refresh. The clear ✕ clears through
+    // setText("") so the watcher re-runs the filter exactly like a
+    // keystroke (the Main v15.33 shape, slice 1836); it is GONE
+    // with an empty query, so a tap can only land on a real query.
+    private void wireNewSearch() {
+        newSearchField = findViewById(R.id.newSearch);
+        newClearBtn = findViewById(R.id.btnClearNewSearch);
+        if (newSearchField != null)
+            newSearchField.setHint(Lang.t(this, "talks_search_hint"));
+        if (newSearchField != null)
+            newSearchField.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        if (newSearchField != null) newSearchField.setSingleLine(true);
+        if (newSearchField != null) newSearchField.setOnEditorActionListener(new android.widget.TextView.OnEditorActionListener() {
+            @Override public boolean onEditorAction(android.widget.TextView v, int actionId, android.view.KeyEvent event) {
+                if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+                        || actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                    android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                    return true;
+                }
+                return false;
+            }
+        });
+        if (newClearBtn != null) newClearBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.morph(v);
+                if (newSearchField != null) newSearchField.setText("");
+            }
+        });
+        if (newSearchField != null) newSearchField.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(android.text.Editable s) {
+                newQuery = s.toString().trim();
+                newSearchKeystroke = true;
+                applyNewSearch();
+                newSearchKeystroke = false;
+            }
+        });
+    }
+
+    // v15.64 (slice 2045): the search clear ✕ melts with the query
+    // — the Downloaded refreshDlClear shape verbatim (v15.33, slice
+    // 1837): fades in 250ms (the app's settled Fx.fadeIn) when a
+    // keystroke-driven pass leaves a non-empty query, and fades out
+    // 200ms (the v14.33 sleep-line rhythm) when the query empties;
+    // silent passes (rotation / restore / onResume) land instantly,
+    // the v1.53 rule. Shown for a non-empty query only — the ✕ is a
+    // clear control, not a no-match marker, so it never waits on
+    // the entries or the results. A mid-fadeOut re-show flows back
+    // on from its current alpha (Fx.fadeIn is restart-safe, v3.52,
+    // and its gen bump stands the fade-out's end action down, so it
+    // can never strand the view GONE), and a silent pass on a
+    // mid-fadeOut view parks it at full alpha instead.
+    private void refreshNewClear(boolean animate) {
+        if (newClearBtn == null) return;
+        if (newQuery != null && newQuery.length() > 0) {
+            if (newClearBtn.getVisibility() != android.view.View.VISIBLE) {
+                newClearBtn.setVisibility(android.view.View.VISIBLE);
+                if (animate) Fx.fadeIn(newClearBtn, 250);
+                else newClearBtn.setAlpha(1f);
+            } else if (animate && newClearBtn.getAlpha() < 0.999f) {
+                Fx.fadeIn(newClearBtn, 250);
+            } else if (!animate) {
+                newClearBtn.animate().cancel();
+                newClearBtn.setAlpha(1f);
+            }
+        } else {
+            if (newClearBtn.getVisibility() == android.view.View.VISIBLE) {
+                if (animate) Fx.fadeOut(newClearBtn, 200);
+                else {
+                    newClearBtn.animate().cancel();
+                    newClearBtn.setVisibility(android.view.View.GONE);
+                    newClearBtn.setAlpha(1f);
+                }
+            }
+        }
+    }
+
+    private int goldColor() { return 0xFFC9A227; } // v15.64 (slice 2043): History's gold, the playing-row mark
 
     private View itemRow(final int position) {
         final NewTalkRail.Card c = items.get(position);
@@ -171,8 +321,20 @@ public class NewTalksActivity extends Activity {
         // v15.50): the bare title — the 1921 gate only ever picks
         // talks nobody started, so there is no saved-spot prefix
         // and no downloaded badge here (the 2033 precedent).
-        tv.setText(e.title);
-        tv.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
+        // v15.64 (slice 2043): the sounding row says so — "\u25b6 " ahead of
+        // its bare title in gold (History v13.55, Talks v4.89/v11.07), for a Room
+        // session (URL match) or a library session on a URL-form row (dlMap
+        // exactly-one claimant); an ended talk is not playing (v11.15 gate),
+        // so its mark lifts at once. New talks rows carry no saved-spot prefix
+        // (the 1921 gate only ever picks talks nobody started), so the mark
+        // reads on the bare title. Rows are built fresh per getView, but both
+        // text and colour rebind here so neither can leak onto the next talk.
+        boolean newRowPlaying = !AudioService.liveEnded
+                && ((newPlayingUrl.length() > 0 && SiteHttp.sameTalk(e.url, newPlayingUrl))
+                        || (newPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(e.url, newPlayingLibUrl))
+                        || (newPlayingLibPath.length() > 0 && e.url.equals(newPlayingLibPath)));
+        tv.setText((newRowPlaying ? "\u25b6 " : "") + e.title);
+        tv.setTextColor(newRowPlaying ? goldColor() : android.graphics.Color.parseColor("#7A6A58"));
         tv.setTextSize(12);
         tv.setMaxLines(1);
         tv.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -236,8 +398,8 @@ public class NewTalksActivity extends Activity {
     // for one pass, never a crash.
     // v15.63 (slice 2039): real mini-player on this screen — a
     // faithful mirror of History's v13.54 strip (the same strip as
-    // Talks' v4.31), minus the v13.55 row-mark head (a later piece:
-    // New talks rows gain no playing mark this run). Live session:
+    // Talks' v4.31). The v13.55 row-mark head lives in
+    // syncNewTalksStrip below since v15.64 (slice 2043). Live session:
     // title + star/sleep/download/queue/ended marks, sayadaw + clock
     // sub line, seekable progress, play/pause glyph, portrait with
     // the sounding gold ring. Dead session with a saved spot (>5s):
@@ -245,6 +407,45 @@ public class NewTalksActivity extends Activity {
     // else: hidden, so the new talks stay list-only. The two
     // resume-match computations delegate to the pure StripResume
     // core; every other branch is History's body verbatim, renamed.
+    // v15.64 (slice 2043): sounding identities for the row mark —
+    // History's refreshHistoryPlayingMarks, minus the queue cache
+    // (New talks has no queue marks). Room: liveSession +
+    // liveHasTrack (v10.43 bound-trackless stop: a stopped talk is
+    // never the playing talk) + lastKind room -> lastUrl. Library:
+    // same live guards + lastKind lib -> lastLibPath, plus the dlMap
+    // reverse lookup for URL-form rows (exactly-one claimant, v8.44
+    // — a dual-claimed file names no talk rather than the wrong one).
+    // Prefs only, never per bind.
+    private void refreshNewTalksPlayingMarks() {
+        newPlayingUrl = "";
+        newPlayingLibUrl = "";
+        newPlayingLibPath = "";
+        try {
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            if (AudioService.liveSession && AudioService.liveHasTrack
+                    && "room".equals(sp.getString("lastKind", "")))
+                newPlayingUrl = sp.getString("lastUrl", "");
+            if (AudioService.liveSession && AudioService.liveHasTrack
+                    && "lib".equals(sp.getString("lastKind", ""))) {
+                newPlayingLibPath = sp.getString("lastLibPath", "");
+                String libPath = newPlayingLibPath;
+                if (libPath.length() > 0) {
+                    String base = libPath.substring(libPath.lastIndexOf('/') + 1);
+                    org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+                    java.util.Iterator<String> keys = map.keys();
+                    String hit = null;
+                    int matches = 0;
+                    while (keys.hasNext()) {
+                        String k = keys.next();
+                        if (base.equals(map.optString(k, ""))) { hit = k; matches++; }
+                    }
+                    if (matches == 1) newPlayingLibUrl = hit;
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
     private void syncNewTalksStripPhoto(String name) {
         android.view.View pv = findViewById(R.id.nowStripPhoto);
         if (pv == null) return;
@@ -329,11 +530,22 @@ public class NewTalksActivity extends Activity {
     }
 
     private void syncNewTalksStrip() {
-        // v15.63 (slice 2039): NO playing-row rebind here — the
-        // v13.55 head (the playing-row rebind + the fav-set change
-        // detector) is History's row-mark machinery, a separate
-        // later piece for this screen. The strip syncs its own
-        // state; the rows gain no mark this run.
+        // v15.64 (slice 2043): playing-row mark — rebind once when the sounding talk changes under the list
+        // (History v13.55, Talks v4.89/v11.15, same change-only rule): auto-advance, a Next from the strip, a
+        // natural end (same URL, liveEnded flipped) or a stop moves the mark at once; steady ticks
+        // never touch the adapter, so scrolling stays undisturbed. Runs before the strip's own early
+        // returns, so a dead session clears the mark even while the strip hides.
+        refreshNewTalksPlayingMarks();
+        if (adapter != null && (!newPlayingUrl.equals(newRowPlayingUrl == null ? "" : newRowPlayingUrl)
+                || !newPlayingLibUrl.equals(newRowPlayingLibUrl == null ? "" : newRowPlayingLibUrl)
+                || !newPlayingLibPath.equals(newRowPlayingLibPath == null ? "" : newRowPlayingLibPath)
+                || AudioService.liveEnded != newRowEnded)) {
+            newRowPlayingUrl = newPlayingUrl;
+            newRowPlayingLibUrl = newPlayingLibUrl;
+            newRowPlayingLibPath = newPlayingLibPath;
+            newRowEnded = AudioService.liveEnded;
+            adapter.notifyDataSetChanged();
+        }
         android.view.View strip = findViewById(R.id.nowStrip);
         if (strip == null) return;
         int navText = night ? android.graphics.Color.WHITE

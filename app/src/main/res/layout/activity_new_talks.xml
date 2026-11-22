@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- v15.63 (slice 2036): "See all" on the Main "New talks" rail — the full list of every new talk; tap a row to land the Room at the start. Title + list + mini-player strip since v15.63 (slice 2039, the History v13.54 precedent); no stat cards, no clear-all — a bulk destructive verb, the 2016-rejected class). Rows are built in code (NewTalksActivity), like History / Bookmarks / Favourites. -->
+<!-- v15.63 (slice 2036): "See all" on the Main "New talks" rail — the full list of every new talk; tap a row to land the Room at the start. Title + search row since v15.64 (slice 2045) + list + mini-player strip since v15.63 (slice 2039, the History v13.54 precedent); no stat cards, no clear-all — a bulk destructive verb, the 2016-rejected class). Rows are built in code (NewTalksActivity), like History / Bookmarks / Favourites. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/newRoot"
     android:layout_width="match_parent"
@@ -20,6 +20,36 @@
             android:textColor="@color/maroon"
             android:textSize="20sp"
             android:textStyle="bold" />
+    </LinearLayout>
+    <!-- v15.64 (slice 2045): search on this screen — the Downloaded
+         dlSearchRow shape (v1.51 + the v15.33 clear ✕): the
+         listener's unheard arrivals can run to dozens, and no
+         screen anywhere let them find one by title or sayadaw
+         without scrolling. The hint is set in code
+         (talks_search_hint, v9.88) so no Burmese sits in the
+         layout; the ✕ clears through setText("") so the watcher
+         re-runs the filter. -->
+    <LinearLayout
+        android:id="@+id/newSearchRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal">
+        <EditText
+            android:id="@+id/newSearch"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:inputType="text"
+            android:textColor="@color/ink"
+            android:textColorHint="@color/muted" />
+        <Button
+            android:id="@+id/btnClearNewSearch"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="8dp"
+            android:text="✕"
+            android:visibility="gone" />
     </LinearLayout>
     <!-- v14.06 (F5, sixth pass slice 5): the empty text used to sit AFTER the weight-1 list in History, so it rendered at the very bottom of the screen. The FrameLayout centers it in the list area instead; same shape here. -->
     <FrameLayout

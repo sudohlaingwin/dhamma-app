@@ -5,18 +5,27 @@ package com.h2h.dhamma;
 // lists EVERY starred talk, in the rail's own most-recently-played
 // order. Same store (Prefs "favTalks", canonical https URLs,
 // unordered), same join (statsRecent for title + sayadaw, catalog
-// sayadaw, never the sounding talk), same fail-closed parsing, same
-// dedupe by identity URL, same spot from the posById map — the ONLY
-// difference is no cap. A starred talk with no play record has no
-// row, the same aged-out edge as the 1964 rail. Pure selection only:
-// the Activity owns the catalog lookup, the sounding skip's live URL,
-// the spot map and the Room open.
+// sayadaw), same fail-closed parsing, same dedupe by identity URL,
+// same spot from the posById map — the ONLY difference is no cap.
+// A starred talk with no play record has no row, the same aged-out
+// edge as the 1964 rail.
+// v15.64 (slice 2042): the sounding skip is REVERSED here —
+// 2035 copied the rail's "never the sounding talk" rule, but the
+// rail hides the playing talk's card while the full list must SHOW
+// it: the playing-row mark (v13.55 mirror, this slice) has no row
+// to mark otherwise, and in the common case (Room session, the
+// sounding talk starred) the skip fired on exactly the row the
+// mark would mark. The rail keeps its skip (FavTalkRail.pick untouched
+// — the 1991/2017 rail rule stands on rails); only this
+// full-list pick lists the sounding talk, marked "\u25b6 " in gold.
+// The soundingUrl parameter is gone with the skip.
+// Pure selection only: the Activity owns the catalog lookup, the
+// spot map and the Room open.
 public class FavAll {
     static java.util.List<FavTalkRail.Card> pickAll(
             java.util.Set<String> favUrls,
             java.util.List<Prefs.HistEntry> recent,
             java.util.Set<String> catalogNames,
-            String soundingUrl,
             java.util.Map<String, Integer> posById) {
         java.util.List<FavTalkRail.Card> out = new java.util.ArrayList<FavTalkRail.Card>();
         if (favUrls == null || recent == null || catalogNames == null) return out;
@@ -33,7 +42,6 @@ public class FavAll {
             if (h.title == null || h.title.trim().length() == 0) continue;
             if (h.sayadaw == null || h.sayadaw.length() == 0) continue;
             if (!catalogNames.contains(h.sayadaw)) continue;
-            if (soundingUrl != null && SiteHttp.sameTalk(h.url, soundingUrl)) continue;
             String id = SiteHttp.identityUrl(h.url);
             if (id == null) continue;
             if (seen.contains(id)) continue;
