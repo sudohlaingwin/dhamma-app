@@ -2792,7 +2792,7 @@ public class RoomActivity extends Activity {
         for (String line : queueUrls) {
             QueueEntry q = QueueEntry.parse(line);
             if (q == null) continue;
-            if (!kept && SiteHttp.sameTalk(q.url, e.url)) { kept = true; carried.add(q.url); continue; }
+            if (!kept && SiteHttp.sameTalk(q.url, e.url)) { kept = true; carried.add((q.isV3() && q.posMs > 0) ? line : q.url); continue; }
             if (!q.isV2()) {
                 String title = "";
                 for (int i = 0; i < talks.size(); i++)
@@ -2801,7 +2801,8 @@ public class RoomActivity extends Activity {
                     line = QueueEntry.format(
                             new QueueEntry(q.url, leaving, title));
             } else if (q.sayadaw.equals(e.sayadaw)) {
-                line = q.url;
+                // v15.66 (slice 2054): a v3 line keeps its full form here — collapsing it to the bare URL would drop the minute (format() carries it only on a v2-framed line), so the next pop after the handover would play the mark at the saved spot.
+                if (!(q.isV3() && q.posMs > 0)) line = q.url;
             }
             carried.add(line);
         }
@@ -2817,6 +2818,8 @@ public class RoomActivity extends Activity {
         pageUrl = cat[1];
         photoUrl = cat[2];
         autoUrl = e.url;
+        // v15.66 (slice 2054): the head's minute rides the handover — the load-completion auto-play seeks to it (see the autoUrl block). Set only on the success path, beside autoUrl, so a refused handover never arms it.
+        pendingAutoSeek54 = (e.isV3() && e.posMs > 0) ? e.posMs : -1;
         currentIndex = -1;
         endedHandledFor = null;
         talks.clear();
@@ -3014,6 +3017,8 @@ public class RoomActivity extends Activity {
     // nowhere; the load-completion auto-play keys off autoUrl
     // only).
     private String sayadawName, sayadawGroup, pageUrl, photoUrl, autoUrl;
+    // v15.66 (slice 2054): the minute (ms) a v3 queue head must start at, carried from handoverToForeignTalk to the load-completion auto-play — -1 = none (every non-v3 head). Consumed with the auto talk; cleared wherever autoUrl is cleared, so a stale minute can never ride a later auto-play. Never written into talkPos: the pop seeks to it, the saved resume spot stays untouched.
+    private int pendingAutoSeek54 = -1;
     // v12.79: true when this Room was opened by a playlist's
     // playFrom — the load-completion fallback (below) only fires
     // for a playlist-originated auto-play, never for a resume or
@@ -8940,7 +8945,7 @@ if (snd68 >= 0) currentIndex = snd68;
                                         pushPrevHistory16(talks.get(old61).url);
                                     }
                                 }
-                                if (dx < 0) { if (!tryForeignHandover()) { dropRefusedForeignHead68(firstWaitingForeignEntry()); playIndex(consumeNextIndex()); } } // v4.32: swipe-next follows the queue too; v7.08: foreign head hands over; v11.85: refused head dropped like handleNext (v11.68)
+                                if (dx < 0) { if (!tryForeignHandover()) { dropRefusedForeignHead68(firstWaitingForeignEntry()); playNextWithMinute54(); } } // v4.32: swipe-next follows the queue too; v7.08: foreign head hands over; v11.85: refused head dropped like handleNext (v11.68)
                                 else playIndex((currentIndex - 1 + talks.size()) % talks.size());
                             } else playIndex(0);
                         } else if (Math.abs(dy) > 100f * density && Math.abs(dy) > Math.abs(dx)) {
@@ -9784,7 +9789,7 @@ if (snd61 >= 0 && snd61 != currentIndex && currentIndex >= 0 && currentIndex < t
     if (!drainHiddenTrail08(talks.get(currentIndex).url)) pushPrevHistory16(talks.get(currentIndex).url);
 }
 if (snd61 >= 0) currentIndex = snd61;
-                    if (!tryForeignHandover()) { dropRefusedForeignHead68(firstWaitingForeignEntry()); playIndex(consumeNextIndex()); } // v4.32: queued head first, else list-next; v7.08: foreign head hands over; v11.85: refused head dropped like handleNext (v11.68) — a catalog-miss head can never play, so keeping it repeated the refusal toast on every Next and inflated the ◈ count
+                    if (!tryForeignHandover()) { dropRefusedForeignHead68(firstWaitingForeignEntry()); playNextWithMinute54(); } // v4.32: queued head first, else list-next; v7.08: foreign head hands over; v11.85: refused head dropped like handleNext (v11.68) — a catalog-miss head can never play, so keeping it repeated the refusal toast on every Next and inflated the ◈ count
 
                     Fx.morph(v); // v2.09: Next morphs like Play (v2.07)
                     nudgeNext(v); // v2.34: forward nudge on advance
@@ -12402,6 +12407,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                 // never let the recreated activity replay it from the
                 // intent's still-present autoUrl.
                 autoUrl = null;
+                pendingAutoSeek54 = -1;
                 restored = true;
                 if (roomList != null && roomList.getVisibility() == View.VISIBLE && currentIndex >= 0) {
                     int sp55 = drawerScrollPos(currentIndex);
@@ -12727,7 +12733,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                 // the same stale-first fallback; any other switch
                 // clears it (see the field note).
                 autoFromPlaylist = intent.getBooleanExtra("fromPlaylist", false);
-            } else { autoUrl = null; autoFromPlaylist = false; }
+            } else { autoUrl = null; autoFromPlaylist = false; pendingAutoSeek54 = -1; }
             currentIndex = -1;
             endedHandledFor = null;
             talks.clear();
@@ -13071,6 +13077,17 @@ if (snd67q >= 0) currentIndex = snd67q;
         if (eff69 >= 0 && eff69 < talks.size()) return (eff69 + 1) % talks.size();
         return 0;
     }
+    // v15.66 (slice 2054): the minute the queued head for this talk must start at — the QueueHeadMinute core over this Room's queue. -1 = no minute (no line, a v1/v2 line, a corrupt line), so the caller falls back to the saved spot. Guards the index: peek can return -1.
+    private int queueHeadMinute54(int idx) {
+        if (idx < 0 || idx >= talks.size()) return -1;
+        return QueueHeadMinute.minuteFor(queueUrls, talks.get(idx).url);
+    }
+    // v15.66 (slice 2054): the queue-head pop with the minute — every foreground pop site funnels here: the picked index plays at its head line's minute when it carries one, else at the saved spot (playIndex's seekMs 0). The minute rides the seek argument only — talkPos is never written. playIndex's ahead-drop still drops the played line exactly once, on real play only, so a gated head stays queued through a cancel exactly as before.
+    private void playNextWithMinute54() {
+        int nx = consumeNextIndex();
+        int m = queueHeadMinute54(nx);
+        playIndex(nx, m >= 0 ? m : 0);
+    }
     // v11.81: PEEK-ONLY now — the pop used to run here, BEFORE playIndex's bind check,
     // so a pre-bind Next durably deleted its queued head and a discarded pending play
     // (sayadaw switch, handover, close before the bind) lost the talk for good without
@@ -13107,7 +13124,7 @@ if (snd67q >= 0) currentIndex = snd67q;
         // the fade below needs the old index.
         final int endedIdx = currentIndex;
         armNewRowFade = true; // v3.24: no tap morph on the new row
-        playIndex(consumeNextIndex()); // v4.32: peek the queued head, if any — playIndex drops it on real play (v11.81)
+        playNextWithMinute54(); // v4.32: peek the queued head, if any — playIndex drops it on real play (v11.81)
         // v4.14: auto-advance announces itself — a
         // listener looking away heard the title
         // pour but never got the queue-style
@@ -13679,7 +13696,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                 // so the refusal toast does not repeat on every Next; the in-list advance
                 // below runs either way (a null entry is a no-op here).
                 dropRefusedForeignHead68(firstWaitingForeignEntry());
-                playIndex(consumeNextIndex()); return; } // v4.32: queued head first, else list-next
+                playNextWithMinute54(); return; } // v4.32: queued head first, else list-next
         }
         // v1.77: a Next that matches nothing used to die silently —
         // e.g. the notification/headset Next while this Room shows a
@@ -16661,7 +16678,8 @@ if (snd67q >= 0) currentIndex = snd67q;
                             // per-talk spots — one lookup now serves
                             // both, global spot first, per-talk spot
                             // second, same >5s rule either way.
-                            int saved = savedPosFor(want);
+                            // v15.66 (slice 2054): a handover minute replaces the saved spot here — the head plays at its mark, never at the resume spot. Cleared with the auto talk below.
+                            int saved = pendingAutoSeek54 > 0 ? pendingAutoSeek54 : savedPosFor(want);
                             boolean matched = false;
                             for (int i = 0; i < talks.size(); i++) {
                                 if (SiteHttp.sameTalk(talks.get(i).url, want)) {
@@ -16701,6 +16719,8 @@ if (snd67q >= 0) currentIndex = snd67q;
                                     break;
                                 }
                             }
+                            // v15.66 (slice 2054): the handover minute is consumed with the auto talk — a clean load consumes it; a failed/empty load keeps autoUrl for the retry, so the minute stays for the retry too.
+                            if (ferr == null && !found.isEmpty()) pendingAutoSeek54 = -1;
                             // v1.42: say so instead of silently doing nothing
                             // when the saved talk left the site's list.
                             // v1.72: but not on a failed or empty load —
@@ -16735,7 +16755,8 @@ if (snd67q >= 0) currentIndex = snd67q;
                                     for (int qi79 = 0; qi79 < queueUrls.size(); qi79++) {
                                         int ti79 = talkIndexForUrl(queueLineUrl(queueUrls.get(qi79)));
                                         if (ti79 >= 0) {
-                                            playIndex(ti79, savedPosFor(talks.get(ti79).url));
+                                            int m79 = queueHeadMinute54(ti79);
+                                            playIndex(ti79, m79 >= 0 ? m79 : savedPosFor(talks.get(ti79).url));
                                             break;
                                         }
                                     }

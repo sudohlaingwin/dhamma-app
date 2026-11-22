@@ -7,7 +7,9 @@
     android:background="@color/bg"
     android:orientation="vertical"
     android:padding="16dp">
+    <!-- v15.66 (slice 2057): sort on this screen — the Bookmarks sort-button shape (v15.65, slice 2051): the button names the CURRENT order (bm_sort_recent / bm_sort_oldest / bm_sort_sayadaw, set in code) and cycles recent -> oldest -> sayadaw A-Z. It sits in the header row beside the title and the Play-all button, so the order reads in a still. The header row gains its id (newHeaderRow) for the label-swap dip. -->
     <LinearLayout
+        android:id="@+id/newHeaderRow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
@@ -28,6 +30,12 @@
             android:layout_marginStart="8dp"
             android:textSize="14sp"
             android:visibility="gone" />
+        <Button
+            android:id="@+id/btnNewSort"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:textSize="14sp" />
     </LinearLayout>
     <!-- v15.64 (slice 2045): search on this screen — the Downloaded
          dlSearchRow shape (v1.51 + the v15.33 clear ✕): the

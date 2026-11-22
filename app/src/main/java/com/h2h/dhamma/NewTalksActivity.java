@@ -97,6 +97,16 @@ public class NewTalksActivity extends Activity {
     private android.view.View newClearBtn = null;
     private String newQuery = "";
     private boolean newSearchKeystroke = false;
+    // v15.66 (slice 2057): sort on this screen — the button and the
+    // persisted mode (the Bookmarks bmSortMode shape, v15.65 slice
+    // 2051). The mode is read from Prefs in wireNewSort(); the
+    // button label names the CURRENT order (newSortLabel, the 2051
+    // bm_sort_* keys — the keys name the ORDER, not the screen),
+    // so the order reads in a still. Rotation recreates the
+    // activity and re-reads the persisted mode — no watcher or
+    // saved-state needed.
+    private android.widget.Button newSortBtn = null;
+    private int newSortMode = 0;
     // v15.65 (slice 2047): "Play all new" on this screen (the
     // chooser's v13.76 Play All + the library's v15.50
     // play-listened + Favourites' v15.64 play-all, the fourth list
@@ -150,6 +160,7 @@ public class NewTalksActivity extends Activity {
             });
         }
         wireNewSearch(); // v15.64 (slice 2045): search on this screen, before the first refresh
+        wireNewSort(); // v15.66 (slice 2057): sort on this screen, before the first refresh
         refresh();
         // v15.65 (slice 2047): wire the Play-all button the same way
         // as the chooser's Play All (v13.76) — one tap plays the whole
@@ -213,7 +224,15 @@ public class NewTalksActivity extends Activity {
     // identities per bind, so a filtered-out sounding talk simply
     // has no row to mark and a re-shown one marks at once.
     private void applyNewSearch() {
-        items = NewSearch.filter(newAllItems, newQuery);
+        // v15.66 (slice 2057): the sort rides the search pass — the
+        // shown list is the filtered list in the chosen order, so a
+        // keystroke re-sorts in memory and the sort tap re-runs this
+        // pass instead of re-reading the pick. The playing-row mark
+        // needs nothing here, like the search (2045): itemRow
+        // re-reads the sounding identities per bind. The play-all
+        // run follows the sorted list (the 2047 rule): the shown run
+        // is the run, in the chosen order.
+        items = NewSort.sort(NewSearch.filter(newAllItems, newQuery), newSortMode);
         if (adapter != null) adapter.notifyDataSetChanged();
         refreshNewClear(newSearchKeystroke);
         if (emptyText == null) return;
@@ -310,6 +329,49 @@ public class NewTalksActivity extends Activity {
                 }
             }
         }
+    }
+
+    // v15.66 (slice 2057): sort on this screen — the Bookmarks
+    // sort-button shape (v15.65, slice 2051, itself the Downloaded
+    // v1.47 label + v2.90 premium label dip + v4.22 keyboard hide):
+    // the button names the CURRENT order (newSortLabel), a tap
+    // morphs the button, hides the search keyboard, advances the
+    // mode (recent -> oldest -> sayadaw), persists it, and dips the
+    // header row while the label swaps (Fx.themeDip on
+    // newHeaderRow, the dlBtnRow shape — the dip runs on the row,
+    // never on the tapped button, so its alpha channel never
+    // cancels the morph's scale channel; themeDip null-guards, so
+    // a missing row still swaps the label). The sort re-runs
+    // applyNewSearch() at once (it only reads newSortMode, like the
+    // Settings syncLiveService pattern), so the list re-orders in
+    // place with no re-read. The mode survives rotation through
+    // Prefs, like the Bookmarks sort (v15.65).
+    private void wireNewSort() {
+        newSortBtn = findViewById(R.id.btnNewSort);
+        newSortMode = Prefs.newSortMode(this);
+        if (newSortBtn != null) newSortBtn.setText(newSortLabel());
+        if (newSortBtn != null) newSortBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.morph(v);
+                android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+                if (imm != null) imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                newSortMode = (newSortMode + 1) % 3;
+                Prefs.setNewSortMode(NewTalksActivity.this, newSortMode);
+                Fx.themeDip(findViewById(R.id.newHeaderRow), new Runnable() { @Override public void run() { if (newSortBtn != null) newSortBtn.setText(newSortLabel()); } });
+                applyNewSearch();
+            }
+        });
+    }
+
+    // v15.66 (slice 2057): the sort button label names the CURRENT
+    // order — the Bookmarks bmSortLabel shape (1 method, 3
+    // returns): most-recent first, oldest first, sayadaw A-Z. The
+    // keys are the 2051 bm_sort_* keys — they name the ORDER, not
+    // the screen, so no new Lang keys and no duplicated Burmese.
+    private String newSortLabel() {
+        if (newSortMode == 1) return Lang.t(NewTalksActivity.this, "bm_sort_oldest");
+        if (newSortMode == 2) return Lang.t(NewTalksActivity.this, "bm_sort_sayadaw");
+        return Lang.t(NewTalksActivity.this, "bm_sort_recent");
     }
 
     private int goldColor() { return 0xFFC9A227; } // v15.64 (slice 2043): History's gold, the playing-row mark

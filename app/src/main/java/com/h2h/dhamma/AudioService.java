@@ -5113,6 +5113,8 @@ public class AudioService extends Service {
             int headPos = -1;
             int headIdx = -1;
             String headUrl = null;
+            // v15.66 (slice 2054): the head line's minute, carried from the scan — -1 = no minute (every v1/v2 line). The in-list play below seeks to it; the foreign head's minute rides playForeignHead11 instead.
+            int headPosMs54 = -1;
             // v12.11: a foreign head no longer always defers — see the scan below. When it
             // plays, headIdx stays -1 (no index in this list) and these carry the handover.
             boolean headForeign11 = false;
@@ -5236,6 +5238,7 @@ public class AudioService extends Service {
                 headPos = i;
                 headIdx = found;
                 headUrl = qu;
+                headPosMs54 = qe.posMs;
                 break;
             }
             if (headPos < 0) return unknownSeen52;
@@ -5283,7 +5286,8 @@ public class AudioService extends Service {
             sp.edit().putString("lastUrl", SiteHttp.identityUrl(headUrl)).putString("lastTitle", hTitle).apply();
             Prefs.savePlayList(this, raw, headIdx);
             if (!manual) armAutoAdvanceN1(1);
-            play(hLocal != null ? hLocal.getAbsolutePath() : headUrl, hTitle, savedSeekFor(headUrl));
+            // v15.66 (slice 2054): a v3 head plays at its mark, not at the saved spot — the minute rides the seek argument only, talkPos is never written.
+            play(hLocal != null ? hLocal.getAbsolutePath() : headUrl, hTitle, headPosMs54 > 0 ? headPosMs54 : savedSeekFor(headUrl));
             // v13.14 (Q10): the head is already popped above — if this prepare fails,
             // the head returns to the front of lastName's queue instead of vanishing.
             armPendingQueueHead14(qLines[headPos], lastName);
@@ -5376,6 +5380,9 @@ public class AudioService extends Service {
             String headTitle11, String[] headCat11, String[] lines, String forceLocal11) {
         try {
             String lastName = sp.getString("lastName", "");
+            // v15.66 (slice 2054): the head line's minute — a v3 head plays at its mark, not at the saved spot. Parsed from the head line itself, so both callers (the background advance and the download re-fire) honour it; -1 = no minute.
+            QueueEntry qeHead54 = QueueEntry.parse(qLines[headPos]);
+            int headPosMs54 = (qeHead54 != null && qeHead54.isV3() && qeHead54.posMs > 0) ? qeHead54.posMs : -1;
             // v12.12: shared foreign-head play tail (extracted from advanceQueueHead63, v12.11)
             // — the mirror of RoomActivity.handoverToForeignTalk
             // (v7.08) minus the list load. The head plays NOW from its own v2 URL/title, so it
@@ -5414,7 +5421,8 @@ public class AudioService extends Service {
                     if (title11.length() > 0)
                         line11 = QueueEntry.format(new QueueEntry(q11.url, lastName, title11));
                 } else if (q11.sayadaw.equals(headSayadaw11)) {
-                    line11 = q11.url;
+                    // v15.66 (slice 2054): a v3 line keeps its full form here — collapsing it to the bare URL would drop the minute, so the next pop after the handover would play the mark at the saved spot.
+                    if (!(q11.isV3() && q11.posMs > 0)) line11 = q11.url;
                 }
                 carried11.add(line11);
             }
@@ -5442,7 +5450,8 @@ public class AudioService extends Service {
                     .putString("lastGroup", headCat11[0])
                     .putString("lastPage", headCat11[1])
                     .putString("lastPhoto", headCat11[2]).apply();
-            play(forceLocal11 != null ? forceLocal11 : (hLocal11 != null ? hLocal11.getAbsolutePath() : headUrl), hTitle11, savedSeekFor(headUrl));
+            // v15.66 (slice 2054): a v3 head plays at its mark, not at the saved spot — the minute rides the seek argument only, talkPos is never written.
+            play(forceLocal11 != null ? forceLocal11 : (hLocal11 != null ? hLocal11.getAbsolutePath() : headUrl), hTitle11, headPosMs54 > 0 ? headPosMs54 : savedSeekFor(headUrl));
             // v13.14 (Q10): the head is already carried away above — if this prepare
             // fails, the head returns to the front of the NEW sayadaw's queue (the key
             // the rest travelled to), never to the cleared old key.

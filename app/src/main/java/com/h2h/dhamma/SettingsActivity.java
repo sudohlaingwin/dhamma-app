@@ -795,6 +795,8 @@ public class SettingsActivity extends Activity {
                                         || !Prefs.autoTheme(SettingsActivity.this)
                                         || Prefs.dlSortMode(SettingsActivity.this) != 0
                                         || Prefs.bmSortMode(SettingsActivity.this) != 0
+                                        || Prefs.newSortMode(SettingsActivity.this) != 0
+                                        || Prefs.favSortMode(SettingsActivity.this) != 0
                                         || Prefs.sleepMinutes(SettingsActivity.this) != 0
                                         || !Prefs.fxEnabled(SettingsActivity.this)
                                         || !Prefs.dataSaver(SettingsActivity.this)
@@ -826,6 +828,14 @@ public class SettingsActivity extends Activity {
                                 // Bookmarks sort (v15.65) must reset to most-recent
                                 // first too, or "reset all" lies about it.
                                 Prefs.setBmSortMode(SettingsActivity.this, 0);
+                                // v15.66 (slice 2057): same left-behind class — the
+                                // New talks sort (v15.66) must reset to most-recent
+                                // first too, or "reset all" lies about it.
+                                Prefs.setNewSortMode(SettingsActivity.this, 0);
+                                // v15.66 (slice 2056): same left-behind class — the
+                                // Favourites sort (v15.66) must reset to most-recent
+                                // first too, or "reset all" lies about it.
+                                Prefs.setFavSortMode(SettingsActivity.this, 0);
                                 Prefs.setSleepMinutes(SettingsActivity.this, 0);
                                 // v1.53: and the FX toggle (v1.52) — reset
                                 // used to leave sounds/vibration off- or

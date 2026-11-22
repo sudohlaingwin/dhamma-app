@@ -22,6 +22,14 @@
             android:textColor="@color/maroon"
             android:textSize="20sp"
             android:textStyle="bold" />
+        <!-- v15.66 (slice 2055): "Play all marks" — the Favourites 2044 Play All on this screen's header: one tap queues the whole shown run of marks in order and opens the Room on the first mark at its minute. GONE until refresh() shows it; the label comes from Lang pl_play_all in code, so no literal here. -->
+        <Button
+            android:id="@+id/btnBmPlayAll"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="8dp"
+            android:textSize="14sp"
+            android:visibility="gone" />
         <Button
             android:id="@+id/btnBmSort"
             android:layout_width="wrap_content"

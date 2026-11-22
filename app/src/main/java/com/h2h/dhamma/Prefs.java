@@ -1612,6 +1612,38 @@ public class Prefs {
         sp(c).edit().putInt("bmSortMode", v).apply();
     }
 
+    // v15.66 (slice 2057): New talks sort choice, kept across
+    // reopenings — the Favourites favSortMode shape (v15.66, slice
+    // 2056, itself the Bookmarks bmSortMode shape, v15.65 slice
+    // 2051): 0 most-recent first, 1 oldest first, 2 sayadaw A-Z.
+    // No legacy migration (a fresh pref); a corrupt stored value
+    // clamps to 0 (the v11.89 dlSortMode clamp class).
+    public static int newSortMode(Context c) {
+        android.content.SharedPreferences s = sp(c);
+        if (s.contains("newSortMode")) { int v = s.getInt("newSortMode", 0); return v < 0 || v > 2 ? 0 : v; }
+        return 0;
+    }
+
+    public static void setNewSortMode(Context c, int v) {
+        sp(c).edit().putInt("newSortMode", v).apply();
+    }
+
+    // v15.66 (slice 2056): Favourites sort choice, kept across
+    // reopenings — the Bookmarks bmSortMode shape (v15.65, slice
+    // 2051, itself the downloaded-library dlSortMode shape,
+    // v1.47): 0 most-recent first, 1 oldest first, 2 sayadaw A-Z.
+    // No legacy migration (a fresh pref); a corrupt stored value
+    // clamps to 0 (the v11.89 dlSortMode clamp class).
+    public static int favSortMode(Context c) {
+        android.content.SharedPreferences s = sp(c);
+        if (s.contains("favSortMode")) { int v = s.getInt("favSortMode", 0); return v < 0 || v > 2 ? 0 : v; }
+        return 0;
+    }
+
+    public static void setFavSortMode(Context c, int v) {
+        sp(c).edit().putInt("favSortMode", v).apply();
+    }
+
     // v7.57: Room playing list + index for background auto-advance
     // (step 1: write-only this run — no reader yet, see
     // RoomActivity.savePlayList57). Lines "url<TAB>title", index

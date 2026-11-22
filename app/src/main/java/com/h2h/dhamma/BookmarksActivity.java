@@ -99,6 +99,18 @@ public class BookmarksActivity extends Activity {
     // persisted mode — no watcher or saved-state needed.
     private android.widget.Button bmSortBtn = null;
     private int bmSortMode = 0;
+    // v15.66 (slice 2055): "Play all marks" on this screen — the
+    // header button + the handler's own 700ms clock + the
+    // change-only snapshot (the Favourites 2044 shape). bmItems is
+    // the shown run as resolved Items (stream URLs, one per shown
+    // row) — rebuilt by applyBmSearch on every pass, so the
+    // handler and the visibility gate always read the SHOWN run
+    // (the 2047 rule), never a stale pick.
+    private android.widget.Button btnBmPlayAll = null;
+    private long lastBmPlayAllMs = 0;
+    private Boolean lastBmPlayAllVisible = null;
+    private java.util.List<BmPlayAll.Item> bmItems =
+            new java.util.ArrayList<BmPlayAll.Item>();
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -137,6 +149,16 @@ public class BookmarksActivity extends Activity {
         }
         wireBmSearch(); // v15.65 (slice 2049): search on this screen, before the first refresh
         wireBmSort(); // v15.65 (slice 2051): sort on this screen, before the first refresh
+        // v15.66 (slice 2055): "Play all marks" — the Favourites 2044 wiring, before the first refresh so the button shows on first paint; the label is the chooser's own pl_play_all key, so no new string. The button stays GONE until applyBmSearch shows it (syncBmPlayAllBtn below).
+        btnBmPlayAll = findViewById(R.id.btnBmPlayAll);
+        if (btnBmPlayAll != null) btnBmPlayAll.setText(Lang.t(this, "pl_play_all"));
+        if (btnBmPlayAll != null) btnBmPlayAll.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.tap(BookmarksActivity.this);
+                playAllBm(v);
+            }
+        });
+        if (btnBmPlayAll != null) Fx.press(btnBmPlayAll);
         refresh();
         wireBookmarksStrip(); // v15.63 (slice 2037): real mini-player below the list
     }
@@ -181,10 +203,8 @@ public class BookmarksActivity extends Activity {
     // an empty list still says bm_all_empty. The playing-row mark
     // needs nothing here: itemRow re-reads the sounding
     // identities per bind, so a filtered-out sounding talk simply
-    // has no row to mark and a re-shown one marks at once. No
-    // Play-all on this screen — the "Play all marks" design stays
-    // HELD (the 2047 scout: v2 queue lines carry no minute), so
-    // no sync call rides this pass.
+    // has no row to mark and a re-shown one marks at once.
+    // v15.66 (slice 2055): "Play all marks" follows the FILTERED list — the shown run is the run (the 2047 rule): the pass rebuilds bmItems from the shown rows and re-syncs the button, so a keystroke re-aims the run in memory and the sort tap re-runs this pass instead of re-reading the pick.
     private void applyBmSearch() {
         // v15.65 (slice 2051): the sort rides the search pass — the
         // shown list is the filtered list in the chosen order, so a
@@ -193,6 +213,8 @@ public class BookmarksActivity extends Activity {
         // needs nothing here, like the search (2049): itemRow
         // re-reads the sounding identities per bind.
         items = BmSort.sort(BmSearch.filter(bmAllItems, bmQuery), bmSortMode);
+        bmItems = buildBmItems(items);
+        syncBmPlayAllBtn(true); // v15.66 (slice 2055): Play-all follows the FILTERED list — the shown run is the run. First paint here (refresh() calls applyBmSearch), and every keystroke re-syncs it with the shown run; instant, never faded, the clear-X silent-pass rule.
         if (adapter != null) adapter.notifyDataSetChanged();
         refreshBmClear(bmSearchKeystroke);
         if (emptyText == null) return;
@@ -401,6 +423,160 @@ public class BookmarksActivity extends Activity {
         return row;
     }
 
+    // v15.66 (slice 2055): Play-all visibility — the chooser's
+    // refreshTalkPlayAllRow shape (v13.76): GONE until a list lands,
+    // fading in/out on change, instant on first paint. The gate is
+    // BmPlayAll.hasPlayable: at least one shown mark with a usable
+    // URL and sayadaw, a real minute, that is not the sounding talk.
+    // lastBmPlayAllVisible is the change-only snapshot — steady 1s
+    // ticks never touch the button.
+    private void syncBmPlayAllBtn(boolean skipFade) {
+        if (btnBmPlayAll == null) return;
+        boolean show = BmPlayAll.hasPlayable(bmItems, bmPlayingUrl, bmPlayingLibUrl);
+        if (lastBmPlayAllVisible != null && lastBmPlayAllVisible.booleanValue() == show) return;
+        lastBmPlayAllVisible = Boolean.valueOf(show);
+        if (skipFade) {
+            btnBmPlayAll.setVisibility(show ? android.view.View.VISIBLE : android.view.View.GONE);
+            btnBmPlayAll.setAlpha(1f);
+        } else if (show) {
+            if (btnBmPlayAll.getVisibility() != android.view.View.VISIBLE) {
+                btnBmPlayAll.setVisibility(android.view.View.VISIBLE);
+                Fx.fadeIn(btnBmPlayAll, 250);
+            } else if (btnBmPlayAll.getAlpha() < 0.999f) {
+                Fx.fadeIn(btnBmPlayAll, 250);
+            }
+        } else if (btnBmPlayAll.getVisibility() == android.view.View.VISIBLE) {
+            Fx.fadeOut(btnBmPlayAll, 200);
+        }
+    }
+
+    // v15.66 (slice 2055): "Play all marks" — the Bookmarks mirror of
+    // the Favourites playAllFav (v15.64, slice 2044) and New talks'
+    // playAllNew (v15.65, slice 2047). The marks used to play one row
+    // tap at a time; one tap here queues the whole SHOWN run of marks
+    // in screen order, across sayadaws (every line carries its own
+    // sayadaw, the HistPlayFromHere v2 shape, so the Room renders the
+    // other sayadaws' talks as foreign rows and hands over when one
+    // sounds) and opens the Room on the first mark at its minute
+    // (playBookmark's own route — the mark was written into the
+    // talk's resume spot by the openBmTalk1962 rule, so the Room
+    // resumes there, v1.56; the queued v3 head for that same mark is
+    // dropped on real play by the v4.43 ahead-drop, by URL, so the
+    // run continues with the next mark instead of replaying it).
+    // Same guards as the chooser: empty list refuses with the same
+    // words, the 700ms debounce has its own clock (an invalid tap
+    // never consumes the window, v12.28), the sounding talk is never
+    // re-queued (the stay-put branch: the rest queue behind it, no
+    // restart), already-queued talks stay where they are, and the
+    // count toast counts queued lines only. The anchor sayadaw is
+    // healed exactly like playBookmark (catalog + the sayadawForTalk
+    // heal) — the queue key and the Room name must be the healed
+    // name, never a stale banked one. No catalog, no run: the queue
+    // is untouched. The dup check is per MARK, not per talk — a
+    // sameTalk-only check (the 2044 shape) would drop the second
+    // mark of a talk the moment the first landed in the run; a saved
+    // v2 line (posMs -1) never matches a v3 line's minute, and the
+    // core already skipped talks queued in any form, so this loop
+    // only guards the race. The first row is always a stream URL by
+    // buildBmItems' construction (a path-form row resolves through
+    // streamUrlFor or drops out), so no library leg is needed here.
+    private void playAllBm(android.view.View v) {
+        if (items == null || items.isEmpty()) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        long now55 = android.os.SystemClock.uptimeMillis();
+        if (now55 - lastBmPlayAllMs < 700) return;
+        lastBmPlayAllMs = now55;
+        refreshBookmarksPlayingMarks(); // tap-time sounding identities
+        final BmAll.Row first55 = items.get(0);
+        if (first55 == null || first55.e == null || first55.e.url == null || first55.e.url.length() == 0) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String sd55 = first55.e.sayadaw;
+        String[] cat55 = catalogFor(sd55);
+        if (cat55 == null || cat55[1] == null || cat55[1].length() == 0) {
+            String owner55 = Prefs.sayadawForTalk(this, "lib", first55.e.url, "");
+            if (owner55 != null && owner55.length() > 0 && !owner55.equals(sd55)) {
+                sd55 = owner55;
+                cat55 = catalogFor(sd55);
+            }
+        }
+        if (cat55 == null || cat55[1] == null || cat55[1].length() == 0) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "pl_no_play"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        boolean firstSounds55 = (bmPlayingUrl.length() > 0 && SiteHttp.sameTalk(first55.e.url, bmPlayingUrl))
+                || (bmPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(first55.e.url, bmPlayingLibUrl));
+        // The anchor sayadaw's current queue, as identities — the
+        // pick skips talks already queued (they stay where they are).
+        // Saved lines are carried verbatim (histQueueAdd's discipline),
+        // so a foreign line the Room drawer moved mid-queue survives
+        // the write.
+        java.util.Set<String> queuedIds55 = new java.util.HashSet<String>();
+        java.util.ArrayList<String> saved55 = new java.util.ArrayList<String>();
+        try {
+            String savedRaw55 = Prefs.savedQueue(this, sd55);
+            if (savedRaw55 != null && savedRaw55.length() > 0) {
+                for (String ln55 : savedRaw55.split("\n")) {
+                    if (ln55.length() == 0) continue;
+                    saved55.add(ln55);
+                    QueueEntry qe55 = QueueEntry.parse(ln55);
+                    if (qe55 != null && qe55.url.length() > 0)
+                        queuedIds55.add(SiteHttp.identityUrl(qe55.url));
+                }
+            }
+        } catch (Exception ignored) {}
+        java.util.List<String> run55 = BmPlayAll.lines(bmItems, queuedIds55, bmPlayingUrl, bmPlayingLibUrl);
+        int added55 = 0;
+        for (String ln55 : run55) {
+            QueueEntry qe55 = QueueEntry.parse(ln55);
+            if (qe55 == null || qe55.url.length() == 0) continue;
+            boolean dup55 = false;
+            for (String ex55 : saved55) {
+                QueueEntry qx55 = QueueEntry.parse(ex55);
+                if (qx55 != null && qx55.posMs == qe55.posMs
+                        && SiteHttp.sameTalk(qx55.url, qe55.url)) { dup55 = true; break; }
+            }
+            if (dup55) continue;
+            saved55.add(ln55);
+            added55++;
+        }
+        Prefs.saveQueue(this, sd55, saved55);
+        android.widget.Toast.makeText(BookmarksActivity.this, added55 > 0
+                ? Lang.t(BookmarksActivity.this, "queue_plain_prefix") + added55 + Lang.t(BookmarksActivity.this, "queue_added_suffix")
+                : Lang.t(BookmarksActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
+        Fx.morph(v);
+        if (!firstSounds55) playBookmark(first55, v);
+    }
+
+    // v15.66 (slice 2055): the shown rows as resolved Items — one
+    // per shown row, in screen order. A path-form row resolves
+    // through streamUrlFor (the exactly-one-claimant rule, v8.44);
+    // an unresolvable path names no talk and drops out of the run
+    // rather than queueing a line the Room's funnel would drop.
+    // A stream row rides as-is (identityUrl). Called by
+    // applyBmSearch on every pass, so the run always matches the
+    // screen (the 2047 rule).
+    private java.util.List<BmPlayAll.Item> buildBmItems(java.util.List<BmAll.Row> rows) {
+        java.util.List<BmPlayAll.Item> out = new java.util.ArrayList<BmPlayAll.Item>();
+        if (rows == null) return out;
+        for (BmAll.Row r : rows) {
+            if (r == null || r.e == null) continue;
+            String u = streamUrlFor(r.e);
+            if (u == null || u.length() == 0) continue;
+            out.add(new BmPlayAll.Item(u, r.e.sayadaw, r.e.title, r.posMs));
+        }
+        return out;
+    }
+
     private void playBookmark(final BmAll.Row r, android.view.View v) {
         if (r == null || r.e == null || r.e.url == null || r.e.url.length() == 0) return;
         long now = android.os.SystemClock.uptimeMillis();
@@ -587,6 +763,7 @@ public class BookmarksActivity extends Activity {
         // never touch the adapter, so scrolling stays undisturbed. Runs before the strip's own early
         // returns, so a dead session clears the mark even while the strip hides.
         refreshBookmarksPlayingMarks();
+        syncBmPlayAllBtn(false); // v15.66 (slice 2055): the sounding talk moved under the list — re-show or hide Play-all with the mark, change-only
         if (adapter != null && (!bmPlayingUrl.equals(bmRowPlayingUrl == null ? "" : bmRowPlayingUrl)
                 || !bmPlayingLibUrl.equals(bmRowPlayingLibUrl == null ? "" : bmRowPlayingLibUrl)
                 || !bmPlayingLibPath.equals(bmRowPlayingLibPath == null ? "" : bmRowPlayingLibPath)
