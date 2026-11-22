@@ -272,6 +272,10 @@ public class MainActivity extends Activity {
     // borderless background, same 22sp glyph. Gold while the
     // grid shows list rows, muted while it shows photo cards.
     private android.widget.TextView listViewBtn;
+    // v15.62 (slice 2029): global talk search button beside the
+    // search field — the ★/●/☰ buttons' twin. Opens the
+    // talk-search dialog (showTalkSearch below).
+    private android.widget.TextView talkSearchBtn;
     // v15.44 (slice 1936): the grid's current shape — false
     // is the 4-column photo grid, true is the one-column
     // list. Read from Prefs in onCreate; the toggle below
@@ -3181,12 +3185,59 @@ public class MainActivity extends Activity {
         recentRailWrap = findViewById(R.id.recentRailWrap);
         recentRail = findViewById(R.id.recentRail);
         recentRailLabel = findViewById(R.id.recentRailLabel);
+        // v15.62 (slice 2031): the Recently-played rail header is a
+        // "See all" — tap opens HistoryActivity (the full 30-row
+        // list + stats). The label is a plain TextView; the listener
+        // makes it clickable. Press feedback is the card taps'
+        // Fx.press; the 700ms guard lives in openRecentHistory2031
+        // on the shared lastRailTapMs clock.
+        if (recentRailLabel != null) {
+            Fx.press(recentRailLabel);
+            recentRailLabel.setOnClickListener(new android.view.View.OnClickListener() {
+                @Override public void onClick(android.view.View v) {
+                    openRecentHistory2031(v);
+                }
+            });
+        }
         dlRecentRailWrap = findViewById(R.id.dlRecentRailWrap);
         dlRecentRail = findViewById(R.id.dlRecentRail);
         dlRecentRailLabel = findViewById(R.id.dlRecentRailLabel);
+        // v15.62 (slice 2032): the Downloaded rail header is a
+        // "See all" — tap opens DownloadedActivity (the full
+        // downloaded library: search, sort, delete, play-all). The
+        // rail shows 5 cards (DlRecentRail.MAX_CARDS); the library
+        // holds the rest. The label is a plain TextView; the
+        // listener makes it clickable. Press feedback is the card
+        // taps' Fx.press; the 700ms guard lives in
+        // openDownloaded2032 on the shared lastRailTapMs clock.
+        if (dlRecentRailLabel != null) {
+            Fx.press(dlRecentRailLabel);
+            dlRecentRailLabel.setOnClickListener(new android.view.View.OnClickListener() {
+                @Override public void onClick(android.view.View v) {
+                    openDownloaded2032(v);
+                }
+            });
+        }
         bmRailWrap = findViewById(R.id.bmRailWrap);
         bmRail = findViewById(R.id.bmRail);
         bmRailLabel = findViewById(R.id.bmRailLabel);
+        // v15.62 (slice 2033): the Bookmarks rail header is a
+        // "See all" — tap opens BookmarksActivity (the full list
+        // of every saved minute, across all talks). The rail shows
+        // 5 cards (BmRail.MAX_CARDS) with one card per talk; the
+        // screen lists every mark, each jumping to its own minute.
+        // The label is a plain TextView; the listener makes it
+        // clickable. Press feedback is the card taps' Fx.press;
+        // the 700ms guard lives in openBookmarks2033 on the shared
+        // lastRailTapMs clock.
+        if (bmRailLabel != null) {
+            Fx.press(bmRailLabel);
+            bmRailLabel.setOnClickListener(new android.view.View.OnClickListener() {
+                @Override public void onClick(android.view.View v) {
+                    openBookmarks2033(v);
+                }
+            });
+        }
         favTalkRailWrap = findViewById(R.id.favTalkRailWrap);
         favTalkRail = findViewById(R.id.favTalkRail);
         favTalkRailLabel = findViewById(R.id.favTalkRailLabel);
@@ -3356,6 +3407,16 @@ public class MainActivity extends Activity {
             }
         });
         searchClearBtn = findViewById(R.id.searchClear);
+        // v15.62 (slice 2029): the 🔍 button opens the global talk
+        // search — same shape as the ★/●/☰ buttons above (Fx.tap
+        // beat at the click site, body in showTalkSearch below).
+        talkSearchBtn = findViewById(R.id.talkSearchBtn);
+        if (talkSearchBtn != null) talkSearchBtn.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                Fx.tap(MainActivity.this);
+                showTalkSearch();
+            }
+        });
         // v15.33 (slice 1836): the clear ✕ morphs on tap (Fx.morph, the v15.28 chooser idiom — the tap leaves Main open while the grid re-pours, unlike the dev-profile ✕ which dismisses its dialog, Fx.press) and clears through setText("") so the watcher re-runs the filter exactly like the long-press path. No non-empty guard: the ✕ is GONE with an empty query, so a tap can only land on a real query. The morph animates scale only; the ✕ fade-out (refreshSearchClear, alpha only) runs on a separate channel, so the ✕ squashes away as it fades.
         if (searchClearBtn != null) searchClearBtn.setOnClickListener(new android.view.View.OnClickListener() {
             @Override public void onClick(android.view.View v) {
@@ -3918,6 +3979,123 @@ public class MainActivity extends Activity {
     }
 
     // v15.44 (slice 1936): the grid's shape for the current mode
+    // v15.62 (slice 2029): global talk search — the wiring slice's
+    // Main UI. The chooser searches ONE sayadaw's list; this dialog
+    // searches the cross-sayadaw index the loaders merge (TalkIndex,
+    // slice 2028) by title AND sayadaw name through the chooser's
+    // own rule (Fx.titleMatches, v13.60 — a global search that
+    // matched differently from the chooser's own search would be a
+    // bug). The field reuses the chooser's talk hint
+    // (talks_search_hint, v9.88); an empty query shows the honesty
+    // line (search_talks_empty — the index only covers sayadaws
+    // already visited, never the whole catalog); a query with no
+    // hit shows the existing no_search_match. Rows are two lines
+    // (title over sayadaw, simple_list_item_2, 16sp/14sp — the
+    // app's readable sizes). A tap plays the talk straight in the
+    // Room: the sayadaw is re-resolved fresh at tap time (the
+    // 1985 go-to-sayadaw shape — sayadawByName1930 + GoSayadaw,
+    // no_sayadaw_page toast when the catalog no longer has the
+    // sayadaw), with the talk's identity URL as autoUrl (the https
+    // form TalkIndex stores) and its title as autoTitle. Plain
+    // Fx.go — the dialog carries no photo to share. No buttons:
+    // back / tap-outside dismisses, like a search sheet. The search
+    // runs on the UI thread per keystroke over the decoded store —
+    // a fresh install indexes as the listener browses, so the store
+    // stays small in practice (one visited sayadaw is ~100 titles);
+    // a 30k-entry store would still be one pass, no network.
+    private void showTalkSearch() {
+        final android.widget.LinearLayout root29 = new android.widget.LinearLayout(MainActivity.this);
+        root29.setOrientation(android.widget.LinearLayout.VERTICAL);
+        final int pad29 = (int) (16 * getResources().getDisplayMetrics().density + 0.5f);
+        root29.setPadding(pad29, pad29, pad29, pad29);
+        final android.widget.EditText q29 = new android.widget.EditText(MainActivity.this);
+        q29.setHint(Lang.t(MainActivity.this, "talks_search_hint"));
+        q29.setSingleLine(true);
+        q29.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        final android.widget.TextView empty29 = new android.widget.TextView(MainActivity.this);
+        empty29.setText(Lang.t(MainActivity.this, "search_talks_empty"));
+        empty29.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15);
+        int top29 = (int) (12 * getResources().getDisplayMetrics().density + 0.5f);
+        empty29.setPadding(0, top29, 0, 0);
+        final android.widget.ArrayAdapter<TalkIndex.Entry> ad29 = new android.widget.ArrayAdapter<TalkIndex.Entry>(MainActivity.this, android.R.layout.simple_list_item_2, android.R.id.text1, new java.util.ArrayList<TalkIndex.Entry>()) {
+            @Override public android.view.View getView(int pos, android.view.View cv, android.view.ViewGroup parent) {
+                android.view.View v29 = super.getView(pos, cv, parent);
+                TalkIndex.Entry e29 = getItem(pos);
+                android.widget.TextView t1 = (android.widget.TextView) v29.findViewById(android.R.id.text1);
+                android.widget.TextView t2 = (android.widget.TextView) v29.findViewById(android.R.id.text2);
+                if (t1 != null) {
+                    t1.setText(e29 == null || e29.title == null ? "" : e29.title);
+                    t1.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16);
+                }
+                if (t2 != null) {
+                    t2.setText(e29 == null || e29.sayadaw == null ? "" : e29.sayadaw);
+                    t2.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14);
+                }
+                return v29;
+            }
+        };
+        final android.widget.ListView lv29 = new android.widget.ListView(MainActivity.this);
+        lv29.setAdapter(ad29);
+        lv29.setVisibility(android.view.View.GONE);
+        int h29 = (int) (320 * getResources().getDisplayMetrics().density + 0.5f);
+        android.widget.LinearLayout.LayoutParams lp29 = new android.widget.LinearLayout.LayoutParams(android.widget.LinearLayout.LayoutParams.MATCH_PARENT, h29);
+        lp29.topMargin = top29;
+        root29.addView(q29);
+        root29.addView(empty29);
+        root29.addView(lv29, lp29);
+        final android.app.AlertDialog dlg29 = new android.app.AlertDialog.Builder(MainActivity.this)
+                .setTitle(Lang.t(MainActivity.this, "search_talks"))
+                .setView(root29)
+                .create();
+        q29.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(android.text.Editable e) {
+                String qq29 = e.toString();
+                java.util.List<TalkIndex.Entry> res29 = TalkIndex.search(Prefs.talkIndexRaw(MainActivity.this), qq29);
+                ad29.clear();
+                if (res29 != null) for (TalkIndex.Entry r29 : res29) ad29.add(r29);
+                if (qq29.trim().length() == 0) {
+                    lv29.setVisibility(android.view.View.GONE);
+                    empty29.setVisibility(android.view.View.VISIBLE);
+                    empty29.setText(Lang.t(MainActivity.this, "search_talks_empty"));
+                } else if (res29 == null || res29.isEmpty()) {
+                    lv29.setVisibility(android.view.View.GONE);
+                    empty29.setVisibility(android.view.View.VISIBLE);
+                    empty29.setText(Lang.t(MainActivity.this, "no_search_match"));
+                } else {
+                    lv29.setVisibility(android.view.View.VISIBLE);
+                    empty29.setVisibility(android.view.View.GONE);
+                }
+            }
+        });
+        lv29.setOnItemClickListener(new android.widget.AdapterView.OnItemClickListener() {
+            @Override public void onItemClick(android.widget.AdapterView<?> parent, android.view.View v, int pos, long id) {
+                TalkIndex.Entry e29 = ad29.getItem(pos);
+                if (e29 == null) return;
+                dlg29.dismiss();
+                final Sayadaw s29 = sayadawByName1930(e29.sayadaw);
+                String[] cat29 = s29 == null ? null : new String[]{s29.group, s29.url, s29.photo};
+                if (!GoSayadaw.canGo(cat29)) {
+                    android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "no_sayadaw_page"), android.widget.Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                android.content.Intent i29 = new android.content.Intent(MainActivity.this, RoomActivity.class);
+                i29.putExtra("name", s29.name);
+                i29.putExtra("group", GoSayadaw.group(cat29));
+                i29.putExtra("url", GoSayadaw.page(cat29));
+                i29.putExtra("photo", GoSayadaw.photo(cat29));
+                i29.putExtra("autoUrl", e29.url);
+                i29.putExtra("autoTitle", e29.title);
+                Fx.tap(MainActivity.this);
+                Fx.go(MainActivity.this, i29);
+            }
+        });
+        dlg29.show();
+        q29.requestFocus();
+        if (dlg29.getWindow() != null) dlg29.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
+    }
+
     // — columns + spacings from the pure core, then a rebind so
     // the adapter re-inflates rows in the new layout (view types
     // keep recycling inside one layout). The button paints
@@ -5503,7 +5681,7 @@ public class MainActivity extends Activity {
         }
         lastRecentRailKey = key;
         if (recentRailLabel != null)
-            recentRailLabel.setText("\u21BA " + Lang.t(MainActivity.this, "hs_recent"));
+            recentRailLabel.setText(RailSeeAll.label("\u21BA " + Lang.t(MainActivity.this, "hs_recent")));
         if (recentRailWrap.getVisibility() != android.view.View.VISIBLE) {
             recentRailWrap.setVisibility(android.view.View.VISIBLE);
             Fx.fadeIn(recentRailWrap, 250);
@@ -5792,7 +5970,7 @@ public class MainActivity extends Activity {
         }
         lastDlRecentRailKey = key;
         if (dlRecentRailLabel != null)
-            dlRecentRailLabel.setText("\u21BA " + Lang.t(MainActivity.this, "hs_dl_recent"));
+            dlRecentRailLabel.setText(RailSeeAll.label("\u21BA " + Lang.t(MainActivity.this, "hs_dl_recent")));
         if (dlRecentRailWrap.getVisibility() != android.view.View.VISIBLE) {
             dlRecentRailWrap.setVisibility(android.view.View.VISIBLE);
             Fx.fadeIn(dlRecentRailWrap, 250);
@@ -6182,7 +6360,7 @@ public class MainActivity extends Activity {
         }
         lastBmRailKey = key;
         if (bmRailLabel != null)
-            bmRailLabel.setText(Lang.t(MainActivity.this, "bm_list"));
+            bmRailLabel.setText(RailSeeAll.label(Lang.t(MainActivity.this, "bm_list")));
         if (bmRailWrap.getVisibility() != android.view.View.VISIBLE) {
             bmRailWrap.setVisibility(android.view.View.VISIBLE);
             Fx.fadeIn(bmRailWrap, 250);
@@ -7281,6 +7459,64 @@ public class MainActivity extends Activity {
         Fx.go(MainActivity.this, i);
     }
 
+    // v15.62 (slice 2031): "See all" on the Recently-played rail
+    // header — the rail shows 5 cards (RecentRail.MAX_CARDS) while
+    // History holds the full 30-row list (Prefs STATS_MAX_RECENT)
+    // under the stats header; the header tap is the only way in
+    // (no Intent to HistoryActivity exists anywhere else). Same
+    // 700ms guard as the card taps (openRecentTalk1930, via
+    // RailSeeAll.allowTap on the shared lastRailTapMs clock) and
+    // the same morph + tap + plain Fx.go open. No extras: History
+    // reads its own store.
+    private void openRecentHistory2031(android.view.View v) {
+        long now = android.os.SystemClock.uptimeMillis();
+        if (!RailSeeAll.allowTap(lastRailTapMs, now)) return;
+        lastRailTapMs = now;
+        Fx.morph(v);
+        Fx.tap(MainActivity.this);
+        Fx.go(MainActivity.this, new Intent(MainActivity.this, HistoryActivity.class));
+    }
+
+    // v15.62 (slice 2032): "See all" on the Downloaded rail
+    // header — the rail shows 5 cards (DlRecentRail.MAX_CARDS)
+    // while DownloadedActivity holds the full library (search,
+    // sort, delete, play-all); the header tap is the first
+    // VISIBLE entry to it from Main (the only other routes are
+    // the v4.18 long-press on the Settings nav item, the
+    // conditional now-strip / card taps, and Settings' own
+    // button two taps deep). Same 700ms guard as the card taps
+    // (openRecentTalk1930, via RailSeeAll.allowTap on the shared
+    // lastRailTapMs clock) and the same morph + tap + plain Fx.go
+    // open. No extras: no jumpPath, no action — the header opens
+    // the top of the library, not a resume landing.
+    private void openDownloaded2032(android.view.View v) {
+        long now = android.os.SystemClock.uptimeMillis();
+        if (!RailSeeAll.allowTap(lastRailTapMs, now)) return;
+        lastRailTapMs = now;
+        Fx.morph(v);
+        Fx.tap(MainActivity.this);
+        Fx.go(MainActivity.this, new Intent(MainActivity.this, DownloadedActivity.class));
+    }
+
+    // v15.62 (slice 2033): "See all" on the Bookmarks rail
+    // header — the rail shows 5 cards (BmRail.MAX_CARDS, one per
+    // talk) while BookmarksActivity holds every saved minute
+    // across all talks; the header tap is the only way in (no
+    // Intent to BookmarksActivity exists anywhere else — the Room
+    // dialog is per-talk only). Same 700ms guard as the card taps
+    // (openRecentTalk1930, via RailSeeAll.allowTap on the shared
+    // lastRailTapMs clock) and the same morph + tap + plain Fx.go
+    // open. No extras: no jumpPath, no action — the screen reads
+    // its own store.
+    private void openBookmarks2033(android.view.View v) {
+        long now = android.os.SystemClock.uptimeMillis();
+        if (!RailSeeAll.allowTap(lastRailTapMs, now)) return;
+        lastRailTapMs = now;
+        Fx.morph(v);
+        Fx.tap(MainActivity.this);
+        Fx.go(MainActivity.this, new Intent(MainActivity.this, BookmarksActivity.class));
+    }
+
     // v15.36 (slice 1851): sounding shelf chip ring breath — the
     // last static sounding ring in the app (the ring family is
     // otherwise complete: chooser v15.34, Room header + Main /
@@ -7489,6 +7725,16 @@ public class MainActivity extends Activity {
                                     pairs65.add(new String[]{t65.title == null ? "" : t65.title, t65.url});
                                 }
                                 TalkListCache.save(MainActivity.this, anchor65[1], pairs65);
+                                // v15.62 (slice 2029): global talk search — merge this
+                                // randomly-picked sayadaw's fresh parse into the
+                                // cross-sayadaw index (the cache save above is the
+                                // same parse; the index is the second reader, never
+                                // a second fetch). Guarded — the shuffle finish
+                                // below must never break on an index write.
+                                try {
+                                    Prefs.saveTalkIndex(MainActivity.this,
+                                            TalkIndex.merge(Prefs.talkIndexRaw(MainActivity.this), anchor65[0], talks65));
+                                } catch (Exception ignored) {}
                             }
                         }
                     } catch (Exception ignored) { }

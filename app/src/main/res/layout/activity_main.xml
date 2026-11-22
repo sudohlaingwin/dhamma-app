@@ -117,6 +117,19 @@
             android:text="☰"
             android:textColor="@color/muted"
             android:textSize="22sp" />
+        <!-- v15.62 (slice 2029): global talk search button — the ★/●/☰ buttons' twin: same 48dp, same borderless background, same 22sp glyph. Tapping opens the talk-search dialog (showTalkSearch in MainActivity): type a talk title or a sayadaw name, tap a result to play it straight in the Room. The 🔍 glyph is the theme toggle's emoji precedent (🌙); the contentDescription is hardcoded Burmese like the toggle's, not a Lang key (the 1936 rule — no 12-column key for a label alone). -->
+        <TextView
+            android:id="@+id/talkSearchBtn"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="တရားရှာရန်"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="🔍"
+            android:textColor="@color/muted"
+            android:textSize="22sp" />
     </LinearLayout>
     <!-- v13.74 (slice 1065): ★ favourites shelf — the ★ set (long-press a
          card to star; drives Wi-Fi auto-download) had no visible home on

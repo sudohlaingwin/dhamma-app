@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v15.62 (slice 2033): "See all" on the Main "Bookmarks" rail — the full list of every saved minute across all talks; tap a row to land the Room on its mark. Title + list only (no stat cards, no mini-player strip — the History v13.54 precedent leaves the strip to a later piece; no clear-all — a bulk destructive verb, the 2016-rejected class). Rows are built in code (BookmarksActivity), like History. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/bmRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg"
+    android:orientation="vertical"
+    android:padding="16dp">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+        <TextView
+            android:id="@+id/bmTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@color/maroon"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+    <!-- v14.06 (F5, sixth pass slice 5): the empty text used to sit AFTER the weight-1 list in History, so it rendered at the very bottom of the screen. The FrameLayout centers it in the list area instead; same shape here. -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_weight="1">
+        <ListView
+            android:id="@+id/bmList"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+        <TextView
+            android:id="@+id/bmEmpty"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:textColor="@color/muted"
+            android:textSize="15sp"
+            android:visibility="gone" />
+    </FrameLayout>
+</LinearLayout>

@@ -9198,6 +9198,21 @@ public class TalksActivity extends Activity {
                     } catch (Exception ignored) {}
                 }
                 final String ferr = err;
+                // v15.62 (slice 2029): global talk search — merge this
+                // fresh list into the cross-sayadaw index, so the Main
+                // search finds this sayadaw's talks by title without
+                // opening the chooser again. A cached-fallback list
+                // merges too (it is the same titles the chooser
+                // shows); a failed load with no cache merges nothing
+                // (found stays empty). On the bg thread, guarded —
+                // the landing below must never break on an index
+                // write.
+                if (!found.isEmpty()) {
+                    try {
+                        Prefs.saveTalkIndex(TalksActivity.this,
+                                TalkIndex.merge(Prefs.talkIndexRaw(TalksActivity.this), sayadawName, found));
+                    } catch (Exception ignored) {}
+                }
                 final String freason = failReason[0];
                 final boolean fcache = usedCache[0];
                 runOnUiThread(new Runnable() {

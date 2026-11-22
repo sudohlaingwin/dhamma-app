@@ -88,6 +88,10 @@ public class HistoryActivity extends Activity {
     // (refresh) and re-checked on the 1s tick's change detector, so a
     // star flipped from the notification card shows here too.
     private java.util.Set<String> histFavSet = new java.util.HashSet<String>();
+    // v15.62 (slice 2030): "Play from here" debounce — its own
+    // clock (the chooser's 700ms rule, v12.28: an invalid tap
+    // never consumes the window).
+    private long lastHistPlayFromHereMs = 0;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -346,6 +350,167 @@ public class HistoryActivity extends Activity {
             }
         }
         return catCache.get(Prefs.canonicalSayadaw99(this, name));
+    }
+
+    // v15.62 (slice 2030): "Play from here" — the History row menu's
+    // first play verb, the History mirror of the Talks chooser's
+    // playFromHere (v15.45, slice 1942) and the library's
+    // DlPlayFromHere (v15.57, slice 2001). Queue-from-here does not
+    // exist on this screen and a row tap plays one talk (replacing
+    // that sayadaw's hand queue), so starting a run through the
+    // talks just heard took a long-press, a queue, a dismiss and a
+    // re-tap per talk. One tap here queues the run from the
+    // long-pressed row onward — in display order, across sayadaws
+    // (every line carries its own sayadaw, so the Room renders the
+    // other sayadaws' talks as foreign rows and hands over when one
+    // sounds) — and opens the Room on the anchor.
+    // The anchor is re-resolved at tap time (the v13.13 rule): the
+    // dialog can sit open across a refresh, so the captured row may
+    // have moved — the scan below matches by identity (sameTalk on
+    // the raw URL, plus the dlMap resolution for a path-form row of
+    // the same talk). A row the scan cannot find falls back to the
+    // anchor alone (the chooser's v13.04 fallback shape), never a
+    // stale range. Stream anchors only: a path-form row plays as a
+    // library session (playRecent's v12.82 branch), so its run
+    // belongs to the library's DlPlayFromHere, not this Room-queue
+    // run — the offer gate enforces it, and the tap re-checks it.
+    // History is capped at 30 rows (Prefs STATS_MAX_RECENT), so the
+    // per-row histStreamUrlFor below is bounded.
+    private void histPlayFromHere(Prefs.HistEntry e) {
+        if (items == null || items.isEmpty() || e == null || e.url == null || e.url.length() == 0) {
+            android.widget.Toast.makeText(HistoryActivity.this,
+                    Lang.t(HistoryActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        long now30 = android.os.SystemClock.uptimeMillis();
+        if (now30 - lastHistPlayFromHereMs < 700) return;
+        lastHistPlayFromHereMs = now30;
+        // Tap-time re-checks (the dialog's own shape): the anchor
+        // may have lost its stream URL or its sayadaw while the
+        // dialog sat open, or turned into the sounding talk.
+        refreshHistoryPlayingMarks();
+        final String streamUrl = histStreamUrlFor(e);
+        if (streamUrl.length() == 0 || e.url.startsWith("/")) {
+            android.widget.Toast.makeText(HistoryActivity.this,
+                    Lang.t(HistoryActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if ((histPlayingUrl.length() > 0 && SiteHttp.sameTalk(streamUrl, histPlayingUrl))
+                || (histPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(streamUrl, histPlayingLibUrl))) {
+            android.widget.Toast.makeText(HistoryActivity.this,
+                    Lang.t(HistoryActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // The anchor sayadaw, resolved exactly like playRecent
+        // (catalog + the v12.71 sayadawForTalk heal) — the queue key
+        // and the Room name must be the healed name, never a stale
+        // banked one. No catalog, no run: the queue is untouched.
+        String sd = histSayadawFor(e);
+        String[] cat = catalogFor(sd);
+        if (cat == null || cat[1] == null || cat[1].length() == 0) {
+            String owner = Prefs.sayadawForTalk(this, "lib", e.url, "");
+            if (owner != null && owner.length() > 0 && !owner.equals(sd)) {
+                sd = owner;
+                cat = catalogFor(sd);
+            }
+        }
+        if (cat == null || cat[1] == null || cat[1].length() == 0) {
+            android.widget.Toast.makeText(HistoryActivity.this,
+                    Lang.t(HistoryActivity.this, "pl_no_play"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // The anchor's display position, re-resolved by identity.
+        int anchorIdx30 = -1;
+        for (int i30 = 0; i30 < items.size(); i30++) {
+            Prefs.HistEntry r30 = items.get(i30);
+            if (r30 == null || r30.url == null) continue;
+            if (SiteHttp.sameTalk(r30.url, e.url)) { anchorIdx30 = i30; break; }
+            if (r30.url.startsWith("/")) {
+                String ru30 = histStreamUrlFor(r30);
+                if (ru30.length() > 0 && SiteHttp.sameTalk(ru30, streamUrl)) { anchorIdx30 = i30; break; }
+            }
+        }
+        // Display-order identity list from the anchor onward (the
+        // PlayFromHere pick's input), each row carrying its own
+        // sayadaw + title for the v2 lines. A row with no resolvable
+        // stream URL reads as null and the pick skips it.
+        java.util.List<String> ids30 = new java.util.ArrayList<String>();
+        java.util.List<String> sds30 = new java.util.ArrayList<String>();
+        java.util.List<String> titles30 = new java.util.ArrayList<String>();
+        if (anchorIdx30 < 0) {
+            // Anchor gone from the list while the dialog sat open:
+            // queue just the anchor itself, never a stale range.
+            ids30.add(SiteHttp.identityUrl(streamUrl));
+            sds30.add(sd);
+            titles30.add(e.title);
+        } else {
+            for (int i30 = anchorIdx30; i30 < items.size(); i30++) {
+                Prefs.HistEntry r30 = items.get(i30);
+                if (r30 == null) { ids30.add(null); sds30.add(""); titles30.add(""); continue; }
+                String ru30 = histStreamUrlFor(r30);
+                ids30.add(ru30.length() > 0 ? SiteHttp.identityUrl(ru30) : null);
+                sds30.add(histSayadawFor(r30));
+                titles30.add(r30.title);
+            }
+            // The anchor's own line carries the healed sayadaw.
+            sds30.set(0, sd);
+        }
+        // The anchor sayadaw's current queue, as identities — the
+        // pick skips talks already queued (they stay where they
+        // are). Saved lines are carried verbatim (histQueueAdd's
+        // discipline), so a foreign line the Room drawer moved
+        // mid-queue survives the write.
+        java.util.Set<String> queuedIds30 = new java.util.HashSet<String>();
+        java.util.ArrayList<String> saved30 = new java.util.ArrayList<String>();
+        try {
+            String savedRaw30 = Prefs.savedQueue(this, sd);
+            if (savedRaw30 != null && savedRaw30.length() > 0) {
+                for (String ln30 : savedRaw30.split("\n")) {
+                    if (ln30.length() == 0) continue;
+                    saved30.add(ln30);
+                    QueueEntry qe30 = QueueEntry.parse(ln30);
+                    if (qe30 != null && qe30.url.length() > 0)
+                        queuedIds30.add(SiteHttp.identityUrl(qe30.url));
+                }
+            }
+        } catch (Exception ignored) {}
+        java.util.List<Integer> picked30 = PlayFromHere.pick(ids30,
+                SiteHttp.identityUrl(streamUrl), queuedIds30,
+                histPlayingUrl, histPlayingLibUrl);
+        java.util.List<String> run30 = HistPlayFromHere.lines(ids30, sds30, titles30, picked30);
+        int added30 = 0;
+        for (String ln30 : run30) {
+            QueueEntry qe30 = QueueEntry.parse(ln30);
+            if (qe30 == null || qe30.url.length() == 0) continue;
+            boolean dup30 = false;
+            for (String ex30 : saved30) {
+                QueueEntry qx30 = QueueEntry.parse(ex30);
+                if (qx30 != null && SiteHttp.sameTalk(qx30.url, qe30.url)) { dup30 = true; break; }
+            }
+            if (dup30) continue;
+            saved30.add(ln30);
+            added30++;
+        }
+        Prefs.saveQueue(this, sd, saved30);
+        if (adapter != null) adapter.notifyDataSetChanged();
+        android.widget.Toast.makeText(HistoryActivity.this, added30 > 0
+                ? Lang.t(HistoryActivity.this, "queue_plain_prefix") + added30 + Lang.t(HistoryActivity.this, "queue_added_suffix")
+                : Lang.t(HistoryActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
+        // Open the Room on the anchor (playRecent's tail, same six
+        // extras) — a queued anchor plays from its queue spot.
+        android.content.Intent it30 = new android.content.Intent(this, RoomActivity.class);
+        it30.putExtra("name", sd);
+        it30.putExtra("group", cat[0]);
+        it30.putExtra("url", cat[1]);
+        it30.putExtra("photo", cat[2]);
+        it30.putExtra("autoUrl", SiteHttp.identityUrl(streamUrl));
+        it30.putExtra("autoTitle", e.title);
+        Fx.tap(this);
+        Fx.go(this, it30);
     }
 
     // Play one recent talk: its single v2 line becomes the
@@ -814,6 +979,20 @@ public class HistoryActivity extends Activity {
             boolean queued = histQueueHas(sd, streamUrl);
             opts.add(Lang.t(this, queued ? "menu_queue_remove" : "menu_queue_add"));
             keys.add(queued ? "menu_queue_remove" : "menu_queue_add");
+            // v15.62 (slice 2030): "Play from here" — the row
+            // menu's first play verb (the chooser's
+            // menu_play_from_here, v15.45): queue the run from
+            // this row onward and open the Room on it, in one
+            // tap. Stream anchors only: a path-form row plays
+            // as a library session (playRecent's v12.82
+            // branch), not in the Room, so its run belongs to
+            // the library's DlPlayFromHere, not this Room-queue
+            // run. The menu's streamUrl is "" for an
+            // unresolvable path row, but a downloaded talk CAN
+            // resolve (exactly-one dlMap hit) — the e.url gate
+            // below is what keeps the file session honest, not
+            // the resolver.
+            if (!e.url.startsWith("/")) { opts.add(Lang.t(this, "menu_play_from_here")); keys.add("menu_play_from_here"); }
         }
         if (streamUrl.length() > 0 && !histIsDownloaded(streamUrl) && !histIsDlQueued(streamUrl)) {
             opts.add(Lang.t(this, "dl_btn_download"));
@@ -944,6 +1123,13 @@ public class HistoryActivity extends Activity {
                             Toast.makeText(HistoryActivity.this,
                                     Lang.t(HistoryActivity.this, "removed_from_queue"),
                                     Toast.LENGTH_SHORT).show();
+                        } else if ("menu_play_from_here".equals(keyArr[which])) {
+                            // v15.62 (slice 2030): play from here
+                            // — the dialog's first play verb (see
+                            // histPlayFromHere below): queue the run
+                            // from the long-pressed row onward and
+                            // open the Room on it in one tap.
+                            histPlayFromHere(e);
                         } else if ("dl_btn_download".equals(keyArr[which])) {
                             // Tap-time re-checks (Talks v11.70): a Wi-Fi job can land, or another
                             // path can queue this talk, while the dialog sits open.

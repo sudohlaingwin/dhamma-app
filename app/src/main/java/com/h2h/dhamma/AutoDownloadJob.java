@@ -387,6 +387,23 @@ public class AutoDownloadJob extends JobService {
             } catch (Exception ignored) {}
         }
         java.util.List<String> fresh = new java.util.ArrayList<String>();
+        // v15.62 (slice 2029): global talk search — merge this
+        // favourited sayadaw's fresh parse into the cross-sayadaw
+        // index, so the Main search finds their talks by title even
+        // when the listener never opened the chooser. The hub crawl
+        // above already folded into `talks`. An EMPTY parse merges
+        // nothing — the v12.76 rule (a 200 page with no mp3 links is
+        // an error / maintenance page, not an observed catalogue),
+        // and merge with an empty fresh list would drop the
+        // sayadaw's whole block. A failed fetch returns before here,
+        // so nothing merges on failure either. Guarded — the
+        // seed/diff below must never break on an index write.
+        if (talks != null && !talks.isEmpty()) {
+            try {
+                Prefs.saveTalkIndex(this,
+                        TalkIndex.merge(Prefs.talkIndexRaw(this), name, talks));
+            } catch (Exception ignored) {}
+        }
         java.util.Map<String, String> titles =
                 new java.util.HashMap<String, String>();
         for (TalksActivity.Talk t : talks) {

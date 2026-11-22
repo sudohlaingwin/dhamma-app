@@ -1656,6 +1656,15 @@ public class Prefs {
     // sim1279 + AdTest1272 exercise them directly.
     private static final String BOOKMARK_KEY = "bookmarks64";
     private static final int BOOKMARK_CAP = 200;
+
+    // v15.62 (slice 2029): the global talk search store — one key holds the whole
+    // TalkIndex (sayadaw TAB identityUrl TAB title, newline-joined, the v12.64/
+    // v12.65 line discipline). Every loader that parses a talk list merges its
+    // fresh parse into this store (TalksActivity load, AutoDownloadJob, Main
+    // shuffle); the Main search dialog reads it. One key, whole index — the caps
+    // inside TalkIndex.merge bound it (2000 per sayadaw / 30000 total), so the
+    // string never grows unbounded.
+    private static final String TALK_INDEX_KEY = "talk_index_v1";
     private static final int BOOKMARK_DEDUP_MS = 5000;
 
     static java.util.List<Integer> bookmarkListPure(String raw, String url) {
@@ -1843,6 +1852,18 @@ public class Prefs {
             if (next.length() == 0) sp(c).edit().remove(BOOKMARK_KEY).apply();
             else sp(c).edit().putString(BOOKMARK_KEY, next).apply();
         } catch (Exception ignored) {}
+    }
+
+    // v15.62 (slice 2029): the global talk search store's read/write — thin
+    // wrappers over the one key (the same sp(c) shape as the bookmark wrappers
+    // above; the merge decisions live in TalkIndex, already pinned by WgTest
+    // section 114). A null raw saves as "".
+    static String talkIndexRaw(Context c) {
+        try { return sp(c).getString(TALK_INDEX_KEY, ""); } catch (Exception ignored) { return ""; }
+    }
+
+    static void saveTalkIndex(Context c, String raw) {
+        try { sp(c).edit().putString(TALK_INDEX_KEY, raw == null ? "" : raw).apply(); } catch (Exception ignored) {}
     }
 
     // v12.65: personal playlists — premium backlog #2 (user order 2026-11-06):
