@@ -39,7 +39,12 @@ package com.h2h.dhamma;
 // bookmark" — because only bm cards carry a mark minute to share
 // at. The text is BmShare.shareAtMinuteText (the card's own
 // "12:34 · title" rendering in the chooser share shape); the
-// core stays unchanged.
+// core stays unchanged. v15.59 (slice 2011): the Main "Favourite
+// talks" rail appends the same shape after menu_share —
+// fav_menu_share_minute, "Share at its marked minute" — because
+// fav cards carry a saved spot to share at (c.posMs > 0); the
+// minute-share family is now complete on every rail whose cards
+// render a minute.
 public class RailMenu {
     // The offer order, fixed: share first (muscle memory from
     // the chooser/drawer dialogs, where share is always first),

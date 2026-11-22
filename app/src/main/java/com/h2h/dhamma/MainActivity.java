@@ -6132,15 +6132,22 @@ public class MainActivity extends Activity {
                     // is the chooser/drawer dialog shape
                     // (AlertDialog with a parallel key list, dispatch
                     // on keys — the v13.15 language-proof rule),
-                    // with the five verbs that are safe from Main:
-                    // share / copy link / favourite toggle / go to
+                    // with the seven verbs that are safe from Main:
+                    // share / share at its minute / file share /
+                    // copy link / favourite toggle / go to
                     // sayadaw's talks / download (v15.57, slice 2000
-                    // — the fifth verb, appended last after go). The
-                    // verbs read the talk
+                    // — appended last after go; the minute-share
+                    // verb since v15.59, slice 2011, sits right
+                    // after menu_share when the card shows a saved
+                    // spot, and the file-share verb since v15.58,
+                    // slice 2009, sits right after that). The verbs
+                    // read the talk
                     // (c.e) — the saved spot stays the tap's job
-                    // (openFavTalk1964 lands the Room on it), so the
-                    // share carries the bare title, not the
-                    // "↺ 12:34 · title" card rendering. Every card
+                    // (openFavTalk1964 lands the Room on it); the
+                    // minute-share verb carries the card's own
+                    // "↺ 12:34 · title" rendering in the title slot,
+                    // while the plain share still carries the bare
+                    // title. Every card
                     // on this rail is starred by definition
                     // (FavTalkRail.pick keeps only starred talks),
                     // so the fav verb always offers the remove
@@ -6155,7 +6162,8 @@ public class MainActivity extends Activity {
                     // session, the v11.14 stale-queue class); the
                     // mark verb stays OUT (the rail card renders no
                     // listened tick, so it would be invisible on
-                    // this surface); no new view, no new Lang key,
+                    // this surface); no new view, one new Lang key
+                    // (fav_menu_share_minute, slice 2011),
                     // no sounding gate needed (share/copy/fav/go
                     // are all sounding-safe — the rail already
                     // excludes the sounding talk at pick time,
@@ -6187,6 +6195,37 @@ public class MainActivity extends Activity {
                     // rails' cards are streamed in the common case
                     // (the 1992/1993 precedent).
                     if (DlLanded.downloadedFileName(MainActivity.this, c.e.url, null, null) != null) keys90.add(1, "dl_menu_share_file");
+                    // v15.59 (slice 2011): "Share at this minute" —
+                    // the Favourite talks rail menu's minute-share verb:
+                    // the card renders the saved spot ("↺ 12:34 ·
+                    // title") but the plain share carries the bare
+                    // title (the 1990 comment said so outright) — a
+                    // friend receiving the share got no minute at
+                    // all. Same verb the Bookmarks rail has had since
+                    // v15.55 (slice 1993), through the same
+                    // BmShare.shareAtMinuteText core (the card's own
+                    // "12:34 · title" rendering in the title slot, so
+                    // the friend sees exactly which minute matters —
+                    // BmRail.fmtTime and FavTalkRail.fmtTime are the
+                    // same rendering, byte for byte); the link stays
+                    // the talk's original link (no minute in the URL
+                    // — the site serves plain .mp3 links, nothing to
+                    // deep-link into). Gated on c.posMs > 0 — unlike
+                    // 1993, FavTalkRail.pick does NOT guarantee a
+                    // spot (pos defaults to 0 when no resume record
+                    // survives, and a finished talk clears its saved
+                    // position, v1.12), so the verb appears exactly
+                    // when the card shows a minute and never offers
+                    // a dead verb on a bare-title card. Inserted
+                    // right after menu_share, so the share verbs sit
+                    // together in the order text, minute, file (the
+                    // 1993/2008 Bookmarks-rail order — the
+                    // file-share insert above at index 1 is pushed
+                    // to index 2). Rail-only, not in RailMenu.keys
+                    // — the other rails' cards render no minute (the
+                    // 1992/1993 precedent).
+                    int si90 = keys90.indexOf("menu_share");
+                    if (si90 >= 0 && c.posMs > 0) keys90.add(si90 + 1, "fav_menu_share_minute");
                     // v15.57 (slice 2000): "Download" — the Favourite
                     // talks rail menu's fifth verb, appended last
                     // (after go): a starred talk, one tap to
@@ -6228,6 +6267,12 @@ public class MainActivity extends Activity {
                                             send09.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
                                             startActivity(android.content.Intent.createChooser(send09, Lang.t(MainActivity.this, "share_talk")));
                                         }
+                                    } else if ("fav_menu_share_minute".equals(key90[which])) {
+                                        // v15.59 (slice 2011): share at this minute — the minute-share verb (the 1993 Bookmarks-rail shape on the Favourite talks rail): the share text is the chooser shape with the card's own "12:34 · title" rendering in the title slot (BmShare.shareAtMinuteText), so the friend sees exactly which minute matters. The link stays the talk's original link (no minute in the URL — the site serves plain .mp3 links, nothing to deep-link into); the minute lives in the text. Chooser title is share_talk, like the plain share. No pause guard (no sheet is left to return from, like the 1975 copy verb and the 1985 go verb). No tap-time re-check: the minute is the card's own saved spot (c.posMs > 0 by the offer gate); the only writer of that spot is the talk's own Room session, which cannot start while the modal menu sits open (the sounding talk is excluded at pick time, FavTalkRail.pick), and a stale minute in shared text is harmless — the link stays valid and the minute is still a real position in the talk.
+                                        android.content.Intent send90m = new android.content.Intent(android.content.Intent.ACTION_SEND);
+                                        send90m.setType("text/plain");
+                                        send90m.putExtra(android.content.Intent.EXTRA_TEXT, BmShare.shareAtMinuteText(s.name, c.e.title, c.e.url, c.posMs, Lang.t(MainActivity.this, "share_source")));
+                                        startActivity(android.content.Intent.createChooser(send90m, Lang.t(MainActivity.this, "share_talk")));
                                     } else if ("dl_menu_copy_link".equals(key90[which])) {
                                         // v15.52 (slice 1977) shape: the tap-time gate re-checks the offer, so the two can never disagree; no pause guard (no sheet is left to return from) and no file gate (a link is not a file).
                                         if (RoomCopyLink.canOffer(c.e.url)) {
@@ -6588,6 +6633,26 @@ public class MainActivity extends Activity {
                     boolean fav91 = RailMenu.isFav(ft91, c.e.url);
                     boolean go91 = GoSayadaw.canGo(new String[]{s.group, s.url, s.photo});
                     java.util.List<String> keys91 = RailMenu.keys(fav91, go91, RoomCopyLink.canOffer(c.e.url));
+                    // v15.59 (slice 2010): "Share the audio file" —
+                    // the New talks rail menu's file-share verb:
+                    // the card could share its text (menu_share
+                    // above) and copy its link (dl_menu_copy_link,
+                    // slice 1977) but never send the actual .mp3.
+                    // Gated on DlLanded.downloadedFileName (v13.69
+                    // — the ONE shared definition of downloaded),
+                    // so the offer can never disagree with the
+                    // library, the drawer, the chooser, History or
+                    // the other rails (1996/2006/2008/2009); false
+                    // in the common case (a streamed new talk) and
+                    // true exactly when the file is on disk, so a
+                    // file deleted externally while Main sits open
+                    // never offers a dead verb. Inserted at index 1,
+                    // right after menu_share, so the share verbs sit
+                    // together (the 1955/1986 drawer precedent).
+                    // Rail-only, not in RailMenu.keys — the other
+                    // rails' cards are streamed in the common case
+                    // (the 1992/1993 precedent).
+                    if (DlLanded.downloadedFileName(MainActivity.this, c.e.url, null, null) != null) keys91.add(1, "dl_menu_share_file");
                     // v15.56 (slice 1997): "Download" — the New
                     // talks rail menu's fifth verb, appended last
                     // (after go): a brand-new talk, one tap to
@@ -6604,6 +6669,40 @@ public class MainActivity extends Activity {
                     // own wiring — the 1992/1993 rail-only-verb
                     // precedent).
                     if (MainDl.canOffer(mainIsDownloaded(c.e.url), mainIsDlQueued(c.e.url))) keys91.add("dl_btn_download");
+                    // v15.59 (slice 2017): "Mark as listened" —
+                    // the New talks rail menu's mark verb: the card
+                    // could share its text, copy its link, star it,
+                    // open its sayadaw's full list, download it, or
+                    // share its file — but never mark it listened,
+                    // so a talk heard elsewhere could only be
+                    // cleared from the unlistened view by opening
+                    // Talks, finding it, and long-pressing there
+                    // (the 1969 motivation, now on the home
+                    // screen's own unlistened view). Gated on
+                    // DlMark.canOffer (the 1949 core: a URL to mark
+                    // + not the sounding talk) and !isMarked over
+                    // readPlayedTalks1966 — the 1921 gate guarantees
+                    // every card here is unheard (NewTalkRail.pick
+                    // skips playedIds :69 and the sounding talk
+                    // :71), so the label is always dl_menu_mark_one
+                    // and no unmark branch is offered on this rail
+                    // (a marked talk leaves the rail on refresh).
+                    // Inserted right after the favourite toggle —
+                    // the 1969 chooser position, the other per-talk
+                    // state toggle. Rail-only, not in RailMenu.keys
+                    // — the 1991 rule stands on the other four
+                    // rails, where the state varies and no tick
+                    // renders (see the slice-2017 note).
+                    String sounding17 = (AudioService.liveSession && AudioService.liveHasTrack)
+                            ? AudioService.liveUrl : null;
+                    boolean soundingTalk17 = sounding17 != null && sounding17.length() > 0
+                            && SiteHttp.sameTalk(c.e.url, sounding17);
+                    java.util.Set<String> played17 = readPlayedTalks1966();
+                    boolean marked17 = DlMark.isMarked(played17, SiteHttp.identityUrl(c.e.url));
+                    if (DlMark.canOffer(c.e.url, soundingTalk17) && !marked17) {
+                        int fi91 = keys91.indexOf(fav91 ? "menu_fav_remove" : "menu_fav_add");
+                        if (fi91 >= 0) keys91.add(fi91 + 1, "dl_menu_mark_one");
+                    }
                     final String[] opt91 = new String[keys91.size()];
                     for (int i91 = 0; i91 < keys91.size(); i91++) opt91[i91] = Lang.t(MainActivity.this, keys91.get(i91));
                     final String[] key91 = keys91.toArray(new String[0]);
@@ -6616,6 +6715,20 @@ public class MainActivity extends Activity {
                                         send91.setType("text/plain");
                                         send91.putExtra(android.content.Intent.EXTRA_TEXT, RailMenu.shareText(s.name, c.e.title, c.e.url, Lang.t(MainActivity.this, "share_source")));
                                         startActivity(android.content.Intent.createChooser(send91, Lang.t(MainActivity.this, "share_talk")));
+                                    } else if ("dl_menu_share_file".equals(key91[which])) {
+                                        // v15.59 (slice 2010): "Share the audio file" — the 1954 verb on the New talks rail: the menu could share a new talk, copy its link, star it, or open its sayadaw's full list, but never send the actual .mp3 — a listener who had found a brand-new talk and downloaded it, then wanted the file itself in another app, had to find it in Downloads/Dhamma by hand. Same verb the library per-row menu has had since v15.48 (slice 1954), the Room drawer since slice 1955, the Talks chooser since slice 1956, the History row since slice 1982, the Downloaded rail since v15.56 (slice 1996), the Recently played rail since slice 2006, the Bookmarks rail since slice 2008 and the Favourite-talks rail since slice 2009, through the same TalkFileShare core (same rule, so the nine surfaces can never disagree); the offer gate is DlLanded.downloadedFileName (v13.69 — the ONE shared definition of downloaded: dlMap name or filename candidate, length-gated, never a live job's destination), re-checked fresh at tap time, and the URI is built through TalkFileShare.shareUriFor (resolve + uriStringFor), so a name that no longer resolves to a file on disk toasts the existing talk_no_longer_in_list, never a guessed URI. No pause guard (the text share beside it sets none, the 1982 rule). A share mutates nothing — the rail card stays, the queue stays. No minute is involved: the 1921 gate picks unstarted talks only, so the card renders no saved spot and there is no minute-share to sit between text and file.
+                                        java.io.File dir2010 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+                                        String fn2010 = DlLanded.downloadedFileName(MainActivity.this, c.e.url, null, null);
+                                        String uri2010 = TalkFileShare.shareUriFor(dir2010, fn2010);
+                                        if (uri2010 == null) {
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "talk_no_longer_in_list"), android.widget.Toast.LENGTH_SHORT).show();
+                                        } else {
+                                            android.content.Intent send2010 = new android.content.Intent(android.content.Intent.ACTION_SEND);
+                                            send2010.setType("audio/mpeg");
+                                            send2010.putExtra(android.content.Intent.EXTRA_STREAM, android.net.Uri.parse(uri2010));
+                                            send2010.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                            startActivity(android.content.Intent.createChooser(send2010, Lang.t(MainActivity.this, "share_talk")));
+                                        }
                                     } else if ("dl_menu_copy_link".equals(key91[which])) {
                                         // v15.52 (slice 1977) shape: the tap-time gate re-checks the offer, so the two can never disagree; no pause guard (no sheet is left to return from) and no file gate (a link is not a file).
                                         if (RoomCopyLink.canOffer(c.e.url)) {
@@ -6630,6 +6743,34 @@ public class MainActivity extends Activity {
                                         boolean added91 = Fx.toggleFavTalk(MainActivity.this, c.e.url);
                                         refreshNewTalkRail();
                                         android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, added91 ? "fav_added" : "fav_removed"), android.widget.Toast.LENGTH_SHORT).show();
+                                    } else if ("dl_menu_mark_one".equals(key91[which])) {
+                                        // v15.59 (slice 2017): "Mark as listened" — the 1949 verb on the New talks rail: the menu could share a new talk, copy its link, star it, open its sayadaw's full list, download it, or share its file — but never mark it listened, so a talk heard elsewhere could only be cleared from the unlistened view by opening Talks, finding it, and long-pressing there. Same verb the library per-row menu has had since v15.47 (slice 1949), the Talks chooser since v15.51 (slice 1969) and the Room drawer since v15.52 (slices 1978/1979), through the same DlMark core (same rule, so the four surfaces can never disagree); the tap-time sounding re-check is the v11.14 rule (the dialog can sit open across an auto-advance, so this talk can BE sounding by tap time — it earns its mark by finishing, never by this verb; the toast is queue_changed, the 1969 shape). The mark lands in the same playedTalks set the library, the rails, the header new-count and the filters all read; refreshNewTalkRail drops the card from the rail at once, the 1926 dot-set block clears the sayadaw's grid ● (and exits the ● filter with the all_listened toast when the set empties), and refreshFavNewRow drops the fav-new count — the toast is the verb (the 1946 idiom); an already-marked tap toasts already_listened, never a false count. Neither the queue, the shelf order nor any saved resume position is mutated.
+                                        String sounding17 = (AudioService.liveSession && AudioService.liveHasTrack)
+                                                ? AudioService.liveUrl : null;
+                                        if (sounding17 != null && sounding17.length() > 0 && SiteHttp.sameTalk(c.e.url, sounding17)) {
+                                            android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+                                            return;
+                                        }
+                                        DlMark.Result marked17 = null;
+                                        try {
+                                            android.content.SharedPreferences sp17 = getSharedPreferences("dhamma", MODE_PRIVATE);
+                                            java.util.Set<String> cur17 = sp17.getStringSet("playedTalks", new java.util.HashSet<String>());
+                                            marked17 = DlMark.mark(cur17, SiteHttp.identityUrl(c.e.url));
+                                            sp17.edit().putStringSet("playedTalks", marked17.set).apply();
+                                        } catch (Exception ignored) {}
+                                        refreshNewTalkRail();
+                                        java.util.Set<String> dotsBefore17 = new java.util.HashSet<String>(gridNewSayadawUrls);
+                                        refreshGridNewDots();
+                                        if (newOnly && !dotsBefore17.equals(gridNewSayadawUrls)) {
+                                            if (gridNewSayadawUrls.isEmpty()) {
+                                                newOnly = false; mainNewToggleChange = true;
+                                                android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "all_listened"), android.widget.Toast.LENGTH_SHORT).show();
+                                            }
+                                            applyFilter();
+                                            refreshFavHint();
+                                        } else if (adapter != null) adapter.notifyDataSetChanged();
+                                        refreshFavNewRow();
+                                        android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, (marked17 != null && marked17.changed) ? "dl_menu_mark_one" : "already_listened"), android.widget.Toast.LENGTH_SHORT).show();
                                     } else if ("menu_go_sayadaw".equals(key91[which])) {
                                         // The 1944/1985 shape, Main-native: re-resolve the sayadaw fresh at tap time (the dialog can sit open; the offer and the tap can never disagree), toast no_sayadaw_page on a failed re-read, else open that sayadaw's Talks list with Main's own intent extras. Built directly, NOT through openSayadawCard — that method returns to the Room for a sounding sayadaw, but this verb promises the Talks list.
                                         final Sayadaw gs91 = sayadawByName1930(c.e.sayadaw);

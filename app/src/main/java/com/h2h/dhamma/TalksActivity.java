@@ -3993,6 +3993,38 @@ public class TalksActivity extends Activity {
                     java.util.ArrayList<String> dKeys = new java.util.ArrayList<String>();
                     dOpts.add(Lang.t(TalksActivity.this, "menu_share"));
                     dKeys.add("menu_share");
+                    // v15.59 (slice 2013): "Share at this minute" — the
+                    // Talks chooser dialog's minute-share verb: the
+                    // row renders its saved spot ("↺ 12:34", via
+                    // resumeMsForContinue — the same two-leg rule
+                    // as the Continue row: stream form, then the
+                    // downloaded-file form when the talk is
+                    // downloaded) but the plain share above carries
+                    // the bare title, so a friend receiving the
+                    // share got no minute at all. Same verb the
+                    // Bookmarks rail has had since v15.55 (slice
+                    // 1993), the Favourite-talks rail since slice
+                    // 2011 and the library row since slice 2012,
+                    // through the same BmShare.shareAtMinuteText
+                    // core (the row's own Fx.fmtTime rendering in
+                    // the title slot — Fx.fmtTime and BmRail.
+                    // fmtTime are the same M:SS / H:MM:SS shape, so
+                    // the friend sees exactly the minute the row
+                    // shows). Gated on resumeMsForContinue(dt) >
+                    // 5000 — the row shows a spot exactly then, so
+                    // the verb appears exactly when the row shows a
+                    // spot and never offers a dead verb on a fresh
+                    // file; the dialog gate already excludes the
+                    // sounding talk, so no sounding gate is needed
+                    // here. The minute is captured once into final
+                    // dMinMs13 so the handler below reads the same
+                    // value. Inserted right after the text share, so
+                    // the share verbs sit together in the order
+                    // text, minute, file (the 1993/2008/2011 rail
+                    // order + the 2012 library order).
+                    // Chooser-only, not in RailMenu.keys.
+                    final int dMinMs13 = resumeMsForContinue(dt);
+                    if (dMinMs13 > 5000) { dOpts.add(Lang.t(TalksActivity.this, "dl_menu_share_minute")); dKeys.add("dl_menu_share_minute"); }
                     // v15.48 (slice 1956): share this one FILE itself — right after the menu_share text share above, so the two share verbs sit together: the text share sends the talk's title + link, this one sends the actual downloaded .mp3 through the TalkFileProvider content:// URI. Gated on the chooser's own isTalkDownloaded (mapped name + basename candidates, the same gate the download verb below reads in reverse), so a streamed-only talk never offers it; the tap-time resolve re-checks the file on disk. The menu_share offer above stays byte-identical.
                     if (isTalkDownloaded(dt.url)) { dOpts.add(Lang.t(TalksActivity.this, "dl_menu_share_file")); dKeys.add("dl_menu_share_file"); }
                     // v15.52 (slice 1977): copy this one talk's LINK — the chooser dialog's clipboard verb: the dialog could share the talk's text (menu_share) and its file (dl_menu_share_file, v15.48 slice 1956) but never copy the link — a listener who wanted just the link pasted elsewhere had to share it through the sheet and copy from there. Same verb the library per-row menu has had since v6.56 and the Room drawer gained in slice 1975, through the same RoomCopyLink core (same rule, so the three surfaces can never disagree); the offer gate is blank-url-only, so a streamed-only talk still offers it. Sits right after the file-share offer, so the share/copy trio sits together, like the drawer's.
@@ -4117,6 +4149,13 @@ public class TalksActivity extends Activity {
                                         send.putExtra(Intent.EXTRA_TEXT, (sayadawName == null ? "" : sayadawName) + " — " + dt.title
                                                 + "\n" + dt.url + Lang.t(TalksActivity.this, "share_source"));
                                         startActivity(Intent.createChooser(send, Lang.t(TalksActivity.this, "share_talk")));
+                                    } else if ("dl_menu_share_minute".equals(dKeyArr[which])) {
+                                        // v15.59 (slice 2013): share at this minute — the minute-share verb (the 1993 Bookmarks-rail shape on the Talks chooser dialog): the share text is the chooser shape with the row's own "12:34 · title" rendering in the title slot (BmShare.shareAtMinuteText), so the friend sees exactly which minute matters. The link stays the talk's original link (no minute in the URL — the site serves plain .mp3 links, nothing to deep-link into); the minute lives in the text. Chooser title is share_talk, like the plain share. No tap-time re-check: the minute is the row's own captured spot (dMinMs13, > 5000 by the offer gate); the only writer of a non-playing talk's spot is that talk's own Room session, which cannot start while the modal dialog sits open (the sounding talk is excluded at offer time), and a stale minute in shared text is harmless. A share mutates nothing. No pause guard beyond the suppressSharePause the text share beside it sets.
+                                        suppressSharePause = true;
+                                        Intent send13 = new Intent(Intent.ACTION_SEND);
+                                        send13.setType("text/plain");
+                                        send13.putExtra(Intent.EXTRA_TEXT, BmShare.shareAtMinuteText(sayadawName, dt.title, dt.url, dMinMs13, Lang.t(TalksActivity.this, "share_source")));
+                                        startActivity(Intent.createChooser(send13, Lang.t(TalksActivity.this, "share_talk")));
                                     } else if ("dl_menu_share_file".equals(dKeyArr[which])) {
                                         // v15.48 (slice 1956): share this one DOWNLOADED FILE — the menu_share branch above sends the talk's text (title + original dhammadownload.com link + credit); a listener who wanted the actual .mp3 in another app had no way to send it from the chooser — the file sits in Downloads/Dhamma and a file:// URI is refused on API 24+. The file crosses as a TalkFileProvider content:// URI with a one-shot read grant, type audio/mpeg, same chooser title as every other share. The name comes from the chooser's own isTalkDownloaded + talkDlFileCache (v5.59 — the Resume row already reads it), re-checked fresh at tap time, and the URI is built through TalkFileShare.shareUriFor (resolve + uriStringFor), so a name that no longer resolves to a file on disk toasts the existing talk_no_longer_in_list, never a guessed URI. A share mutates nothing. suppressSharePause only when actually sending, like the text share beside it. The sounding talk keeps its direct text share below (no dialog to host a second verb; the Room drawer already serves its file share, slice 1955).
                                         java.io.File dir56 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");

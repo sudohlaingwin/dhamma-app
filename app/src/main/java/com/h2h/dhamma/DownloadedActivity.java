@@ -11494,6 +11494,31 @@ public class DownloadedActivity extends Activity {
         // dlMap entry simply shows no share entry, never a
         // title-only share and never a guessed link.
         if (shareUrl653 != null) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_share")); itemKeys.add("dl_menu_share"); }
+        // v15.59 (slice 2012): "Share at this minute" — the
+        // Downloaded library row menu's minute-share verb: the
+        // row renders its saved spot ("↺ 12:34", from
+        // libResumeMap) but the plain share above carries the
+        // bare title, so a friend receiving the share got no
+        // minute at all. Same verb the Bookmarks rail has had
+        // since v15.55 (slice 1993) and the Favourite-talks rail
+        // since slice 2011, through the same
+        // BmShare.shareAtMinuteText core (the row's own
+        // fmtDlTime rendering in the title slot — fmtDlTime and
+        // BmRail.fmtTime are the same M:SS / H:MM:SS shape, so
+        // the friend sees exactly the minute the row shows).
+        // Gated on the link (shareUrl653 != null, like the text
+        // share) + !playing (the sounding file's saved spot is
+        // stale — its live position is on the strip; the DlMark
+        // rule) + a resume spot (libResumeMap.get(path) != null
+        // — the map holds only spots > 5000 ms by construction,
+        // so the verb appears exactly when the row shows a spot
+        // and never offers a dead verb on a fresh file).
+        // Inserted right after the text share, so the share
+        // verbs sit together in the order text, minute, file
+        // (the 1993/2008/2011 rail order). Library-only, not in
+        // RailMenu.keys — the library menu is its own dialog.
+        final Integer rp12 = libResumeMap.get(path);
+        if (shareUrl653 != null && !playing && rp12 != null) { items.add(Lang.t(DownloadedActivity.this, "dl_menu_share_minute")); itemKeys.add("dl_menu_share_minute"); }
         // v15.48 (slice 1954): share this one FILE itself — right
         // after the v6.53 text share, so the two share verbs sit
         // together: the text share sends the talk's title + link,
@@ -14514,6 +14539,14 @@ public class DownloadedActivity extends Activity {
                             // v8.55: share chooser — suppress the background-off pause.
                             suppressDlSharePause = true;
                             startActivity(Intent.createChooser(send653, Lang.t(DownloadedActivity.this, "share_talk")));
+                        } else if ("dl_menu_share_minute".equals(choiceKey)) {
+                            // v15.59 (slice 2012): share at this minute — the minute-share verb (the 1993 Bookmarks-rail shape on the Downloaded library row): the share text is the chooser shape with the row's own "12:34 · title" rendering in the title slot (BmShare.shareAtMinuteText), so the friend sees exactly which minute matters. The link stays the talk's original link (no minute in the URL — the site serves plain .mp3 links, nothing to deep-link into); the minute lives in the text. Chooser title is share_talk, like the plain share. No tap-time re-check: the minute is the row's own captured spot (rp12, > 5000 by the map's construction); the only writer of a non-playing file's spot is that file's own Room session, which cannot start while the modal menu sits open (the sounding file is excluded at offer time), and a stale minute in shared text is harmless. An older download with no recorded sayadaw shares as " — 12:34 · title" — the pinned 1993 core contract, reused verbatim. No pause guard beyond the v8.55 suppressDlSharePause the text share beside it sets.
+                            android.content.Intent send12 = new android.content.Intent(android.content.Intent.ACTION_SEND);
+                            send12.setType("text/plain");
+                            send12.putExtra(android.content.Intent.EXTRA_TEXT, BmShare.shareAtMinuteText(shareSayadaw653, t.title, shareUrl653, rp12.intValue(), Lang.t(DownloadedActivity.this, "share_source")));
+                            // v8.55: share chooser — suppress the background-off pause, like the text share beside it.
+                            suppressDlSharePause = true;
+                            startActivity(android.content.Intent.createChooser(send12, Lang.t(DownloadedActivity.this, "share_talk")));
                         } else if ("dl_menu_share_file".equals(choiceKey)) {
                             // v15.48 (slice 1954): share this one
                             // DOWNLOADED FILE — the v6.53 share above
