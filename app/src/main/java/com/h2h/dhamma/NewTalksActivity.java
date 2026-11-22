@@ -145,6 +145,15 @@ public class NewTalksActivity extends Activity {
     // change-only snapshot — syncNewPlayAllBtn paints both).
     private long lastNewShuffleMs = 0;
     private android.widget.Button btnNewShuffle = null;
+    // v15.69 (slice 2071): row long-press menu on this screen — the
+    // New talks screen had search, sort, play-all, shuffle, jump,
+    // mark and strip, but no row menu at all: a listener could star
+    // a new talk only by leaving the screen, and nothing started a
+    // run mid-list. lastNewPlayFromHereMs is the handler's own
+    // 700ms clock (the chooser's v12.28 rule — a separate clock from
+    // Play-all-new's, so a Play-from-here tap never eats a Play-all
+    // tap).
+    private long lastNewPlayFromHereMs = 0;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -178,6 +187,18 @@ public class NewTalksActivity extends Activity {
                         int pos, long id) {
                     if (pos < 0 || pos >= items.size()) return;
                     playNew(items.get(pos), v);
+                }
+            });
+            // v15.69 (slice 2071): the row's long-press menu — tap
+            // still plays; a long-press opens Play-from-here /
+            // Add-or-remove-favourite (showNewRowMenu). The History
+            // v13.77 shape: Fx.tap blip, then the menu, return true.
+            listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+                @Override public boolean onItemLongClick(AdapterView<?> p, View v, int pos, long id) {
+                    if (pos < 0 || pos >= items.size()) return false;
+                    Fx.tap(NewTalksActivity.this);
+                    showNewRowMenu(items.get(pos));
+                    return true;
                 }
             });
             // v15.67 (slice 2061): the jump button paints on the same scroll — off-screen is its only show rule, so a laid-out window is required (count 0 means no layout yet).
@@ -856,6 +877,414 @@ public class NewTalksActivity extends Activity {
                 : Lang.t(NewTalksActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
         Fx.morph(v);
         if (!firstSounds66) playNew(first66, v);
+    }
+
+    // v15.69 (slice 2071): the live favourite set, for the row
+    // menu's star verb (FavouritesActivity.readFavTalks verbatim —
+    // the "dhamma" prefs, the "favTalks" string set, copied before
+    // use). The menu reads it at open time and the toggle handler
+    // re-reads it at tap time, so a dialog left open across a star
+    // flip elsewhere can never show or act on a stale state.
+    private java.util.Set<String> readFavTalks() {
+        java.util.Set<String> out = new java.util.HashSet<String>();
+        try {
+            java.util.Set<String> raw = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favTalks", null);
+            if (raw != null) out.addAll(raw);
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    // v15.69 (slice 2071): row long-press menu on this screen — the
+    // New talks screen had no row menu at all (no long-press, no
+    // dialog, no per-row star verb): stars were added/removed
+    // per-row from the rail/chooser/library menus only (the 2035
+    // header note), and nothing started a run mid-list (Play-all
+    // starts at the top, a tap plays one talk at 0:00). The menu
+    // opens with the two verbs this screen needs: "Play from here"
+    // (the chooser's 1942 / History's 2030 / Favourites' 2069 verb
+    // — queue the shown run from this row onward and open the Room
+    // on it at 0:00) and the state-dependent star verb ("Add to
+    // favourites" when unstarred, "Remove from favourites" when
+    // starred — the chooser 1969 / library / History 1267 shape).
+    // Share / go-to-sayadaw / queue / download are future verbs on
+    // this same menu (the History menu grew the same way: 1981,
+    // 1982, 1995, 2030). The offer comes from the pure NewRowMenu
+    // core (the NewPlayAll three-identity sounding gate, path-form
+    // rows offer the star verb only); the dialog is History's
+    // AlertDialog shape (title = the card's title, key-dispatched
+    // handler); every verb re-checks its offer at tap time, so a
+    // dialog left open across a refresh can never act on a stale
+    // row.
+    private void showNewRowMenu(final NewTalkRail.Card c) {
+        if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return;
+        refreshNewTalksPlayingMarks();
+        final String url = c.e.url;
+        final String sd = c.e.sayadaw;
+        boolean starred = false;
+        try {
+            for (String f : readFavTalks()) {
+                if (f != null && SiteHttp.sameTalk(f, url)) { starred = true; break; }
+            }
+        } catch (Exception ignored) {}
+        java.util.List<String> keys71 = NewRowMenu.menuKeys(url, sd, newPlayingUrl, newPlayingLibUrl, newPlayingLibPath, starred);
+        // v15.69 (slice 2074): the queue verb — "Add to queue" /
+        // "Remove from queue" (NewQueue): the row's sayadaw queue,
+        // read once per menu open; the key composes into the menu
+        // between Play-from-here and the star verb, so the play
+        // verbs sit together and the star stays last. A stale
+        // banked sayadaw can only mis-offer (add for a talk
+        // already queued under another key) — the handler re-reads
+        // the same key and refuses with already_in_queue, never a
+        // wrong write.
+        String qKey74 = "";
+        try {
+            java.util.ArrayList<String> saved74 = new java.util.ArrayList<String>();
+            String savedRaw74 = Prefs.savedQueue(this, sd);
+            if (savedRaw74 != null && savedRaw74.length() > 0) {
+                for (String ln74 : savedRaw74.split("\n")) {
+                    if (ln74.length() == 0) continue;
+                    saved74.add(ln74);
+                }
+            }
+            qKey74 = NewQueue.queueKey(url, sd, newPlayingUrl, newPlayingLibUrl,
+                    newPlayingLibPath, NewQueue.isQueued(url, saved74));
+        } catch (Exception ignored) {}
+        if (qKey74.length() > 0) {
+            int at74 = keys71.contains("menu_play_from_here") ? 1 : 0;
+            keys71.add(at74, qKey74);
+        }
+        if (keys71.isEmpty()) return;
+        java.util.ArrayList<String> opts = new java.util.ArrayList<String>();
+        for (String k71 : keys71) opts.add(Lang.t(this, k71));
+        final String[] optArr = opts.toArray(new String[0]);
+        final String[] keyArr = keys71.toArray(new String[0]);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(c.e.title != null && c.e.title.length() > 0 ? c.e.title : url)
+                .setItems(optArr, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        if ("menu_play_from_here".equals(keyArr[which])) {
+                            playFromHereNew(c);
+                        } else if ("menu_queue_add".equals(keyArr[which])) {
+                            queueAddNew(c);
+                        } else if ("menu_queue_remove".equals(keyArr[which])) {
+                            queueRemoveNew(c);
+                        } else if ("menu_fav_add".equals(keyArr[which]) || "menu_fav_remove".equals(keyArr[which])) {
+                            toggleFavFromMenu(c);
+                        }
+                    }
+                })
+                .show();
+    }
+
+    // v15.69 (slice 2071): "Play from here" on this screen — the
+    // row menu's first play verb (the chooser's menu_play_from_here,
+    // v15.45 slice 1942, History's histPlayFromHere, v15.62 slice
+    // 2030, and Favourites' playFromHereFav, v15.68 slice 2069):
+    // queue the SHOWN run from the long-pressed row onward (the
+    // 2047 rule — the filtered + sorted list is the run) and open
+    // the Room on it at 0:00, in one tap. The run is built with
+    // the chooser's PlayFromHere.pick (anchor onward, minus the
+    // sounding talk and minus already-queued talks) and History's
+    // HistPlayFromHere.lines (v2 lines carrying each talk's OWN
+    // sayadaw, so the Room renders the other sayadaws' talks as
+    // foreign rows). The anchor sayadaw is healed exactly like
+    // the row tap (catalog + the sayadawForTalk heal) — the queue
+    // key and the Room name must be the healed name, never a stale
+    // banked one. No catalog, no run: the queue is untouched. The
+    // Room opens with the row tap's own intent, built inline —
+    // NOT through the row-tap method, which carries its own 700ms
+    // tap debounce, and the menu tap is not a row tap, so routing
+    // through it could swallow the open (histPlayFromHere builds
+    // its intent inline for the same reason). A queued anchor plays
+    // from its queue spot; a sounding anchor never re-opens
+    // (stay-put — all three sounding identities, the 2043 mark
+    // rule).
+    private void playFromHereNew(final NewTalkRail.Card c) {
+        if (items == null || items.isEmpty() || c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        long now71 = android.os.SystemClock.uptimeMillis();
+        if (now71 - lastNewPlayFromHereMs < 700) return;
+        lastNewPlayFromHereMs = now71;
+        // Tap-time re-checks (the dialog's own shape): the anchor
+        // may have lost its stream URL or its sayadaw while the
+        // dialog sat open, turned into the sounding talk, or left
+        // the list (played from another screen — the 1921 gate
+        // drops it from the pick).
+        refreshNewTalksPlayingMarks();
+        final String streamUrl = c.e.url;
+        if (streamUrl.startsWith("/")) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if ((newPlayingUrl.length() > 0 && SiteHttp.sameTalk(streamUrl, newPlayingUrl))
+                || (newPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(streamUrl, newPlayingLibUrl))
+                || (newPlayingLibPath.length() > 0 && streamUrl.equals(newPlayingLibPath))) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String sd71 = c.e.sayadaw;
+        String[] cat71 = catalogFor(sd71);
+        if (cat71 == null || cat71[1] == null || cat71[1].length() == 0) {
+            String owner71 = Prefs.sayadawForTalk(this, "lib", streamUrl, "");
+            if (owner71 != null && owner71.length() > 0 && !owner71.equals(sd71)) {
+                sd71 = owner71;
+                cat71 = catalogFor(sd71);
+            }
+        }
+        if (cat71 == null || cat71[1] == null || cat71[1].length() == 0) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "pl_no_play"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // The anchor's display position, re-resolved by identity —
+        // the dialog can sit open across a search/sort/refresh, so
+        // the captured position may have moved (the v13.13 rule).
+        int anchorIdx71 = -1;
+        for (int i71 = 0; i71 < items.size(); i71++) {
+            NewTalkRail.Card r71 = items.get(i71);
+            if (r71 == null || r71.e == null || r71.e.url == null) continue;
+            if (SiteHttp.sameTalk(r71.e.url, streamUrl)) { anchorIdx71 = i71; break; }
+        }
+        // Display-order identity list from the anchor onward (the
+        // PlayFromHere pick's input), each row carrying its own
+        // sayadaw + title for the v2 lines. A path-form row reads as
+        // null and the pick skips it (a card is a stream URL by
+        // NewAll's construction, but the gate costs nothing).
+        java.util.List<String> ids71 = new java.util.ArrayList<String>();
+        java.util.List<String> sds71 = new java.util.ArrayList<String>();
+        java.util.List<String> titles71 = new java.util.ArrayList<String>();
+        if (anchorIdx71 < 0) {
+            // Anchor gone from the list while the dialog sat open:
+            // queue just the anchor itself, never a stale range.
+            ids71.add(SiteHttp.identityUrl(streamUrl));
+            sds71.add(sd71);
+            titles71.add(c.e.title);
+        } else {
+            for (int i71 = anchorIdx71; i71 < items.size(); i71++) {
+                NewTalkRail.Card r71 = items.get(i71);
+                if (r71 == null || r71.e == null) { ids71.add(null); sds71.add(""); titles71.add(""); continue; }
+                String u71 = r71.e.url;
+                ids71.add(u71 != null && u71.length() > 0 && !u71.startsWith("/") ? SiteHttp.identityUrl(u71) : null);
+                sds71.add(r71.e.sayadaw != null ? r71.e.sayadaw : "");
+                titles71.add(r71.e.title != null ? r71.e.title : "");
+            }
+            // The anchor's own line carries the healed sayadaw.
+            sds71.set(0, sd71);
+        }
+        // The anchor sayadaw's current queue, as identities — the
+        // pick skips talks already queued (they stay where they
+        // are). Saved lines are carried verbatim (histQueueAdd's
+        // discipline), so a foreign line the Room drawer moved
+        // mid-queue survives the write.
+        java.util.Set<String> queuedIds71 = new java.util.HashSet<String>();
+        java.util.ArrayList<String> saved71 = new java.util.ArrayList<String>();
+        try {
+            String savedRaw71 = Prefs.savedQueue(this, sd71);
+            if (savedRaw71 != null && savedRaw71.length() > 0) {
+                for (String ln71 : savedRaw71.split("\n")) {
+                    if (ln71.length() == 0) continue;
+                    saved71.add(ln71);
+                    QueueEntry qe71 = QueueEntry.parse(ln71);
+                    if (qe71 != null && qe71.url.length() > 0)
+                        queuedIds71.add(SiteHttp.identityUrl(qe71.url));
+                }
+            }
+        } catch (Exception ignored) {}
+        java.util.List<Integer> picked71 = PlayFromHere.pick(ids71,
+                SiteHttp.identityUrl(streamUrl), queuedIds71,
+                newPlayingUrl, newPlayingLibUrl);
+        java.util.List<String> run71 = HistPlayFromHere.lines(ids71, sds71, titles71, picked71);
+        int added71 = 0;
+        for (String ln71 : run71) {
+            QueueEntry qe71 = QueueEntry.parse(ln71);
+            if (qe71 == null || qe71.url.length() == 0) continue;
+            boolean dup71 = false;
+            for (String ex71 : saved71) {
+                QueueEntry qx71 = QueueEntry.parse(ex71);
+                if (qx71 != null && SiteHttp.sameTalk(qx71.url, qe71.url)) { dup71 = true; break; }
+            }
+            if (dup71) continue;
+            saved71.add(ln71);
+            added71++;
+        }
+        Prefs.saveQueue(this, sd71, saved71);
+        android.widget.Toast.makeText(NewTalksActivity.this, added71 > 0
+                ? Lang.t(NewTalksActivity.this, "queue_plain_prefix") + added71 + Lang.t(NewTalksActivity.this, "queue_added_suffix")
+                : Lang.t(NewTalksActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
+        // Open the Room on the anchor at 0:00 (the row tap's own
+        // intent, built inline — see the header note): a queued
+        // anchor plays from its queue spot.
+        android.content.Intent it71 = new android.content.Intent(this, RoomActivity.class);
+        it71.putExtra("name", sd71);
+        it71.putExtra("group", cat71[0]);
+        it71.putExtra("url", cat71[1]);
+        it71.putExtra("photo", cat71[2]);
+        it71.putExtra("autoUrl", c.e.url);
+        it71.putExtra("autoTitle", c.e.title);
+        Fx.tap(this);
+        Fx.go(this, it71);
+    }
+
+    // v15.69 (slice 2071): the row menu's star verb — "Add to
+    // favourites" when the talk is unstarred, "Remove from
+    // favourites" when it is starred (the chooser 1969 / library /
+    // History 1267 shape: the verb names the CURRENT state at
+    // menu-open time, and the handler re-checks the live star at
+    // tap time). Fx.toggleFavTalk returns false both when the star
+    // is removed AND when the write throws, so the outcome is
+    // confirmed by re-reading the set after the flip, never by
+    // trusting the return alone (the 2069 lesson). The toast
+    // names the confirmed outcome (fav_added / fav_removed), or
+    // nothing_to_delete when the flip did not take. The row stays
+    // in this list either way — starring never moves a new talk,
+    // and the list renders no star — so no refresh() here. A
+    // flipped sounding talk keeps playing — the star is not
+    // playback — but the Room's card star flips, so the
+    // notification card is refreshed (the Talks v10.03 shape,
+    // through this screen's own three sounding identities).
+    // v15.69 (slice 2074): "Add to queue" — the row menu's queue
+    // verb (History's menu_queue_add, v13.77, on this screen's
+    // menu): append the row's talk to the row's sayadaw queue as a
+    // v2 line (NewQueue.add — identity URL, the row's sayadaw, the
+    // row's title, the histQueueAdd shape) and leave it there for
+    // the next Room session on that sayadaw — the sounding talk
+    // keeps playing, nothing opens. The offer hid sounding and
+    // path-form rows (NewQueue.queueKey, the NewPlayAll
+    // three-identity rule); the tap-time re-checks refuse with
+    // queue_changed when the row turned sounding or lost its
+    // stream URL while the dialog sat open (the 2071 shape), and
+    // the dup check answers already_in_queue. No catalog heal: the
+    // queue key is the row's sayadaw as listed (histQueueAdd's
+    // discipline — no Room opens here, so no healed-name coupling
+    // like playFromHereNew's). No list refresh: queueing changes
+    // no row the list renders (there is no queued mark on this
+    // screen — the 2043 mark renders the sounding talk only, and
+    // a new talk leaves the list the moment it is played, the
+    // 1921 gate).
+    private void queueAddNew(final NewTalkRail.Card c) {
+        if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return;
+        refreshNewTalksPlayingMarks();
+        final String url = c.e.url;
+        final String sd = c.e.sayadaw;
+        if (url.startsWith("/") || sd == null || sd.length() == 0
+                || NewPlayAll.isSounding(url, newPlayingUrl, newPlayingLibUrl,
+                        newPlayingLibPath)) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        java.util.ArrayList<String> saved74 = new java.util.ArrayList<String>();
+        try {
+            String savedRaw74 = Prefs.savedQueue(this, sd);
+            if (savedRaw74 != null && savedRaw74.length() > 0) {
+                for (String ln74 : savedRaw74.split("\n")) {
+                    if (ln74.length() == 0) continue;
+                    saved74.add(ln74);
+                }
+            }
+        } catch (Exception ignored) {}
+        java.util.ArrayList<String> next74 = NewQueue.add(url, sd, c.e.title, saved74);
+        if (next74 == null) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "already_in_queue"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Prefs.saveQueue(this, sd, next74);
+        android.widget.Toast.makeText(NewTalksActivity.this,
+                Lang.t(NewTalksActivity.this, "added_to_queue"),
+                android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    // v15.69 (slice 2074): "Remove from queue" — the
+    // state-dependent twin of queueAddNew above (History's
+    // menu_queue_remove, v13.77): drop the row's talk from the
+    // row's sayadaw queue (NewQueue.remove — sameTalk over parsed
+    // entries; unparseable lines are carried, never dropped on a
+    // guess) and leave the star alone — queueing is not
+    // favouriting, so removing from the queue never un-stars the
+    // row. Same tap-time re-checks as the add (sounding /
+    // path-form / blank sayadaw refuse with queue_changed); a talk
+    // that left the queue while the dialog sat open answers
+    // queue_changed too (NewQueue.remove returns null when absent).
+    // No list refresh: the queue change renders nowhere on this
+    // screen.
+    private void queueRemoveNew(final NewTalkRail.Card c) {
+        if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return;
+        refreshNewTalksPlayingMarks();
+        final String url = c.e.url;
+        final String sd = c.e.sayadaw;
+        if (url.startsWith("/") || sd == null || sd.length() == 0
+                || NewPlayAll.isSounding(url, newPlayingUrl, newPlayingLibUrl,
+                        newPlayingLibPath)) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        java.util.ArrayList<String> saved74 = new java.util.ArrayList<String>();
+        try {
+            String savedRaw74 = Prefs.savedQueue(this, sd);
+            if (savedRaw74 != null && savedRaw74.length() > 0) {
+                for (String ln74 : savedRaw74.split("\n")) {
+                    if (ln74.length() == 0) continue;
+                    saved74.add(ln74);
+                }
+            }
+        } catch (Exception ignored) {}
+        java.util.ArrayList<String> next74 = NewQueue.remove(url, saved74);
+        if (next74 == null) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Prefs.saveQueue(this, sd, next74);
+        android.widget.Toast.makeText(NewTalksActivity.this,
+                Lang.t(NewTalksActivity.this, "removed_from_queue"),
+                android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    private void toggleFavFromMenu(final NewTalkRail.Card c) {
+        if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return;
+        refreshNewTalksPlayingMarks();
+        boolean pre71 = false;
+        try {
+            for (String f : readFavTalks()) {
+                if (f != null && SiteHttp.sameTalk(f, c.e.url)) { pre71 = true; break; }
+            }
+        } catch (Exception ignored) {}
+        Fx.toggleFavTalk(this, c.e.url);
+        boolean post71 = false;
+        try {
+            for (String f : readFavTalks()) {
+                if (f != null && SiteHttp.sameTalk(f, c.e.url)) { post71 = true; break; }
+            }
+        } catch (Exception ignored) {}
+        boolean changed71 = pre71 ? !post71 : post71;
+        if (changed71) {
+            boolean cardTalk = (newPlayingUrl.length() > 0 && SiteHttp.sameTalk(c.e.url, newPlayingUrl))
+                    || (newPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(c.e.url, newPlayingLibUrl))
+                    || (newPlayingLibPath.length() > 0 && c.e.url.equals(newPlayingLibPath));
+            if (cardTalk) {
+                android.content.Intent rsv = new android.content.Intent(this, AudioService.class);
+                rsv.setAction(AudioService.ACTION_REFRESH_NOTIFICATION);
+                startService(rsv);
+            }
+        }
+        android.widget.Toast.makeText(this,
+                Lang.t(this, changed71 ? (pre71 ? "fav_removed" : "fav_added") : "nothing_to_delete"),
+                android.widget.Toast.LENGTH_SHORT).show();
     }
 
     private void playNew(final NewTalkRail.Card c, android.view.View v) {

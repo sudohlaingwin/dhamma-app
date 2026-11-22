@@ -121,6 +121,15 @@ public class BookmarksActivity extends Activity {
     // change-only snapshot — syncBmPlayAllBtn paints both).
     private long lastBmShuffleMs = 0;
     private android.widget.Button btnBmShuffle = null;
+    // v15.69 (slice 2072): row long-press menu on this screen — the
+    // Bookmarks screen had search, sort, play-all, shuffle, jump,
+    // mark and strip, but no row menu at all: a listener could drop
+    // a mark only by leaving the screen, and nothing started a run
+    // mid-list. lastBmPlayFromHereMs is the handler's own 700ms
+    // clock (the chooser's v12.28 rule — a separate clock from
+    // Play-all-marks' and Shuffle's, so a Play-from-here tap never
+    // eats a Play-all tap).
+    private long lastBmPlayFromHereMs = 0;
     private java.util.List<BmPlayAll.Item> bmItems =
             new java.util.ArrayList<BmPlayAll.Item>();
     // v15.67 (slice 2062): "Jump to the playing talk" — the
@@ -166,6 +175,18 @@ public class BookmarksActivity extends Activity {
                         int pos, long id) {
                     if (pos < 0 || pos >= items.size()) return;
                     playBookmark(items.get(pos), v);
+                }
+            });
+            // v15.69 (slice 2072): the row's long-press menu — tap
+            // still plays; a long-press opens Play-from-here /
+            // Delete-bookmark (showBmRowMenu). The History v13.77
+            // shape: Fx.tap blip, then the menu, return true.
+            listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+                @Override public boolean onItemLongClick(AdapterView<?> p, View v, int pos, long id) {
+                    if (pos < 0 || pos >= items.size()) return false;
+                    Fx.tap(BookmarksActivity.this);
+                    showBmRowMenu(items.get(pos));
+                    return true;
                 }
             });
             // v15.67 (slice 2062): the jump button paints on the same scroll — off-screen is its only show rule, so a laid-out window is required (count 0 means no layout yet).
@@ -869,6 +890,373 @@ public class BookmarksActivity extends Activity {
             out.add(new BmPlayAll.Item(u, r.e.sayadaw, r.e.title, r.posMs));
         }
         return out;
+    }
+
+    // v15.69 (slice 2072): row long-press menu on this screen — the
+    // Bookmarks screen had no row menu at all (no long-press, no
+    // dialog, no per-row delete verb): marks were dropped only
+    // from the Room bookmark list's ✕ (v12.64) or the Bookmarks
+    // rail menu (v15.55 slice 1992), and nothing started a run
+    // mid-list (Play-all-marks starts at the top, a tap plays one
+    // mark at its minute). The menu opens with the two verbs this
+    // screen needs: "Play from here" (the chooser's 1942 /
+    // History's 2030 / Favourites' 2069 / New talks' 2071 verb —
+    // queue the shown run of marks from this mark onward and open
+    // the Room on it at its minute) and "Delete bookmark" (the
+    // rail's own verb — the confirm names the exact minute, so a
+    // talk with several marks never deletes the wrong one). Share
+    // / go-to-sayadaw are future verbs on this same menu (the
+    // History menu grew the same way: 1981, 1982, 1995, 2030).
+    // The offer comes from the pure BmRowMenu core (the resolved
+    // stream URL + the BmPlayAll sounding rule; the delete verb is
+    // always offered — the row IS a bookmark); the dialog is
+    // History's AlertDialog shape (title = the row's title,
+    // key-dispatched handler); every verb re-checks its offer at
+    // tap time, so a dialog left open across a refresh can never
+    // act on a stale row.
+    private void showBmRowMenu(final BmAll.Row r) {
+        if (r == null || r.e == null || r.e.url == null || r.e.url.length() == 0) return;
+        refreshBookmarksPlayingMarks();
+        final String streamUrl = streamUrlFor(r.e);
+        final String sd = r.e.sayadaw;
+        java.util.List<String> keys72 = BmRowMenu.menuKeys(streamUrl, sd, bmPlayingUrl, bmPlayingLibUrl);
+        // v15.69 (slice 2075): the queue verb — "Add to queue" /
+        // "Remove from queue" (BmQueue): the row's sayadaw queue,
+        // read once per menu open; the key composes into the menu
+        // between Play-from-here and Delete bookmark, so the play
+        // verbs sit together and the delete stays last. The queued
+        // unit is the mark (a v3 line, 2053), but the offer is per
+        // talk (the 2055 rule): a talk already queued under any
+        // line offers Remove, never a second Add. A stale banked
+        // sayadaw can only mis-offer (add for a talk already queued
+        // under another key) — the handler re-reads the same key
+        // and refuses with already_in_queue, never a wrong write.
+        String qKey75 = "";
+        try {
+            java.util.ArrayList<String> saved75 = new java.util.ArrayList<String>();
+            String savedRaw75 = Prefs.savedQueue(this, sd);
+            if (savedRaw75 != null && savedRaw75.length() > 0) {
+                for (String ln75 : savedRaw75.split("\n")) {
+                    if (ln75.length() == 0) continue;
+                    saved75.add(ln75);
+                }
+            }
+            qKey75 = BmQueue.queueKey(streamUrl, sd, r.posMs, bmPlayingUrl, bmPlayingLibUrl,
+                    BmQueue.isQueued(streamUrl, saved75));
+        } catch (Exception ignored) {}
+        if (qKey75.length() > 0) {
+            int at75 = keys72.contains("menu_play_from_here") ? 1 : 0;
+            keys72.add(at75, qKey75);
+        }
+        if (keys72.isEmpty()) return;
+        java.util.ArrayList<String> opts = new java.util.ArrayList<String>();
+        for (String k72 : keys72) opts.add(Lang.t(this, k72));
+        final String[] optArr = opts.toArray(new String[0]);
+        final String[] keyArr = keys72.toArray(new String[0]);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(r.e.title != null && r.e.title.length() > 0 ? r.e.title : r.e.url)
+                .setItems(optArr, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        if ("menu_play_from_here".equals(keyArr[which])) {
+                            playFromHereBm(r);
+                        } else if ("menu_queue_add".equals(keyArr[which])) {
+                            queueAddBm(r);
+                        } else if ("menu_queue_remove".equals(keyArr[which])) {
+                            queueRemoveBm(r);
+                        } else if ("bm_menu_remove".equals(keyArr[which])) {
+                            removeBmFromMenu(r);
+                        }
+                    }
+                })
+                .show();
+    }
+
+    // v15.69 (slice 2072): "Play from here" on this screen — the
+    // row menu's first play verb (the chooser's menu_play_from_here,
+    // v15.45 slice 1942, History's histPlayFromHere, v15.62 slice
+    // 2030, Favourites' playFromHereFav, v15.68 slice 2069, and
+    // New talks' playFromHereNew, v15.69 slice 2071): queue the
+    // SHOWN run of marks from the long-pressed mark onward (the
+    // 2047 rule — the filtered + sorted list is the run) and open
+    // the Room on it at its minute, in one tap. The run is built
+    // with BmPlayAll.lines over buildBmItems (the v3 lines carry
+    // each mark's own minute, 2053/2054, so a talk with three marks
+    // queues three lines, each at its own minute). The anchor is
+    // re-resolved by identity + minute at tap time (the v13.13
+    // rule, with BmAll's own dedupe key — sameTalk alone would
+    // land on the talk's FIRST mark, not the long-pressed one).
+    // The anchor sayadaw is healed exactly like playBookmark
+    // (catalog + the sayadawForTalk heal) — the queue key and the
+    // Room name must be the healed name, never a stale banked one.
+    // No catalog, no run: the queue is untouched. The Room opens
+    // through playBookmark (this screen's own run-verb shape —
+    // playAllBm and shufflePlayBm route through it too, the 2055 /
+    // 2067 accepted shape: a row tap under 700ms before this tap
+    // swallows the open while the queue still writes). Its View
+    // parameter is unused in its body (verified — only the
+    // signature names it), so this handler passes null. A sounding
+    // anchor never re-opens: the offer hid it, and the tap-time
+    // re-check refuses with queue_changed (the 2069 / 2071 shape),
+    // rather than queueing behind a talk that already sounds —
+    // the menu verb's offer is per-row, unlike play-all's
+    // list-wide gate.
+    private void playFromHereBm(final BmAll.Row r) {
+        if (items == null || items.isEmpty() || r == null || r.e == null || r.e.url == null || r.e.url.length() == 0) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        long now72 = android.os.SystemClock.uptimeMillis();
+        if (now72 - lastBmPlayFromHereMs < 700) return;
+        lastBmPlayFromHereMs = now72;
+        // Tap-time re-checks (the dialog's own shape): the anchor
+        // may have lost its stream URL or turned into the sounding
+        // talk while the dialog sat open, or left the list (its
+        // mark deleted from the Room list).
+        refreshBookmarksPlayingMarks();
+        final String streamUrl = streamUrlFor(r.e);
+        if (streamUrl == null || streamUrl.length() == 0) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (BmPlayAll.isSounding(streamUrl, bmPlayingUrl, bmPlayingLibUrl)) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String sd72 = r.e.sayadaw;
+        String[] cat72 = catalogFor(sd72);
+        if (cat72 == null || cat72[1] == null || cat72[1].length() == 0) {
+            String owner72 = Prefs.sayadawForTalk(this, "lib", streamUrl, "");
+            if (owner72 != null && owner72.length() > 0 && !owner72.equals(sd72)) {
+                sd72 = owner72;
+                cat72 = catalogFor(sd72);
+            }
+        }
+        if (cat72 == null || cat72[1] == null || cat72[1].length() == 0) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "pl_no_play"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // The anchor's display position, re-resolved by identity +
+        // minute — the dialog can sit open across a search/sort/
+        // refresh, so the captured position may have moved (the
+        // v13.13 rule); a talk with three marks is three rows, so
+        // the minute is part of the identity (BmAll's own dedupe
+        // key), or the run would start at the talk's first mark.
+        int anchorIdx72 = -1;
+        for (int i72 = 0; i72 < items.size(); i72++) {
+            BmAll.Row row72 = items.get(i72);
+            if (row72 == null || row72.e == null || row72.e.url == null) continue;
+            if (row72.posMs == r.posMs && SiteHttp.sameTalk(row72.e.url, r.e.url)) { anchorIdx72 = i72; break; }
+        }
+        java.util.List<BmAll.Row> from72;
+        if (anchorIdx72 < 0) {
+            // Anchor gone from the list while the dialog sat open:
+            // queue just the anchor mark itself, never a stale range.
+            from72 = new java.util.ArrayList<BmAll.Row>();
+            from72.add(r);
+        } else {
+            from72 = items.subList(anchorIdx72, items.size());
+        }
+        // The anchor sayadaw's current queue, as identities — the
+        // pick skips talks already queued (they stay where they
+        // are). Saved lines are carried verbatim (histQueueAdd's
+        // discipline), so a foreign line the Room drawer moved
+        // mid-queue survives the write.
+        java.util.Set<String> queuedIds72 = new java.util.HashSet<String>();
+        java.util.ArrayList<String> saved72 = new java.util.ArrayList<String>();
+        try {
+            String savedRaw72 = Prefs.savedQueue(this, sd72);
+            if (savedRaw72 != null && savedRaw72.length() > 0) {
+                for (String ln72 : savedRaw72.split("\n")) {
+                    if (ln72.length() == 0) continue;
+                    saved72.add(ln72);
+                    QueueEntry qe72 = QueueEntry.parse(ln72);
+                    if (qe72 != null && qe72.url.length() > 0)
+                        queuedIds72.add(SiteHttp.identityUrl(qe72.url));
+                }
+            }
+        } catch (Exception ignored) {}
+        // The run is the shown run from the anchor onward, as
+        // resolved Items (a path-form mark resolves through
+        // streamUrlFor or drops out) — BmPlayAll.lines keeps the
+        // order, dedupes per mark, skips sounding and
+        // already-queued talks exactly like Play-all-marks'.
+        java.util.List<BmPlayAll.Item> runItems72 = buildBmItems(from72);
+        java.util.List<String> run72 = BmPlayAll.lines(runItems72, queuedIds72, bmPlayingUrl, bmPlayingLibUrl);
+        int added72 = 0;
+        for (String ln72 : run72) {
+            QueueEntry qe72 = QueueEntry.parse(ln72);
+            if (qe72 == null || qe72.url.length() == 0) continue;
+            boolean dup72 = false;
+            for (String ex72 : saved72) {
+                QueueEntry qx72 = QueueEntry.parse(ex72);
+                if (qx72 != null && qx72.posMs == qe72.posMs
+                        && SiteHttp.sameTalk(qx72.url, qe72.url)) { dup72 = true; break; }
+            }
+            if (dup72) continue;
+            saved72.add(ln72);
+            added72++;
+        }
+        Prefs.saveQueue(this, sd72, saved72);
+        android.widget.Toast.makeText(BookmarksActivity.this, added72 > 0
+                ? Lang.t(BookmarksActivity.this, "queue_plain_prefix") + added72 + Lang.t(BookmarksActivity.this, "queue_added_suffix")
+                : Lang.t(BookmarksActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
+        // Open the Room on the anchor at its minute (playBookmark's
+        // own route — the mark was written into the talk's resume
+        // spot by the openBmTalk1962 rule, so the Room resumes
+        // there, v1.56; the queued v3 head for that same mark is
+        // dropped on real play by the v4.43 ahead-drop, by URL, so
+        // the run continues with the next mark instead of replaying
+        // it). A queued anchor plays from its queue spot.
+        BmAll.Row anchorRow72 = anchorIdx72 < 0 ? r : items.get(anchorIdx72);
+        playBookmark(anchorRow72, null);
+    }
+
+    // v15.69 (slice 2072): "Delete bookmark" — the row menu's
+    // removal verb (the Bookmarks rail's own, v15.55 slice 1992:
+    // the only way to drop a mark without opening the Room
+    // bookmark list, until now). The confirm is the library
+    // delete's own (del_one_title + del_one_btn / del_btn_no, the
+    // 1986 drawer shape) and its message names the exact minute
+    // (BmRemove.confirmMessage — the row's "12:34 · title"
+    // rendering, so a talk with several marks never deletes the
+    // wrong one). The remove is Prefs.bookmarkRemoveBoth — the
+    // Room ✕ delete's own call, both http/https forms — then
+    // refresh() drops the row at once (re-pick + re-filter +
+    // re-sort + jump-target refresh) and the toast is bm_deleted.
+    // No tap-time re-check is needed: no concurrent deleter can
+    // run while the modal menu/confirm sits open (the Room
+    // bookmark list needs this screen dismissed first), and
+    // bookmarkRemoveBoth is idempotent anyway (the rail's own
+    // comment, MainActivity v15.55). No notification refresh: the
+    // mark is not on the card, and a removed sounding talk keeps
+    // playing — the mark is not playback.
+    // v15.69 (slice 2075): "Add to queue" — the row menu's queue
+    // verb (History's menu_queue_add, v13.77, on this screen's
+    // menu): append the row's MARK to the row's sayadaw queue as a
+    // v3 line (BmQueue.add — identity URL, the row's sayadaw, the
+    // row's title, the mark's minute, the 2053 shape) and leave it
+    // there for the next Room session on that sayadaw — the Room
+    // pop (2054) opens on the mark when its turn comes, and the
+    // sounding talk keeps playing, nothing opens. The offer hid
+    // sounding marks and marks with no real minute (BmQueue.
+    // queueKey, the BmPlayAll two-identity rule); the tap-time
+    // re-checks refuse with queue_changed when the mark's talk
+    // turned sounding or the row lost its stream URL while the
+    // dialog sat open (the 2072 shape), and the dup check answers
+    // already_in_queue. The resolved stream URL is re-read at tap
+    // time (streamUrlFor — a path-form mark resolves through the
+    // dlMap exactly-one-claimant rule, v8.44, or names no talk),
+    // so the queued line is always a stream URL. No catalog heal:
+    // the queue key is the row's sayadaw as listed (histQueueAdd's
+    // discipline — no Room opens here, so no healed-name coupling
+    // like playFromHereBm's). No list refresh: queueing changes
+    // no row the list renders (there is no queued mark on this
+    // screen — the 2041 mark renders the sounding talk only).
+    private void queueAddBm(final BmAll.Row r) {
+        if (r == null || r.e == null || r.e.url == null || r.e.url.length() == 0) return;
+        refreshBookmarksPlayingMarks();
+        final String streamUrl = streamUrlFor(r.e);
+        final String sd = r.e.sayadaw;
+        if (streamUrl == null || streamUrl.length() == 0 || sd == null || sd.length() == 0
+                || BmPlayAll.isSounding(streamUrl, bmPlayingUrl, bmPlayingLibUrl)) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        java.util.ArrayList<String> saved75 = new java.util.ArrayList<String>();
+        try {
+            String savedRaw75 = Prefs.savedQueue(this, sd);
+            if (savedRaw75 != null && savedRaw75.length() > 0) {
+                for (String ln75 : savedRaw75.split("\n")) {
+                    if (ln75.length() == 0) continue;
+                    saved75.add(ln75);
+                }
+            }
+        } catch (Exception ignored) {}
+        java.util.ArrayList<String> next75 = BmQueue.add(streamUrl, sd, r.e.title, r.posMs, saved75);
+        if (next75 == null) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "already_in_queue"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Prefs.saveQueue(this, sd, next75);
+        android.widget.Toast.makeText(BookmarksActivity.this,
+                Lang.t(BookmarksActivity.this, "added_to_queue"),
+                android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    // v15.69 (slice 2075): "Remove from queue" — the
+    // state-dependent twin of queueAddBm above (History's
+    // menu_queue_remove, v13.77): drop the row's talk from the
+    // row's sayadaw queue (BmQueue.remove — sameTalk over parsed
+    // entries, every line for the talk, v2 and every v3 mark line,
+    // so the talk leaves the queue entirely, the 2055 rule) and
+    // leave the bookmark alone — queueing is not bookmarking, so
+    // removing from the queue never deletes the mark. Same
+    // tap-time re-checks as the add (sounding / blank sayadaw /
+    // lost stream URL refuse with queue_changed); a talk that left
+    // the queue while the dialog sat open answers queue_changed
+    // too (BmQueue.remove returns null when absent). No list
+    // refresh: the queue change renders nowhere on this screen.
+    private void queueRemoveBm(final BmAll.Row r) {
+        if (r == null || r.e == null || r.e.url == null || r.e.url.length() == 0) return;
+        refreshBookmarksPlayingMarks();
+        final String streamUrl = streamUrlFor(r.e);
+        final String sd = r.e.sayadaw;
+        if (streamUrl == null || streamUrl.length() == 0 || sd == null || sd.length() == 0
+                || BmPlayAll.isSounding(streamUrl, bmPlayingUrl, bmPlayingLibUrl)) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        java.util.ArrayList<String> saved75 = new java.util.ArrayList<String>();
+        try {
+            String savedRaw75 = Prefs.savedQueue(this, sd);
+            if (savedRaw75 != null && savedRaw75.length() > 0) {
+                for (String ln75 : savedRaw75.split("\n")) {
+                    if (ln75.length() == 0) continue;
+                    saved75.add(ln75);
+                }
+            }
+        } catch (Exception ignored) {}
+        java.util.ArrayList<String> next75 = BmQueue.remove(streamUrl, saved75);
+        if (next75 == null) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Prefs.saveQueue(this, sd, next75);
+        android.widget.Toast.makeText(BookmarksActivity.this,
+                Lang.t(BookmarksActivity.this, "removed_from_queue"),
+                android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    private void removeBmFromMenu(final BmAll.Row r) {
+        if (r == null || r.e == null || r.e.url == null || r.e.url.length() == 0) return;
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(Lang.t(this, "del_one_title"))
+                .setMessage(BmRemove.confirmMessage(r.posMs, r.e.title, r.e.url))
+                .setPositiveButton(Lang.t(this, "del_one_btn"), new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        Prefs.bookmarkRemoveBoth(BookmarksActivity.this, r.e.url, r.posMs);
+                        refresh();
+                        android.widget.Toast.makeText(BookmarksActivity.this, Lang.t(BookmarksActivity.this, "bm_deleted"), android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton(Lang.t(this, "del_btn_no"), null)
+                .show();
     }
 
     private void playBookmark(final BmAll.Row r, android.view.View v) {

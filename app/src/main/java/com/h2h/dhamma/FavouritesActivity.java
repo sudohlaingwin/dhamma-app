@@ -883,6 +883,32 @@ public class FavouritesActivity extends Activity {
         final String url = c.e.url;
         final String sd = c.e.sayadaw;
         java.util.List<String> keys69 = FavRowMenu.menuKeys(url, sd, favPlayingUrl, favPlayingLibUrl);
+        // v15.69 (slice 2073): the queue verb — "Add to queue" /
+        // "Remove from queue" (FavQueue): the row's sayadaw queue,
+        // read once per menu open; the key composes into the menu
+        // between Play-from-here and Remove-from-favourites, so the
+        // play verbs sit together and the removal stays last. A
+        // stale banked sayadaw can only mis-offer (add for a talk
+        // already queued under another key) — the handler re-reads
+        // the same key and refuses with already_in_queue, never a
+        // wrong write.
+        String qKey73 = "";
+        try {
+            java.util.ArrayList<String> saved73 = new java.util.ArrayList<String>();
+            String savedRaw73 = Prefs.savedQueue(this, sd);
+            if (savedRaw73 != null && savedRaw73.length() > 0) {
+                for (String ln73 : savedRaw73.split("\n")) {
+                    if (ln73.length() == 0) continue;
+                    saved73.add(ln73);
+                }
+            }
+            qKey73 = FavQueue.queueKey(url, sd, favPlayingUrl, favPlayingLibUrl,
+                    FavQueue.isQueued(url, saved73));
+        } catch (Exception ignored) {}
+        if (qKey73.length() > 0) {
+            int at73 = keys69.contains("menu_play_from_here") ? 1 : 0;
+            keys69.add(at73, qKey73);
+        }
         java.util.ArrayList<String> opts = new java.util.ArrayList<String>();
         for (String k69 : keys69) opts.add(Lang.t(this, k69));
         final String[] optArr = opts.toArray(new String[0]);
@@ -893,6 +919,10 @@ public class FavouritesActivity extends Activity {
                     @Override public void onClick(android.content.DialogInterface d, int which) {
                         if ("menu_play_from_here".equals(keyArr[which])) {
                             playFromHereFav(c);
+                        } else if ("menu_queue_add".equals(keyArr[which])) {
+                            queueAddFav(c);
+                        } else if ("menu_queue_remove".equals(keyArr[which])) {
+                            queueRemoveFav(c);
                         } else if ("menu_fav_remove".equals(keyArr[which])) {
                             removeFavFromMenu(c);
                         }
@@ -1073,6 +1103,106 @@ public class FavouritesActivity extends Activity {
     // the star is not playback — but the Room's card star flips,
     // so the notification card is refreshed (the Talks v10.03
     // shape, through this screen's own sounding identities).
+    // v15.69 (slice 2073): "Add to queue" — the row menu's queue
+    // verb (History's menu_queue_add, v13.77, on this screen's
+    // menu): append the row's talk to the row's sayadaw queue as a
+    // v2 line (FavQueue.add — identity URL, the row's sayadaw, the
+    // row's title, the histQueueAdd shape) and leave it there for
+    // the next Room session on that sayadaw — the sounding talk
+    // keeps playing, nothing opens. The offer hid sounding and
+    // path-form rows (FavQueue.queueKey); the tap-time re-checks
+    // refuse with queue_changed when the row turned sounding or
+    // lost its stream URL while the dialog sat open (the 2069
+    // shape), and the dup check answers already_in_queue. No
+    // catalog heal: the queue key is the row's sayadaw as listed
+    // (histQueueAdd's discipline — no Room opens here, so no
+    // healed-name coupling like playFromHereFav's). No list
+    // refresh: queueing changes no row the list renders (there is
+    // no queued mark on this screen — the 2042 mark renders the
+    // sounding talk only).
+    private void queueAddFav(final FavTalkRail.Card c) {
+        if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return;
+        refreshFavouritesPlayingMarks();
+        final String url = c.e.url;
+        final String sd = c.e.sayadaw;
+        if (url.startsWith("/") || sd == null || sd.length() == 0
+                || FavPlayAll.isSounding(url, favPlayingUrl, favPlayingLibUrl)) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        java.util.ArrayList<String> saved73 = new java.util.ArrayList<String>();
+        try {
+            String savedRaw73 = Prefs.savedQueue(this, sd);
+            if (savedRaw73 != null && savedRaw73.length() > 0) {
+                for (String ln73 : savedRaw73.split("\n")) {
+                    if (ln73.length() == 0) continue;
+                    saved73.add(ln73);
+                }
+            }
+        } catch (Exception ignored) {}
+        java.util.ArrayList<String> next73 = FavQueue.add(url, sd, c.e.title, saved73);
+        if (next73 == null) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "already_in_queue"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Prefs.saveQueue(this, sd, next73);
+        android.widget.Toast.makeText(FavouritesActivity.this,
+                Lang.t(FavouritesActivity.this, "added_to_queue"),
+                android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    // v15.69 (slice 2073): "Remove from queue" — the
+    // state-dependent twin of queueAddFav above (History's
+    // menu_queue_remove, v13.77): drop the row's talk from the
+    // row's sayadaw queue (FavQueue.remove — sameTalk over parsed
+    // entries; unparseable lines are carried, never dropped on a
+    // guess) and leave the star alone — queueing is not
+    // favouriting, so removing from the queue never un-stars the
+    // row. Same tap-time re-checks as the add (sounding /
+    // path-form / blank sayadaw refuse with queue_changed); a talk
+    // that left the queue while the dialog sat open answers
+    // queue_changed too (FavQueue.remove returns null when absent).
+    // No list refresh: the queue change renders nowhere on this
+    // screen.
+    private void queueRemoveFav(final FavTalkRail.Card c) {
+        if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return;
+        refreshFavouritesPlayingMarks();
+        final String url = c.e.url;
+        final String sd = c.e.sayadaw;
+        if (url.startsWith("/") || sd == null || sd.length() == 0
+                || FavPlayAll.isSounding(url, favPlayingUrl, favPlayingLibUrl)) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        java.util.ArrayList<String> saved73 = new java.util.ArrayList<String>();
+        try {
+            String savedRaw73 = Prefs.savedQueue(this, sd);
+            if (savedRaw73 != null && savedRaw73.length() > 0) {
+                for (String ln73 : savedRaw73.split("\n")) {
+                    if (ln73.length() == 0) continue;
+                    saved73.add(ln73);
+                }
+            }
+        } catch (Exception ignored) {}
+        java.util.ArrayList<String> next73 = FavQueue.remove(url, saved73);
+        if (next73 == null) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Prefs.saveQueue(this, sd, next73);
+        android.widget.Toast.makeText(FavouritesActivity.this,
+                Lang.t(FavouritesActivity.this, "removed_from_queue"),
+                android.widget.Toast.LENGTH_SHORT).show();
+    }
+
     private void removeFavFromMenu(final FavTalkRail.Card c) {
         if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return;
         boolean starred = false;
