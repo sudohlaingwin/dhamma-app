@@ -5570,6 +5570,7 @@ public class MainActivity extends Activity {
                     // Lang key, no sounding gate needed (share/copy/
                     // fav/go are all sounding-safe — the rail already
                     // excludes the sounding talk at pick time).
+                    // v15.78 (slice 2126): "Add to playlist" joins the menu — the rail menu had share / copy / file / fav / go / download but no way to file a just-heard talk in one of the listener's own lists (morning / bedtime — premium backlog #2) without opening the Room first; the full-list row menus have carried the verb since slices 2091-2097 and the chooser since 2101, through the same RailPlAdd core, so the surfaces can never disagree on what a result means. The key composes right after the favourite toggle (the collect verbs sit together — the 2101 chooser precedent); the queue verbs stay OUT (the 1998 adjudication — the v11.14 stale-queue class — untouched by this slice); the mark verb stays OUT (same line above). The tap re-resolves the stream URL and re-checks the offer, so a file deleted while the menu sat open toasts talk_no_longer_in_list, never a guessed link; the sayadaw is the rail's own canonical Sayadaw (s.name, sayadawByName1930 — the catalog-resolved name), falling back to the row's recorded sayadaw. An add mutates no favourite, queue or resume state; no pause guard (no sheet is left to return from); the sounding talk never reaches this menu (RecentRail.pick excludes it).
                     java.util.Set<String> ft87 = null;
                     try {
                         ft87 = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favTalks", null);
@@ -5612,6 +5613,17 @@ public class MainActivity extends Activity {
                     // shapes; each rail menu site is its own wiring
                     // — the 1992/1993 rail-only-verb precedent).
                     if (MainDl.canOffer(mainIsDownloaded(e.url), mainIsDlQueued(e.url))) keys87.add("dl_btn_download");
+                    // v15.78 (slice 2126): the playlist key composes right after the favourite toggle (indexOf — the collect verbs sit together, the 2101 chooser precedent; a playlist add implies a share, since both gates are the same non-blank stream URL — the atPl87 < 0 leg is defensive only).
+                    String plKey87 = "";
+                    try {
+                        String streamUrl87 = mainRailStreamUrlFor(e.url);
+                        if (RailPlAdd.canOffer(streamUrl87)) plKey87 = "pl_add";
+                    } catch (Exception ignored) {}
+                    if (plKey87.length() > 0) {
+                        int atPl87 = keys87.indexOf("menu_fav_add");
+                        if (atPl87 < 0) atPl87 = keys87.indexOf("menu_fav_remove");
+                        keys87.add(atPl87 < 0 ? keys87.size() : atPl87 + 1, plKey87);
+                    }
                     final String[] opt87 = new String[keys87.size()];
                     for (int i87 = 0; i87 < keys87.size(); i87++) opt87[i87] = Lang.t(MainActivity.this, keys87.get(i87));
                     final String[] key87 = keys87.toArray(new String[0]);
@@ -5652,6 +5664,9 @@ public class MainActivity extends Activity {
                                         boolean added87 = Fx.toggleFavTalk(MainActivity.this, e.url);
                                         refreshFavTalkRail();
                                         android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, added87 ? "fav_added" : "fav_removed"), android.widget.Toast.LENGTH_SHORT).show();
+                                    } else if ("pl_add".equals(key87[which])) {
+                                        // v15.78 (slice 2126): "Add to playlist" — the 2101 chooser verb on the Recently played rail: the menu could share a just-heard talk, copy its link, star it, open its sayadaw's full list, download it or share its file, but never file it in one of the listener's own lists. Same verb the full-list row menus carry since slices 2091-2097 and the chooser since 2101, through the same RailPlAdd core (same gate, same toast mapping, same create adjudication), so the surfaces can never disagree. The tap re-resolves the stream URL (a path-form row resolves through the dlMap reverse lookup, the v8.44 exactly-one-claimant rule) and re-checks the offer — a file deleted while the menu sat open toasts talk_no_longer_in_list instead of filing a dead row. The sayadaw is the rail's own canonical Sayadaw (s.name), falling back to the row's recorded sayadaw (e.sayadaw); a blank sayadaw toasts no_talk_yet (the Room's guard). An add mutates no favourite, queue or resume state; no pause guard (no sheet is left to return from). The sounding talk never reaches this menu (RecentRail.pick excludes it).
+                                        addToPlaylistRail(mainRailStreamUrlFor(e.url), (s != null && s.name != null && s.name.length() > 0) ? s.name : e.sayadaw, e.title != null ? e.title : "");
                                     } else if ("menu_go_sayadaw".equals(key87[which])) {
                                         // The 1944/1985 shape, Main-native: re-resolve the sayadaw fresh at tap time (the dialog can sit open; the offer and the tap can never disagree), toast no_sayadaw_page on a failed re-read, else open that sayadaw's Talks list with Main's own intent extras. Built directly, NOT through openSayadawCard — that method returns to the Room for a sounding sayadaw, but this verb promises the Talks list.
                                         final Sayadaw gs87 = sayadawByName1930(e.sayadaw);
@@ -5905,6 +5920,7 @@ public class MainActivity extends Activity {
                     // fav/go are all sounding-safe — the rail already
                     // excludes the sounding talk at pick time,
                     // DlRecentRail.pick line 120).
+                    // v15.78 (slice 2127): "Add to playlist" joins the menu — the rail menu had share / file / copy / fav / go but no way to file a just-downloaded talk in one of the listener's own lists (morning / bedtime — premium backlog #2) without opening the Room first; the full-list Downloaded row menu has carried the verb since slice 2097 (DlPlAdd) and the Recently-played rail since slice 2126, through the same RailPlAdd core, so the surfaces can never disagree on what a result means. The key composes right after the favourite toggle (the collect verbs sit together — the 2101 chooser precedent); the queue verbs stay OUT (the 1998 adjudication — the v11.14 stale-queue class — untouched by this slice); the mark verb stays OUT (same line above). The tap re-resolves the stream URL (a path-form Downloaded row resolves through the dlMap reverse lookup, the v8.44 exactly-one-claimant rule) and re-checks the offer, so a file deleted while the menu sat open toasts talk_no_longer_in_list, never a guessed link; the sayadaw is the rail's own canonical Sayadaw (s.name, sayadawByName1930 — the catalog-resolved name), falling back to the row's recorded sayadaw. An add mutates no favourite, queue or resume state; no pause guard (no sheet is left to return from); the sounding talk never reaches this menu (DlRecentRail.pick excludes it). No download verb on this rail (the card IS a downloaded talk).
                     java.util.Set<String> ft88 = null;
                     try {
                         ft88 = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favTalks", null);
@@ -5932,6 +5948,17 @@ public class MainActivity extends Activity {
                     // streamed in the common case (the 1992/1993
                     // precedent).
                     if (DlLanded.downloadedFileName(MainActivity.this, e.url, null, null) != null) keys88.add(1, "dl_menu_share_file");
+                    // v15.78 (slice 2127): the playlist key composes right after the favourite toggle (indexOf — the collect verbs sit together, the 2101 chooser precedent; a playlist add implies a share, since both gates are the same non-blank stream URL — the atPl88 < 0 leg is defensive only).
+                    String plKey88 = "";
+                    try {
+                        String streamUrl88 = mainRailStreamUrlFor(e.url);
+                        if (RailPlAdd.canOffer(streamUrl88)) plKey88 = "pl_add";
+                    } catch (Exception ignored) {}
+                    if (plKey88.length() > 0) {
+                        int atPl88 = keys88.indexOf("menu_fav_add");
+                        if (atPl88 < 0) atPl88 = keys88.indexOf("menu_fav_remove");
+                        keys88.add(atPl88 < 0 ? keys88.size() : atPl88 + 1, plKey88);
+                    }
                     final String[] opt88 = new String[keys88.size()];
                     for (int i88 = 0; i88 < keys88.size(); i88++) opt88[i88] = Lang.t(MainActivity.this, keys88.get(i88));
                     final String[] key88 = keys88.toArray(new String[0]);
@@ -5972,6 +5999,9 @@ public class MainActivity extends Activity {
                                         boolean added88 = Fx.toggleFavTalk(MainActivity.this, e.url);
                                         refreshFavTalkRail();
                                         android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, added88 ? "fav_added" : "fav_removed"), android.widget.Toast.LENGTH_SHORT).show();
+                                    } else if ("pl_add".equals(key88[which])) {
+                                        // v15.78 (slice 2127): "Add to playlist" — the 2101 chooser verb on the Downloaded rail: the menu could share a just-downloaded talk, copy its link, star it, open its sayadaw's full list or share its file, but never file it in one of the listener's own lists. Same verb the full-list Downloaded row menu carries since slice 2097 (DlPlAdd) and the Recently-played rail since slice 2126, through the same RailPlAdd core (same gate, same toast mapping, same create adjudication), so the surfaces can never disagree. The tap re-resolves the stream URL (a path-form row resolves through the dlMap reverse lookup, the v8.44 exactly-one-claimant rule) and re-checks the offer — a file deleted while the menu sat open toasts talk_no_longer_in_list instead of filing a dead row. The sayadaw is the rail's own canonical Sayadaw (s.name), falling back to the row's recorded sayadaw (e.sayadaw); a blank sayadaw toasts no_talk_yet (the Room's guard). An add mutates no favourite, queue or resume state; no pause guard (no sheet is left to return from). The sounding talk never reaches this menu (DlRecentRail.pick excludes it).
+                                        addToPlaylistRail(mainRailStreamUrlFor(e.url), (s != null && s.name != null && s.name.length() > 0) ? s.name : e.sayadaw, e.title != null ? e.title : "");
                                     } else if ("menu_go_sayadaw".equals(key88[which])) {
                                         // The 1944/1985 shape, Main-native: re-resolve the sayadaw fresh at tap time (the dialog can sit open; the offer and the tap can never disagree), toast no_sayadaw_page on a failed re-read, else open that sayadaw's Talks list with Main's own intent extras. Built directly, NOT through openSayadawCard — that method returns to the Room for a sounding sayadaw, but this verb promises the Talks list.
                                         final Sayadaw gs88 = sayadawByName1930(e.sayadaw);
@@ -6218,6 +6248,7 @@ public class MainActivity extends Activity {
                     // (share/copy/fav/go are all sounding-safe — the
                     // rail already excludes the sounding talk at pick
                     // time, BmRail.pick).
+                    // v15.78 (slice 2128): "Add to playlist" joins the menu — the rail menu had share / minute / file / copy / fav / go / download / remove but no way to file a marked talk in one of the listener's own lists (morning / bedtime — premium backlog #2) without opening the Room first; the full-list Bookmarks row menu has carried the verb since slice 2093 (BmPlAdd), the Recently-played rail since slice 2126 and the Downloaded rail since slice 2127, through the same RailPlAdd core, so the surfaces can never disagree on what a result means. The key composes right after the favourite toggle (the collect verbs sit together — the 2101 chooser precedent); the queue verbs stay OUT (the 1998 adjudication — the v11.14 stale-queue class — untouched by this slice); the mark verb stays OUT (same line above). The tap re-resolves the stream URL and re-checks the offer, so a file deleted while the menu sat open toasts talk_no_longer_in_list, never a guessed link; the sayadaw is the rail's own canonical Sayadaw (s.name, sayadawByName1930 — the catalog-resolved name), falling back to the row's recorded sayadaw. An add mutates no favourite, queue or resume state; no pause guard (no sheet is left to return from); the sounding talk never reaches this menu (BmRail.pick excludes it, the 1962 gate). The mark minute (c.posMs) stays the tap's job — the playlist add needs no minute. The download verb stays (a marked talk may still be streamed — the 1999 verb, untouched); the remove verb stays last (the 1992 rule).
                     java.util.Set<String> ft89 = null;
                     try {
                         ft89 = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favTalks", null);
@@ -6271,6 +6302,17 @@ public class MainActivity extends Activity {
                     // v15.55 (slice 1993): the minute-share verb is inserted here, not in RailMenu.keys — it is bm-rail-only (only bm cards carry a mark minute to share at) and it sits right after menu_share (the share verbs sit together, the 1955/1986 drawer precedent).
                     int si89 = keys89.indexOf("menu_share");
                     if (si89 >= 0) keys89.add(si89 + 1, "bm_menu_share_minute");
+                    // v15.78 (slice 2128): the playlist key composes right after the favourite toggle (indexOf — the collect verbs sit together, the 2101 chooser precedent; a playlist add implies a share, since both gates are the same non-blank stream URL — the atPl89 < 0 leg is defensive only).
+                    String plKey89 = "";
+                    try {
+                        String streamUrl89 = mainRailStreamUrlFor(c.e.url);
+                        if (RailPlAdd.canOffer(streamUrl89)) plKey89 = "pl_add";
+                    } catch (Exception ignored) {}
+                    if (plKey89.length() > 0) {
+                        int atPl89 = keys89.indexOf("menu_fav_add");
+                        if (atPl89 < 0) atPl89 = keys89.indexOf("menu_fav_remove");
+                        keys89.add(atPl89 < 0 ? keys89.size() : atPl89 + 1, plKey89);
+                    }
                     final String[] opt89 = new String[keys89.size()];
                     for (int i89 = 0; i89 < keys89.size(); i89++) opt89[i89] = Lang.t(MainActivity.this, keys89.get(i89));
                     final String[] key89 = keys89.toArray(new String[0]);
@@ -6317,6 +6359,9 @@ public class MainActivity extends Activity {
                                         boolean added89 = Fx.toggleFavTalk(MainActivity.this, c.e.url);
                                         refreshFavTalkRail();
                                         android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, added89 ? "fav_added" : "fav_removed"), android.widget.Toast.LENGTH_SHORT).show();
+                                    } else if ("pl_add".equals(key89[which])) {
+                                        // v15.78 (slice 2128): "Add to playlist" — the 2101 chooser verb on the Bookmarks rail: the menu could share a marked talk, share it at its minute, copy its link, star it, open its sayadaw's full list, download it or delete the mark, but never file it in one of the listener's own lists. Same verb the full-list Bookmarks row menu carries since slice 2093 (BmPlAdd), the Recently-played rail since slice 2126 and the Downloaded rail since slice 2127, through the same RailPlAdd core (same gate, same toast mapping, same create adjudication), so the surfaces can never disagree. The tap re-resolves the stream URL (a path-form row resolves through the dlMap reverse lookup, the v8.44 exactly-one-claimant rule) and re-checks the offer — a file deleted while the menu sat open toasts talk_no_longer_in_list instead of filing a dead row. The sayadaw is the rail's own canonical Sayadaw (s.name), falling back to the row's recorded sayadaw (c.e.sayadaw); a blank sayadaw toasts no_talk_yet (the Room's guard). An add mutates no favourite, queue or resume state; no pause guard (no sheet is left to return from). The sounding talk never reaches this menu (BmRail.pick excludes it, the 1962 gate). The mark minute (c.posMs) stays the tap's job — the playlist add needs no minute.
+                                        addToPlaylistRail(mainRailStreamUrlFor(c.e.url), (s != null && s.name != null && s.name.length() > 0) ? s.name : c.e.sayadaw, c.e.title != null ? c.e.title : "");
                                     } else if ("menu_go_sayadaw".equals(key89[which])) {
                                         // The 1944/1985 shape, Main-native: re-resolve the sayadaw fresh at tap time (the dialog can sit open; the offer and the tap can never disagree), toast no_sayadaw_page on a failed re-read, else open that sayadaw's Talks list with Main's own intent extras. Built directly, NOT through openSayadawCard — that method returns to the Room for a sounding sayadaw, but this verb promises the Talks list.
                                         final Sayadaw gs89 = sayadawByName1930(c.e.sayadaw);
@@ -6648,6 +6693,7 @@ public class MainActivity extends Activity {
                     // are all sounding-safe — the rail already
                     // excludes the sounding talk at pick time,
                     // FavTalkRail.pick).
+                    // v15.78 (slice 2129): "Add to playlist" joins the menu — the rail menu had share / minute / file / copy / fav / go / download but no way to file a starred talk in one of the listener's own lists (morning / bedtime — premium backlog #2) without opening the Room first; the full-list Favourites row menu has carried the verb since slice 2091 (FavPlAdd), the Recently-played rail since slice 2126, the Downloaded rail since slice 2127 and the Bookmarks rail since slice 2128, through the same RailPlAdd core, so the surfaces can never disagree on what a result means. The key composes right after the favourite toggle (the collect verbs sit together — the 2101 chooser precedent); the queue verbs stay OUT (the 1998 adjudication — the v11.14 stale-queue class — untouched by this slice); the mark verb stays OUT (same line above). The tap re-resolves the stream URL and re-checks the offer, so a file deleted while the menu sat open toasts talk_no_longer_in_list, never a guessed link; the sayadaw is the rail's own canonical Sayadaw (s.name, sayadawByName1930 — the catalog-resolved name), falling back to the row's recorded sayadaw. An add mutates no favourite, queue or resume state; no pause guard (no sheet is left to return from); the sounding talk never reaches this menu (FavTalkRail.pick excludes it). The saved spot (c.posMs) stays the tap's job — the playlist add needs no minute. The download verb stays (a starred talk may still be streamed — the 2000 verb, untouched); the fav toggle IS the remove on this rail (every card here is starred by definition, so un-starring drops the card at once — there is no separate remove verb to keep last).
                     java.util.Set<String> ft90 = null;
                     try {
                         ft90 = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favTalks", null);
@@ -6721,6 +6767,17 @@ public class MainActivity extends Activity {
                     // + Favourite talks 2000, the last rail without
                     // it) — the 1992/1993 rail-only-verb precedent.
                     if (MainDl.canOffer(mainIsDownloaded(c.e.url), mainIsDlQueued(c.e.url))) keys90.add("dl_btn_download");
+                    // v15.78 (slice 2129): the playlist key composes right after the favourite toggle (indexOf — the collect verbs sit together, the 2101 chooser precedent; a playlist add implies a share, since both gates are the same non-blank stream URL — the atPl90 < 0 leg is defensive only).
+                    String plKey90 = "";
+                    try {
+                        String streamUrl90 = mainRailStreamUrlFor(c.e.url);
+                        if (RailPlAdd.canOffer(streamUrl90)) plKey90 = "pl_add";
+                    } catch (Exception ignored) {}
+                    if (plKey90.length() > 0) {
+                        int atPl90 = keys90.indexOf("menu_fav_add");
+                        if (atPl90 < 0) atPl90 = keys90.indexOf("menu_fav_remove");
+                        keys90.add(atPl90 < 0 ? keys90.size() : atPl90 + 1, plKey90);
+                    }
                     final String[] opt90 = new String[keys90.size()];
                     for (int i90 = 0; i90 < keys90.size(); i90++) opt90[i90] = Lang.t(MainActivity.this, keys90.get(i90));
                     final String[] key90 = keys90.toArray(new String[0]);
@@ -6767,6 +6824,9 @@ public class MainActivity extends Activity {
                                         boolean added90 = Fx.toggleFavTalk(MainActivity.this, c.e.url);
                                         refreshFavTalkRail();
                                         android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, added90 ? "fav_added" : "fav_removed"), android.widget.Toast.LENGTH_SHORT).show();
+                                    } else if ("pl_add".equals(key90[which])) {
+                                        // v15.78 (slice 2129): "Add to playlist" — the 2101 chooser verb on the Favourite talks rail: the menu could share a starred talk, share it at its minute, share its file, copy its link, un-star it, open its sayadaw's full list or download it, but never file it in one of the listener's own lists. Same verb the full-list Favourites row menu carries since slice 2091 (FavPlAdd), the Recently-played rail since slice 2126, the Downloaded rail since slice 2127 and the Bookmarks rail since slice 2128, through the same RailPlAdd core (same gate, same toast mapping, same create adjudication), so the surfaces can never disagree. The tap re-resolves the stream URL (a path-form row resolves through the dlMap reverse lookup, the v8.44 exactly-one-claimant rule) and re-checks the offer — a file deleted while the menu sat open toasts talk_no_longer_in_list instead of filing a dead row. The sayadaw is the rail's own canonical Sayadaw (s.name), falling back to the row's recorded sayadaw (c.e.sayadaw); a blank sayadaw toasts no_talk_yet (the Room's guard). An add mutates no favourite, queue or resume state; no pause guard (no sheet is left to return from). The sounding talk never reaches this menu (FavTalkRail.pick excludes it). The saved spot (c.posMs) stays the tap's job — the playlist add needs no minute.
+                                        addToPlaylistRail(mainRailStreamUrlFor(c.e.url), (s != null && s.name != null && s.name.length() > 0) ? s.name : c.e.sayadaw, c.e.title != null ? c.e.title : "");
                                     } else if ("menu_go_sayadaw".equals(key90[which])) {
                                         // The 1944/1985 shape, Main-native: re-resolve the sayadaw fresh at tap time (the dialog can sit open; the offer and the tap can never disagree), toast no_sayadaw_page on a failed re-read, else open that sayadaw's Talks list with Main's own intent extras. Built directly, NOT through openSayadawCard — that method returns to the Room for a sounding sayadaw, but this verb promises the Talks list.
                                         final Sayadaw gs90 = sayadawByName1930(c.e.sayadaw);
@@ -6961,6 +7021,112 @@ public class MainActivity extends Activity {
         }
     }
 
+    // v15.78 (slice 2126): the stream URL a rail card files — the
+    // row's own URL, or the dlMap reverse lookup for a downloaded
+    // row (BmTalkShare.resolve — the History / Bookmarks
+    // exactly-one-claimant rule, v8.44: a dual-claimed file names
+    // no talk rather than the wrong one, so a deleted file with
+    // no claimant resolves to "" and offers no verb, never a
+    // guessed link). The dlMap is parsed once per call (the
+    // v5.69 cost rule — one small JSON parse per menu open, the
+    // same cost the share block above already pays for its
+    // reverse lookup). Null-safe on every input.
+    private String mainRailStreamUrlFor(String url) {
+        if (url == null || url.length() == 0) return "";
+        if (!url.startsWith("/")) return url;
+        java.util.Map<String, String> dlMap = null;
+        try {
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            java.util.Iterator<String> keys = map.keys();
+            dlMap = new java.util.HashMap<String, String>();
+            while (keys.hasNext()) {
+                String k = keys.next();
+                dlMap.put(k, map.optString(k, ""));
+            }
+        } catch (Exception ignored) {}
+        return BmTalkShare.resolve(url, dlMap);
+    }
+
+    // v15.78 (slice 2126): "Add to playlist" on a Main rail card — the History addToPlaylistHist shape (v15.73, slice 2095) on the home screen: the talk is the rail card's by construction — the card carries its stream URL (mainRailStreamUrlFor above), its sayadaw (the rail's own canonical Sayadaw, s.name, falling back to the row's recorded sayadaw at the call site) and its title — so there is nothing stale to heal and no new catalog reader. Re-resolve nothing at tap time (the stream URL IS the resolved URL, the v5.69 cost rule — the tap-time canOffer re-check guards the window); toast talk_no_longer_in_list on a blank URL and no_talk_yet on a blank sayadaw (the Room's own guard), then offer the listener's lists (the seed lists are there from the first read) plus a "new list" row (pl_new, last). A tap files the talk through the playlist store and toasts the v12.80 result (RailPlAdd.toastKey: added / already there / full / could-not-create); the new-list row opens the name dialog. An add mutates no favourite, queue or resume state; no pause guard (no sheet is left to return from); the sounding talk never reaches this dialog (RecentRail.pick excludes it). Add to playlist landed in slice 2126; the helper is shared by all five rails (pieces 2/5-5/5 reuse it).
+    private void addToPlaylistRail(final String streamUrl, final String sayadaw, final String title) {
+        if (streamUrl == null || streamUrl.length() == 0) return;
+        if (!RailPlAdd.canOffer(streamUrl)) {
+            android.widget.Toast.makeText(MainActivity.this,
+                    Lang.t(MainActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (sayadaw == null || sayadaw.length() == 0) {
+            android.widget.Toast.makeText(MainActivity.this,
+                    Lang.t(MainActivity.this, "no_talk_yet"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final String title87 = title != null ? title : "";
+        final String sdF87 = sayadaw;
+        final java.util.List<String> names87 = Prefs.playlistNames(this);
+        final String[] items87 = new String[names87.size() + 1];
+        for (int i87 = 0; i87 < names87.size(); i87++) items87[i87] = names87.get(i87);
+        items87[names87.size()] = Lang.t(this, "pl_new");
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(Lang.t(this, "pl_choose"))
+                .setItems(items87, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        if (RailPlAdd.isNewRow(which, names87.size())) {
+                            showNewPlaylistRail(streamUrl, title87, sdF87);
+                            return;
+                        }
+                        int r87 = Prefs.playlistAdd(MainActivity.this,
+                                names87.get(which), streamUrl, sdF87, title87);
+                        android.widget.Toast.makeText(MainActivity.this,
+                                Lang.t(MainActivity.this, RailPlAdd.toastKey(r87)),
+                                android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .show();
+    }
+
+    // v15.78 (slice 2126): the "new list" dialog for the playlist verb — the Room's showNewPlaylistDialog (v12.80), on a Main rail card: a name field (pl_name_hint), a Create button (pl_create) and a cancel (btn_no_clear); an empty name re-prompts with the hint toast; the name caps at 40 chars (PLAYLIST_MAX_NAME); create is a no-op for an existing name, so a repeat name just adds to that list; at the 20-list cap a genuinely new name toasts pl_limit (RailPlAdd.limitToastKey), any other create failure pl_no_create — neither falls through to the add (the v12.80 leg). The add toasts the same v12.80 result as the choose dialog.
+    private void showNewPlaylistRail(final String url, final String title, final String sd) {
+        final android.widget.EditText et87 = new android.widget.EditText(this);
+        et87.setHint(Lang.t(this, "pl_name_hint"));
+        et87.setSingleLine(true);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(Lang.t(this, "pl_new"))
+                .setView(et87)
+                .setPositiveButton(Lang.t(this, "pl_create"),
+                        new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        String name87 = et87.getText().toString().trim();
+                        if (name87.length() == 0) {
+                            android.widget.Toast.makeText(MainActivity.this,
+                                    Lang.t(MainActivity.this, "pl_name_hint"),
+                                    android.widget.Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        if (name87.length() > 40) name87 = name87.substring(0, 40);
+                        boolean created87 = Prefs.playlistCreate(MainActivity.this, name87);
+                        java.util.List<String> held87 = Prefs.playlistNames(MainActivity.this);
+                        String limit87 = RailPlAdd.limitToastKey(created87,
+                                held87.contains(name87), held87.size());
+                        if (limit87 != null) {
+                            android.widget.Toast.makeText(MainActivity.this,
+                                    Lang.t(MainActivity.this, limit87),
+                                    android.widget.Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        int r87 = Prefs.playlistAdd(MainActivity.this, name87, url, sd, title);
+                        android.widget.Toast.makeText(MainActivity.this,
+                                Lang.t(MainActivity.this, RailPlAdd.toastKey(r87)),
+                                android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton(Lang.t(this, "btn_no_clear"), null)
+                .show();
+    }
+
     // v15.50 (slice 1966): "New talks" rail — the talks that arrived
     // since the last visit, as tappable cards below the
     // favourite-talks rail (1964), one tap straight into the Room
@@ -7116,6 +7282,7 @@ public class MainActivity extends Activity {
                     // are all sounding-safe — the rail already
                     // excludes the sounding talk at pick time,
                     // NewTalkRail.pick, the 1921 gate).
+                    // v15.78 (slice 2130): "Add to playlist" joins the menu — the rail menu had share / file / copy / fav / mark / go / download but no way to file a brand-new talk in one of the listener's own lists (morning / bedtime — premium backlog #2) without opening the Room first; the full-list New talks row menu has carried the verb since slice 2092 (NewPlAdd), the Recently-played rail since slice 2126, the Downloaded rail since slice 2127, the Bookmarks rail since slice 2128 and the Favourite-talks rail since slice 2129, through the same RailPlAdd core, so the surfaces can never disagree on what a result means. The key composes right after the mark toggle (the 2101 chooser precedent — favourite, mark, playlist sit together; the mark verb IS present here, the 2017 exception, so this rail is the first where fav+1 and mark+1 differ — the comment block above still says the mark verb stays OUT, stale pre-2017 text the 2017 slice left in place, not rewritten by this slice); the queue verbs stay OUT (the 1998 adjudication — the v11.14 stale-queue class — untouched by this slice). The tap re-resolves the stream URL and re-checks the offer, so a file deleted while the menu sat open toasts talk_no_longer_in_list, never a guessed link; the sayadaw is the rail's own canonical Sayadaw (s.name, sayadawByName1930 — the catalog-resolved name), falling back to the row's recorded sayadaw. An add mutates no favourite, queue or resume state; no pause guard (no sheet is left to return from); the sounding talk never reaches this menu (NewTalkRail.pick excludes it, the 1921 gate). There is no minute on this rail — the 1921 gate picks unstarted talks only, so the card renders no saved spot and the playlist add needs no minute. The download verb stays (a brand-new talk may still be streamed — the 1997 verb, untouched); there is no remove verb on this rail by design (a marked talk leaves the rail on refresh, so the mark verb IS the remove here).
                     java.util.Set<String> ft91 = null;
                     try {
                         ft91 = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favTalks", null);
@@ -7193,6 +7360,17 @@ public class MainActivity extends Activity {
                         int fi91 = keys91.indexOf(fav91 ? "menu_fav_remove" : "menu_fav_add");
                         if (fi91 >= 0) keys91.add(fi91 + 1, "dl_menu_mark_one");
                     }
+                    // v15.78 (slice 2130): the playlist key composes right after the mark toggle (the 2101 chooser precedent — favourite, mark, playlist sit together; a playlist add implies a share, since both gates are the same non-blank stream URL — the atPl91 < 0 leg is defensive only, the 1921 gate guarantees the mark is offered so the mark leg always lands).
+                    String plKey91 = "";
+                    try {
+                        String streamUrl91 = mainRailStreamUrlFor(c.e.url);
+                        if (RailPlAdd.canOffer(streamUrl91)) plKey91 = "pl_add";
+                    } catch (Exception ignored) {}
+                    if (plKey91.length() > 0) {
+                        int atPl91 = keys91.indexOf("dl_menu_mark_one");
+                        if (atPl91 < 0) atPl91 = keys91.indexOf(fav91 ? "menu_fav_remove" : "menu_fav_add");
+                        keys91.add(atPl91 < 0 ? keys91.size() : atPl91 + 1, plKey91);
+                    }
                     final String[] opt91 = new String[keys91.size()];
                     for (int i91 = 0; i91 < keys91.size(); i91++) opt91[i91] = Lang.t(MainActivity.this, keys91.get(i91));
                     final String[] key91 = keys91.toArray(new String[0]);
@@ -7261,6 +7439,9 @@ public class MainActivity extends Activity {
                                         } else if (adapter != null) adapter.notifyDataSetChanged();
                                         refreshFavNewRow();
                                         android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, (marked17 != null && marked17.changed) ? "dl_menu_mark_one" : "already_listened"), android.widget.Toast.LENGTH_SHORT).show();
+                                    } else if ("pl_add".equals(key91[which])) {
+                                        // v15.78 (slice 2130): "Add to playlist" — the 2101 chooser verb on the New talks rail: the menu could share a brand-new talk, share its file, copy its link, star it, mark it listened, open its sayadaw's full list or download it, but never file it in one of the listener's own lists. Same verb the full-list New talks row menu carries since slice 2092 (NewPlAdd), the Recently-played rail since slice 2126, the Downloaded rail since slice 2127, the Bookmarks rail since slice 2128 and the Favourite-talks rail since slice 2129, through the same RailPlAdd core (same gate, same toast mapping, same create adjudication), so the surfaces can never disagree. The tap re-resolves the stream URL (a path-form row resolves through the dlMap reverse lookup, the v8.44 exactly-one-claimant rule) and re-checks the offer — a file deleted while the menu sat open toasts talk_no_longer_in_list instead of filing a dead row. The sayadaw is the rail's own canonical Sayadaw (s.name), falling back to the row's recorded sayadaw (c.e.sayadaw); a blank sayadaw toasts no_talk_yet (the Room's guard). An add mutates no favourite, queue or resume state; no pause guard (no sheet is left to return from). The sounding talk never reaches this menu (NewTalkRail.pick excludes it, the 1921 gate). There is no minute on this rail — the 1921 gate picks unstarted talks only, so the card renders no saved spot and the playlist add needs no minute.
+                                        addToPlaylistRail(mainRailStreamUrlFor(c.e.url), (s != null && s.name != null && s.name.length() > 0) ? s.name : c.e.sayadaw, c.e.title != null ? c.e.title : "");
                                     } else if ("menu_go_sayadaw".equals(key91[which])) {
                                         // The 1944/1985 shape, Main-native: re-resolve the sayadaw fresh at tap time (the dialog can sit open; the offer and the tap can never disagree), toast no_sayadaw_page on a failed re-read, else open that sayadaw's Talks list with Main's own intent extras. Built directly, NOT through openSayadawCard — that method returns to the Room for a sounding sayadaw, but this verb promises the Talks list.
                                         final Sayadaw gs91 = sayadawByName1930(c.e.sayadaw);
