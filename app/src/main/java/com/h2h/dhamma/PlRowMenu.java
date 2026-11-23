@@ -62,6 +62,7 @@ package com.h2h.dhamma;
 // it (filing never touches playback). The menu's 2105 open set
 // is now COMPLETE — the playlist-add family is on EIGHT
 // surfaces.
+// v15.80 (slice 2142): "Mark as listened / Unmark as listened" joins the menu through a separate pure leg — PlRowMenu.markKey, NOT inside menuKeys: the gate needs the played set (the listened boolean), which no menuKeys arg carries, and extending menuKeys to a 10th arg would force re-deriving every pinned menu in WgTest sections 173/181/182/183 for a key whose label flips with the played set anyway (the 2118 precedent kept menuKeys at 9 args for exactly this reason — a gate must be a pure function of the args it already carries). The Activity calls markKey with the prefs-fresh played state and inserts the key right before menu_pl_remove (always last), so the display order reads ..., PlAdd, Mark, Remove — the siblings' order. menuKeys itself is untouched: its pinned menus stand as written.
 public class PlRowMenu {
     // True when this row's talk is the sounding one — a Room
     // session (lastUrl) or a library session (dlMap reverse
@@ -143,6 +144,17 @@ public class PlRowMenu {
     // Null/blank reads as no-offer, never a crash.
     static boolean canAddToPlaylist(String streamUrl) {
         return HistPlAdd.canOffer(streamUrl);
+    }
+
+    // v15.80 (slice 2142): True when this row can earn or lose its listened mark: a resolved stream URL, not sounding (the 1949 DlMark gate — the sounding talk earns its mark by finishing, like the 1949 sounding exclusion). A downloaded row resolves through the same stream URL the share reads; a row with no resolvable stream URL marks nothing. Null/blank reads as no-offer, never a crash.
+    static boolean canMark(String streamUrl, String soundingUrl, String soundingLibUrl, boolean ended) {
+        return DlMark.canOffer(streamUrl, isSounding(streamUrl, soundingUrl, soundingLibUrl, ended));
+    }
+
+    // v15.80 (slice 2142): The mark key for this row, or null when it offers none: the 1949 label (mark when unmarked, unmark when marked) over the caller's played state. The Activity reads the played set fresh and inserts the key right before menu_pl_remove — menuKeys itself carries no mark key (see the header note).
+    static String markKey(String streamUrl, String soundingUrl, String soundingLibUrl, boolean ended, boolean listened) {
+        if (!canMark(streamUrl, soundingUrl, soundingLibUrl, ended)) return null;
+        return DlMark.labelKey(listened);
     }
 
     // The menu's keys, in display order: "Play from here" first

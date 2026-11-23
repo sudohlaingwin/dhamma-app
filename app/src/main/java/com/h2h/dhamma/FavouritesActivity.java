@@ -906,6 +906,47 @@ public class FavouritesActivity extends Activity {
         if (!firstSounds65) playFav(first65, v);
     }
 
+    // v15.80 (slice 2140): "Mark as listened / Unmark as listened" — the mark verb the Favourites row menu lacked that the Downloaded library row menu has had since v15.47 (slice 1949), the Talks chooser since v15.51 (slice 1969), the Room drawer dialogs since v15.52 (slices 1978/1979), the New talks row menu since v15.80 (slice 2138) and the History row menu since v15.80 (slice 2139): a starred talk could only earn or lose its listened mark by playing it to the end or opening the library — and a Favourites row is exactly where both legs are live, because playedTalks is banked only on natural finish (AudioService.markPlayedForCurrent) and starring is independent of it: a starred talk stopped early sits unmarked (offers Mark), a finished one sits marked (offers Unmark — it returns to the New talks list). Same verb through the same rules, so the surfaces can never disagree: the 1949 pure core (DlMark — canOffer / labelKey / isMarked / mark / unmark, inputs never mutated), the v11.14 tap-time sounding re-check over this screen's two sounding identities (the queue branches' rule), the prefs-fresh playedTalks read at tap time, and the mark landing in the SAME playedTalks key AudioService banks on finish and the library, the rails, the header new-count and the filters all read. The helper re-resolves the row to its stream URL at tap time (favStreamUrlFor — the Favourites-local shape, the offer and the tap can never disagree). No refresh and no repaint on this screen: the row renders no listened tick (only the sounding ▶ and saved-spot ↺ prefixes), so nothing here rebinds from playedTalks — the visible effect is the menu label flipping mark<->unmark on the next open, the verb toast, and the propagation (New talks list + header new-count + chooser tick). Neither the history REC line, the lifetime totals, the queue, the shelf order, the star itself nor any saved resume position is mutated.
+    private void markListenedFav(final FavTalkRail.Card c, final boolean unmark) {
+        if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return;
+        final String streamUrl = favStreamUrlFor(c.e);
+        if (streamUrl == null || streamUrl.length() == 0) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // Tap-time sounding re-check (Talks v11.14): the dialog can sit open across an auto-advance, so this talk can BE sounding by tap time — it earns its mark by finishing, never by this verb. This screen's two sounding identities, the queue branches' rule.
+        refreshFavouritesPlayingMarks();
+        if ((favPlayingUrl.length() > 0 && SiteHttp.sameTalk(streamUrl, favPlayingUrl))
+                || (favPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(streamUrl, favPlayingLibUrl))) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        DlMark.Result res40 = null;
+        try {
+            android.content.SharedPreferences sp40 = getSharedPreferences("dhamma", MODE_PRIVATE);
+            java.util.Set<String> cur40 = sp40.getStringSet("playedTalks", new java.util.HashSet<String>());
+            res40 = unmark ? DlMark.unmark(cur40, SiteHttp.identityUrl(streamUrl), streamUrl)
+                    : DlMark.mark(cur40, SiteHttp.identityUrl(streamUrl));
+            sp40.edit().putStringSet("playedTalks", res40.set).apply();
+        } catch (Exception ignored) {}
+        android.widget.Toast.makeText(FavouritesActivity.this,
+                Lang.t(FavouritesActivity.this, (res40 != null && res40.changed) ? (unmark ? "dl_menu_unmark_one" : "dl_menu_mark_one") : (unmark ? "nothing_to_unmark" : "already_listened")),
+                android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    private java.util.Set<String> readPlayedTalksFav() {
+        java.util.Set<String> out = new java.util.HashSet<String>();
+        try {
+            java.util.Set<String> raw = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("playedTalks", null);
+            if (raw != null) out.addAll(raw);
+        } catch (Exception ignored) {}
+        return out;
+    }
+
     // v15.68 (slice 2069): row long-press menu on this screen — the
     // Favourites screen had no row menu at all (no long-press, no
     // dialog, no per-row un-star): stars were removed per-row from
@@ -1052,6 +1093,7 @@ public class FavouritesActivity extends Activity {
         String plKey91 = "";
         String minKey2133 = "";
         String dlKey2134 = "";
+        String markKey40 = "";
         try {
             String shareUrl83 = favStreamUrlFor(c.e);
             if (FavShare.canOffer(shareUrl83)) shareKey83 = "menu_share";
@@ -1062,6 +1104,10 @@ public class FavouritesActivity extends Activity {
             if (c.posMs > 5000 && shareKey83.length() > 0) minKey2133 = "dl_menu_share_minute";
             // v15.79 (slice 2134): the download key — gated on the v11.70 rule through the pinned pure core MainDl.canOffer (slice 1997: neither downloaded nor already queued), plus the non-blank stream URL leg like History's offer, so an unresolvable row never offers it. The sounding row keeps it (History offers it on sounding rows too — downloading the talk now playing is harmless, the Room keeps streaming).
             if (shareUrl83.length() > 0 && MainDl.canOffer(favIsDownloaded(shareUrl83), favIsDlQueued(shareUrl83))) dlKey2134 = "dl_btn_download";
+            // v15.80 (slice 2140): the mark key — gated on the 1949 DlMark core (canOffer: a non-blank stream URL, and not the sounding talk — the sounding talk earns its mark by finishing, like the 1949 sounding exclusion), through this screen's two sounding identities (the same gate the queue verbs read), over the resolved stream URL (shareUrl83 — favStreamUrlFor, so a path-form row resolves through the dlMap exactly-one-claimant rule, never a guessed link). The label is DlMark.labelKey over the prefs-fresh played set (readPlayedTalksFav, a local mirror of NewTalksActivity's readPlayedTalks — FavouritesActivity had no playedTalks reader), so the label can never disagree with the list membership — and on this screen both legs are live, because playedTalks is banked only on natural finish: a starred talk stopped early offers Mark, a finished one offers Unmark.
+            boolean sounding40 = (favPlayingUrl.length() > 0 && SiteHttp.sameTalk(shareUrl83, favPlayingUrl))
+                    || (favPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(shareUrl83, favPlayingLibUrl));
+            if (DlMark.canOffer(shareUrl83, sounding40)) markKey40 = DlMark.labelKey(DlMark.isMarked(readPlayedTalksFav(), SiteHttp.identityUrl(shareUrl83)));
         } catch (Exception ignored) {}
         if (shareKey83.length() > 0) keys69.add(0, shareKey83);
         // v15.71 (slice 2085): the copy key composes right after
@@ -1103,6 +1149,11 @@ public class FavouritesActivity extends Activity {
             int at91 = keys69.indexOf("menu_fav_remove");
             keys69.add(at91 < 0 ? keys69.size() : at91, plKey91);
         }
+        // v15.80 (slice 2140): the mark key composes right before Remove from favourites (indexOf — the removal stays last and the mark sits beside the favourite toggle, the 1969 chooser shape adapted: on this screen the fav toggle IS the removal, so "right after the toggle" would put the mark past it; a mark implies a share, since both gates are the same non-blank stream URL — the at40 < 0 leg is defensive only).
+        if (markKey40.length() > 0) {
+            int at40 = keys69.indexOf("menu_fav_remove");
+            keys69.add(at40 < 0 ? keys69.size() : at40, markKey40);
+        }
         java.util.ArrayList<String> opts = new java.util.ArrayList<String>();
         for (String k69 : keys69) opts.add(Lang.t(this, k69));
         final String[] optArr = opts.toArray(new String[0]);
@@ -1133,6 +1184,12 @@ public class FavouritesActivity extends Activity {
                             queueRemoveFav(c);
                         } else if ("menu_go_sayadaw".equals(keyArr[which])) {
                             goToSayadawFav(c);
+                        } else if ("dl_menu_mark_one".equals(keyArr[which])) {
+                            // v15.80 (slice 2140): "Mark as listened" — the 1949 mark verb on the Favourites row menu, through markListenedFav below (the file routes every menu verb through a named helper).
+                            markListenedFav(c, false);
+                        } else if ("dl_menu_unmark_one".equals(keyArr[which])) {
+                            // v15.80 (slice 2140): "Unmark as listened" — the 1949 unmark leg on the Favourites row menu, through markListenedFav below (both-forms rule: the canonical URL and the raw URL leave the played set together).
+                            markListenedFav(c, true);
                         } else if ("menu_fav_remove".equals(keyArr[which])) {
                             removeFavFromMenu(c);
                         }

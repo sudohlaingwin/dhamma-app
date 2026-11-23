@@ -1046,6 +1046,7 @@ public class NewTalksActivity extends Activity {
         String fileKey87 = "";
         String plKey92 = "";
         String dlKey2136 = "";
+        String markKey2138 = "";
         try {
             String shareUrl80 = newStreamUrlFor(c.e);
             if (NewShare.canOffer(shareUrl80)) shareKey80 = "menu_share";
@@ -1054,6 +1055,8 @@ public class NewTalksActivity extends Activity {
             if (NewPlAdd.canOffer(shareUrl80)) plKey92 = "pl_add";
             // v15.79 (slice 2136): the download key — gated on the v11.70 rule through the pinned pure core MainDl.canOffer (slice 1997: neither downloaded nor already queued), plus the non-blank stream URL leg like History's offer, so an unresolvable row never offers it. The sounding row keeps it (History offers it on sounding rows too — downloading the talk now playing is harmless, the Room keeps streaming).
             if (shareUrl80.length() > 0 && MainDl.canOffer(newIsDownloaded(shareUrl80), newIsDlQueued(shareUrl80))) dlKey2136 = "dl_btn_download";
+            // v15.80 (slice 2138): the mark key — gated on the 1949 DlMark core (canOffer: a non-blank stream URL, and not the sounding talk — the sounding talk earns its mark by finishing, like the 1949 sounding exclusion), through the screen's own three sounding identities (NewPlayAll.isSounding — the 2043 mark rule the play-from-here verb already reads). The label is DlMark.labelKey over the prefs-fresh played set (readPlayedTalks, the same read the refresh's NewAll pick uses), so the label can never disagree with the list membership — and on this screen the rows are unplayed by construction (NewAll.pickAll drops played talks), so the label reads dl_menu_mark_one; the unmark leg is never offered here, only the tap-time already-marked race toasts already_listened.
+            if (DlMark.canOffer(shareUrl80, NewPlayAll.isSounding(shareUrl80, newPlayingUrl, newPlayingLibUrl, newPlayingLibPath))) markKey2138 = DlMark.labelKey(DlMark.isMarked(readPlayedTalks(), SiteHttp.identityUrl(shareUrl80)));
         } catch (Exception ignored) {}
         if (shareKey80.length() > 0) keys71.add(0, shareKey80);
         // v15.69 (slice 2074): the queue verb — "Add to queue" /
@@ -1148,6 +1151,10 @@ public class NewTalksActivity extends Activity {
             if (at92 < 0) at92 = keys71.indexOf("menu_fav_add");
             keys71.add(at92 < 0 ? keys71.size() : at92, plKey92);
         }
+        // v15.80 (slice 2138): the mark key composes AFTER the star verb — the 1949 library / 1969 chooser shape (the mark sits right after the favourite toggle, the other per-talk state toggle), so the star is no longer last on this menu; a mark implies a share, since both gates are the same non-blank stream URL — the keys71.isEmpty() check below still guards the empty menu.
+        if (markKey2138.length() > 0) {
+            keys71.add(markKey2138);
+        }
         if (keys71.isEmpty()) return;
         java.util.ArrayList<String> opts = new java.util.ArrayList<String>();
         for (String k71 : keys71) opts.add(Lang.t(this, k71));
@@ -1178,6 +1185,9 @@ public class NewTalksActivity extends Activity {
                             goToSayadawNew(c);
                         } else if ("menu_fav_add".equals(keyArr[which]) || "menu_fav_remove".equals(keyArr[which])) {
                             toggleFavFromMenu(c);
+                        } else if ("dl_menu_mark_one".equals(keyArr[which])) {
+                            // v15.80 (slice 2138): "Mark as listened" — the 1949 mark verb on the New talks row menu, through markListenedNew below (the file routes every menu verb through a named helper).
+                            markListenedNew(c);
                         }
                     }
                 })
@@ -1685,6 +1695,40 @@ public class NewTalksActivity extends Activity {
             android.widget.Toast.makeText(NewTalksActivity.this,
                     Lang.t(NewTalksActivity.this, "dl_room_wifi_queued"),
                     android.widget.Toast.LENGTH_LONG).show();
+    }
+
+    // v15.80 (slice 2138): "Mark as listened" — the mark verb the New talks row menu lacked that the Downloaded library row menu has had since v15.47 (slice 1949), the Talks chooser since v15.51 (slice 1969) and the Room drawer dialogs since v15.52 (slices 1978/1979): a new talk heard elsewhere could only earn its listened mark by playing it to the end, and a talk already finished could not be cleared from the new list without opening the library. Same verb through the same rules, so the surfaces can never disagree: the 1949 pure core (DlMark — canOffer / labelKey / isMarked / mark, inputs never mutated), the v11.14 tap-time sounding re-check (the dialog can sit open across an auto-advance — a sounding talk earns its mark by finishing, never by this verb), the prefs-fresh playedTalks read at tap time, and the mark landing in the SAME playedTalks key AudioService banks on finish and the library, the rails, the header new-count and the filters all read. The row leaves the list at once: the refresh re-picks through NewAll.pickAll, which drops played talks (the 1920 gate), so a marked talk is gone from this screen on the next paint — the visible effect, no melt needed (there is no tick on this screen to flip). Neither the queue, the shelf order nor any saved resume position is mutated. The toast is the verb (the 1946 idiom); an already-marked tap toasts already_listened, never a false count. No sounding gate at the offer beyond DlMark.canOffer (the three sounding identities, the 2043 mark rule); no unmark leg on this screen (the list shows unplayed talks only — the label reads dl_menu_mark_one by construction).
+    private void markListenedNew(final NewTalkRail.Card c) {
+        if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return;
+        final String streamUrl = newStreamUrlFor(c.e);
+        if (streamUrl == null || streamUrl.length() == 0) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // Tap-time sounding re-check (Talks v11.14): the dialog can sit open across an auto-advance, so this talk can BE sounding by tap time — it earns its mark by finishing, never by this verb. All three sounding identities, the 2043 mark rule.
+        refreshNewTalksPlayingMarks();
+        if (NewPlayAll.isSounding(streamUrl, newPlayingUrl, newPlayingLibUrl, newPlayingLibPath)) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        DlMark.Result marked38 = null;
+        try {
+            android.content.SharedPreferences sp38 = getSharedPreferences("dhamma", MODE_PRIVATE);
+            java.util.Set<String> cur38 = sp38.getStringSet("playedTalks", new java.util.HashSet<String>());
+            marked38 = DlMark.mark(cur38, SiteHttp.identityUrl(streamUrl));
+            sp38.edit().putStringSet("playedTalks", marked38.set).apply();
+        } catch (Exception ignored) {}
+        if (marked38 != null && marked38.changed) {
+            // The refresh re-picks through NewAll.pickAll, which drops played talks — the marked row leaves the list at once (the 1920 gate), and the play-all run follows the new shown list.
+            refresh();
+        }
+        android.widget.Toast.makeText(NewTalksActivity.this,
+                Lang.t(NewTalksActivity.this, (marked38 != null && marked38.changed) ? "dl_menu_mark_one" : "already_listened"),
+                android.widget.Toast.LENGTH_SHORT).show();
     }
 
     // v15.71 (slice 2087): History histIsDownloaded (v13.77),

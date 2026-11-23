@@ -1570,6 +1570,45 @@ public class HistoryActivity extends Activity {
         } catch (Exception ignored) { return false; }
     }
 
+    // v15.80 (slice 2139): "Mark as listened / Unmark as listened" — the mark verb the History row menu lacked that the Downloaded library row menu has had since v15.47 (slice 1949), the Talks chooser since v15.51 (slice 1969), the Room drawer dialogs since v15.52 (slices 1978/1979) and the New talks row menu since v15.80 (slice 2138): a heard talk could only earn or lose its listened mark by playing it to the end or opening the library — and a History row is exactly where both legs are live, because playedTalks is banked only on natural finish (AudioService.markPlayedForCurrent): a row stopped early sits in History with seconds but no mark (offers Mark), a finished row sits marked (offers Unmark — it returns to the New talks list). Same verb through the same rules, so the surfaces can never disagree: the 1949 pure core (DlMark — canOffer / labelKey / isMarked / mark / unmark, inputs never mutated), the v11.14 tap-time sounding re-check over this screen's two sounding identities (the queue branches' rule), the prefs-fresh playedTalks read at tap time, and the mark landing in the SAME playedTalks key AudioService banks on finish and the library, the rails, the header new-count and the filters all read. No refresh and no repaint on this screen: the row renders no listened tick (only the sounding ▶ and favourite ★ prefixes), so nothing here rebinds from playedTalks — the visible effect is the menu label flipping mark<->unmark on the next open, the verb toast, and the propagation (New talks list + header new-count + chooser tick). Neither the history REC line, the lifetime totals, the queue, the shelf order nor any saved resume position is mutated.
+    private void markListenedHist(final Prefs.HistEntry e, final String streamUrl, final boolean unmark) {
+        if (e == null || streamUrl == null || streamUrl.length() == 0) {
+            android.widget.Toast.makeText(HistoryActivity.this,
+                    Lang.t(HistoryActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // Tap-time sounding re-check (Talks v11.14): the dialog can sit open across an auto-advance, so this talk can BE sounding by tap time — it earns its mark by finishing, never by this verb. This screen's two sounding identities, the queue branches' rule.
+        refreshHistoryPlayingMarks();
+        if ((histPlayingUrl.length() > 0 && SiteHttp.sameTalk(streamUrl, histPlayingUrl))
+                || (histPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(streamUrl, histPlayingLibUrl))) {
+            android.widget.Toast.makeText(HistoryActivity.this,
+                    Lang.t(HistoryActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        DlMark.Result res39 = null;
+        try {
+            android.content.SharedPreferences sp39 = getSharedPreferences("dhamma", MODE_PRIVATE);
+            java.util.Set<String> cur39 = sp39.getStringSet("playedTalks", new java.util.HashSet<String>());
+            res39 = unmark ? DlMark.unmark(cur39, SiteHttp.identityUrl(streamUrl), streamUrl)
+                    : DlMark.mark(cur39, SiteHttp.identityUrl(streamUrl));
+            sp39.edit().putStringSet("playedTalks", res39.set).apply();
+        } catch (Exception ignored) {}
+        android.widget.Toast.makeText(HistoryActivity.this,
+                Lang.t(HistoryActivity.this, (res39 != null && res39.changed) ? (unmark ? "dl_menu_unmark_one" : "dl_menu_mark_one") : (unmark ? "nothing_to_unmark" : "already_listened")),
+                android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    private java.util.Set<String> readPlayedTalksHist() {
+        java.util.Set<String> out = new java.util.HashSet<String>();
+        try {
+            java.util.Set<String> raw = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("playedTalks", null);
+            if (raw != null) out.addAll(raw);
+        } catch (Exception ignored) {}
+        return out;
+    }
+
     // v13.77 (slice 1069): the recent row's long-press menu — the
     // History screen's rows were tap-only: a listener who had just
     // heard a talk could only replay it (replacing that sayadaw's
@@ -1623,6 +1662,8 @@ public class HistoryActivity extends Activity {
             } catch (Exception ignored) {}
             opts.add(Lang.t(this, fav ? "menu_fav_remove" : "menu_fav_add"));
             keys.add(fav ? "menu_fav_remove" : "menu_fav_add");
+            // v15.80 (slice 2139): the mark key — gated on the 1949 DlMark core (canOffer: a non-blank stream URL, and not the sounding talk — the sounding talk earns its mark by finishing, like the 1949 sounding exclusion), through this screen's two sounding identities (the same gate the queue verbs read). The label is DlMark.labelKey over the prefs-fresh played set (readPlayedTalksHist, a local mirror of NewTalksActivity's readPlayedTalks — HistoryActivity had no playedTalks reader), so the label can never disagree with the list membership — and on this screen both legs are live, because playedTalks is banked only on natural finish: a row stopped early offers Mark, a finished row offers Unmark.
+            if (DlMark.canOffer(streamUrl, sounding)) { String markKey39 = DlMark.labelKey(DlMark.isMarked(readPlayedTalksHist(), SiteHttp.identityUrl(streamUrl))); opts.add(Lang.t(this, markKey39)); keys.add(markKey39); }
             // v15.56 (slice 1995): "go to sayadaw's talks" —
             // the row menu's first navigation verb: a heard
             // talk's sayadaw (sd, the healed row name)
@@ -1754,6 +1795,12 @@ public class HistoryActivity extends Activity {
                             Toast.makeText(HistoryActivity.this,
                                     Lang.t(HistoryActivity.this, added ? "fav_added" : "fav_removed"),
                                     Toast.LENGTH_SHORT).show();
+                        } else if ("dl_menu_mark_one".equals(keyArr[which])) {
+                            // v15.80 (slice 2139): "Mark as listened" — the 1949 mark verb on the History row menu, through markListenedHist below (the file routes every menu verb through a named helper or an inline block).
+                            markListenedHist(e, streamUrl, false);
+                        } else if ("dl_menu_unmark_one".equals(keyArr[which])) {
+                            // v15.80 (slice 2139): "Unmark as listened" — the 1949 unmark leg on the History row menu, through markListenedHist below (both-forms rule: the canonical URL and the raw URL leave the played set together).
+                            markListenedHist(e, streamUrl, true);
                         } else if ("menu_go_sayadaw".equals(keyArr[which])) {
                             // v15.56 (slice 1995): "Go to sayadaw's talks" — the 1944 verb on the History surface: re-resolve the sayadaw through the bundled catalog at tap time (the offer and the tap can never disagree), toast no_sayadaw_page on a failed re-read, else open that sayadaw's Talks list inside the app with Main's own intent extras (name/group/url/photo). The name is the row's own sayadaw (histSayadawFor's heal, never the catalog's — the catalog entry carries no name slot). A navigation mutates nothing: no history, queue or resume change, no pause guard (no sheet is left to return from).
                             String[] cat95 = catalogEntryForSayadaw(sd);

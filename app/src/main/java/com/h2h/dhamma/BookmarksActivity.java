@@ -939,6 +939,46 @@ public class BookmarksActivity extends Activity {
         return out;
     }
 
+    // v15.80 (slice 2141): "Mark as listened / Unmark as listened" — the mark verb the Bookmarks row menu lacked that the Downloaded library row menu has had since v15.47 (slice 1949), the Talks chooser since v15.51 (slice 1969), the Room drawer dialogs since v15.52 (slices 1978/1979), the New talks row menu since v15.80 (slice 2138), the History row menu since v15.80 (slice 2139) and the Favourites row menu since v15.80 (slice 2140): a bookmarked talk could only earn or lose its listened mark by playing it to the end or opening the library — and a Bookmarks row is exactly where both legs are live, because playedTalks is banked only on natural finish (AudioService.markPlayedForCurrent) and bookmarking is independent of it: a bookmarked talk stopped early sits unmarked (offers Mark), a finished one sits marked (offers Unmark — it returns to the New talks list). Same verb through the same rules, so the surfaces can never disagree: the 1949 pure core (DlMark — canOffer / labelKey / isMarked / mark / unmark, inputs never mutated), the v11.14 tap-time sounding re-check over this screen's BmPlayAll sounding rule (the queue branches' rule), the prefs-fresh playedTalks read at tap time, and the mark landing in the SAME playedTalks key AudioService banks on finish and the library, the rails, the header new-count and the filters all read. The helper re-resolves the row to its stream URL at tap time (streamUrlFor — the Bookmarks-local shape, the offer and the tap can never disagree). No refresh and no repaint on this screen: the row renders no listened tick (only the sounding ▶ prefix and the row's own frozen minute), so nothing here rebinds from playedTalks — the visible effect is the menu label flipping mark<->unmark on the next open, the verb toast, and the propagation (New talks list + header new-count + chooser tick). Neither the history REC line, the lifetime totals, the queue, the shelf order, the bookmark itself nor any saved resume position is mutated.
+    private void markListenedBm(final BmAll.Row r, final boolean unmark) {
+        if (r == null || r.e == null || r.e.url == null || r.e.url.length() == 0) return;
+        final String streamUrl = streamUrlFor(r.e);
+        if (streamUrl == null || streamUrl.length() == 0) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // Tap-time sounding re-check (Talks v11.14): the dialog can sit open across an auto-advance, so this talk can BE sounding by tap time — it earns its mark by finishing, never by this verb. This screen's BmPlayAll sounding rule, the queue branches' rule.
+        refreshBookmarksPlayingMarks();
+        if (BmPlayAll.isSounding(streamUrl, bmPlayingUrl, bmPlayingLibUrl)) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        DlMark.Result res41 = null;
+        try {
+            android.content.SharedPreferences sp41 = getSharedPreferences("dhamma", MODE_PRIVATE);
+            java.util.Set<String> cur41 = sp41.getStringSet("playedTalks", new java.util.HashSet<String>());
+            res41 = unmark ? DlMark.unmark(cur41, SiteHttp.identityUrl(streamUrl), streamUrl)
+                    : DlMark.mark(cur41, SiteHttp.identityUrl(streamUrl));
+            sp41.edit().putStringSet("playedTalks", res41.set).apply();
+        } catch (Exception ignored) {}
+        android.widget.Toast.makeText(BookmarksActivity.this,
+                Lang.t(BookmarksActivity.this, (res41 != null && res41.changed) ? (unmark ? "dl_menu_unmark_one" : "dl_menu_mark_one") : (unmark ? "nothing_to_unmark" : "already_listened")),
+                android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    private java.util.Set<String> readPlayedTalksBm() {
+        java.util.Set<String> out = new java.util.HashSet<String>();
+        try {
+            java.util.Set<String> raw = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("playedTalks", null);
+            if (raw != null) out.addAll(raw);
+        } catch (Exception ignored) {}
+        return out;
+    }
+
     // v15.69 (slice 2072): row long-press menu on this screen — the
     // Bookmarks screen had no row menu at all (no long-press, no
     // dialog, no per-row delete verb): marks were dropped only
@@ -1092,6 +1132,7 @@ public class BookmarksActivity extends Activity {
         String plKey93 = "";
         String minKey2132 = "";
         String dlKey2135 = "";
+        String markKey41 = "";
         try {
             if (BmTalkShare.canOffer(streamUrl)) shareKey84 = "menu_share";
             if (RoomCopyLink.canOffer(streamUrl)) copyKey86 = "dl_menu_copy_link";
@@ -1101,6 +1142,9 @@ public class BookmarksActivity extends Activity {
             if (r.posMs > 5000 && shareKey84.length() > 0) minKey2132 = "dl_menu_share_minute";
             // v15.79 (slice 2135): the download key — gated on the v11.70 rule through the pinned pure core MainDl.canOffer (slice 1997: neither downloaded nor already queued), plus the non-blank stream URL leg like History's offer, so an unresolvable row never offers it. The sounding row keeps it (History offers it on sounding rows too — downloading the talk now playing is harmless, the Room keeps streaming).
             if (streamUrl.length() > 0 && MainDl.canOffer(bmIsDownloaded(streamUrl), bmIsDlQueued(streamUrl))) dlKey2135 = "dl_btn_download";
+            // v15.80 (slice 2141): the mark key — gated on the 1949 DlMark core (canOffer: a non-blank stream URL, and not the sounding talk — the sounding talk earns its mark by finishing, like the 1949 sounding exclusion), through this screen's BmPlayAll sounding rule (the same gate the queue verbs read), over the resolved stream URL (streamUrl — streamUrlFor, so a path-form row resolves through the dlMap exactly-one-claimant rule, never a guessed link). The label is DlMark.labelKey over the prefs-fresh played set (readPlayedTalksBm, a local mirror of NewTalksActivity's readPlayedTalks — BookmarksActivity had no playedTalks reader), so the label can never disagree with the list membership — and on this screen both legs are live, because playedTalks is banked only on natural finish: a bookmarked talk stopped early offers Mark, a finished one offers Unmark.
+            boolean sounding41 = BmPlayAll.isSounding(streamUrl, bmPlayingUrl, bmPlayingLibUrl);
+            if (DlMark.canOffer(streamUrl, sounding41)) markKey41 = DlMark.labelKey(DlMark.isMarked(readPlayedTalksBm(), SiteHttp.identityUrl(streamUrl)));
         } catch (Exception ignored) {}
         if (shareKey84.length() > 0) keys72.add(0, shareKey84);
         // v15.71 (slice 2086): the copy key composes right after
@@ -1142,6 +1186,11 @@ public class BookmarksActivity extends Activity {
             int at93 = keys72.indexOf("bm_menu_remove");
             keys72.add(at93 < 0 ? keys72.size() : at93, plKey93);
         }
+        // v15.80 (slice 2141): the mark key composes right before Delete bookmark (indexOf — the removal stays last and the mark sits with the collect verbs, last; the 1969 chooser shape adapted: on this screen the mark follows the playlist insert, so the display order reads ..., Go, Download, Playlist, Mark, Remove; a mark implies a share, since both gates are the same non-blank stream URL — the at41 < 0 leg is defensive only).
+        if (markKey41.length() > 0) {
+            int at41 = keys72.indexOf("bm_menu_remove");
+            keys72.add(at41 < 0 ? keys72.size() : at41, markKey41);
+        }
         if (keys72.isEmpty()) return;
         java.util.ArrayList<String> opts = new java.util.ArrayList<String>();
         for (String k72 : keys72) opts.add(Lang.t(this, k72));
@@ -1177,6 +1226,12 @@ public class BookmarksActivity extends Activity {
                             queueRemoveBm(r);
                         } else if ("menu_go_sayadaw".equals(keyArr[which])) {
                             goToSayadawBm(r);
+                        } else if ("dl_menu_mark_one".equals(keyArr[which])) {
+                            // v15.80 (slice 2141): "Mark as listened" — the 1949 mark verb on the Bookmarks row menu, through markListenedBm below (the file routes every menu verb through a named helper).
+                            markListenedBm(r, false);
+                        } else if ("dl_menu_unmark_one".equals(keyArr[which])) {
+                            // v15.80 (slice 2141): "Unmark as listened" — the 1949 unmark leg on the Bookmarks row menu, through markListenedBm below (both-forms rule: the canonical URL and the raw URL leave the played set together).
+                            markListenedBm(r, true);
                         } else if ("bm_menu_remove".equals(keyArr[which])) {
                             removeBmFromMenu(r);
                         }

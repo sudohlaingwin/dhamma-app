@@ -1390,6 +1390,46 @@ public class PlaylistActivity extends Activity {
         } catch (Exception ignored) { return false; }
     }
 
+    // v15.80 (slice 2142): "Mark as listened / Unmark as listened" — the mark verb the Playlist detail row menu lacked that the Downloaded library row menu has had since v15.47 (slice 1949), the Talks chooser since v15.51 (slice 1969), the Room drawer dialogs since v15.52 (slices 1978/1979), the New talks row menu since v15.80 (slice 2138), the History row menu since v15.80 (slice 2139), the Favourites row menu since v15.80 (slice 2140) and the Bookmarks row menu since v15.80 (slice 2141): a playlist talk could only earn or lose its listened mark by playing it to the end or opening the library — and a Playlist detail row is exactly where both legs are live, because playedTalks is banked only on natural finish (AudioService.markPlayedForCurrent) and playlist membership is independent of it: a playlist talk stopped early sits unmarked (offers Mark), a finished one sits marked (offers Unmark — it returns to the New talks list). Same verb through the same rules, so the surfaces can never disagree: the 1949 pure core (DlMark — canOffer / labelKey / isMarked / mark / unmark, inputs never mutated), the v11.14 tap-time sounding re-check over this screen's PlRowMenu sounding rule (the queue branches' rule), the prefs-fresh playedTalks read at tap time, and the mark landing in the SAME playedTalks key AudioService banks on finish and the library, the rails, the header new-count and the filters all read. The helper re-resolves the row to its stream URL at tap time (plShareUrlFor — the Playlist-local shape, the offer and the tap can never disagree). No refresh and no repaint on this screen: the row renders no listened tick (only the sounding ▶ prefix in gold), so nothing here rebinds from playedTalks — the visible effect is the menu label flipping mark<->unmark on the next open, the verb toast, and the propagation (New talks list + header new-count + chooser tick). Neither the history REC line, the lifetime totals, the queue, the shelf order, the playlist membership itself nor any saved resume position is mutated.
+    private void markListenedPl(final QueueEntry qe, final boolean unmark) {
+        if (qe == null || qe.url == null || qe.url.length() == 0) return;
+        final String streamUrl = plShareUrlFor(qe);
+        if (streamUrl == null || streamUrl.length() == 0) {
+            android.widget.Toast.makeText(PlaylistActivity.this,
+                    Lang.t(PlaylistActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // Tap-time sounding re-check (Talks v11.14): the dialog can sit open across an auto-advance, so this talk can BE sounding by tap time — it earns its mark by finishing, never by this verb. This screen's PlRowMenu sounding rule, the queue branches' rule.
+        refreshPlaylistPlayingMarks();
+        if (PlRowMenu.isSounding(streamUrl, plPlayingUrl, plPlayingLibUrl, AudioService.liveEnded)) {
+            android.widget.Toast.makeText(PlaylistActivity.this,
+                    Lang.t(PlaylistActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        DlMark.Result res42 = null;
+        try {
+            android.content.SharedPreferences sp42 = getSharedPreferences("dhamma", MODE_PRIVATE);
+            java.util.Set<String> cur42 = sp42.getStringSet("playedTalks", new java.util.HashSet<String>());
+            res42 = unmark ? DlMark.unmark(cur42, SiteHttp.identityUrl(streamUrl), streamUrl)
+                    : DlMark.mark(cur42, SiteHttp.identityUrl(streamUrl));
+            sp42.edit().putStringSet("playedTalks", res42.set).apply();
+        } catch (Exception ignored) {}
+        android.widget.Toast.makeText(PlaylistActivity.this,
+                Lang.t(PlaylistActivity.this, (res42 != null && res42.changed) ? (unmark ? "dl_menu_unmark_one" : "dl_menu_mark_one") : (unmark ? "nothing_to_unmark" : "already_listened")),
+                android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    private java.util.Set<String> readPlayedTalksPl() {
+        java.util.Set<String> out = new java.util.HashSet<String>();
+        try {
+            java.util.Set<String> raw = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("playedTalks", null);
+            if (raw != null) out.addAll(raw);
+        } catch (Exception ignored) {}
+        return out;
+    }
+
     // v15.76 (slice 2116): row long-press menu gains the share trio — the 2105 shell opened with "Play from here" + "Remove from list" and left the menu OPEN for the share / copy / file / go-to-sayadaw / queue verbs (one per slice, the 2073-2091 pattern); this slice lands the trio History carries (menu_share + dl_menu_copy_link, slice 1981, + dl_menu_share_file, slice 1982) through the same pure cores (RoomCopyLink + TalkFileShare), so the detail rows can never disagree with History about what shares, copies or sends. The trio sits between play-from-here and remove (constructive first, destructive last — the 2114 lists-menu order): the stream URL is plShareUrlFor (the row's own URL, or the dlMap reverse lookup for a downloaded row — a row with no resolvable stream URL offers neither share nor copy), the file name is plShareFileFor (the dlMap name for a stream row, the basename for a downloaded row, only when the file is on disk). The sounding row keeps the trio (share/copy/file touch neither playback nor the queue, like History's). The tap-time gates re-check the offer (RoomCopyLink.canOffer / TalkFileShare.shareUriFor), so a file that vanished while the menu sat open toasts talk_no_longer_in_list instead of a guessed URI. A share/copy mutates nothing — the list, the queue and the lifetime totals stay. No Fx.tap in the three branches (History's row-menu precedent — the 2113 lists-menu share taps, the row-menu shares do not). Row menu trio landed in slice 2116.
     // v15.76 (slice 2117): row long-press menu gains go-to-sayadaw + queue — the 2105 shell opened with "Play from here" + "Remove from list" and left the menu OPEN for the share / copy / file / go-to-sayadaw / queue verbs (one per slice, the 2073-2091 pattern); the 2116 trio landed first, and this slice lands the last two History verbs the detail rows lacked: "Go to sayadaw" (menu_go_sayadaw, slice 1995, through HistGo + GoSayadaw — the row's sayadaw resolved through this screen's own catalogFor, cached per process with alias healing, so a pre-rename name still opens its Talks list) and the queue toggle (menu_queue_add / menu_queue_remove, v13.77, through plQueueHas/plQueueAdd/plQueueRemove — the History shapes, v2 lines carried verbatim). Both sit after the trio and before remove (constructive first, destructive last — the 2114 lists-menu order): the go verb is offered sounding or not (navigation never touches playback, History's rule); the queue verb only when the talk can queue (a resolved stream URL with a sayadaw, not sounding — the Talks v5.82 gate). The tap-time gates re-check the offer (catalogFor re-resolve + GoSayadaw.canGo, so a stale entry toasts no_sayadaw_page; the sounding re-check, so a talk that started sounding while the menu sat open toasts queue_changed instead of queueing a replay). A go mutates nothing; a queue add/remove writes only that sayadaw's saved queue — the list, the lifetime totals and the other sayadaws' queues stay. Fx.tap + Fx.go on the go branch (History's 1995 shape). Row menu go + queue landed in slice 2117; the menu stays OPEN for playlist-add (piece 5/5).
     // v15.76 (slice 2118): row long-press menu gains "Add to playlist" — the 2105 shell opened with "Play from here" + "Remove from list" and left the menu OPEN for the share / copy / file / go-to-sayadaw / queue / playlist-add verbs (one per slice, the 2073-2091 pattern); the 2116 trio landed first, then go + queue in 2117, and this slice lands the last one the detail rows lacked: "Add to playlist" (pl_add, slice 2095, through HistPlAdd + Prefs.playlistAdd — the History / Favourites / New talks / Bookmarks / Downloaded / Room-queue / Talks-chooser shapes, Favourites' addToPlaylistFav the closest). It sits after the queue verb and before remove (constructive first, destructive last — the 2114 lists-menu order; History's own order inserts pl_add right before its remove too): the gate is the same non-blank stream URL the share reads (HistPlAdd.canOffer), so a streamed-only talk still offers it (filing is not a file); only a row with no resolvable stream URL hides it. The tap-time gates re-check the offer (plShareUrlFor re-resolve, so a downloaded row whose file vanished toasts talk_no_longer_in_list; the sayadaw heal, so a stale banked sayadaw never strands the item under the wrong owner). An add writes only the chosen list — this list, the queue and the lifetime totals stay. The sounding row keeps it (filing never touches playback). Row menu playlist-add landed in slice 2118; the menu's 2105 open set is now COMPLETE — the playlist-add family is on EIGHT surfaces.
@@ -1403,6 +1443,13 @@ public class PlaylistActivity extends Activity {
         final String[] goCat05 = catalogFor(sd);
         final boolean queued05 = plQueueHas(sd, streamUrl05);
         java.util.List<String> keys05 = PlRowMenu.menuKeys(url, sd, plPlayingUrl, plPlayingLibUrl, AudioService.liveEnded, streamUrl05, fileName05, goCat05, queued05);
+        // v15.80 (slice 2142): the mark key — gated on the new PlRowMenu.markKey leg (the 1949 DlMark core: canOffer — a non-blank stream URL, and not the sounding talk — the sounding talk earns its mark by finishing, like the 1949 sounding exclusion; the label is DlMark.labelKey over the prefs-fresh played set, readPlayedTalksPl — PlaylistActivity had no playedTalks reader), so the label can never disagree with the list membership — and on this screen both legs are live, because playedTalks is banked only on natural finish and playlist membership is independent of it: a playlist talk stopped early offers Mark, a finished one offers Unmark.
+        String markKey42 = PlRowMenu.markKey(streamUrl05, plPlayingUrl, plPlayingLibUrl, AudioService.liveEnded, DlMark.isMarked(readPlayedTalksPl(), SiteHttp.identityUrl(streamUrl05)));
+        // v15.80 (slice 2142): the mark key composes right before Remove from list (indexOf — menuKeys always adds menu_pl_remove last, and the mark follows the playlist insert, so the display order reads ..., Go, Queue, PlAdd, Mark, Remove; a mark implies a share, since both gates are the same non-blank stream URL — the at42 < 0 leg is defensive only).
+        if (markKey42 != null) {
+            int at42 = keys05.indexOf("menu_pl_remove");
+            keys05.add(at42 < 0 ? keys05.size() : at42, markKey42);
+        }
         java.util.ArrayList<String> opts05 = new java.util.ArrayList<String>();
         for (String k05 : keys05) opts05.add(Lang.t(this, k05));
         final String[] optArr05 = opts05.toArray(new String[0]);
@@ -1486,6 +1533,12 @@ public class PlaylistActivity extends Activity {
                             android.widget.Toast.makeText(PlaylistActivity.this, Lang.t(PlaylistActivity.this, "removed_from_queue"), android.widget.Toast.LENGTH_SHORT).show();
                         } else if ("pl_add".equals(keyArr05[which])) {
                             addToPlaylistPl(qe);
+                        } else if ("dl_menu_mark_one".equals(keyArr05[which])) {
+                            // v15.80 (slice 2142): "Mark as listened" — the 1949 mark verb on the Playlist detail row menu, through markListenedPl below (the file routes every menu verb through a named helper or an inline block).
+                            markListenedPl(qe, false);
+                        } else if ("dl_menu_unmark_one".equals(keyArr05[which])) {
+                            // v15.80 (slice 2142): "Unmark as listened" — the 1949 unmark leg on the Playlist detail row menu, through markListenedPl below (both-forms rule: the canonical URL and the raw URL leave the played set together).
+                            markListenedPl(qe, true);
                         } else if ("menu_pl_remove".equals(keyArr05[which])) {
                             removePlItem(position);
                         }
