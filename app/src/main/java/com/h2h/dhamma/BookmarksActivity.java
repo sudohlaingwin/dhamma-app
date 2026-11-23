@@ -901,15 +901,21 @@ public class BookmarksActivity extends Activity {
     // mark at its minute). The menu opens with the verbs this screen needs:
     // "Share talk" first (the History menu_share shape, v13.77 — share the
     // row's talk through the Android sheet), "Copy link" second (the History
-    // dl_menu_copy_link shape, v15.53 — copy the row's stream URL to the
-    // clipboard, the share/copy pair together), then "Play from here" (the chooser's 1942 /
+    // dl_menu_copy_link shape, v15.53 — copy the row's stream URL
+    // to the clipboard, the share/copy pair together), "Share file"
+    // third (the History dl_menu_share_file shape, v15.53 — send
+    // the downloaded .mp3 through the sheet, the share/copy/file
+    // trio together), then "Play from here" (the chooser's 1942 /
     // History's 2030 / Favourites' 2069 / New talks' 2071 verb —
     // queue the shown run of marks from this mark onward and open
-    // the Room on it at its minute) and "Delete bookmark" (the
-    // rail's own verb — the confirm names the exact minute, so a
-    // talk with several marks never deletes the wrong one).
+    // the Room on it at its minute), "Add to playlist" (the Room's v12.65 verb —
+    // file the talk in one of the listener's own lists, before
+    // Delete bookmark) and "Delete bookmark" (the rail's own
+    // verb — the confirm names the exact minute, so a talk with
+    // several marks never deletes the wrong one).
     // download is the remaining future verb on this same menu
-    // (copy-link landed in slice 2086, share in slice 2084,
+    // (playlist-add landed in slice 2093, share-file in slice
+    // 2090, copy-link in slice 2086, share in slice 2084,
     // go-to-sayadaw in slice 2077, queue in slice 2075; the
     // History menu grew the same way: 1981, 1982, 1995, 2030).
     // The offer comes from the pure BmRowMenu core (the resolved
@@ -1004,11 +1010,44 @@ public class BookmarksActivity extends Activity {
         // right after the share (below), so the share/copy pair
         // sits together like History's menu and the chooser's
         // trio — the pair can never be split by a later insert.
+        // v15.72 (slice 2090): the file verb — "Share file"
+        // (TalkFileShare, the History dl_menu_share_file shape,
+        // v15.53 slice 1982): the same resolved stream URL
+        // (streamUrl — no second resolve, the v5.69 cost rule)
+        // offers sending the actual downloaded .mp3, so a
+        // listener who just downloaded a bookmarked talk never has
+        // to find it in Downloads/Dhamma by hand. The gate is the
+        // screen's own download check (bmIsDownloaded — the
+        // History v13.77 pair: dlMap mapped file + the v13.66
+        // length gate, plus the basename leg), so a streamed-only
+        // talk never offers it (a file is not a link). The key
+        // composes right after the copy (below), so the
+        // share/copy/file trio sits together like History's menu
+        // and the chooser's dialog — the trio can never be split
+        // by a later insert.
+        // v15.72 (slice 2093): the playlist verb — "Add to playlist"
+        // (BmPlAdd, the Room's showPlaylistAddDialog shape,
+        // v12.65–v12.80): the same resolved stream URL
+        // (streamUrl — no second resolve, the v5.69 cost rule)
+        // offers filing the talk in one of the listener's own
+        // lists, so a listener who just marked a minute in a
+        // long talk never has to open the Room to file it. The
+        // gate is the same non-blank URL the share reads
+        // (BmPlAdd.canOffer), so a streamed-only talk still
+        // offers it (filing is not a file); only a blank URL
+        // hides it. The key composes right before Delete
+        // bookmark (below), so the collect verb sits with the
+        // removal, last — the share trio, the play verbs and
+        // the navigation are never split by it.
         String shareKey84 = "";
         String copyKey86 = "";
+        String fileKey90 = "";
+        String plKey93 = "";
         try {
             if (BmTalkShare.canOffer(streamUrl)) shareKey84 = "menu_share";
             if (RoomCopyLink.canOffer(streamUrl)) copyKey86 = "dl_menu_copy_link";
+            if (bmIsDownloaded(streamUrl)) fileKey90 = "dl_menu_share_file";
+            if (BmPlAdd.canOffer(streamUrl)) plKey93 = "pl_add";
         } catch (Exception ignored) {}
         if (shareKey84.length() > 0) keys72.add(0, shareKey84);
         // v15.71 (slice 2086): the copy key composes right after
@@ -1020,6 +1059,25 @@ public class BookmarksActivity extends Activity {
         if (copyKey86.length() > 0) {
             int at86 = keys72.indexOf("menu_share");
             keys72.add(at86 < 0 ? keys72.size() : at86 + 1, copyKey86);
+        }
+        // v15.72 (slice 2090): the file key composes right after
+        // the copy (indexOf + 1 — the copy insert above already
+        // landed, so inserting here keeps the share/copy/file
+        // trio adjacent whatever later inserts do; a file implies
+        // a copy, since a downloaded talk always has a non-blank
+        // URL — the at90 < 0 leg is defensive only).
+        if (fileKey90.length() > 0) {
+            int at90 = keys72.indexOf("dl_menu_copy_link");
+            keys72.add(at90 < 0 ? keys72.size() : at90 + 1, fileKey90);
+        }
+        // v15.72 (slice 2093): the playlist key composes right before
+        // Delete bookmark (indexOf — the removal stays last and the
+        // collect verb sits with it, last; a playlist add implies
+        // a share, since both gates are the same non-blank URL — the
+        // at93 < 0 leg is defensive only).
+        if (plKey93.length() > 0) {
+            int at93 = keys72.indexOf("bm_menu_remove");
+            keys72.add(at93 < 0 ? keys72.size() : at93, plKey93);
         }
         if (keys72.isEmpty()) return;
         java.util.ArrayList<String> opts = new java.util.ArrayList<String>();
@@ -1034,6 +1092,10 @@ public class BookmarksActivity extends Activity {
                             shareTalkBm(r);
                         } else if ("dl_menu_copy_link".equals(keyArr[which])) {
                             copyTalkLinkBm(r);
+                        } else if ("dl_menu_share_file".equals(keyArr[which])) {
+                            shareFileBm(r);
+                        } else if ("pl_add".equals(keyArr[which])) {
+                            addToPlaylistBm(r);
                         } else if ("menu_play_from_here".equals(keyArr[which])) {
                             playFromHereBm(r);
                         } else if ("menu_queue_add".equals(keyArr[which])) {
@@ -1079,6 +1141,130 @@ public class BookmarksActivity extends Activity {
     // rather than queueing behind a talk that already sounds —
     // the menu verb's offer is per-row, unlike play-all's
     // list-wide gate.
+    // v15.72 (slice 2093): "Add to playlist" — the row menu's
+    // playlist verb (the Room's showPlaylistAddDialog, v12.65–
+    // v12.80, on this screen's menu; the Room's dialog has no
+    // entry point anywhere in the app — defined once, called
+    // zero times — so this is the verb's third live offer, on
+    // the screen of marked minutes, where "a marked minute ->
+    // my morning / bedtime list" is the natural flow; premium
+    // backlog #2, the Spotify / YouTube Music / Apple Music
+    // row-menu verb): re-resolve the row to its stream URL at
+    // tap time (streamUrlFor — the offer and the tap can never
+    // disagree), toast talk_no_longer_in_list when the file
+    // behind a path-form row no longer resolves (the
+    // share/copy/file precedent on this screen), heal the
+    // sayadaw exactly like the row tap (catalogFor + the
+    // sayadawForTalk heal — a stale banked sayadaw would strand
+    // the playlist item under the wrong owner, the v12.78
+    // lesson; the Room's playlistOwnerFor heals the same way),
+    // then offer the listener's lists (Prefs.playlistNames —
+    // the seed lists are there from the first read) plus a
+    // "new list" row (pl_new, last). A tap files the talk
+    // through Prefs.playlistAdd and toasts the v12.80 result
+    // (BmPlAdd.toastKey: added / already there / full /
+    // could-not-create); the new-list row opens the name
+    // dialog. An add mutates no bookmark, queue or resume
+    // state; no pause guard (no sheet is left to return from);
+    // the sounding row keeps it (filing never touches
+    // playback). The filed unit is the TALK, not the mark (the
+    // 2084 adjudication): the playlist store carries url /
+    // sayadaw / title and no minute, so a filed talk plays from
+    // its saved spot like every other playlist item — the
+    // mark's minute stays a Bookmarks-screen concept
+    // (play-from-here and play-all-marks queue v3 lines at each
+    // mark's minute).
+    private void addToPlaylistBm(final BmAll.Row r) {
+        if (r == null || r.e == null || r.e.url == null || r.e.url.length() == 0) return;
+        final String streamUrl = streamUrlFor(r.e);
+        if (!BmPlAdd.canOffer(streamUrl)) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String sd93 = r.e.sayadaw;
+        String[] cat93 = catalogFor(sd93);
+        if (cat93 == null || cat93[1] == null || cat93[1].length() == 0) {
+            String owner93 = Prefs.sayadawForTalk(this, "lib", streamUrl, "");
+            if (owner93 != null && owner93.length() > 0 && !owner93.equals(sd93)) {
+                sd93 = owner93;
+            }
+        }
+        final String title93 = r.e.title != null ? r.e.title : "";
+        final String sdF93 = sd93;
+        final java.util.List<String> names93 = Prefs.playlistNames(this);
+        final String[] items93 = new String[names93.size() + 1];
+        for (int i93 = 0; i93 < names93.size(); i93++) items93[i93] = names93.get(i93);
+        items93[names93.size()] = Lang.t(this, "pl_new");
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(Lang.t(this, "pl_choose"))
+                .setItems(items93, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        if (BmPlAdd.isNewRow(which, names93.size())) {
+                            showNewPlaylistBm(streamUrl, title93, sdF93);
+                            return;
+                        }
+                        int r93 = Prefs.playlistAdd(BookmarksActivity.this,
+                                names93.get(which), streamUrl, sdF93, title93);
+                        android.widget.Toast.makeText(BookmarksActivity.this,
+                                Lang.t(BookmarksActivity.this, BmPlAdd.toastKey(r93)),
+                                android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .show();
+    }
+
+    // v15.72 (slice 2093): the "new list" dialog for the
+    // playlist verb — the Room's showNewPlaylistDialog
+    // (v12.80), on this screen: a name field (pl_name_hint),
+    // a Create button (pl_create) and a cancel (btn_no_clear);
+    // an empty name re-prompts with the hint toast; the name
+    // caps at 40 chars (PLAYLIST_MAX_NAME); create is a
+    // no-op for an existing name, so a repeat name just adds
+    // to that list; at the 20-list cap a genuinely new name
+    // toasts pl_limit (BmPlAdd.limitToastKey), any other
+    // create failure pl_no_create — neither falls through to
+    // the add (the v12.80 leg). The add toasts the same
+    // v12.80 result as the choose dialog.
+    private void showNewPlaylistBm(final String url, final String title, final String sd) {
+        final android.widget.EditText et93 = new android.widget.EditText(this);
+        et93.setHint(Lang.t(this, "pl_name_hint"));
+        et93.setSingleLine(true);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(Lang.t(this, "pl_new"))
+                .setView(et93)
+                .setPositiveButton(Lang.t(this, "pl_create"),
+                        new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        String name93 = et93.getText().toString().trim();
+                        if (name93.length() == 0) {
+                            android.widget.Toast.makeText(BookmarksActivity.this,
+                                    Lang.t(BookmarksActivity.this, "pl_name_hint"),
+                                    android.widget.Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        if (name93.length() > 40) name93 = name93.substring(0, 40);
+                        boolean created93 = Prefs.playlistCreate(BookmarksActivity.this, name93);
+                        java.util.List<String> held93 = Prefs.playlistNames(BookmarksActivity.this);
+                        String limit93 = BmPlAdd.limitToastKey(created93,
+                                held93.contains(name93), held93.size());
+                        if (limit93 != null) {
+                            android.widget.Toast.makeText(BookmarksActivity.this,
+                                    Lang.t(BookmarksActivity.this, limit93),
+                                    android.widget.Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        int r93 = Prefs.playlistAdd(BookmarksActivity.this, name93, url, sd, title);
+                        android.widget.Toast.makeText(BookmarksActivity.this,
+                                Lang.t(BookmarksActivity.this, BmPlAdd.toastKey(r93)),
+                                android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton(Lang.t(this, "btn_no_clear"), null)
+                .show();
+    }
+
     private void playFromHereBm(final BmAll.Row r) {
         if (items == null || items.isEmpty() || r == null || r.e == null || r.e.url == null || r.e.url.length() == 0) {
             android.widget.Toast.makeText(BookmarksActivity.this,
@@ -1434,6 +1620,135 @@ public class BookmarksActivity extends Activity {
                     RoomCopyLink.toastText(Lang.t(BookmarksActivity.this, "link_copied_prefix"), r.e.title, streamUrl),
                     android.widget.Toast.LENGTH_SHORT).show();
         } catch (Exception ignored) {}
+    }
+
+    // v15.72 (slice 2090): "Share file" — the row menu's
+    // file-share verb (History's dl_menu_share_file, v15.53
+    // slice 1982, on this screen's menu; the library row menu
+    // has shared its file since v15.48 slice 1954, the Room
+    // drawer since slice 1955, the Talks chooser since slice
+    // 1956, the History row menu since slice 1982, the New
+    // talks row menu since v15.71 slice 2087 and the Favourites
+    // row menu since v15.72 slice 2089 — all through the
+    // same TalkFileShare core, so the surfaces can never
+    // disagree): re-resolve the row to its stream URL at tap
+    // time (streamUrlFor — the offer and the tap can never
+    // disagree), re-check the download gate fresh
+    // (bmIsDownloaded + bmDownloadFileNameFor — the History
+    // v13.77 pair, mirrored), and send the actual .mp3 through
+    // the Android sheet as a TalkFileProvider content:// URI
+    // with a one-shot read grant, type audio/mpeg (a file://
+    // URI is refused on API 24+), chooser titled share_talk.
+    // A name that no longer resolves to a file on disk toasts
+    // talk_no_longer_in_list, never a guessed URI. A share
+    // mutates nothing: no bookmark, queue or resume change;
+    // no pause guard (History's file share sets none; the text
+    // share beside it sets none); the sounding row keeps it
+    // (sharing never touches playback). The shared unit is the
+    // talk's downloaded FILE, not the mark (the 2084
+    // adjudication): the minute payload lives on the Main
+    // Bookmarks rail (BmShare, v15.55 slice 1993), a different
+    // payload.
+    private void shareFileBm(final BmAll.Row r) {
+        if (r == null || r.e == null || r.e.url == null || r.e.url.length() == 0) return;
+        final String streamUrl = streamUrlFor(r.e);
+        java.io.File dir90 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+        String fn90 = bmIsDownloaded(streamUrl) ? bmDownloadFileNameFor(streamUrl) : null;
+        String uri90 = TalkFileShare.shareUriFor(dir90, fn90);
+        if (uri90 == null) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        android.content.Intent send90 = new android.content.Intent(android.content.Intent.ACTION_SEND);
+        send90.setType("audio/mpeg");
+        send90.putExtra(android.content.Intent.EXTRA_STREAM, android.net.Uri.parse(uri90));
+        send90.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivity(android.content.Intent.createChooser(send90,
+                Lang.t(BookmarksActivity.this, "share_talk")));
+    }
+
+    // v15.72 (slice 2090): History histIsDownloaded (v13.77),
+    // Bookmarks-local — the dlMap mapped file with the v13.66
+    // length gate (a 0-byte file is not downloaded), plus the
+    // plain basename leg for files the app enqueued under a
+    // stripped name. The offer and the tap both read it fresh,
+    // so a download landing while the dialog sits open can
+    // never be missed and a deletion can never be served.
+    private boolean bmIsDownloaded(String url) {
+        if (url == null || url.length() == 0) return false;
+        try {
+            java.io.File dir = new java.io.File(android.os.Environment
+                    .getExternalStoragePublicDirectory(
+                            android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            String mapped = map.optString(SiteHttp.identityUrl(url), "");
+            if (mapped.length() > 0) {
+                java.io.File f = new java.io.File(dir, mapped);
+                if (f.isFile() && f.length() > 0) return true;
+            }
+            String base = url.substring(url.lastIndexOf('/') + 1);
+            int q = base.indexOf('?');
+            if (q >= 0) base = base.substring(0, q);
+            int h = base.indexOf('#');
+            if (h >= 0) base = base.substring(0, h);
+            if (base.length() > 0) {
+                java.io.File f = new java.io.File(dir, base);
+                if (f.isFile() && f.length() > 0) return true;
+            }
+            return false;
+        } catch (Exception ignored) { return false; }
+    }
+
+    // v15.72 (slice 2090): History histDownloadFileNameFor
+    // (v13.77), Bookmarks-local — the dlMap name wins, else the
+    // basename stripped of ?/# with .mp3 guaranteed, and a
+    // basename another URL's download claims takes the 8-hex MD5
+    // suffix (v8.40 claim-alone rule).
+    private String bmDownloadFileNameFor(String url) {
+        try {
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            String mapped = map.optString(SiteHttp.identityUrl(url), "");
+            if (mapped.length() > 0) return mapped;
+            String base = url.substring(url.lastIndexOf('/') + 1);
+            int q = base.indexOf('?');
+            if (q >= 0) base = base.substring(0, q);
+            int hh = base.indexOf('#');
+            if (hh >= 0) base = base.substring(0, hh);
+            if (!base.toLowerCase().endsWith(".mp3")) base = base + ".mp3";
+            java.util.Iterator<String> keys = map.keys();
+            boolean claimed = false;
+            while (keys.hasNext()) {
+                String k = keys.next();
+                if (!SiteHttp.sameTalk(k, url) && base.equals(map.optString(k, ""))) {
+                    claimed = true;
+                    break;
+                }
+            }
+            if (claimed) {
+                String hash = "";
+                try {
+                    java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+                    byte[] d = md.digest(url.getBytes("UTF-8"));
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 0; i < 4; i++) sb.append(String.format("%02x", d[i]));
+                    hash = sb.toString();
+                } catch (Exception ignored) { hash = String.format("%08x", url.hashCode()); }
+                if (base.toLowerCase().endsWith(".mp3"))
+                    return base.substring(0, base.length() - 4) + "_" + hash + base.substring(base.length() - 4);
+                return base + "_" + hash;
+            }
+            return base;
+        } catch (Exception ignored) {
+            String base = url.substring(url.lastIndexOf('/') + 1);
+            if (!base.toLowerCase().endsWith(".mp3")) base = base + ".mp3";
+            return base;
+        }
     }
 
     private void removeBmFromMenu(final BmAll.Row r) {

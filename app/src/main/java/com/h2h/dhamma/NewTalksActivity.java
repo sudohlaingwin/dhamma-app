@@ -910,14 +910,17 @@ public class NewTalksActivity extends Activity {
     // trio together), then "Play from here"
     // (the chooser's 1942 / History's 2030 / Favourites' 2069 verb
     // — queue the shown run from this row onward and open the Room
-    // on it at 0:00) and the state-dependent star verb ("Add to
+    // on it at 0:00), "Add to playlist" (the Room's v12.65 verb —
+    // file the talk in one of the listener's own lists, before
+    // the star verb) and the state-dependent star verb ("Add to
     // favourites" when unstarred, "Remove from favourites" when
     // starred — the chooser 1969 / library / History 1267 shape).
     // download is the remaining future verb on this same menu
-    // (share-file landed in slice 2087, copy-link in slice 2081,
-    // share in slice 2080, go-to-sayadaw in slice 2079, queue in
-    // slice 2074; the History menu grew the same way: 1981,
-    // 1982, 1995, 2030). The offer comes from the pure NewRowMenu
+    // (playlist-add landed in slice 2092, share-file in slice
+    // 2087, copy-link in slice 2081, share in slice 2080,
+    // go-to-sayadaw in slice 2079, queue in slice 2074; the
+    // History menu grew the same way: 1981, 1982, 1995, 2030).
+    // The offer comes from the pure NewRowMenu
     // core (the NewPlayAll three-identity sounding gate, path-form
     // rows offer the star verb only); the dialog is History's
     // AlertDialog shape (title = the card's title, key-dispatched
@@ -978,14 +981,29 @@ public class NewTalksActivity extends Activity {
         // share/copy/file trio sits together like History's menu
         // and the chooser's dialog — the trio can never be split
         // by a later insert.
+        // v15.72 (slice 2092): the playlist verb — "Add to playlist"
+        // (NewPlAdd, the Room's showPlaylistAddDialog shape,
+        // v12.65–v12.80): the same resolved stream URL
+        // (shareUrl80 — no second resolve, the v5.69 cost rule)
+        // offers filing the talk in one of the listener's own
+        // lists, so a listener who just found a new talk never
+        // has to open the Room to file it. The gate is the
+        // same non-blank URL the share reads (NewPlAdd.canOffer),
+        // so a streamed-only talk still offers it (filing is not
+        // a file); only a blank URL hides it. The key composes
+        // right before the star verb (below), so the collect
+        // verb sits with the star, last — the share trio, the
+        // play verbs and the navigation are never split by it.
         String shareKey80 = "";
         String copyKey81 = "";
         String fileKey87 = "";
+        String plKey92 = "";
         try {
             String shareUrl80 = newStreamUrlFor(c.e);
             if (NewShare.canOffer(shareUrl80)) shareKey80 = "menu_share";
             if (RoomCopyLink.canOffer(shareUrl80)) copyKey81 = "dl_menu_copy_link";
             if (newIsDownloaded(shareUrl80)) fileKey87 = "dl_menu_share_file";
+            if (NewPlAdd.canOffer(shareUrl80)) plKey92 = "pl_add";
         } catch (Exception ignored) {}
         if (shareKey80.length() > 0) keys71.add(0, shareKey80);
         // v15.69 (slice 2074): the queue verb — "Add to queue" /
@@ -1062,6 +1080,18 @@ public class NewTalksActivity extends Activity {
             int at87 = keys71.indexOf("dl_menu_copy_link");
             keys71.add(at87 < 0 ? keys71.size() : at87 + 1, fileKey87);
         }
+        // v15.72 (slice 2092): the playlist key composes right before
+        // the star verb (indexOf menu_fav_remove else menu_fav_add —
+        // whichever star key the row's state composed, never
+        // appended past it; the collect verb sits with the star,
+        // last — a playlist add implies a share, since both gates
+        // are the same non-blank URL — the at92 < 0 leg is
+        // defensive only).
+        if (plKey92.length() > 0) {
+            int at92 = keys71.indexOf("menu_fav_remove");
+            if (at92 < 0) at92 = keys71.indexOf("menu_fav_add");
+            keys71.add(at92 < 0 ? keys71.size() : at92, plKey92);
+        }
         if (keys71.isEmpty()) return;
         java.util.ArrayList<String> opts = new java.util.ArrayList<String>();
         for (String k71 : keys71) opts.add(Lang.t(this, k71));
@@ -1077,6 +1107,8 @@ public class NewTalksActivity extends Activity {
                             copyTalkLinkNew(c);
                         } else if ("dl_menu_share_file".equals(keyArr[which])) {
                             shareFileNew(c);
+                        } else if ("pl_add".equals(keyArr[which])) {
+                            addToPlaylistNew(c);
                         } else if ("menu_play_from_here".equals(keyArr[which])) {
                             playFromHereNew(c);
                         } else if ("menu_queue_add".equals(keyArr[which])) {
@@ -1650,6 +1682,124 @@ public class NewTalksActivity extends Activity {
         android.widget.Toast.makeText(this,
                 Lang.t(this, changed71 ? (pre71 ? "fav_removed" : "fav_added") : "nothing_to_delete"),
                 android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    // v15.72 (slice 2092): "Add to playlist" — the row menu's
+    // playlist verb (the Room's showPlaylistAddDialog, v12.65–
+    // v12.80, on this screen's menu; the Room's dialog has no
+    // entry point anywhere in the app — defined once, called
+    // zero times — so this is the verb's second live offer, on
+    // the screen of new talks, where "a new talk -> my morning
+    // / bedtime list" is the natural flow; premium backlog #2,
+    // the Spotify / YouTube Music / Apple Music row-menu verb):
+    // re-resolve the row to its stream URL at tap time
+    // (newStreamUrlFor — the offer and the tap can never
+    // disagree), toast talk_no_longer_in_list when the file
+    // behind a path-form row no longer resolves (the
+    // share/copy/file precedent on this screen), heal the
+    // sayadaw exactly like the row tap (catalogFor + the
+    // sayadawForTalk heal — a stale banked sayadaw would strand
+    // the playlist item under the wrong owner, the v12.78
+    // lesson; the Room's playlistOwnerFor heals the same way),
+    // then offer the listener's lists (Prefs.playlistNames —
+    // the seed lists are there from the first read) plus a
+    // "new list" row (pl_new, last). A tap files the talk
+    // through Prefs.playlistAdd and toasts the v12.80 result
+    // (NewPlAdd.toastKey: added / already there / full /
+    // could-not-create); the new-list row opens the name
+    // dialog. An add mutates no favourite, queue or resume
+    // state; no pause guard (no sheet is left to return from);
+    // the sounding row keeps it (filing never touches
+    // playback).
+    private void addToPlaylistNew(final NewTalkRail.Card c) {
+        if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return;
+        final String streamUrl = newStreamUrlFor(c.e);
+        if (!NewPlAdd.canOffer(streamUrl)) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String sd92 = c.e.sayadaw;
+        String[] cat92 = catalogFor(sd92);
+        if (cat92 == null || cat92[1] == null || cat92[1].length() == 0) {
+            String owner92 = Prefs.sayadawForTalk(this, "lib", streamUrl, "");
+            if (owner92 != null && owner92.length() > 0 && !owner92.equals(sd92)) {
+                sd92 = owner92;
+            }
+        }
+        final String title92 = c.e.title != null ? c.e.title : "";
+        final String sdF92 = sd92;
+        final java.util.List<String> names92 = Prefs.playlistNames(this);
+        final String[] items92 = new String[names92.size() + 1];
+        for (int i92 = 0; i92 < names92.size(); i92++) items92[i92] = names92.get(i92);
+        items92[names92.size()] = Lang.t(this, "pl_new");
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(Lang.t(this, "pl_choose"))
+                .setItems(items92, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        if (NewPlAdd.isNewRow(which, names92.size())) {
+                            showNewPlaylistNew(streamUrl, title92, sdF92);
+                            return;
+                        }
+                        int r92 = Prefs.playlistAdd(NewTalksActivity.this,
+                                names92.get(which), streamUrl, sdF92, title92);
+                        android.widget.Toast.makeText(NewTalksActivity.this,
+                                Lang.t(NewTalksActivity.this, NewPlAdd.toastKey(r92)),
+                                android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .show();
+    }
+
+    // v15.72 (slice 2092): the "new list" dialog for the
+    // playlist verb — the Room's showNewPlaylistDialog
+    // (v12.80), on this screen: a name field (pl_name_hint),
+    // a Create button (pl_create) and a cancel (btn_no_clear);
+    // an empty name re-prompts with the hint toast; the name
+    // caps at 40 chars (PLAYLIST_MAX_NAME); create is a
+    // no-op for an existing name, so a repeat name just adds
+    // to that list; at the 20-list cap a genuinely new name
+    // toasts pl_limit (NewPlAdd.limitToastKey), any other
+    // create failure pl_no_create — neither falls through to
+    // the add (the v12.80 leg). The add toasts the same
+    // v12.80 result as the choose dialog.
+    private void showNewPlaylistNew(final String url, final String title, final String sd) {
+        final android.widget.EditText et92 = new android.widget.EditText(this);
+        et92.setHint(Lang.t(this, "pl_name_hint"));
+        et92.setSingleLine(true);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(Lang.t(this, "pl_new"))
+                .setView(et92)
+                .setPositiveButton(Lang.t(this, "pl_create"),
+                        new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        String name92 = et92.getText().toString().trim();
+                        if (name92.length() == 0) {
+                            android.widget.Toast.makeText(NewTalksActivity.this,
+                                    Lang.t(NewTalksActivity.this, "pl_name_hint"),
+                                    android.widget.Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        if (name92.length() > 40) name92 = name92.substring(0, 40);
+                        boolean created92 = Prefs.playlistCreate(NewTalksActivity.this, name92);
+                        java.util.List<String> held92 = Prefs.playlistNames(NewTalksActivity.this);
+                        String limit92 = NewPlAdd.limitToastKey(created92,
+                                held92.contains(name92), held92.size());
+                        if (limit92 != null) {
+                            android.widget.Toast.makeText(NewTalksActivity.this,
+                                    Lang.t(NewTalksActivity.this, limit92),
+                                    android.widget.Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        int r92 = Prefs.playlistAdd(NewTalksActivity.this, name92, url, sd, title);
+                        android.widget.Toast.makeText(NewTalksActivity.this,
+                                Lang.t(NewTalksActivity.this, NewPlAdd.toastKey(r92)),
+                                android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton(Lang.t(this, "btn_no_clear"), null)
+                .show();
     }
 
     private void playNew(final NewTalkRail.Card c, android.view.View v) {

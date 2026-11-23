@@ -867,15 +867,21 @@ public class FavouritesActivity extends Activity {
     // top, a tap plays one talk). The menu opens with the verbs this screen needs:
     // "Share talk" first (the History menu_share shape, v13.77 — share the
     // row's talk through the Android sheet), "Copy link" second (the History
-    // dl_menu_copy_link shape, v15.53 — copy the row's stream URL to the
-    // clipboard, the share/copy pair together), then "Play from here" (the chooser's 1942 /
+    // dl_menu_copy_link shape, v15.53 — copy the row's stream URL
+    // to the clipboard, the share/copy pair together), "Share file"
+    // third (the History dl_menu_share_file shape, v15.53 — send
+    // the downloaded .mp3 through the sheet, the share/copy/file
+    // trio together), then "Play from here" (the chooser's 1942 /
     // History's 2030 verb — queue the shown run from this row
-    // onward and open the Room on it) and "Remove from favourites"
-    // (the screen's own removal verb — the row leaves the list at
-    // once). download is the remaining future verb on this same
-    // menu (copy-link landed in slice 2085, share in slice 2083,
-    // go-to-sayadaw in slice 2078, queue in slice 2073; the
-    // History menu grew the same way:
+    // onward and open the Room on it), "Add to playlist" (the
+    // Room's v12.65 verb — file the talk in one of the
+    // listener's own lists, before Remove from favourites) and
+    // "Remove from favourites" (the screen's own removal verb —
+    // the row leaves the list at once). download is the remaining
+    // future verb on this same menu (playlist-add landed in
+    // slice 2091, share-file in slice 2089, copy-link in slice
+    // 2085, share in slice 2083, go-to-sayadaw in slice 2078,
+    // queue in slice 2073; the History menu grew the same way:
     // 1981, 1982, 1995, 2030). The offer comes from the pure
     // FavRowMenu core (sameTalk sounding gate, path-form rows offer
     // remove only); the dialog is History's AlertDialog shape
@@ -965,12 +971,44 @@ public class FavouritesActivity extends Activity {
         // right after the share (below), so the share/copy pair
         // sits together like History's menu and the chooser's
         // trio — the pair can never be split by a later insert.
+        // v15.72 (slice 2089): the file verb — "Share file"
+        // (TalkFileShare, the History dl_menu_share_file shape,
+        // v15.53 slice 1982): the same resolved stream URL
+        // (shareUrl83 — no second resolve, the v5.69 cost rule)
+        // offers sending the actual downloaded .mp3, so a
+        // listener who just downloaded a favourite talk never has
+        // to find it in Downloads/Dhamma by hand. The gate is the
+        // screen's own download check (favIsDownloaded — the
+        // History v13.77 pair: dlMap mapped file + the v13.66
+        // length gate, plus the basename leg), so a streamed-only
+        // talk never offers it (a file is not a link). The key
+        // composes right after the copy (below), so the
+        // share/copy/file trio sits together like History's menu
+        // and the chooser's dialog — the trio can never be split
+        // by a later insert.
+        // v15.72 (slice 2091): the playlist verb — "Add to playlist"
+        // (FavPlAdd, the Room's showPlaylistAddDialog shape,
+        // v12.65–v12.80): the same resolved stream URL
+        // (shareUrl83 — no second resolve, the v5.69 cost rule)
+        // offers filing the talk in one of the listener's own
+        // lists, so a listener who just starred a favourite talk
+        // never has to open the Room to file it. The gate is the
+        // same non-blank URL the share reads (FavPlAdd.canOffer),
+        // so a streamed-only talk still offers it (filing is not
+        // a file); only a blank URL hides it. The key composes
+        // right before Remove from favourites (below), so the
+        // collect verbs sit together last — the share trio, the
+        // play verbs and the navigation are never split by it.
         String shareKey83 = "";
         String copyKey85 = "";
+        String fileKey89 = "";
+        String plKey91 = "";
         try {
             String shareUrl83 = favStreamUrlFor(c.e);
             if (FavShare.canOffer(shareUrl83)) shareKey83 = "menu_share";
             if (RoomCopyLink.canOffer(shareUrl83)) copyKey85 = "dl_menu_copy_link";
+            if (favIsDownloaded(shareUrl83)) fileKey89 = "dl_menu_share_file";
+            if (FavPlAdd.canOffer(shareUrl83)) plKey91 = "pl_add";
         } catch (Exception ignored) {}
         if (shareKey83.length() > 0) keys69.add(0, shareKey83);
         // v15.71 (slice 2085): the copy key composes right after
@@ -982,6 +1020,25 @@ public class FavouritesActivity extends Activity {
         if (copyKey85.length() > 0) {
             int at85 = keys69.indexOf("menu_share");
             keys69.add(at85 < 0 ? keys69.size() : at85 + 1, copyKey85);
+        }
+        // v15.72 (slice 2089): the file key composes right after
+        // the copy (indexOf + 1 — the copy insert above already
+        // landed, so inserting here keeps the share/copy/file
+        // trio adjacent whatever later inserts do; a file implies
+        // a copy, since a downloaded talk always has a non-blank
+        // URL — the at89 < 0 leg is defensive only).
+        if (fileKey89.length() > 0) {
+            int at89 = keys69.indexOf("dl_menu_copy_link");
+            keys69.add(at89 < 0 ? keys69.size() : at89 + 1, fileKey89);
+        }
+        // v15.72 (slice 2091): the playlist key composes right before
+        // Remove from favourites (indexOf — the removal stays last
+        // and the collect verbs sit together; a playlist add implies
+        // a share, since both gates are the same non-blank URL — the
+        // at91 < 0 leg is defensive only).
+        if (plKey91.length() > 0) {
+            int at91 = keys69.indexOf("menu_fav_remove");
+            keys69.add(at91 < 0 ? keys69.size() : at91, plKey91);
         }
         java.util.ArrayList<String> opts = new java.util.ArrayList<String>();
         for (String k69 : keys69) opts.add(Lang.t(this, k69));
@@ -995,6 +1052,10 @@ public class FavouritesActivity extends Activity {
                             shareTalkFav(c);
                         } else if ("dl_menu_copy_link".equals(keyArr[which])) {
                             copyTalkLinkFav(c);
+                        } else if ("dl_menu_share_file".equals(keyArr[which])) {
+                            shareFileFav(c);
+                        } else if ("pl_add".equals(keyArr[which])) {
+                            addToPlaylistFav(c);
                         } else if ("menu_play_from_here".equals(keyArr[which])) {
                             playFromHereFav(c);
                         } else if ("menu_queue_add".equals(keyArr[which])) {
@@ -1408,6 +1469,132 @@ public class FavouritesActivity extends Activity {
         } catch (Exception ignored) {}
     }
 
+    // v15.72 (slice 2089): "Share file" — the row menu's
+    // file-share verb (History's dl_menu_share_file, v15.53
+    // slice 1982, on this screen's menu; the library row menu
+    // has shared its file since v15.48 slice 1954, the Room
+    // drawer since slice 1955, the Talks chooser since slice
+    // 1956, the History row menu since slice 1982 and the New
+    // talks row menu since v15.71 slice 2087 — all through the
+    // same TalkFileShare core, so the surfaces can never
+    // disagree): re-resolve the row to its stream URL at tap
+    // time (favStreamUrlFor — the offer and the tap can never
+    // disagree), re-check the download gate fresh
+    // (favIsDownloaded + favDownloadFileNameFor — the History
+    // v13.77 pair, mirrored), and send the actual .mp3 through
+    // the Android sheet as a TalkFileProvider content:// URI
+    // with a one-shot read grant, type audio/mpeg (a file://
+    // URI is refused on API 24+), chooser titled share_talk.
+    // A name that no longer resolves to a file on disk toasts
+    // talk_no_longer_in_list, never a guessed URI. A share
+    // mutates nothing: no favourite, queue or resume change;
+    // no pause guard (History's file share sets none; the text
+    // share beside it sets none); the sounding row keeps it
+    // (sharing never touches playback). The shared unit is the
+    // talk's downloaded FILE, not the link (the copy beside it
+    // sends the link; this verb sends the bytes).
+    private void shareFileFav(final FavTalkRail.Card c) {
+        if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return;
+        final String streamUrl = favStreamUrlFor(c.e);
+        java.io.File dir89 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+        String fn89 = favIsDownloaded(streamUrl) ? favDownloadFileNameFor(streamUrl) : null;
+        String uri89 = TalkFileShare.shareUriFor(dir89, fn89);
+        if (uri89 == null) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        android.content.Intent send89 = new android.content.Intent(android.content.Intent.ACTION_SEND);
+        send89.setType("audio/mpeg");
+        send89.putExtra(android.content.Intent.EXTRA_STREAM, android.net.Uri.parse(uri89));
+        send89.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivity(android.content.Intent.createChooser(send89,
+                Lang.t(FavouritesActivity.this, "share_talk")));
+    }
+
+    // v15.72 (slice 2089): History histIsDownloaded (v13.77),
+    // Favourites-local — the dlMap mapped file with the v13.66
+    // length gate (a 0-byte file is not downloaded), plus the
+    // plain basename leg for files the app enqueued under a
+    // stripped name. The offer and the tap both read it fresh,
+    // so a download landing while the dialog sits open can
+    // never be missed and a deletion can never be served.
+    private boolean favIsDownloaded(String url) {
+        if (url == null || url.length() == 0) return false;
+        try {
+            java.io.File dir = new java.io.File(android.os.Environment
+                    .getExternalStoragePublicDirectory(
+                            android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            String mapped = map.optString(SiteHttp.identityUrl(url), "");
+            if (mapped.length() > 0) {
+                java.io.File f = new java.io.File(dir, mapped);
+                if (f.isFile() && f.length() > 0) return true;
+            }
+            String base = url.substring(url.lastIndexOf('/') + 1);
+            int q = base.indexOf('?');
+            if (q >= 0) base = base.substring(0, q);
+            int h = base.indexOf('#');
+            if (h >= 0) base = base.substring(0, h);
+            if (base.length() > 0) {
+                java.io.File f = new java.io.File(dir, base);
+                if (f.isFile() && f.length() > 0) return true;
+            }
+            return false;
+        } catch (Exception ignored) { return false; }
+    }
+
+    // v15.72 (slice 2089): History histDownloadFileNameFor
+    // (v13.77), Favourites-local — the dlMap name wins, else the
+    // basename stripped of ?/# with .mp3 guaranteed, and a
+    // basename another URL's download claims takes the 8-hex MD5
+    // suffix (v8.40 claim-alone rule).
+    private String favDownloadFileNameFor(String url) {
+        try {
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            String mapped = map.optString(SiteHttp.identityUrl(url), "");
+            if (mapped.length() > 0) return mapped;
+            String base = url.substring(url.lastIndexOf('/') + 1);
+            int q = base.indexOf('?');
+            if (q >= 0) base = base.substring(0, q);
+            int hh = base.indexOf('#');
+            if (hh >= 0) base = base.substring(0, hh);
+            if (!base.toLowerCase().endsWith(".mp3")) base = base + ".mp3";
+            java.util.Iterator<String> keys = map.keys();
+            boolean claimed = false;
+            while (keys.hasNext()) {
+                String k = keys.next();
+                if (!SiteHttp.sameTalk(k, url) && base.equals(map.optString(k, ""))) {
+                    claimed = true;
+                    break;
+                }
+            }
+            if (claimed) {
+                String hash = "";
+                try {
+                    java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+                    byte[] d = md.digest(url.getBytes("UTF-8"));
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 0; i < 4; i++) sb.append(String.format("%02x", d[i]));
+                    hash = sb.toString();
+                } catch (Exception ignored) { hash = String.format("%08x", url.hashCode()); }
+                if (base.toLowerCase().endsWith(".mp3"))
+                    return base.substring(0, base.length() - 4) + "_" + hash + base.substring(base.length() - 4);
+                return base + "_" + hash;
+            }
+            return base;
+        } catch (Exception ignored) {
+            String base = url.substring(url.lastIndexOf('/') + 1);
+            if (!base.toLowerCase().endsWith(".mp3")) base = base + ".mp3";
+            return base;
+        }
+    }
+
     private void removeFavFromMenu(final FavTalkRail.Card c) {
         if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return;
         boolean starred = false;
@@ -1441,6 +1628,124 @@ public class FavouritesActivity extends Activity {
         android.widget.Toast.makeText(this,
                 Lang.t(this, removed ? "fav_removed" : "nothing_to_delete"),
                 android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    // v15.72 (slice 2091): "Add to playlist" — the row menu's
+    // playlist verb (the Room's showPlaylistAddDialog, v12.65–
+    // v12.80, on this screen's menu; the Room's dialog has no
+    // entry point anywhere in the app — defined once, called
+    // zero times — so this is the verb's first live offer, on
+    // the screen of favourite talks, where "my favourite talk
+    // -> my morning / bedtime list" is the natural flow;
+    // premium backlog #2, the Spotify / YouTube Music /
+    // Apple Music row-menu verb): re-resolve the row to its
+    // stream URL at tap time (favStreamUrlFor — the offer and
+    // the tap can never disagree), toast
+    // talk_no_longer_in_list when the file behind a path-form
+    // row no longer resolves (the share/copy/file precedent on
+    // this screen), heal the sayadaw exactly like the row tap
+    // (catalogFor + the sayadawForTalk heal — a stale banked
+    // sayadaw would strand the playlist item under the wrong
+    // owner, the v12.78 lesson; the Room's playlistOwnerFor
+    // heals the same way), then offer the listener's lists
+    // (Prefs.playlistNames — the seed lists are there from the
+    // first read) plus a "new list" row (pl_new, last). A tap
+    // files the talk through Prefs.playlistAdd and toasts the
+    // v12.80 result (FavPlAdd.toastKey: added / already there
+    // / full / could-not-create); the new-list row opens the
+    // name dialog. An add mutates no favourite, queue or
+    // resume state; no pause guard (no sheet is left to
+    // return from); the sounding row keeps it (filing never
+    // touches playback).
+    private void addToPlaylistFav(final FavTalkRail.Card c) {
+        if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return;
+        final String streamUrl = favStreamUrlFor(c.e);
+        if (!FavPlAdd.canOffer(streamUrl)) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String sd91 = c.e.sayadaw;
+        String[] cat91 = catalogFor(sd91);
+        if (cat91 == null || cat91[1] == null || cat91[1].length() == 0) {
+            String owner91 = Prefs.sayadawForTalk(this, "lib", streamUrl, "");
+            if (owner91 != null && owner91.length() > 0 && !owner91.equals(sd91)) {
+                sd91 = owner91;
+            }
+        }
+        final String title91 = c.e.title != null ? c.e.title : "";
+        final String sdF91 = sd91;
+        final java.util.List<String> names91 = Prefs.playlistNames(this);
+        final String[] items91 = new String[names91.size() + 1];
+        for (int i91 = 0; i91 < names91.size(); i91++) items91[i91] = names91.get(i91);
+        items91[names91.size()] = Lang.t(this, "pl_new");
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(Lang.t(this, "pl_choose"))
+                .setItems(items91, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        if (FavPlAdd.isNewRow(which, names91.size())) {
+                            showNewPlaylistFav(streamUrl, title91, sdF91);
+                            return;
+                        }
+                        int r91 = Prefs.playlistAdd(FavouritesActivity.this,
+                                names91.get(which), streamUrl, sdF91, title91);
+                        android.widget.Toast.makeText(FavouritesActivity.this,
+                                Lang.t(FavouritesActivity.this, FavPlAdd.toastKey(r91)),
+                                android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .show();
+    }
+
+    // v15.72 (slice 2091): the "new list" dialog for the
+    // playlist verb — the Room's showNewPlaylistDialog
+    // (v12.80), on this screen: a name field (pl_name_hint),
+    // a Create button (pl_create) and a cancel (btn_no_clear);
+    // an empty name re-prompts with the hint toast; the name
+    // caps at 40 chars (PLAYLIST_MAX_NAME); create is a
+    // no-op for an existing name, so a repeat name just adds
+    // to that list; at the 20-list cap a genuinely new name
+    // toasts pl_limit (FavPlAdd.limitToastKey), any other
+    // create failure pl_no_create — neither falls through to
+    // the add (the v12.80 leg). The add toasts the same
+    // v12.80 result as the choose dialog.
+    private void showNewPlaylistFav(final String url, final String title, final String sd) {
+        final android.widget.EditText et91 = new android.widget.EditText(this);
+        et91.setHint(Lang.t(this, "pl_name_hint"));
+        et91.setSingleLine(true);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(Lang.t(this, "pl_new"))
+                .setView(et91)
+                .setPositiveButton(Lang.t(this, "pl_create"),
+                        new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        String name91 = et91.getText().toString().trim();
+                        if (name91.length() == 0) {
+                            android.widget.Toast.makeText(FavouritesActivity.this,
+                                    Lang.t(FavouritesActivity.this, "pl_name_hint"),
+                                    android.widget.Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        if (name91.length() > 40) name91 = name91.substring(0, 40);
+                        boolean created91 = Prefs.playlistCreate(FavouritesActivity.this, name91);
+                        java.util.List<String> held91 = Prefs.playlistNames(FavouritesActivity.this);
+                        String limit91 = FavPlAdd.limitToastKey(created91,
+                                held91.contains(name91), held91.size());
+                        if (limit91 != null) {
+                            android.widget.Toast.makeText(FavouritesActivity.this,
+                                    Lang.t(FavouritesActivity.this, limit91),
+                                    android.widget.Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        int r91 = Prefs.playlistAdd(FavouritesActivity.this, name91, url, sd, title);
+                        android.widget.Toast.makeText(FavouritesActivity.this,
+                                Lang.t(FavouritesActivity.this, FavPlAdd.toastKey(r91)),
+                                android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton(Lang.t(this, "btn_no_clear"), null)
+                .show();
     }
 
     private void playFav(final FavTalkRail.Card c, android.view.View v) {
