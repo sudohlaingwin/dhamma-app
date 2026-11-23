@@ -898,16 +898,20 @@ public class BookmarksActivity extends Activity {
     // from the Room bookmark list's ✕ (v12.64) or the Bookmarks
     // rail menu (v15.55 slice 1992), and nothing started a run
     // mid-list (Play-all-marks starts at the top, a tap plays one
-    // mark at its minute). The menu opens with the two verbs this
-    // screen needs: "Play from here" (the chooser's 1942 /
+    // mark at its minute). The menu opens with the verbs this screen needs:
+    // "Share talk" first (the History menu_share shape, v13.77 — share the
+    // row's talk through the Android sheet), "Copy link" second (the History
+    // dl_menu_copy_link shape, v15.53 — copy the row's stream URL to the
+    // clipboard, the share/copy pair together), then "Play from here" (the chooser's 1942 /
     // History's 2030 / Favourites' 2069 / New talks' 2071 verb —
     // queue the shown run of marks from this mark onward and open
     // the Room on it at its minute) and "Delete bookmark" (the
     // rail's own verb — the confirm names the exact minute, so a
-    // talk with several marks never deletes the wrong one). Share
-    // is the remaining future verb on this same menu (go-to-
-    // sayadaw landed in slice 2077; the History menu grew the
-    // same way: 1981, 1982, 1995, 2030).
+    // talk with several marks never deletes the wrong one).
+    // download is the remaining future verb on this same menu
+    // (copy-link landed in slice 2086, share in slice 2084,
+    // go-to-sayadaw in slice 2077, queue in slice 2075; the
+    // History menu grew the same way: 1981, 1982, 1995, 2030).
     // The offer comes from the pure BmRowMenu core (the resolved
     // stream URL + the BmPlayAll sounding rule; the delete verb is
     // always offered — the row IS a bookmark); the dialog is
@@ -974,6 +978,49 @@ public class BookmarksActivity extends Activity {
             int at77 = keys72.indexOf("bm_menu_remove");
             keys72.add(at77 < 0 ? keys72.size() : at77, goKey77);
         }
+        // v15.71 (slice 2084): the share verb — "Share talk"
+        // (BmTalkShare, the History menu_share shape, v13.77): the
+        // row's stream URL is already resolved once per menu open
+        // (streamUrlFor above — URL-form rows share their own URL,
+        // path-form rows resolve through the dlMap reverse lookup
+        // with the exactly-one-claimant rule, v8.44; an
+        // unresolvable row offers no share, never a guessed
+        // link). The key composes FIRST, before Play-from-here,
+        // so the share sits at the top of the menu like History's
+        // menu and the chooser's dialog ("share first so muscle
+        // memory is preserved", v7.82). Offered on any row with a
+        // resolvable stream URL — sounding or not, sharing never
+        // touches playback.
+        // v15.71 (slice 2086): the copy verb — "Copy link"
+        // (RoomCopyLink, the History dl_menu_copy_link shape,
+        // v15.53 slice 1981): the same resolved stream URL
+        // (streamUrl — no second resolve, the v5.69 cost rule)
+        // offers the clipboard copy, so a listener who wants
+        // just the link pasted elsewhere never has to share it
+        // through the sheet and copy from there. The gate is
+        // blank-URL-only (RoomCopyLink.canOffer), so a
+        // streamed-only talk still offers it (a link is not a
+        // file); only a blank URL hides it. The key composes
+        // right after the share (below), so the share/copy pair
+        // sits together like History's menu and the chooser's
+        // trio — the pair can never be split by a later insert.
+        String shareKey84 = "";
+        String copyKey86 = "";
+        try {
+            if (BmTalkShare.canOffer(streamUrl)) shareKey84 = "menu_share";
+            if (RoomCopyLink.canOffer(streamUrl)) copyKey86 = "dl_menu_copy_link";
+        } catch (Exception ignored) {}
+        if (shareKey84.length() > 0) keys72.add(0, shareKey84);
+        // v15.71 (slice 2086): the copy key composes right after
+        // the share (indexOf + 1 — the share sits at index 0, so
+        // inserting here keeps the share/copy pair adjacent
+        // whatever later inserts do; a copy implies a share, since
+        // both gates are the same non-blank URL — the at86 < 0
+        // leg is defensive only).
+        if (copyKey86.length() > 0) {
+            int at86 = keys72.indexOf("menu_share");
+            keys72.add(at86 < 0 ? keys72.size() : at86 + 1, copyKey86);
+        }
         if (keys72.isEmpty()) return;
         java.util.ArrayList<String> opts = new java.util.ArrayList<String>();
         for (String k72 : keys72) opts.add(Lang.t(this, k72));
@@ -983,7 +1030,11 @@ public class BookmarksActivity extends Activity {
                 .setTitle(r.e.title != null && r.e.title.length() > 0 ? r.e.title : r.e.url)
                 .setItems(optArr, new android.content.DialogInterface.OnClickListener() {
                     @Override public void onClick(android.content.DialogInterface d, int which) {
-                        if ("menu_play_from_here".equals(keyArr[which])) {
+                        if ("menu_share".equals(keyArr[which])) {
+                            shareTalkBm(r);
+                        } else if ("dl_menu_copy_link".equals(keyArr[which])) {
+                            copyTalkLinkBm(r);
+                        } else if ("menu_play_from_here".equals(keyArr[which])) {
                             playFromHereBm(r);
                         } else if ("menu_queue_add".equals(keyArr[which])) {
                             queueAddBm(r);
@@ -1301,6 +1352,88 @@ public class BookmarksActivity extends Activity {
         gi77.putExtra("photo", GoSayadaw.photo(cat77));
         Fx.tap(BookmarksActivity.this);
         Fx.go(BookmarksActivity.this, gi77);
+    }
+
+    // v15.71 (slice 2084): "Share talk" — the row menu's share
+    // verb (History's menu_share, v13.77, on this screen's menu;
+    // the chooser's long-press dialog shares first, v7.82, and
+    // the library row menu has shared since v9.55; the New talks
+    // row menu shares since slice 2080, Favourites since slice
+    // 2083): re-resolve the row to its stream URL at tap time
+    // (streamUrlFor — the offer and the tap can never disagree),
+    // toast talk_no_longer_in_list when the file behind a
+    // path-form row no longer resolves (the History file-share's
+    // stale toast), else share the talk's text through the
+    // Android sheet — sayadaw — title + stream URL + the
+    // dhammadownload.com credit (BmTalkShare.shareText, the
+    // History text shape) — chooser titled share_talk. A share
+    // mutates nothing: no bookmark, queue or resume change; no
+    // pause guard (no sheet is left to return from); the sounding
+    // row keeps it (sharing never touches playback). The shared
+    // unit is the TALK, not the mark: a mark's minute is not in
+    // the text — the minute share lives on the Main Bookmarks
+    // rail (BmShare, v15.55 slice 1993), a different payload.
+    private void shareTalkBm(final BmAll.Row r) {
+        if (r == null || r.e == null || r.e.url == null || r.e.url.length() == 0) return;
+        final String streamUrl = streamUrlFor(r.e);
+        if (!BmTalkShare.canOffer(streamUrl)) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        android.content.Intent send84 = new android.content.Intent(android.content.Intent.ACTION_SEND);
+        send84.setType("text/plain");
+        send84.putExtra(android.content.Intent.EXTRA_TEXT,
+                BmTalkShare.shareText(r.e.sayadaw, r.e.title, streamUrl,
+                        Lang.t(BookmarksActivity.this, "share_source")));
+        Fx.tap(BookmarksActivity.this);
+        startActivity(android.content.Intent.createChooser(send84,
+                Lang.t(BookmarksActivity.this, "share_talk")));
+    }
+
+    // v15.71 (slice 2086): "Copy link" — the row menu's clipboard
+    // verb (History's dl_menu_copy_link, v15.53 slice 1981, on
+    // this screen's menu; the library row menu has copied since
+    // v6.56, the Room drawer since slice 1975, the Talks chooser
+    // since slice 1977, the New talks row menu since slice 2081
+    // and the Favourites row menu since slice 2085 — all through
+    // the same RoomCopyLink core, so the surfaces can never
+    // disagree): re-resolve the row to its stream URL at tap time
+    // (streamUrlFor — the offer and the tap can never disagree),
+    // toast talk_no_longer_in_list when the file behind a
+    // path-form row no longer resolves (this screen's share
+    // already sets that toast precedent; History's copy stays
+    // silent, but a visible menu verb that silently does nothing
+    // is a dead tap), else copy the talk's own original link
+    // verbatim (the v6.56 rule — never a bare title, never a
+    // guessed link) with the v6.56 clipboard label + toast
+    // (RoomCopyLink.clipText / toastText). A copy mutates
+    // nothing: no bookmark, queue or resume change; no pause
+    // guard (no sheet is left to return from); the sounding row
+    // keeps it (copying never touches playback). The copied unit
+    // is the TALK, not the mark (the 2084 adjudication): the
+    // minute payload lives on the Main Bookmarks rail (BmShare,
+    // v15.55 slice 1993), a different payload.
+    private void copyTalkLinkBm(final BmAll.Row r) {
+        if (r == null || r.e == null || r.e.url == null || r.e.url.length() == 0) return;
+        final String streamUrl = streamUrlFor(r.e);
+        if (!RoomCopyLink.canOffer(streamUrl)) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            android.content.ClipboardManager cm86 =
+                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (cm86 != null)
+                cm86.setPrimaryClip(android.content.ClipData.newPlainText(
+                        Lang.t(BookmarksActivity.this, "clip_talk"), RoomCopyLink.clipText(streamUrl)));
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    RoomCopyLink.toastText(Lang.t(BookmarksActivity.this, "link_copied_prefix"), r.e.title, streamUrl),
+                    android.widget.Toast.LENGTH_SHORT).show();
+        } catch (Exception ignored) {}
     }
 
     private void removeBmFromMenu(final BmAll.Row r) {
@@ -2229,22 +2362,24 @@ public class BookmarksActivity extends Activity {
         return out;
     }
 
+    // v15.71 (slice 2084): the path-form leg now delegates to the
+    // pure BmTalkShare.resolve over the dlMap (dlMapNow2037 — the
+    // same parse the strip pays for); the inline loop was the
+    // same exactly-one-claimant rule, v8.44, written twice — once
+    // here, once as the share core — so the rule lives in one
+    // place and the WgTest pins it directly (the 2083
+    // adjudication). Behaviour is identical: the same base
+    // extraction, the same single-claimant gate, "" on a miss or
+    // a torn map. Every verb that resolves a row (play-from-here,
+    // queue, play-all, the share) flows through this one method,
+    // so the offer and every tap can never disagree.
     private String streamUrlFor(Prefs.HistEntry e) {
         if (e == null || e.url == null || e.url.length() == 0) return "";
         if (!e.url.startsWith("/")) return SiteHttp.identityUrl(e.url);
         try {
-            String base = e.url.substring(e.url.lastIndexOf('/') + 1);
             android.content.SharedPreferences sp =
                     getSharedPreferences("dhamma", MODE_PRIVATE);
-            org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
-            java.util.Iterator<String> keys = map.keys();
-            String hit = null;
-            int matches = 0;
-            while (keys.hasNext()) {
-                String k = keys.next();
-                if (base.equals(map.optString(k, ""))) { hit = k; matches++; }
-            }
-            return matches == 1 ? hit : "";
+            return BmTalkShare.resolve(e.url, dlMapNow2037(sp));
         } catch (Exception ignored) { return ""; }
     }
 

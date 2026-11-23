@@ -904,17 +904,19 @@ public class NewTalksActivity extends Activity {
     // (the History menu_share shape, v13.77 - share the row's talk
     // through the Android sheet), "Copy link" second (the History
     // dl_menu_copy_link shape, v15.53 - copy the row's stream URL
-    // to the clipboard, the share/copy pair together), then
-    // "Play from here"
+    // to the clipboard, the share/copy pair together), "Share file"
+    // third (the History dl_menu_share_file shape, v15.53 - send
+    // the downloaded .mp3 through the sheet, the share/copy/file
+    // trio together), then "Play from here"
     // (the chooser's 1942 / History's 2030 / Favourites' 2069 verb
     // — queue the shown run from this row onward and open the Room
     // on it at 0:00) and the state-dependent star verb ("Add to
     // favourites" when unstarred, "Remove from favourites" when
     // starred — the chooser 1969 / library / History 1267 shape).
     // download is the remaining future verb on this same menu
-    // (copy-link landed in slice 2081, share in slice 2080,
-    // go-to-sayadaw in slice 2079, queue in slice 2074; the
-    // History menu grew the same way: 1981,
+    // (share-file landed in slice 2087, copy-link in slice 2081,
+    // share in slice 2080, go-to-sayadaw in slice 2079, queue in
+    // slice 2074; the History menu grew the same way: 1981,
     // 1982, 1995, 2030). The offer comes from the pure NewRowMenu
     // core (the NewPlayAll three-identity sounding gate, path-form
     // rows offer the star verb only); the dialog is History's
@@ -961,12 +963,29 @@ public class NewTalksActivity extends Activity {
         // share, so the share/copy pair sits together like
         // History's menu and the chooser's trio — the pair can
         // never be split by a later insert.
+        // v15.71 (slice 2087): the file verb — "Share file"
+        // (TalkFileShare, the History dl_menu_share_file shape,
+        // v15.53 slice 1982): the same resolved stream URL
+        // (shareUrl80 — no second resolve, the v5.69 cost rule)
+        // offers sending the actual downloaded .mp3, so a
+        // listener who just downloaded a new talk never has to
+        // find it in Downloads/Dhamma by hand. The gate is the
+        // screen's own download check (newIsDownloaded — the
+        // History v13.77 pair: dlMap mapped file + the v13.66
+        // length gate, plus the basename leg), so a streamed-only
+        // talk never offers it (a file is not a link). The key
+        // composes right after the copy (below), so the
+        // share/copy/file trio sits together like History's menu
+        // and the chooser's dialog — the trio can never be split
+        // by a later insert.
         String shareKey80 = "";
         String copyKey81 = "";
+        String fileKey87 = "";
         try {
             String shareUrl80 = newStreamUrlFor(c.e);
             if (NewShare.canOffer(shareUrl80)) shareKey80 = "menu_share";
             if (RoomCopyLink.canOffer(shareUrl80)) copyKey81 = "dl_menu_copy_link";
+            if (newIsDownloaded(shareUrl80)) fileKey87 = "dl_menu_share_file";
         } catch (Exception ignored) {}
         if (shareKey80.length() > 0) keys71.add(0, shareKey80);
         // v15.69 (slice 2074): the queue verb — "Add to queue" /
@@ -1033,6 +1052,16 @@ public class NewTalksActivity extends Activity {
             int at81 = keys71.indexOf("menu_share");
             keys71.add(at81 < 0 ? keys71.size() : at81 + 1, copyKey81);
         }
+        // v15.71 (slice 2087): the file key composes right after
+        // the copy (indexOf + 1 — the copy insert above already
+        // landed, so inserting here keeps the share/copy/file
+        // trio adjacent whatever later inserts do; a file implies
+        // a copy, since a downloaded talk always has a non-blank
+        // URL — the at87 < 0 leg is defensive only).
+        if (fileKey87.length() > 0) {
+            int at87 = keys71.indexOf("dl_menu_copy_link");
+            keys71.add(at87 < 0 ? keys71.size() : at87 + 1, fileKey87);
+        }
         if (keys71.isEmpty()) return;
         java.util.ArrayList<String> opts = new java.util.ArrayList<String>();
         for (String k71 : keys71) opts.add(Lang.t(this, k71));
@@ -1046,6 +1075,8 @@ public class NewTalksActivity extends Activity {
                             shareTalkNew(c);
                         } else if ("dl_menu_copy_link".equals(keyArr[which])) {
                             copyTalkLinkNew(c);
+                        } else if ("dl_menu_share_file".equals(keyArr[which])) {
+                            shareFileNew(c);
                         } else if ("menu_play_from_here".equals(keyArr[which])) {
                             playFromHereNew(c);
                         } else if ("menu_queue_add".equals(keyArr[which])) {
@@ -1462,6 +1493,131 @@ public class NewTalksActivity extends Activity {
                     RoomCopyLink.toastText(Lang.t(NewTalksActivity.this, "link_copied_prefix"), c.e.title, streamUrl),
                     android.widget.Toast.LENGTH_SHORT).show();
         } catch (Exception ignored) {}
+    }
+
+    // v15.71 (slice 2087): "Share file" — the row menu's
+    // file-share verb (History's dl_menu_share_file, v15.53
+    // slice 1982, on this screen's menu; the library row menu
+    // has shared its file since v15.48 slice 1954, the Room
+    // drawer since slice 1955, the Talks chooser since slice
+    // 1956 and the History row menu since slice 1982 — all
+    // through the same TalkFileShare core, so the surfaces can
+    // never disagree): re-resolve the row to its stream URL at
+    // tap time (newStreamUrlFor — the offer and the tap can
+    // never disagree), re-check the download gate fresh
+    // (newIsDownloaded + newDownloadFileNameFor — the History
+    // v13.77 pair, mirrored), and send the actual .mp3 through
+    // the Android sheet as a TalkFileProvider content:// URI
+    // with a one-shot read grant, type audio/mpeg (a file://
+    // URI is refused on API 24+), chooser titled share_talk.
+    // A name that no longer resolves to a file on disk toasts
+    // talk_no_longer_in_list, never a guessed URI. A share
+    // mutates nothing: no favourite, queue or resume change;
+    // no pause guard (History's file share sets none; the text
+    // share beside it sets none); the sounding row keeps it
+    // (sharing never touches playback). The shared unit is the
+    // talk's downloaded FILE, not the link (the copy beside it
+    // sends the link; this verb sends the bytes).
+    private void shareFileNew(final NewTalkRail.Card c) {
+        if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return;
+        final String streamUrl = newStreamUrlFor(c.e);
+        java.io.File dir87 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+        String fn87 = newIsDownloaded(streamUrl) ? newDownloadFileNameFor(streamUrl) : null;
+        String uri87 = TalkFileShare.shareUriFor(dir87, fn87);
+        if (uri87 == null) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        android.content.Intent send87 = new android.content.Intent(android.content.Intent.ACTION_SEND);
+        send87.setType("audio/mpeg");
+        send87.putExtra(android.content.Intent.EXTRA_STREAM, android.net.Uri.parse(uri87));
+        send87.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivity(android.content.Intent.createChooser(send87,
+                Lang.t(NewTalksActivity.this, "share_talk")));
+    }
+
+    // v15.71 (slice 2087): History histIsDownloaded (v13.77),
+    // New-talks-local — the dlMap mapped file with the v13.66
+    // length gate (a 0-byte file is not downloaded), plus the
+    // plain basename leg for files the app enqueued under a
+    // stripped name. The offer and the tap both read it fresh,
+    // so a download landing while the dialog sits open can
+    // never be missed and a deletion can never be served.
+    private boolean newIsDownloaded(String url) {
+        if (url == null || url.length() == 0) return false;
+        try {
+            java.io.File dir = new java.io.File(android.os.Environment
+                    .getExternalStoragePublicDirectory(
+                            android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            String mapped = map.optString(SiteHttp.identityUrl(url), "");
+            if (mapped.length() > 0) {
+                java.io.File f = new java.io.File(dir, mapped);
+                if (f.isFile() && f.length() > 0) return true;
+            }
+            String base = url.substring(url.lastIndexOf('/') + 1);
+            int q = base.indexOf('?');
+            if (q >= 0) base = base.substring(0, q);
+            int h = base.indexOf('#');
+            if (h >= 0) base = base.substring(0, h);
+            if (base.length() > 0) {
+                java.io.File f = new java.io.File(dir, base);
+                if (f.isFile() && f.length() > 0) return true;
+            }
+            return false;
+        } catch (Exception ignored) { return false; }
+    }
+
+    // v15.71 (slice 2087): History histDownloadFileNameFor
+    // (v13.77), New-talks-local — the dlMap name wins, else the
+    // basename stripped of ?/# with .mp3 guaranteed, and a
+    // basename another URL's download claims takes the 8-hex MD5
+    // suffix (v8.40 claim-alone rule).
+    private String newDownloadFileNameFor(String url) {
+        try {
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            String mapped = map.optString(SiteHttp.identityUrl(url), "");
+            if (mapped.length() > 0) return mapped;
+            String base = url.substring(url.lastIndexOf('/') + 1);
+            int q = base.indexOf('?');
+            if (q >= 0) base = base.substring(0, q);
+            int hh = base.indexOf('#');
+            if (hh >= 0) base = base.substring(0, hh);
+            if (!base.toLowerCase().endsWith(".mp3")) base = base + ".mp3";
+            java.util.Iterator<String> keys = map.keys();
+            boolean claimed = false;
+            while (keys.hasNext()) {
+                String k = keys.next();
+                if (!SiteHttp.sameTalk(k, url) && base.equals(map.optString(k, ""))) {
+                    claimed = true;
+                    break;
+                }
+            }
+            if (claimed) {
+                String hash = "";
+                try {
+                    java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+                    byte[] d = md.digest(url.getBytes("UTF-8"));
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 0; i < 4; i++) sb.append(String.format("%02x", d[i]));
+                    hash = sb.toString();
+                } catch (Exception ignored) { hash = String.format("%08x", url.hashCode()); }
+                if (base.toLowerCase().endsWith(".mp3"))
+                    return base.substring(0, base.length() - 4) + "_" + hash + base.substring(base.length() - 4);
+                return base + "_" + hash;
+            }
+            return base;
+        } catch (Exception ignored) {
+            String base = url.substring(url.lastIndexOf('/') + 1);
+            if (!base.toLowerCase().endsWith(".mp3")) base = base + ".mp3";
+            return base;
+        }
     }
 
     private void toggleFavFromMenu(final NewTalkRail.Card c) {
