@@ -107,6 +107,61 @@ public class PlaylistActivity extends Activity {
     private AlertDialog copyDialog;
     private EditText copyListEdit;
     private String copyListName;
+    // v15.77 (slice 2120): sort on the lists screen — the button
+    // and the persisted mode (the Bookmarks bmSortMode shape,
+    // v15.65 slice 2051). The mode is read from Prefs in
+    // wirePlSort(); the button label names the CURRENT order
+    // (plSortLabel — the 2051 bm_sort_* keys, reused: creation
+    // order reads as oldest first, newest first as latest
+    // first, name order as sort_az), so the order reads in a
+    // still. The button lives in lists mode only (GONE in detail
+    // — the 2065 rule, so the header verbs show and hide
+    // together: Play All + Shuffle in detail, Sort in lists).
+    private android.widget.Button plSortBtn = null;
+    private int plSortMode = 0;
+    // v15.77 (slice 2121): Share playlist on the detail screen
+    // — the button (the 2113 share verb's second surface: the
+    // open list's own screen). The label is the reused
+    // menu_pl_share key; the tap shares the open list
+    // (sharePlaylist) — the 2113 method, re-read +
+    // re-checked). GONE in lists mode (the 2065 rule — the
+    // header verbs show and hide together: Play All + Shuffle
+    // + Share in detail, Sort in lists).
+    private android.widget.Button plShareBtn = null;
+    // v15.77 (slice 2122): Copy playlist on the detail screen
+    // — the button (the 2114 copy verb's second surface: the
+    // open list's own screen, beside Share in the second
+    // action row). The label is the reused menu_pl_copy key;
+    // the tap opens the 2114 copy dialog for the open list.
+    // GONE in lists mode (the 2065 rule — the header verbs
+    // show and hide together: Play All + Shuffle in the first
+    // row, Share + Copy in the second).
+    private android.widget.Button plCopyBtn = null;
+    // v15.77 (slice 2123): Rename playlist on the detail screen
+    // — the button (the 2111 rename verb's second surface: the
+    // open list's own screen, in the third action row — Share +
+    // Copy + Rename would need ~385dp against a 328-361dp
+    // budget, so Rename gets its own row). The label is the
+    // reused menu_pl_rename key; the tap opens the 2111 rename
+    // dialog for the open list — a successful rename stays on
+    // the renamed list instead of dropping back to the lists
+    // screen. GONE in lists mode (the 2065 rule — the header
+    // verbs show and hide together: Play All + Shuffle in the
+    // first row, Share + Copy in the second, Rename in the
+    // third).
+    private android.widget.Button plRenameBtn = null;
+    // v15.77 (slice 2124): Delete playlist on the detail screen
+    // — the button (the v14.06 delete verb's second surface: the
+    // open list's own screen, beside Rename in the third action
+    // row — Rename + Delete together need ~267dp against a
+    // 328-361dp budget, so they share the row). The label is the
+    // reused pl_delete_btn key; the tap opens the delete confirm
+    // for the open list — confirming deletes it and drops back
+    // to the lists screen (there is no list to stay on). GONE in
+    // lists mode (the 2065 rule — the header verbs show and hide
+    // together: Play All + Shuffle in the first row, Share +
+    // Copy in the second, Rename + Delete in the third).
+    private android.widget.Button plDeleteBtn = null;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -139,6 +194,11 @@ public class PlaylistActivity extends Activity {
         if (plShuffleBtn != null) Fx.press(plShuffleBtn);
         wirePlJumpBtn(); // v15.74 (slice 2103): jump to the playing talk on this screen, before the first refresh
         wirePlTopBtn(); // v15.74 (slice 2104): back to top on this screen, before the first refresh
+        wirePlSort(); // v15.77 (slice 2120): sort on the lists screen, before the first refresh
+        wirePlShare(); // v15.77 (slice 2121): share playlist on the detail screen, before the first refresh
+        wirePlCopy(); // v15.77 (slice 2122): copy playlist on the detail screen, before the first refresh
+        wirePlRename(); // v15.77 (slice 2123): rename playlist on the detail screen, before the first refresh
+        wirePlDelete(); // v15.77 (slice 2124): delete playlist on the detail screen, before the first refresh
         if (headerBtn != null) {
             headerBtn.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) {
@@ -419,11 +479,35 @@ public class PlaylistActivity extends Activity {
 
     private void showLists() {
         curList = null;
-        names = Prefs.playlistNames(this);
+        // v15.77 (slice 2120): the lists read in the chosen
+        // order — PlSort.sort on the store names (creation order
+        // is the store order, the default; newest first reverses
+        // it; name A-Z sorts it). The sort rides showLists, so
+        // every lists paint (navigation, return from the Room,
+        // a sort tap) re-orders in place with no extra store
+        // read.
+        names = PlSort.sort(Prefs.playlistNames(this), plSortMode);
         meltHeader40(headerTitle, Lang.t(this, "pl_title"));
         meltHeader40(headerBtn, Lang.t(this, "pl_new"));
         Fx.crossfadeStripBtn(playAllBtn, false);
         Fx.crossfadeStripBtn(plShuffleBtn, false);
+        Fx.crossfadeStripBtn(plSortBtn, true);
+        // v15.77 (slice 2121): the Share button lives in detail
+        // mode only (the 2065 rule — the header verbs show and
+        // hide together).
+        Fx.crossfadeStripBtn(plShareBtn, false);
+        // v15.77 (slice 2122): Copy lives in detail mode only
+        // too (the same 2065 rule — the second action row shows
+        // and hides with the first).
+        Fx.crossfadeStripBtn(plCopyBtn, false);
+        // v15.77 (slice 2123): Rename lives in detail mode only
+        // too (the same 2065 rule — the third action row shows
+        // and hides with the first two).
+        Fx.crossfadeStripBtn(plRenameBtn, false);
+        // v15.77 (slice 2124): Delete lives in detail mode only
+        // too (the same 2065 rule — the third action row shows
+        // and hides with the first two).
+        Fx.crossfadeStripBtn(plDeleteBtn, false);
         // v15.74 (slice 2103): lists mode has no sounding row — clear the jump target and hide the button (the target reads -1 with curList null).
         refreshPlJumpTarget();
         paintPlJumpBtnFromList();
@@ -442,6 +526,30 @@ public class PlaylistActivity extends Activity {
         meltHeader40(headerBtn, Lang.t(this, "back"));
         Fx.crossfadeStripBtn(playAllBtn, !items.isEmpty());
         Fx.crossfadeStripBtn(plShuffleBtn, !items.isEmpty());
+        // v15.77 (slice 2120): detail rows are talks, not lists
+        // — the sort button lives in lists mode only (the 2065
+        // rule, so the header verbs show and hide together).
+        Fx.crossfadeStripBtn(plSortBtn, false);
+        // v15.77 (slice 2121): Share shows only while the open
+        // list can share (the PlShare gate — a real name + at
+        // least one resolvable talk; an empty or unresolvable
+        // list offers no Share, never a dead tap).
+        Fx.crossfadeStripBtn(plShareBtn, PlShare.canShare(name, items, plDlMap()));
+        // v15.77 (slice 2122): Copy shows for any open list
+        // (no talk gate — copying an empty list is valid, and
+        // the 2114 dialog itself guards a blank name and toasts
+        // the failure legs, so the tap never dead-ends).
+        Fx.crossfadeStripBtn(plCopyBtn, true);
+        // v15.77 (slice 2123): Rename shows for any open list
+        // (no talk gate — renaming an empty list is valid, and
+        // the 2111 dialog itself guards a blank name and toasts
+        // the failure legs, so the tap never dead-ends).
+        Fx.crossfadeStripBtn(plRenameBtn, true);
+        // v15.77 (slice 2124): Delete shows for any open list
+        // (no talk gate — deleting an empty list is valid, and
+        // the confirm dialog itself is the guard — Cancel is
+        // btn_no_clear — so the tap never dead-ends).
+        Fx.crossfadeStripBtn(plDeleteBtn, true);
         refreshPlaylistPlayingMarks(); // v13.55: mark right on first paint, not one tick late
         // v15.74 (slice 2103): the open list's sounding row is the jump target — refresh it and repaint the button from the new position (the 2063 shape: a fresh detail open can land with the playing row off-screen).
         refreshPlJumpTarget();
@@ -551,7 +659,9 @@ public class PlaylistActivity extends Activity {
                         }
                         if (Prefs.playlistRename(PlaylistActivity.this, oldName, name)) {
                             plNav40 = true;
-                            showLists();
+                            // v15.77 (slice 2123): renamed from the detail screen — stay on the renamed list (showDetail) instead of dropping back to the lists screen (showLists): the open list is still open under its new name, and the dialog's own guards (blank / unchanged / duplicate) already ran, so the tap never dead-ends. Renamed from the lists menu, curList is null and the old path stands.
+                            if (curList != null && curList.equals(oldName)) showDetail(name);
+                            else showLists();
                             return;
                         }
                         Toast.makeText(PlaylistActivity.this,
@@ -948,6 +1058,96 @@ public class PlaylistActivity extends Activity {
     // guards + lastKind lib -> lastLibPath, resolved to its stream URL through the dlMap reverse lookup
     // (exactly-one claimant, v8.44). Prefs only, never per bind.
     // v15.74 (slice 2103): wire the jump-to-playing button — one tap glides the open list to the sounding talk (the 1994 Talks shape: the tap re-resolves the target fresh, so a finish or an advance while the button sat visible can never glide to a stale row; the target is by construction in the shown list, so no search/filter clear is ever needed — this screen has no search). The tap gates on a live session with a track that has not ended (the v10.43 bound-trackless stop + the v11.15 ended gate, the History 2063 gate verbatim); a miss toasts no_talk_playing, never glides nowhere. A missing button simply never wires; a missing list never scrolls.
+    // v15.77 (slice 2120): sort on the lists screen — the
+    // Downloaded sort-button shape (v1.47 label + v2.90 premium
+    // label dip): the button names the CURRENT order
+    // (plSortLabel), a tap morphs the button, advances the mode
+    // (created -> newest -> name), persists it, and dips the
+    // header row while the label swaps (Fx.themeDip on
+    // plHeaderRow, the dlBtnRow shape — the dip runs on the row,
+    // never on the tapped button, so its alpha channel never
+    // cancels the morph's scale channel; themeDip null-guards,
+    // so a missing row still swaps the label). The sort re-runs
+    // showLists() at once (it only reads plSortMode, like the
+    // Settings syncLiveService pattern), so the lists re-order
+    // in place with no re-read of the store beyond the names
+    // showLists already reads. The mode survives rotation
+    // through Prefs, like the Downloaded sort (v1.47).
+    private void wirePlSort() {
+        plSortBtn = findViewById(R.id.btnPlSort);
+        plSortMode = Prefs.plSortMode(this);
+        if (plSortBtn != null) plSortBtn.setText(plSortLabel());
+        if (plSortBtn != null) plSortBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.morph(v);
+                plSortMode = (plSortMode + 1) % 3;
+                Prefs.setPlSortMode(PlaylistActivity.this, plSortMode);
+                Fx.themeDip(findViewById(R.id.plHeaderRow), new Runnable() { @Override public void run() { if (plSortBtn != null) plSortBtn.setText(plSortLabel()); } });
+                showLists();
+            }
+        });
+    }
+
+    // v15.77 (slice 2120): the sort button's label names the
+    // CURRENT order (the 2051 bmSortLabel shape): creation order
+    // reads as oldest first (the store order IS oldest-created
+    // first — the seeded lists, then each created list), newest
+    // first as latest first, name order as A-Z. The 2051
+    // bm_sort_* keys name the ORDER, not the screen (Favourites
+    // reuses them verbatim), so no new key is added; sort_az is
+    // the Downloaded A-Z label (v9.29).
+    private String plSortLabel() {
+        if (plSortMode == 1) return Lang.t(PlaylistActivity.this, "bm_sort_recent");
+        if (plSortMode == 2) return Lang.t(PlaylistActivity.this, "sort_az");
+        return Lang.t(PlaylistActivity.this, "bm_sort_oldest");
+    }
+
+    // v15.77 (slice 2121): Share playlist on the detail screen
+    // — the Shuffle button's shape (the 2098 wiring: label from
+    // Lang in code, Fx.press on the button, one tap does the
+    // verb): the label is the reused menu_pl_share key (the
+    // 2113 lists-screen label — the same verb, the same words),
+    // the tap shares the OPEN list (sharePlaylist) —
+    // the 2113 method re-reads items + dlMap fresh and
+    // re-checks the gate, so the offer and the tap can never
+    // disagree). No new key, no new store write, no queue or
+    // resume change (the shareTalkBm precedent — the sounding
+    // row keeps it).
+    private void wirePlShare() {
+        plShareBtn = findViewById(R.id.btnPlShare);
+        if (plShareBtn != null) plShareBtn.setText(Lang.t(this, "menu_pl_share"));
+        if (plShareBtn != null) plShareBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                sharePlaylist(curList);
+            }
+        });
+        if (plShareBtn != null) Fx.press(plShareBtn);
+    }
+
+    // v15.77 (slice 2122): Copy playlist on the detail screen
+    // — the Share button's shape (the 2121 wiring: label from
+    // Lang in code, Fx.press on the button, one tap does the
+    // verb): the label is the reused menu_pl_copy key (the
+    // 2114 lists-screen label — the same verb, the same words),
+    // the tap opens the 2114 copy dialog for the OPEN list
+    // (showCopyListDialog) — the dialog is prefilled with the
+    // open list's name and its success path repaints the lists,
+    // so the copied list shows in place, which is the
+    // confirmation. No new key, no new store write, no queue
+    // or resume change. No removePlItem repaint: unlike Share,
+    // Copy's offer does not depend on the talks (an empty list
+    // copies), so removing the last talk never strands it.
+    private void wirePlCopy() {
+        plCopyBtn = findViewById(R.id.btnPlCopy);
+        if (plCopyBtn != null) plCopyBtn.setText(Lang.t(this, "menu_pl_copy"));
+        if (plCopyBtn != null) plCopyBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                showCopyListDialog(curList);
+            }
+        });
+        if (plCopyBtn != null) Fx.press(plCopyBtn);
+    }
+
     private void wirePlJumpBtn() {
         plJumpBtn = findViewById(R.id.plJumpBtn);
         if (plJumpBtn != null) plJumpBtn.setOnClickListener(new View.OnClickListener() {
@@ -1047,6 +1247,64 @@ public class PlaylistActivity extends Activity {
                 paintPlTopBtn(listView.getFirstVisiblePosition());
             }
         });
+    }
+
+    // v15.77 (slice 2123): Rename playlist on the detail screen
+    // — the Copy button's shape (the 2122 wiring: label from
+    // Lang in code, Fx.press on the button, one tap does the
+    // verb): the label is the reused menu_pl_rename key (the
+    // 2111 lists-screen label — the same verb, the same words),
+    // the tap opens the 2111 rename dialog for the OPEN list
+    // (showRenameListDialog) — prefilled with the open list's
+    // name; a successful rename stays on the renamed list (the
+    // in-place branch in the dialog's success path), so the
+    // renamed list shows in place, which is the confirmation.
+    // No new key, no new store write, no queue or resume
+    // change. No removePlItem repaint: unlike Share, Rename's
+    // offer does not depend on the talks (an empty list
+    // renames), so removing the last talk never strands it.
+    // Defined after wirePlJumpBtn / wirePlTopBtn on purpose:
+    // a method inserted between wirePlShare and wirePlJumpBtn
+    // pollutes sim2120 D5 / sim2121 D3 / verify L5 (the 2122
+    // note), so this wire lands after the jump/top cluster.
+    private void wirePlRename() {
+        plRenameBtn = findViewById(R.id.btnPlRename);
+        if (plRenameBtn != null) plRenameBtn.setText(Lang.t(this, "menu_pl_rename"));
+        if (plRenameBtn != null) plRenameBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                showRenameListDialog(curList);
+            }
+        });
+        if (plRenameBtn != null) Fx.press(plRenameBtn);
+    }
+
+    // v15.77 (slice 2124): Delete playlist on the detail screen
+    // — the Rename button's shape (the 2123 wiring: label from
+    // Lang in code, Fx.press on the button, one tap does the
+    // verb): the label is the reused pl_delete_btn key (the
+    // lists-menu label — the same verb, the same words), the tap
+    // opens the v14.06 delete confirm for the OPEN list
+    // (confirmDeleteList) — confirming deletes it and drops back
+    // to the lists screen (there is no list to stay on, so the
+    // dialog's existing path stands, byte-for-byte — no
+    // in-place branch). No new key, no new store write, no
+    // queue or resume change. No removePlItem repaint: unlike
+    // Share, Delete's offer does not depend on the talks (an
+    // empty list deletes), so removing the last talk never
+    // strands it. Defined after wirePlRename on purpose: a
+    // method inserted between wirePlShare and wirePlJumpBtn
+    // pollutes sim2120 D5 / sim2121 D3 / verify L5 (the 2122
+    // note), so this wire lands after the jump/top cluster,
+    // beside its Rename sibling.
+    private void wirePlDelete() {
+        plDeleteBtn = findViewById(R.id.btnPlDelete);
+        if (plDeleteBtn != null) plDeleteBtn.setText(Lang.t(this, "pl_delete_btn"));
+        if (plDeleteBtn != null) plDeleteBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                confirmDeleteList(curList);
+            }
+        });
+        if (plDeleteBtn != null) Fx.press(plDeleteBtn);
     }
 
     // v15.76 (slice 2116): the stream URL a detail row shares / copies — the row's own URL when it is a stream URL; a downloaded (path-form) row resolves through the dlMap reverse lookup (the refreshPlaylistPlayingMarks exactly-one-claimant shape: the basename of the path claims exactly one stream URL, else null — a path whose basename no stream URL claims shares nothing). Null when the row names no stream URL.
@@ -1367,6 +1625,12 @@ public class PlaylistActivity extends Activity {
         // an emptied list kept a dead Play All button.
         if (playAllBtn != null) playAllBtn.setVisibility(items.isEmpty() ? View.GONE : View.VISIBLE);
         if (plShuffleBtn != null) plShuffleBtn.setVisibility(items.isEmpty() ? View.GONE : View.VISIBLE);
+        // v15.77 (slice 2121): Share follows the list too (the
+        // v12.81 rule — a removed last shareable talk never
+        // leaves a dead Share button; the gate re-reads the
+        // dlMap fresh, so a download landing mid-list never
+        // strands the offer).
+        if (plShareBtn != null) plShareBtn.setVisibility(PlShare.canShare(curList, items, plDlMap()) ? View.VISIBLE : View.GONE);
         refreshEmpty();
         Toast.makeText(this,
                 Lang.t(this, "pl_removed"),

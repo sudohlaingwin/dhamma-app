@@ -8,6 +8,7 @@
     android:orientation="vertical"
     android:padding="16dp">
     <LinearLayout
+        android:id="@+id/plHeaderRow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
@@ -28,6 +29,16 @@
             android:minWidth="0dp"
             android:textColor="#FFFFFF"
             android:textSize="14sp" />
+        <!-- v15.77 (slice 2120): Sort lists — the Bookmarks 2051 sort button on the lists screen: one tap cycles creation order -> newest first -> name A-Z, and the button names the current order (the label comes from Lang in code, so no literal sits here). GONE in detail (the 2065 rule — the header verbs show and hide together: Play All + Shuffle in detail, Sort in lists). Sort on the lists screen landed in slice 2120. -->
+        <Button
+            android:id="@+id/btnPlSort"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/glass_btn_dark"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:visibility="gone" />
     </LinearLayout>
     <!-- v15.73 (slice 2098): Shuffle play beside Play All — the chooser's v13.93 shuffle-play on the playlist detail screen: one tap shuffles the open list into the queue and opens the Room on the first shuffled talk. The two header verbs share one row (Play All weight 1 + Shuffle wrap, the Favourites header-row shape) so they show and hide together; the labels come from Lang in code, so no literal sits here. Shuffle play landed in slice 2098. -->
     <LinearLayout
@@ -46,6 +57,58 @@
             android:visibility="gone" />
         <Button
             android:id="@+id/plShuffle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/glass_btn_dark"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:visibility="gone" />
+    </LinearLayout>
+    <!-- v15.77 (slice 2122): second detail action row — the list-level verbs (Share + Copy) live here, not in the Play All row: four buttons in one row would clip Play All (measured first-hand: Play All + Shuffle + Share + Copy wrap to ~436dp against a 328-361dp budget, leaving Play All ~20-40dp for a ~117dp label — the slice-2122 adjudication). Row 1 keeps Play All + Shuffle (the 2098 shape, comfortable again); the two rows show and hide together (the 2065 rule). Copy playlist on the detail screen landed in slice 2122; Share moved down from the Play All row in the same slice. -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal">
+        <!-- v15.77 (slice 2121): Share list on the detail screen — the 2113 share verb's second surface (the open list's own screen): one tap shares the whole list as one message. Moved from the Play All row to the second action row in slice 2122 (four buttons in one row would clip Play All); the label comes from Lang in code, so no literal sits here. GONE in lists mode (the 2065 rule — the header verbs show and hide together). Share playlist on the detail screen landed in slice 2121. -->
+        <Button
+            android:id="@+id/btnPlShare"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/glass_btn_dark"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:visibility="gone" />
+        <!-- v15.77 (slice 2122): Copy list on the detail screen — the 2114 copy verb's second surface (the open list's own screen): one tap opens the 2114 copy dialog prefilled with the open list's name. Beside Share in the second action row; the label comes from Lang in code, so no literal sits here. GONE in lists mode (the 2065 rule). Copy playlist on the detail screen landed in slice 2122. -->
+        <Button
+            android:id="@+id/btnPlCopy"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/glass_btn_dark"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:visibility="gone" />
+    </LinearLayout>
+    <!-- v15.77 (slice 2123): third detail action row — Rename lives here, not in the second row: Share + Copy + Rename would need ~385dp against a 328-361dp budget (measured first-hand: Rename 171.3dp at 16sp), so the list-management verbs get their own row. Rename + Delete together need ~267dp and fit a 360dp screen (measured first-hand in slice 2124: Rename 171.3dp + Delete 61.7dp, Delete rides its 88dp minWidth), so Delete joins this row. The rows show and hide together (the 2065 rule). Rename playlist on the detail screen landed in slice 2123; Delete playlist on the detail screen landed in v15.77 (slice 2124). -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal">
+        <!-- v15.77 (slice 2123): Rename list on the detail screen — the 2111 rename verb's second surface (the open list's own screen): one tap opens the 2111 rename dialog prefilled with the open list's name; a successful rename stays on the renamed list instead of dropping back to the lists screen. The label comes from Lang in code, so no literal sits here. GONE in lists mode (the 2065 rule). Rename playlist on the detail screen landed in slice 2123. -->
+        <Button
+            android:id="@+id/btnPlRename"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/glass_btn_dark"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:visibility="gone" />
+        <!-- v15.77 (slice 2124): Delete list on the detail screen — the v14.06 delete verb's second surface (the open list's own screen): one tap opens the delete confirm for the open list; confirming deletes it and drops back to the lists screen (there is no list to stay on). Beside Rename in the third action row. The label comes from Lang in code (the reused pl_delete_btn key), so no literal sits here. GONE in lists mode (the 2065 rule). Delete playlist on the detail screen landed in slice 2124. -->
+        <Button
+            android:id="@+id/btnPlDelete"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
