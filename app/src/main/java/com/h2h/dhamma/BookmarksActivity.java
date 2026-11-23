@@ -1090,11 +1090,17 @@ public class BookmarksActivity extends Activity {
         String copyKey86 = "";
         String fileKey90 = "";
         String plKey93 = "";
+        String minKey2132 = "";
+        String dlKey2135 = "";
         try {
             if (BmTalkShare.canOffer(streamUrl)) shareKey84 = "menu_share";
             if (RoomCopyLink.canOffer(streamUrl)) copyKey86 = "dl_menu_copy_link";
             if (bmIsDownloaded(streamUrl)) fileKey90 = "dl_menu_share_file";
             if (BmPlAdd.canOffer(streamUrl)) plKey93 = "pl_add";
+            // v15.79 (slice 2132): the minute key — gated on the row's own rendered minute (r.posMs > 5000, the 2012/2013/2018 family rule) plus the share offer, so a mark under 5s or a share-less row never offers it. The minute is the bookmark's own frozen mark (BmAll.Row.posMs), not a live spot.
+            if (r.posMs > 5000 && shareKey84.length() > 0) minKey2132 = "dl_menu_share_minute";
+            // v15.79 (slice 2135): the download key — gated on the v11.70 rule through the pinned pure core MainDl.canOffer (slice 1997: neither downloaded nor already queued), plus the non-blank stream URL leg like History's offer, so an unresolvable row never offers it. The sounding row keeps it (History offers it on sounding rows too — downloading the talk now playing is harmless, the Room keeps streaming).
+            if (streamUrl.length() > 0 && MainDl.canOffer(bmIsDownloaded(streamUrl), bmIsDlQueued(streamUrl))) dlKey2135 = "dl_btn_download";
         } catch (Exception ignored) {}
         if (shareKey84.length() > 0) keys72.add(0, shareKey84);
         // v15.71 (slice 2086): the copy key composes right after
@@ -1117,6 +1123,16 @@ public class BookmarksActivity extends Activity {
             int at90 = keys72.indexOf("dl_menu_copy_link");
             keys72.add(at90 < 0 ? keys72.size() : at90 + 1, fileKey90);
         }
+        // v15.79 (slice 2132): the minute key composes right after the share (indexOf + 1 — the file insert above already landed, so inserting here keeps the share verbs together in the order text, minute, copy, file, whatever later inserts do; a minute implies a share, since both gates are the same non-blank stream URL plus the row's own rendered minute — the atMin2132 < 0 leg is defensive only).
+        if (minKey2132.length() > 0) {
+            int atMin2132 = keys72.indexOf("menu_share");
+            keys72.add(atMin2132 < 0 ? keys72.size() : atMin2132 + 1, minKey2132);
+        }
+        // v15.79 (slice 2135): the download key composes right before Delete bookmark, before the playlist insert below lands — the History order (download, playlist-add, remove), so the collect verbs sit together last and the removal stays last; a download implies a share, since both gates are the same non-blank stream URL — the atDl2135 < 0 leg is defensive only.
+        if (dlKey2135.length() > 0) {
+            int atDl2135 = keys72.indexOf("bm_menu_remove");
+            keys72.add(atDl2135 < 0 ? keys72.size() : atDl2135, dlKey2135);
+        }
         // v15.72 (slice 2093): the playlist key composes right before
         // Delete bookmark (indexOf — the removal stays last and the
         // collect verb sits with it, last; a playlist add implies
@@ -1137,12 +1153,22 @@ public class BookmarksActivity extends Activity {
                     @Override public void onClick(android.content.DialogInterface d, int which) {
                         if ("menu_share".equals(keyArr[which])) {
                             shareTalkBm(r);
+                        } else if ("dl_menu_share_minute".equals(keyArr[which])) {
+                            // v15.79 (slice 2132): "Share at this minute" — the 1993 Bookmarks-rail verb on the Bookmarks row menu: the menu could share a bookmarked talk's text, copy its link, send its file, file it in a playlist, play from its mark, queue it, open its sayadaw or delete the mark, but never hand a friend the exact marked minute — the row renders "12:34 · title" while the plain share carries the bare title. Same verb the Bookmarks rail carries since v15.55 (slice 1993), the Favourite-talks rail since slice 2011, the Downloaded library row since slice 2012, the Talks chooser since slice 2013 and the Room drawer rows since slices 2018/2019, through the same BmShare.shareAtMinuteText core (same text contract, unchanged), so the surfaces can never disagree. The link stays the talk's original link (no minute in the URL — the site serves plain .mp3 links, nothing to deep-link into); the minute lives in the text. Chooser title is share_talk, like the plain share. No tap-time re-check: the minute is the row's own frozen mark (r.posMs, > 5000 by the offer gate); the only writer of the mark is the bookmark list's remove, which cannot run while the modal menu sits open, and a stale minute in shared text is harmless. A share mutates nothing — no bookmark, queue or resume change; no pause guard (the text share beside it sets none). The sounding row keeps it (sharing never touches playback, and the mark is frozen, not live).
+                            android.content.Intent send32 = new android.content.Intent(android.content.Intent.ACTION_SEND);
+                            send32.setType("text/plain");
+                            send32.putExtra(android.content.Intent.EXTRA_TEXT, BmShare.shareAtMinuteText(r.e.sayadaw, r.e.title, streamUrl, r.posMs, Lang.t(BookmarksActivity.this, "share_source")));
+                            Fx.tap(BookmarksActivity.this);
+                            startActivity(android.content.Intent.createChooser(send32, Lang.t(BookmarksActivity.this, "share_talk")));
                         } else if ("dl_menu_copy_link".equals(keyArr[which])) {
                             copyTalkLinkBm(r);
                         } else if ("dl_menu_share_file".equals(keyArr[which])) {
                             shareFileBm(r);
                         } else if ("pl_add".equals(keyArr[which])) {
                             addToPlaylistBm(r);
+                        } else if ("dl_btn_download".equals(keyArr[which])) {
+                            // v15.79 (slice 2135): "Download" — the v11.70 download verb on the Bookmarks row menu, through downloadTalkBm below (the file routes every menu verb through a named helper).
+                            downloadTalkBm(r);
                         } else if ("menu_play_from_here".equals(keyArr[which])) {
                             playFromHereBm(r);
                         } else if ("menu_queue_add".equals(keyArr[which])) {
@@ -1716,6 +1742,64 @@ public class BookmarksActivity extends Activity {
                 Lang.t(BookmarksActivity.this, "share_talk")));
     }
 
+    // v15.79 (slice 2135): "Download" — the download verb the Bookmarks row menu lacked that the History row menu has had since v13.77, the Favourite-talks rail since v15.57 (slice 2000), the Talks chooser since v11.70, the Room drawer rows since v11.70 and the Favourites row menu since v15.79 (slice 2134): a bookmarked talk could be shared, copied, filed or opened, but never saved for offline listening without leaving the screen. Same verb through the same rules, so the surfaces can never disagree: tap-time re-checks (a Wi-Fi job can land, or another path can queue this talk, while the dialog sits open), a Wi-Fi-only DownloadManager request (NETWORK_WIFI, so a tap here can never silently spend mobile data — the data-saver rule), the filename from bmDownloadFileNameFor, and the record under DlLock in ONE apply (bmRecordDownload below — dlMap + dlSayadaw + dlQueued, identityUrl banking). Mirrors History's dl_btn_download dispatch verbatim, with the Bookmarks-local read side (streamUrlFor + bmIsDownloaded + bmIsDlQueued + bmDownloadFileNameFor). The blank-URL guard toasts talk_no_longer_in_list — the share helpers' precedent: Bookmarks re-resolves at tap time, so a file deleted while the menu sat open must toast, never enqueue a blank URL. No sounding gate (History offers it on sounding rows too); no pause guard (no sheet is left to return from). The adapter repaint + success toast are History's: Wi-Fi shows "\u2B07 title + dl_downloading_suffix", mobile data shows dl_room_wifi_queued.
+    private void downloadTalkBm(final BmAll.Row r) {
+        if (r == null || r.e == null || r.e.url == null || r.e.url.length() == 0) return;
+        final String streamUrl = streamUrlFor(r.e);
+        if (streamUrl == null || streamUrl.length() == 0) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // Tap-time re-checks (Talks v11.70): a Wi-Fi job can land, or another path can queue this talk, while the dialog sits open.
+        if (bmIsDownloaded(streamUrl)) {
+            if (adapter != null) adapter.notifyDataSetChanged();
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "downloaded_talk"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (bmIsDlQueued(streamUrl)) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "dl_already_queued"),
+                    android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        String file = bmDownloadFileNameFor(streamUrl);
+        try {
+            android.app.DownloadManager dm = (android.app.DownloadManager)
+                    getSystemService(android.content.Context.DOWNLOAD_SERVICE);
+            android.app.DownloadManager.Request req =
+                    new android.app.DownloadManager.Request(
+                            android.net.Uri.parse(SiteHttp.siteUrl(streamUrl)));
+            req.setTitle(r.e.title != null && r.e.title.length() > 0 ? r.e.title : streamUrl);
+            req.setNotificationVisibility(android.app.DownloadManager.Request
+                    .VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            // Wi-Fi-only, exactly like Talks' chooser enqueue and History's row enqueue — on Wi-Fi it starts at once, on mobile data it waits for Wi-Fi, so a tap here can never silently spend mobile data.
+            req.setAllowedNetworkTypes(android.app.DownloadManager.Request.NETWORK_WIFI);
+            req.setDestinationInExternalPublicDir(
+                    android.os.Environment.DIRECTORY_DOWNLOADS, "Dhamma/" + file);
+            dm.enqueue(req);
+            bmRecordDownload(streamUrl, file, r.e.sayadaw);
+        } catch (Exception ex) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "download_failed") + Fx.errDetail(ex),
+                    android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (adapter != null) adapter.notifyDataSetChanged();
+        if (Fx.stripIsWifi(BookmarksActivity.this))
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    "\u2B07 " + (r.e.title != null && r.e.title.length() > 0 ? r.e.title : streamUrl)
+                            + Lang.t(BookmarksActivity.this, "dl_downloading_suffix"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+        else
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "dl_room_wifi_queued"),
+                    android.widget.Toast.LENGTH_LONG).show();
+    }
+
     // v15.72 (slice 2090): History histIsDownloaded (v13.77),
     // Bookmarks-local — the dlMap mapped file with the v13.66
     // length gate (a 0-byte file is not downloaded), plus the
@@ -1795,6 +1879,58 @@ public class BookmarksActivity extends Activity {
             String base = url.substring(url.lastIndexOf('/') + 1);
             if (!base.toLowerCase().endsWith(".mp3")) base = base + ".mp3";
             return base;
+        }
+    }
+
+    // v15.79 (slice 2135): History histIsDlQueued (v13.77),
+    // Bookmarks-local — fresh prefs read at offer/tap time, so a
+    // job queued from the Room a second earlier still blocks a
+    // double enqueue. Raw-equals scan like History's — the banked
+    // form is identityUrl and the offer and the tap read the same
+    // resolved stream URL.
+    private boolean bmIsDlQueued(String url) {
+        if (url == null) return false;
+        try {
+            org.json.JSONArray qa = new org.json.JSONArray(
+                    getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlQueued", "[]"));
+            for (int i = 0; i < qa.length(); i++)
+                if (url.equals(qa.optString(i))) return true;
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    // v15.79 (slice 2135): History histRecordDownload (v13.77),
+    // Bookmarks-local — dlMap, dlSayadaw and dlQueued land in ONE
+    // apply under DlLock.LOCK (v13.68/v13.70), the URL banked in
+    // identity form (v13.71).
+    private void bmRecordDownload(String url, String file, String sd) {
+        synchronized (DlLock.LOCK) {
+        try {
+            url = SiteHttp.identityUrl(url);
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            map.put(url, file);
+            String sayStr = null;
+            if (sd != null && sd.length() > 0) {
+                try {
+                    org.json.JSONObject sm = new org.json.JSONObject(sp.getString("dlSayadaw", "{}"));
+                    sm.put(url, sd);
+                    sayStr = sm.toString();
+                } catch (Exception ignored) {}
+            }
+            org.json.JSONArray queued = new org.json.JSONArray(sp.getString("dlQueued", "[]"));
+            boolean found = false;
+            for (int i = 0; i < queued.length(); i++) {
+                if (SiteHttp.sameTalk(url, queued.optString(i))) { found = true; break; }
+            }
+            if (!found) queued.put(url);
+            android.content.SharedPreferences.Editor ed = sp.edit()
+                    .putString("dlMap", map.toString())
+                    .putString("dlQueued", queued.toString());
+            if (sayStr != null) ed.putString("dlSayadaw", sayStr);
+            ed.apply();
+        } catch (Exception ignored) {}
         }
     }
 

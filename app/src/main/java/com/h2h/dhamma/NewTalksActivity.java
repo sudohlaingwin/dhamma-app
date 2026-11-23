@@ -1045,12 +1045,15 @@ public class NewTalksActivity extends Activity {
         String copyKey81 = "";
         String fileKey87 = "";
         String plKey92 = "";
+        String dlKey2136 = "";
         try {
             String shareUrl80 = newStreamUrlFor(c.e);
             if (NewShare.canOffer(shareUrl80)) shareKey80 = "menu_share";
             if (RoomCopyLink.canOffer(shareUrl80)) copyKey81 = "dl_menu_copy_link";
             if (newIsDownloaded(shareUrl80)) fileKey87 = "dl_menu_share_file";
             if (NewPlAdd.canOffer(shareUrl80)) plKey92 = "pl_add";
+            // v15.79 (slice 2136): the download key — gated on the v11.70 rule through the pinned pure core MainDl.canOffer (slice 1997: neither downloaded nor already queued), plus the non-blank stream URL leg like History's offer, so an unresolvable row never offers it. The sounding row keeps it (History offers it on sounding rows too — downloading the talk now playing is harmless, the Room keeps streaming).
+            if (shareUrl80.length() > 0 && MainDl.canOffer(newIsDownloaded(shareUrl80), newIsDlQueued(shareUrl80))) dlKey2136 = "dl_btn_download";
         } catch (Exception ignored) {}
         if (shareKey80.length() > 0) keys71.add(0, shareKey80);
         // v15.69 (slice 2074): the queue verb — "Add to queue" /
@@ -1127,6 +1130,12 @@ public class NewTalksActivity extends Activity {
             int at87 = keys71.indexOf("dl_menu_copy_link");
             keys71.add(at87 < 0 ? keys71.size() : at87 + 1, fileKey87);
         }
+        // v15.79 (slice 2136): the download key composes right before the star verb, before the playlist insert below lands — the History order (download, playlist-add, star), so the collect verbs sit together last and the star stays last; a download implies a share, since both gates are the same non-blank stream URL — the atDl2136 < 0 leg is defensive only.
+        if (dlKey2136.length() > 0) {
+            int atDl2136 = keys71.indexOf("menu_fav_remove");
+            if (atDl2136 < 0) atDl2136 = keys71.indexOf("menu_fav_add");
+            keys71.add(atDl2136 < 0 ? keys71.size() : atDl2136, dlKey2136);
+        }
         // v15.72 (slice 2092): the playlist key composes right before
         // the star verb (indexOf menu_fav_remove else menu_fav_add —
         // whichever star key the row's state composed, never
@@ -1156,6 +1165,9 @@ public class NewTalksActivity extends Activity {
                             shareFileNew(c);
                         } else if ("pl_add".equals(keyArr[which])) {
                             addToPlaylistNew(c);
+                        } else if ("dl_btn_download".equals(keyArr[which])) {
+                            // v15.79 (slice 2136): "Download" — the v11.70 download verb on the New talks row menu, through downloadTalkNew below (the file routes every menu verb through a named helper).
+                            downloadTalkNew(c);
                         } else if ("menu_play_from_here".equals(keyArr[which])) {
                             playFromHereNew(c);
                         } else if ("menu_queue_add".equals(keyArr[which])) {
@@ -1617,6 +1629,64 @@ public class NewTalksActivity extends Activity {
                 Lang.t(NewTalksActivity.this, "share_talk")));
     }
 
+    // v15.79 (slice 2136): "Download" — the download verb the New talks row menu lacked that the History row menu has had since v13.77, the Favourite-talks rail since v15.57 (slice 2000), the Talks chooser since v11.70, the Room drawer rows since v11.70 and the Favourites + Bookmarks row menus since v15.79 (slices 2134/2135): a new talk could be shared, copied, filed or opened, but never saved for offline listening without leaving the screen. Same verb through the same rules, so the surfaces can never disagree: tap-time re-checks (a Wi-Fi job can land, or another path can queue this talk, while the dialog sits open), a Wi-Fi-only DownloadManager request (NETWORK_WIFI, so a tap here can never silently spend mobile data — the data-saver rule), the filename from newDownloadFileNameFor, and the record under DlLock in ONE apply (newRecordDownload below — dlMap + dlSayadaw + dlQueued, identityUrl banking). Mirrors History's dl_btn_download dispatch verbatim, with the New-talks-local read side (newStreamUrlFor + newIsDownloaded + newIsDlQueued + newDownloadFileNameFor). The blank-URL guard toasts talk_no_longer_in_list — the share helpers' precedent: New talks re-resolves at tap time, so a file deleted while the menu sat open must toast, never enqueue a blank URL. No sounding gate (History offers it on sounding rows too); no pause guard (no sheet is left to return from). The adapter repaint + success toast are History's: Wi-Fi shows "\u2B07 title + dl_downloading_suffix", mobile data shows dl_room_wifi_queued.
+    private void downloadTalkNew(final NewTalkRail.Card c) {
+        if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return;
+        final String streamUrl = newStreamUrlFor(c.e);
+        if (streamUrl == null || streamUrl.length() == 0) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // Tap-time re-checks (Talks v11.70): a Wi-Fi job can land, or another path can queue this talk, while the dialog sits open.
+        if (newIsDownloaded(streamUrl)) {
+            if (adapter != null) adapter.notifyDataSetChanged();
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "downloaded_talk"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (newIsDlQueued(streamUrl)) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "dl_already_queued"),
+                    android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        String file = newDownloadFileNameFor(streamUrl);
+        try {
+            android.app.DownloadManager dm = (android.app.DownloadManager)
+                    getSystemService(android.content.Context.DOWNLOAD_SERVICE);
+            android.app.DownloadManager.Request req =
+                    new android.app.DownloadManager.Request(
+                            android.net.Uri.parse(SiteHttp.siteUrl(streamUrl)));
+            req.setTitle(c.e.title != null && c.e.title.length() > 0 ? c.e.title : streamUrl);
+            req.setNotificationVisibility(android.app.DownloadManager.Request
+                    .VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            // Wi-Fi-only, exactly like Talks' chooser enqueue and History's row enqueue — on Wi-Fi it starts at once, on mobile data it waits for Wi-Fi, so a tap here can never silently spend mobile data.
+            req.setAllowedNetworkTypes(android.app.DownloadManager.Request.NETWORK_WIFI);
+            req.setDestinationInExternalPublicDir(
+                    android.os.Environment.DIRECTORY_DOWNLOADS, "Dhamma/" + file);
+            dm.enqueue(req);
+            newRecordDownload(streamUrl, file, c.e.sayadaw);
+        } catch (Exception ex) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "download_failed") + Fx.errDetail(ex),
+                    android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (adapter != null) adapter.notifyDataSetChanged();
+        if (Fx.stripIsWifi(NewTalksActivity.this))
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    "\u2B07 " + (c.e.title != null && c.e.title.length() > 0 ? c.e.title : streamUrl)
+                            + Lang.t(NewTalksActivity.this, "dl_downloading_suffix"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+        else
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "dl_room_wifi_queued"),
+                    android.widget.Toast.LENGTH_LONG).show();
+    }
+
     // v15.71 (slice 2087): History histIsDownloaded (v13.77),
     // New-talks-local — the dlMap mapped file with the v13.66
     // length gate (a 0-byte file is not downloaded), plus the
@@ -1696,6 +1766,58 @@ public class NewTalksActivity extends Activity {
             String base = url.substring(url.lastIndexOf('/') + 1);
             if (!base.toLowerCase().endsWith(".mp3")) base = base + ".mp3";
             return base;
+        }
+    }
+
+    // v15.79 (slice 2136): History histIsDlQueued (v13.77),
+    // New-talks-local — fresh prefs read at offer/tap time, so a
+    // job queued from the Room a second earlier still blocks a
+    // double enqueue. Raw-equals scan like History's — the banked
+    // form is identityUrl and the offer and the tap read the same
+    // resolved stream URL.
+    private boolean newIsDlQueued(String url) {
+        if (url == null) return false;
+        try {
+            org.json.JSONArray qa = new org.json.JSONArray(
+                    getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlQueued", "[]"));
+            for (int i = 0; i < qa.length(); i++)
+                if (url.equals(qa.optString(i))) return true;
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    // v15.79 (slice 2136): History histRecordDownload (v13.77),
+    // New-talks-local — dlMap, dlSayadaw and dlQueued land in ONE
+    // apply under DlLock.LOCK (v13.68/v13.70), the URL banked in
+    // identity form (v13.71).
+    private void newRecordDownload(String url, String file, String sd) {
+        synchronized (DlLock.LOCK) {
+        try {
+            url = SiteHttp.identityUrl(url);
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            map.put(url, file);
+            String sayStr = null;
+            if (sd != null && sd.length() > 0) {
+                try {
+                    org.json.JSONObject sm = new org.json.JSONObject(sp.getString("dlSayadaw", "{}"));
+                    sm.put(url, sd);
+                    sayStr = sm.toString();
+                } catch (Exception ignored) {}
+            }
+            org.json.JSONArray queued = new org.json.JSONArray(sp.getString("dlQueued", "[]"));
+            boolean found = false;
+            for (int i = 0; i < queued.length(); i++) {
+                if (SiteHttp.sameTalk(url, queued.optString(i))) { found = true; break; }
+            }
+            if (!found) queued.put(url);
+            android.content.SharedPreferences.Editor ed = sp.edit()
+                    .putString("dlMap", map.toString())
+                    .putString("dlQueued", queued.toString());
+            if (sayStr != null) ed.putString("dlSayadaw", sayStr);
+            ed.apply();
+        } catch (Exception ignored) {}
         }
     }
 

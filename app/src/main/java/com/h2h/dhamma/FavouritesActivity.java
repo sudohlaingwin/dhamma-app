@@ -1050,12 +1050,18 @@ public class FavouritesActivity extends Activity {
         String copyKey85 = "";
         String fileKey89 = "";
         String plKey91 = "";
+        String minKey2133 = "";
+        String dlKey2134 = "";
         try {
             String shareUrl83 = favStreamUrlFor(c.e);
             if (FavShare.canOffer(shareUrl83)) shareKey83 = "menu_share";
             if (RoomCopyLink.canOffer(shareUrl83)) copyKey85 = "dl_menu_copy_link";
             if (favIsDownloaded(shareUrl83)) fileKey89 = "dl_menu_share_file";
             if (FavPlAdd.canOffer(shareUrl83)) plKey91 = "pl_add";
+            // v15.79 (slice 2133): the minute key — gated on the row's own rendered minute (c.posMs > 5000, the 2012/2013/2018 family rule) plus the share offer, so a spot under 5s or a share-less row never offers it. The minute is the card's captured saved spot (FavTalkRail.Card.posMs, final), not a live spot.
+            if (c.posMs > 5000 && shareKey83.length() > 0) minKey2133 = "dl_menu_share_minute";
+            // v15.79 (slice 2134): the download key — gated on the v11.70 rule through the pinned pure core MainDl.canOffer (slice 1997: neither downloaded nor already queued), plus the non-blank stream URL leg like History's offer, so an unresolvable row never offers it. The sounding row keeps it (History offers it on sounding rows too — downloading the talk now playing is harmless, the Room keeps streaming).
+            if (shareUrl83.length() > 0 && MainDl.canOffer(favIsDownloaded(shareUrl83), favIsDlQueued(shareUrl83))) dlKey2134 = "dl_btn_download";
         } catch (Exception ignored) {}
         if (shareKey83.length() > 0) keys69.add(0, shareKey83);
         // v15.71 (slice 2085): the copy key composes right after
@@ -1078,6 +1084,16 @@ public class FavouritesActivity extends Activity {
             int at89 = keys69.indexOf("dl_menu_copy_link");
             keys69.add(at89 < 0 ? keys69.size() : at89 + 1, fileKey89);
         }
+        // v15.79 (slice 2133): the minute key composes right after the share (indexOf + 1 — the file insert above already landed, so inserting here keeps the share verbs together in the order text, minute, copy, file, whatever later inserts do; a minute implies a share, since both gates are the same non-blank stream URL plus the row's own rendered minute — the atMin2133 < 0 leg is defensive only).
+        if (minKey2133.length() > 0) {
+            int atMin2133 = keys69.indexOf("menu_share");
+            keys69.add(atMin2133 < 0 ? keys69.size() : atMin2133 + 1, minKey2133);
+        }
+        // v15.79 (slice 2134): the download key composes right before Remove from favourites, before the playlist insert below lands — the History order (download, playlist-add, remove), so the collect verbs sit together last and the removal stays last; a download implies a share, since both gates are the same non-blank stream URL — the atDl2134 < 0 leg is defensive only.
+        if (dlKey2134.length() > 0) {
+            int atDl2134 = keys69.indexOf("menu_fav_remove");
+            keys69.add(atDl2134 < 0 ? keys69.size() : atDl2134, dlKey2134);
+        }
         // v15.72 (slice 2091): the playlist key composes right before
         // Remove from favourites (indexOf — the removal stays last
         // and the collect verbs sit together; a playlist add implies
@@ -1097,12 +1113,18 @@ public class FavouritesActivity extends Activity {
                     @Override public void onClick(android.content.DialogInterface d, int which) {
                         if ("menu_share".equals(keyArr[which])) {
                             shareTalkFav(c);
+                        } else if ("dl_menu_share_minute".equals(keyArr[which])) {
+                            // v15.79 (slice 2133): "Share at this minute" — the 1993 minute-share verb on the Favourites row menu, through shareAtMinuteFav below (the file routes every menu verb through a named helper).
+                            shareAtMinuteFav(c);
                         } else if ("dl_menu_copy_link".equals(keyArr[which])) {
                             copyTalkLinkFav(c);
                         } else if ("dl_menu_share_file".equals(keyArr[which])) {
                             shareFileFav(c);
                         } else if ("pl_add".equals(keyArr[which])) {
                             addToPlaylistFav(c);
+                        } else if ("dl_btn_download".equals(keyArr[which])) {
+                            // v15.79 (slice 2134): "Download" — the v11.70 download verb on the Favourites row menu, through downloadTalkFav below (the file routes every menu verb through a named helper).
+                            downloadTalkFav(c);
                         } else if ("menu_play_from_here".equals(keyArr[which])) {
                             playFromHereFav(c);
                         } else if ("menu_queue_add".equals(keyArr[which])) {
@@ -1459,6 +1481,84 @@ public class FavouritesActivity extends Activity {
                 Lang.t(FavouritesActivity.this, "share_talk")));
     }
 
+    // v15.79 (slice 2133): "Share at this minute" — the minute-share verb the Favourites row menu lacked that the Favourite-talks rail has had since v15.59 (slice 2011), the Bookmarks rail since v15.55 (slice 1993), the Downloaded library row since slice 2012, the Talks chooser since slice 2013, the Room drawer rows since slices 2018/2019 and the Bookmarks row menu since slice 2132: the row renders its saved spot ("\u21ba 12:34 \u00b7 title", FavTalkRail.fmtTime(c.posMs)) but the dialog's plain share carried the bare title, so a friend got no minute at all. Same verb through the same BmShare.shareAtMinuteText core (the 1993 text contract, unchanged), so the surfaces can never disagree. The link stays the talk's original link (no minute in the URL — the site serves plain .mp3 links, nothing to deep-link into); the minute lives in the text. Chooser title is share_talk, like the plain share. Mirrors shareTalkFav above: the same guards (null/blank card or URL returns, unresolvable URL toasts talk_no_longer_in_list — the share already sets that precedent), the same Fx.tap, the same chooser. No tap-time re-check of the minute: it is the card's captured saved spot (FavTalkRail.Card.posMs is final, > 5000 by the offer gate); the only writer of the spot is the talk's own Room session, which cannot start while the modal menu sits open, and a stale minute in shared text is harmless. A share mutates nothing — no favourite, queue or resume change; no pause guard (the text share beside it sets none). The sounding row keeps it (sharing never touches playback, and the spot is frozen, not live).
+    private void shareAtMinuteFav(final FavTalkRail.Card c) {
+        if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return;
+        final String streamUrl = favStreamUrlFor(c.e);
+        if (!FavShare.canOffer(streamUrl)) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        android.content.Intent send33 = new android.content.Intent(android.content.Intent.ACTION_SEND);
+        send33.setType("text/plain");
+        send33.putExtra(android.content.Intent.EXTRA_TEXT,
+                BmShare.shareAtMinuteText(c.e.sayadaw, c.e.title, streamUrl, c.posMs,
+                        Lang.t(FavouritesActivity.this, "share_source")));
+        Fx.tap(FavouritesActivity.this);
+        startActivity(android.content.Intent.createChooser(send33,
+                Lang.t(FavouritesActivity.this, "share_talk")));
+    }
+
+    // v15.79 (slice 2134): "Download" — the download verb the Favourites row menu lacked that the History row menu has had since v13.77, the Favourite-talks rail since v15.57 (slice 2000), the Talks chooser since v11.70 and the Room drawer rows since v11.70: a starred talk could be shared, copied, filed or opened, but never saved for offline listening without leaving the screen. Same verb through the same rules, so the surfaces can never disagree: tap-time re-checks (a Wi-Fi job can land, or another path can queue this talk, while the dialog sits open), a Wi-Fi-only DownloadManager request (NETWORK_WIFI, so a tap here can never silently spend mobile data — the data-saver rule), the filename from favDownloadFileNameFor, and the record under DlLock in ONE apply (favRecordDownload below — dlMap + dlSayadaw + dlQueued, identityUrl banking). Mirrors History's dl_btn_download dispatch verbatim, with the Favourites-local read side (favStreamUrlFor + favIsDownloaded + favIsDlQueued + favDownloadFileNameFor). The blank-URL guard toasts talk_no_longer_in_list — the share helpers' precedent: Favourites re-resolves at tap time, so a file deleted while the menu sat open must toast, never enqueue a blank URL. No sounding gate (History offers it on sounding rows too); no pause guard (no sheet is left to return from). The adapter repaint + success toast are History's: Wi-Fi shows "\u2B07 title + dl_downloading_suffix", mobile data shows dl_room_wifi_queued.
+    private void downloadTalkFav(final FavTalkRail.Card c) {
+        if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return;
+        final String streamUrl = favStreamUrlFor(c.e);
+        if (streamUrl == null || streamUrl.length() == 0) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // Tap-time re-checks (Talks v11.70): a Wi-Fi job can land, or another path can queue this talk, while the dialog sits open.
+        if (favIsDownloaded(streamUrl)) {
+            if (adapter != null) adapter.notifyDataSetChanged();
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "downloaded_talk"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (favIsDlQueued(streamUrl)) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "dl_already_queued"),
+                    android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        String file = favDownloadFileNameFor(streamUrl);
+        try {
+            android.app.DownloadManager dm = (android.app.DownloadManager)
+                    getSystemService(android.content.Context.DOWNLOAD_SERVICE);
+            android.app.DownloadManager.Request req =
+                    new android.app.DownloadManager.Request(
+                            android.net.Uri.parse(SiteHttp.siteUrl(streamUrl)));
+            req.setTitle(c.e.title != null && c.e.title.length() > 0 ? c.e.title : streamUrl);
+            req.setNotificationVisibility(android.app.DownloadManager.Request
+                    .VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            // Wi-Fi-only, exactly like Talks' chooser enqueue and History's row enqueue — on Wi-Fi it starts at once, on mobile data it waits for Wi-Fi, so a tap here can never silently spend mobile data.
+            req.setAllowedNetworkTypes(android.app.DownloadManager.Request.NETWORK_WIFI);
+            req.setDestinationInExternalPublicDir(
+                    android.os.Environment.DIRECTORY_DOWNLOADS, "Dhamma/" + file);
+            dm.enqueue(req);
+            favRecordDownload(streamUrl, file, c.e.sayadaw);
+        } catch (Exception ex) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "download_failed") + Fx.errDetail(ex),
+                    android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (adapter != null) adapter.notifyDataSetChanged();
+        if (Fx.stripIsWifi(FavouritesActivity.this))
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    "\u2B07 " + (c.e.title != null && c.e.title.length() > 0 ? c.e.title : streamUrl)
+                            + Lang.t(FavouritesActivity.this, "dl_downloading_suffix"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+        else
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "dl_room_wifi_queued"),
+                    android.widget.Toast.LENGTH_LONG).show();
+    }
+
     // v15.71 (slice 2083): the row's stream URL for the share
     // verb — the histStreamUrlFor shape (v13.77): a URL-form row
     // canonicalises to its identity form; a path-form row (a
@@ -1639,6 +1739,58 @@ public class FavouritesActivity extends Activity {
             String base = url.substring(url.lastIndexOf('/') + 1);
             if (!base.toLowerCase().endsWith(".mp3")) base = base + ".mp3";
             return base;
+        }
+    }
+
+    // v15.79 (slice 2134): History histIsDlQueued (v13.77),
+    // Favourites-local — fresh prefs read at offer/tap time, so a
+    // job queued from the Room a second earlier still blocks a
+    // double enqueue. Raw-equals scan like History's — the banked
+    // form is identityUrl and the offer and the tap read the same
+    // resolved stream URL.
+    private boolean favIsDlQueued(String url) {
+        if (url == null) return false;
+        try {
+            org.json.JSONArray qa = new org.json.JSONArray(
+                    getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlQueued", "[]"));
+            for (int i = 0; i < qa.length(); i++)
+                if (url.equals(qa.optString(i))) return true;
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    // v15.79 (slice 2134): History histRecordDownload (v13.77),
+    // Favourites-local — dlMap, dlSayadaw and dlQueued land in ONE
+    // apply under DlLock.LOCK (v13.68/v13.70), the URL banked in
+    // identity form (v13.71).
+    private void favRecordDownload(String url, String file, String sd) {
+        synchronized (DlLock.LOCK) {
+        try {
+            url = SiteHttp.identityUrl(url);
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            map.put(url, file);
+            String sayStr = null;
+            if (sd != null && sd.length() > 0) {
+                try {
+                    org.json.JSONObject sm = new org.json.JSONObject(sp.getString("dlSayadaw", "{}"));
+                    sm.put(url, sd);
+                    sayStr = sm.toString();
+                } catch (Exception ignored) {}
+            }
+            org.json.JSONArray queued = new org.json.JSONArray(sp.getString("dlQueued", "[]"));
+            boolean found = false;
+            for (int i = 0; i < queued.length(); i++) {
+                if (SiteHttp.sameTalk(url, queued.optString(i))) { found = true; break; }
+            }
+            if (!found) queued.put(url);
+            android.content.SharedPreferences.Editor ed = sp.edit()
+                    .putString("dlMap", map.toString())
+                    .putString("dlQueued", queued.toString());
+            if (sayStr != null) ed.putString("dlSayadaw", sayStr);
+            ed.apply();
+        } catch (Exception ignored) {}
         }
     }
 
