@@ -869,8 +869,9 @@ public class FavouritesActivity extends Activity {
     // History's 2030 verb — queue the shown run from this row
     // onward and open the Room on it) and "Remove from favourites"
     // (the screen's own removal verb — the row leaves the list at
-    // once). Share / go-to-sayadaw / queue / download are future
-    // verbs on this same menu (the History menu grew the same way:
+    // once). Share / download are the remaining future verbs on
+    // this same menu (go-to-sayadaw landed in slice 2078, queue
+    // in slice 2073; the History menu grew the same way:
     // 1981, 1982, 1995, 2030). The offer comes from the pure
     // FavRowMenu core (sameTalk sounding gate, path-form rows offer
     // remove only); the dialog is History's AlertDialog shape
@@ -909,6 +910,31 @@ public class FavouritesActivity extends Activity {
             int at73 = keys69.contains("menu_play_from_here") ? 1 : 0;
             keys69.add(at73, qKey73);
         }
+        // v15.70 (slice 2078): the navigation verb — "Go to
+        // sayadaw's talks" (FavGo, the BmGo mirror over
+        // GoSayadaw): the row's sayadaw resolved through the
+        // bundled catalog (catalogFor — the cached, canonicalized
+        // read the play verbs already pay for; one cache lookup
+        // per menu open at most). The key composes after the
+        // queue verb, so the play verbs sit together, the
+        // navigation follows, and Remove from favourites stays
+        // last (inserted before menu_fav_remove, never appended
+        // past it). Offered on any row whose sayadaw resolves to
+        // a page URL — sounding or not, the navigation never
+        // touches playback — and hidden while the sayadaw is
+        // unknown or unlisted (FavGo.canOffer). A stale banked
+        // sayadaw can only mis-offer when the canonical name
+        // still resolves — the handler re-resolves at tap time
+        // and toasts no_sayadaw_page on a miss, never a dead tap.
+        String goKey78 = "";
+        try {
+            String[] goCat78 = catalogFor(sd);
+            if (FavGo.canOffer(sd, goCat78)) goKey78 = "menu_go_sayadaw";
+        } catch (Exception ignored) {}
+        if (goKey78.length() > 0) {
+            int at78 = keys69.indexOf("menu_fav_remove");
+            keys69.add(at78 < 0 ? keys69.size() : at78, goKey78);
+        }
         java.util.ArrayList<String> opts = new java.util.ArrayList<String>();
         for (String k69 : keys69) opts.add(Lang.t(this, k69));
         final String[] optArr = opts.toArray(new String[0]);
@@ -923,6 +949,8 @@ public class FavouritesActivity extends Activity {
                             queueAddFav(c);
                         } else if ("menu_queue_remove".equals(keyArr[which])) {
                             queueRemoveFav(c);
+                        } else if ("menu_go_sayadaw".equals(keyArr[which])) {
+                            goToSayadawFav(c);
                         } else if ("menu_fav_remove".equals(keyArr[which])) {
                             removeFavFromMenu(c);
                         }
@@ -1201,6 +1229,39 @@ public class FavouritesActivity extends Activity {
         android.widget.Toast.makeText(FavouritesActivity.this,
                 Lang.t(FavouritesActivity.this, "removed_from_queue"),
                 android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    // v15.70 (slice 2078): "Go to sayadaw's talks" — the row
+    // menu's navigation verb (History's menu_go_sayadaw, v15.56
+    // slice 1995, on this screen's menu; the Downloaded row's
+    // 1944 verb through the same GoSayadaw core; the Bookmarks
+    // row's 2077 verb, BmGo): re-resolve the row's sayadaw
+    // through the bundled catalog at tap time (catalogFor —
+    // cached, canonicalized, so a renamed sayadaw still
+    // resolves; the offer and the tap can never disagree),
+    // toast no_sayadaw_page on a failed re-read, else open that
+    // sayadaw's Talks list inside the app with Main's own intent
+    // extras (name/group/url/photo). The name is the row's own
+    // sayadaw (the catalog entry carries no name slot). A
+    // navigation mutates nothing: no favourite, queue or resume
+    // change, no pause guard (no sheet is left to return from).
+    private void goToSayadawFav(final FavTalkRail.Card c) {
+        if (c == null || c.e == null || c.e.sayadaw == null || c.e.sayadaw.length() == 0) return;
+        final String sd = c.e.sayadaw;
+        String[] cat78 = catalogFor(sd);
+        if (!FavGo.canOffer(sd, cat78)) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "no_sayadaw_page"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        android.content.Intent gi78 = new android.content.Intent(FavouritesActivity.this, TalksActivity.class);
+        gi78.putExtra("name", sd);
+        gi78.putExtra("group", GoSayadaw.group(cat78));
+        gi78.putExtra("url", GoSayadaw.page(cat78));
+        gi78.putExtra("photo", GoSayadaw.photo(cat78));
+        Fx.tap(FavouritesActivity.this);
+        Fx.go(FavouritesActivity.this, gi78);
     }
 
     private void removeFavFromMenu(final FavTalkRail.Card c) {

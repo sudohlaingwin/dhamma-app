@@ -900,14 +900,21 @@ public class NewTalksActivity extends Activity {
     // per-row from the rail/chooser/library menus only (the 2035
     // header note), and nothing started a run mid-list (Play-all
     // starts at the top, a tap plays one talk at 0:00). The menu
-    // opens with the two verbs this screen needs: "Play from here"
+    // opens with the verbs this screen needs: "Share talk" first
+    // (the History menu_share shape, v13.77 - share the row's talk
+    // through the Android sheet), "Copy link" second (the History
+    // dl_menu_copy_link shape, v15.53 - copy the row's stream URL
+    // to the clipboard, the share/copy pair together), then
+    // "Play from here"
     // (the chooser's 1942 / History's 2030 / Favourites' 2069 verb
     // — queue the shown run from this row onward and open the Room
     // on it at 0:00) and the state-dependent star verb ("Add to
     // favourites" when unstarred, "Remove from favourites" when
     // starred — the chooser 1969 / library / History 1267 shape).
-    // Share / go-to-sayadaw / queue / download are future verbs on
-    // this same menu (the History menu grew the same way: 1981,
+    // download is the remaining future verb on this same menu
+    // (copy-link landed in slice 2081, share in slice 2080,
+    // go-to-sayadaw in slice 2079, queue in slice 2074; the
+    // History menu grew the same way: 1981,
     // 1982, 1995, 2030). The offer comes from the pure NewRowMenu
     // core (the NewPlayAll three-identity sounding gate, path-form
     // rows offer the star verb only); the dialog is History's
@@ -927,6 +934,41 @@ public class NewTalksActivity extends Activity {
             }
         } catch (Exception ignored) {}
         java.util.List<String> keys71 = NewRowMenu.menuKeys(url, sd, newPlayingUrl, newPlayingLibUrl, newPlayingLibPath, starred);
+        // v15.70 (slice 2080): the share verb — "Share talk"
+        // (NewShare, the History menu_share shape, v13.77): the
+        // row resolves to its stream URL once per menu open
+        // (newStreamUrlFor — URL-form rows share their own URL,
+        // path-form rows resolve through the dlMap reverse lookup
+        // with the exactly-one-claimant rule, v8.44; an
+        // unresolvable row offers no share, never a guessed
+        // link). The key composes FIRST, before Play-from-here,
+        // so the share sits at the top of the menu like History's
+        // menu and the chooser's dialog ("share first so muscle
+        // memory is preserved", v7.82). Offered on any row with a
+        // resolvable stream URL — sounding or not, sharing never
+        // touches playback.
+        // v15.70 (slice 2081): the copy verb — "Copy link"
+        // (RoomCopyLink, the History dl_menu_copy_link shape,
+        // v15.53 slice 1981): the same resolved stream URL
+        // (shareUrl80 — no second resolve, the v5.69 cost rule)
+        // offers the clipboard copy, so a listener who wants
+        // just the link pasted elsewhere never has to share it
+        // through the sheet and copy from there. The gate is
+        // blank-URL-only (RoomCopyLink.canOffer), so a
+        // streamed-only talk still offers it (a link is not a
+        // file); only a blank URL hides it. The key composes
+        // after the queue/go inserts (below), right after the
+        // share, so the share/copy pair sits together like
+        // History's menu and the chooser's trio — the pair can
+        // never be split by a later insert.
+        String shareKey80 = "";
+        String copyKey81 = "";
+        try {
+            String shareUrl80 = newStreamUrlFor(c.e);
+            if (NewShare.canOffer(shareUrl80)) shareKey80 = "menu_share";
+            if (RoomCopyLink.canOffer(shareUrl80)) copyKey81 = "dl_menu_copy_link";
+        } catch (Exception ignored) {}
+        if (shareKey80.length() > 0) keys71.add(0, shareKey80);
         // v15.69 (slice 2074): the queue verb — "Add to queue" /
         // "Remove from queue" (NewQueue): the row's sayadaw queue,
         // read once per menu open; the key composes into the menu
@@ -953,6 +995,44 @@ public class NewTalksActivity extends Activity {
             int at74 = keys71.contains("menu_play_from_here") ? 1 : 0;
             keys71.add(at74, qKey74);
         }
+        // v15.70 (slice 2079): the navigation verb — "Go to
+        // sayadaw's talks" (NewGo, the FavGo mirror over
+        // GoSayadaw): the row's sayadaw resolved through the
+        // bundled catalog (catalogFor — the cached, canonicalized
+        // read the play verbs already pay for; one cache lookup
+        // per menu open at most). The key composes after the
+        // queue verb, so the play verbs sit together, the
+        // navigation follows, and the star verb stays last
+        // (inserted before menu_fav_add / menu_fav_remove —
+        // whichever star key the row's state composed, never
+        // appended past it). Offered on any row whose sayadaw
+        // resolves to a page URL — sounding or not, the
+        // navigation never touches playback — and hidden while
+        // the sayadaw is unknown or unlisted (NewGo.canOffer).
+        // A stale banked sayadaw can only mis-offer when the
+        // canonical name still resolves — the handler re-resolves
+        // at tap time and toasts no_sayadaw_page on a miss, never
+        // a dead tap.
+        String goKey79 = "";
+        try {
+            String[] goCat79 = catalogFor(sd);
+            if (NewGo.canOffer(sd, goCat79)) goKey79 = "menu_go_sayadaw";
+        } catch (Exception ignored) {}
+        if (goKey79.length() > 0) {
+            int at79 = keys71.indexOf("menu_fav_remove");
+            if (at79 < 0) at79 = keys71.indexOf("menu_fav_add");
+            keys71.add(at79 < 0 ? keys71.size() : at79, goKey79);
+        }
+        // v15.70 (slice 2081): the copy key composes right after
+        // the share (indexOf + 1 — the queue/go inserts above
+        // already landed, so inserting here keeps the share/copy
+        // pair adjacent whatever they did; a copy implies a
+        // share, since both gates are the same non-blank URL —
+        // the at81 < 0 leg is defensive only).
+        if (copyKey81.length() > 0) {
+            int at81 = keys71.indexOf("menu_share");
+            keys71.add(at81 < 0 ? keys71.size() : at81 + 1, copyKey81);
+        }
         if (keys71.isEmpty()) return;
         java.util.ArrayList<String> opts = new java.util.ArrayList<String>();
         for (String k71 : keys71) opts.add(Lang.t(this, k71));
@@ -962,12 +1042,18 @@ public class NewTalksActivity extends Activity {
                 .setTitle(c.e.title != null && c.e.title.length() > 0 ? c.e.title : url)
                 .setItems(optArr, new android.content.DialogInterface.OnClickListener() {
                     @Override public void onClick(android.content.DialogInterface d, int which) {
-                        if ("menu_play_from_here".equals(keyArr[which])) {
+                        if ("menu_share".equals(keyArr[which])) {
+                            shareTalkNew(c);
+                        } else if ("dl_menu_copy_link".equals(keyArr[which])) {
+                            copyTalkLinkNew(c);
+                        } else if ("menu_play_from_here".equals(keyArr[which])) {
                             playFromHereNew(c);
                         } else if ("menu_queue_add".equals(keyArr[which])) {
                             queueAddNew(c);
                         } else if ("menu_queue_remove".equals(keyArr[which])) {
                             queueRemoveNew(c);
+                        } else if ("menu_go_sayadaw".equals(keyArr[which])) {
+                            goToSayadawNew(c);
                         } else if ("menu_fav_add".equals(keyArr[which]) || "menu_fav_remove".equals(keyArr[which])) {
                             toggleFavFromMenu(c);
                         }
@@ -1253,6 +1339,129 @@ public class NewTalksActivity extends Activity {
         android.widget.Toast.makeText(NewTalksActivity.this,
                 Lang.t(NewTalksActivity.this, "removed_from_queue"),
                 android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    // v15.70 (slice 2079): "Go to sayadaw's talks" — the row
+    // menu's navigation verb (History's menu_go_sayadaw, v15.56
+    // slice 1995, on this screen's menu; the Downloaded row's
+    // 1944 verb through the same GoSayadaw core; the Favourites
+    // row's 2078 verb, FavGo): re-resolve the row's sayadaw
+    // through the bundled catalog at tap time (catalogFor —
+    // cached, canonicalized, so a renamed sayadaw still
+    // resolves; the offer and the tap can never disagree),
+    // toast no_sayadaw_page on a failed re-read, else open that
+    // sayadaw's Talks list inside the app with Main's own intent
+    // extras (name/group/url/photo). The name is the row's own
+    // sayadaw (the catalog entry carries no name slot). A
+    // navigation mutates nothing: no favourite, queue or resume
+    // change, no pause guard (no sheet is left to return from).
+    private void goToSayadawNew(final NewTalkRail.Card c) {
+        if (c == null || c.e == null || c.e.sayadaw == null || c.e.sayadaw.length() == 0) return;
+        final String sd = c.e.sayadaw;
+        String[] cat79 = catalogFor(sd);
+        if (!NewGo.canOffer(sd, cat79)) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "no_sayadaw_page"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        android.content.Intent gi79 = new android.content.Intent(NewTalksActivity.this, TalksActivity.class);
+        gi79.putExtra("name", sd);
+        gi79.putExtra("group", GoSayadaw.group(cat79));
+        gi79.putExtra("url", GoSayadaw.page(cat79));
+        gi79.putExtra("photo", GoSayadaw.photo(cat79));
+        Fx.tap(NewTalksActivity.this);
+        Fx.go(NewTalksActivity.this, gi79);
+    }
+
+    // v15.70 (slice 2080): "Share talk" — the row menu's share
+    // verb (History's menu_share, v13.77, on this screen's menu;
+    // the chooser's long-press dialog shares first, v7.82, and
+    // the library row menu has shared since v9.55): re-resolve
+    // the row to its stream URL at tap time (newStreamUrlFor —
+    // the offer and the tap can never disagree), toast
+    // talk_no_longer_in_list when the file behind a path-form
+    // row no longer resolves (the History file-share's stale
+    // toast), else share the talk's text through the Android
+    // sheet — sayadaw — title + stream URL + the
+    // dhammadownload.com credit (NewShare.shareText, the History
+    // text shape) — chooser titled share_talk. A share mutates
+    // nothing: no favourite, queue or resume change; no pause
+    // guard (no sheet is left to return from); the sounding row
+    // keeps it (sharing never touches playback).
+    private void shareTalkNew(final NewTalkRail.Card c) {
+        if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return;
+        final String streamUrl = newStreamUrlFor(c.e);
+        if (!NewShare.canOffer(streamUrl)) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        android.content.Intent send80 = new android.content.Intent(android.content.Intent.ACTION_SEND);
+        send80.setType("text/plain");
+        send80.putExtra(android.content.Intent.EXTRA_TEXT,
+                NewShare.shareText(c.e.sayadaw, c.e.title, streamUrl,
+                        Lang.t(NewTalksActivity.this, "share_source")));
+        Fx.tap(NewTalksActivity.this);
+        startActivity(android.content.Intent.createChooser(send80,
+                Lang.t(NewTalksActivity.this, "share_talk")));
+    }
+
+    // v15.70 (slice 2080): the row's stream URL for the share
+    // verb — the histStreamUrlFor shape (v13.77): a URL-form row
+    // canonicalises to its identity form; a path-form row (a
+    // downloaded file) resolves through the dlMap reverse lookup
+    // with the exactly-one-claimant rule (v8.44 — a dual-claimed
+    // file names no talk rather than the wrong one), so a deleted
+    // file with no claimant offers no stream verb. The dlMap is
+    // parsed once per call (dlMapNow2039) and only for path-form
+    // rows — URL-form rows never pay the parse.
+    private String newStreamUrlFor(Prefs.HistEntry e) {
+        if (e == null || e.url == null || e.url.length() == 0) return "";
+        if (!e.url.startsWith("/")) return SiteHttp.identityUrl(e.url);
+        try {
+            return NewShare.resolve(e.url, dlMapNow2039(getSharedPreferences("dhamma", MODE_PRIVATE)));
+        } catch (Exception ignored) { return ""; }
+    }
+
+    // v15.70 (slice 2081): "Copy link" — the row menu's clipboard
+    // verb (History's dl_menu_copy_link, v15.53 slice 1981, on
+    // this screen's menu; the library row menu has copied since
+    // v6.56, the Room drawer since slice 1975, the Talks chooser
+    // since slice 1977 — all through the same RoomCopyLink core,
+    // so the surfaces can never disagree): re-resolve the row to
+    // its stream URL at tap time (newStreamUrlFor — the offer and
+    // the tap can never disagree), toast talk_no_longer_in_list
+    // when the file behind a path-form row no longer resolves
+    // (this screen's share already sets that toast precedent;
+    // History's copy stays silent, but a visible menu verb that
+    // silently does nothing is a dead tap), else copy the talk's
+    // own original link verbatim (the v6.56 rule — never a bare
+    // title, never a guessed link) with the v6.56 clipboard label
+    // + toast (RoomCopyLink.clipText / toastText). A copy mutates
+    // nothing: no favourite, queue or resume change; no pause
+    // guard (no sheet is left to return from); the sounding row
+    // keeps it (copying never touches playback).
+    private void copyTalkLinkNew(final NewTalkRail.Card c) {
+        if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return;
+        final String streamUrl = newStreamUrlFor(c.e);
+        if (!RoomCopyLink.canOffer(streamUrl)) {
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    Lang.t(NewTalksActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            android.content.ClipboardManager cm81 =
+                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (cm81 != null)
+                cm81.setPrimaryClip(android.content.ClipData.newPlainText(
+                        Lang.t(NewTalksActivity.this, "clip_talk"), RoomCopyLink.clipText(streamUrl)));
+            android.widget.Toast.makeText(NewTalksActivity.this,
+                    RoomCopyLink.toastText(Lang.t(NewTalksActivity.this, "link_copied_prefix"), c.e.title, streamUrl),
+                    android.widget.Toast.LENGTH_SHORT).show();
+        } catch (Exception ignored) {}
     }
 
     private void toggleFavFromMenu(final NewTalkRail.Card c) {

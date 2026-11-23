@@ -905,8 +905,9 @@ public class BookmarksActivity extends Activity {
     // the Room on it at its minute) and "Delete bookmark" (the
     // rail's own verb — the confirm names the exact minute, so a
     // talk with several marks never deletes the wrong one). Share
-    // / go-to-sayadaw are future verbs on this same menu (the
-    // History menu grew the same way: 1981, 1982, 1995, 2030).
+    // is the remaining future verb on this same menu (go-to-
+    // sayadaw landed in slice 2077; the History menu grew the
+    // same way: 1981, 1982, 1995, 2030).
     // The offer comes from the pure BmRowMenu core (the resolved
     // stream URL + the BmPlayAll sounding rule; the delete verb is
     // always offered — the row IS a bookmark); the dialog is
@@ -948,6 +949,31 @@ public class BookmarksActivity extends Activity {
             int at75 = keys72.contains("menu_play_from_here") ? 1 : 0;
             keys72.add(at75, qKey75);
         }
+        // v15.70 (slice 2077): the navigation verb — "Go to
+        // sayadaw's talks" (BmGo, the HistGo mirror over
+        // GoSayadaw): the row's sayadaw resolved through the
+        // bundled catalog (catalogFor — the cached, canonicalized
+        // read the play verbs already pay for; one cache lookup
+        // per menu open at most). The key composes after the
+        // queue verb, so the play verbs sit together, the
+        // navigation follows, and Delete bookmark stays last
+        // (inserted before bm_menu_remove, never appended past
+        // it). Offered on any row whose sayadaw resolves to a
+        // page URL — sounding or not, the navigation never
+        // touches playback — and hidden while the sayadaw is
+        // unknown or unlisted (BmGo.canOffer). A stale banked
+        // sayadaw can only mis-offer when the canonical name
+        // still resolves — the handler re-resolves at tap time
+        // and toasts no_sayadaw_page on a miss, never a dead tap.
+        String goKey77 = "";
+        try {
+            String[] goCat77 = catalogFor(sd);
+            if (BmGo.canOffer(sd, goCat77)) goKey77 = "menu_go_sayadaw";
+        } catch (Exception ignored) {}
+        if (goKey77.length() > 0) {
+            int at77 = keys72.indexOf("bm_menu_remove");
+            keys72.add(at77 < 0 ? keys72.size() : at77, goKey77);
+        }
         if (keys72.isEmpty()) return;
         java.util.ArrayList<String> opts = new java.util.ArrayList<String>();
         for (String k72 : keys72) opts.add(Lang.t(this, k72));
@@ -963,6 +989,8 @@ public class BookmarksActivity extends Activity {
                             queueAddBm(r);
                         } else if ("menu_queue_remove".equals(keyArr[which])) {
                             queueRemoveBm(r);
+                        } else if ("menu_go_sayadaw".equals(keyArr[which])) {
+                            goToSayadawBm(r);
                         } else if ("bm_menu_remove".equals(keyArr[which])) {
                             removeBmFromMenu(r);
                         }
@@ -1241,6 +1269,38 @@ public class BookmarksActivity extends Activity {
         android.widget.Toast.makeText(BookmarksActivity.this,
                 Lang.t(BookmarksActivity.this, "removed_from_queue"),
                 android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    // v15.70 (slice 2077): "Go to sayadaw's talks" — the row
+    // menu's navigation verb (History's menu_go_sayadaw, v15.56
+    // slice 1995, on this screen's menu; the Downloaded row's
+    // 1944 verb through the same GoSayadaw core): re-resolve the
+    // row's sayadaw through the bundled catalog at tap time
+    // (catalogFor — cached, canonicalized, so a renamed sayadaw
+    // still resolves; the offer and the tap can never disagree),
+    // toast no_sayadaw_page on a failed re-read, else open that
+    // sayadaw's Talks list inside the app with Main's own intent
+    // extras (name/group/url/photo). The name is the row's own
+    // sayadaw (the catalog entry carries no name slot). A
+    // navigation mutates nothing: no bookmark, queue or resume
+    // change, no pause guard (no sheet is left to return from).
+    private void goToSayadawBm(final BmAll.Row r) {
+        if (r == null || r.e == null || r.e.sayadaw == null || r.e.sayadaw.length() == 0) return;
+        final String sd = r.e.sayadaw;
+        String[] cat77 = catalogFor(sd);
+        if (!BmGo.canOffer(sd, cat77)) {
+            android.widget.Toast.makeText(BookmarksActivity.this,
+                    Lang.t(BookmarksActivity.this, "no_sayadaw_page"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        android.content.Intent gi77 = new android.content.Intent(BookmarksActivity.this, TalksActivity.class);
+        gi77.putExtra("name", sd);
+        gi77.putExtra("group", GoSayadaw.group(cat77));
+        gi77.putExtra("url", GoSayadaw.page(cat77));
+        gi77.putExtra("photo", GoSayadaw.photo(cat77));
+        Fx.tap(BookmarksActivity.this);
+        Fx.go(BookmarksActivity.this, gi77);
     }
 
     private void removeBmFromMenu(final BmAll.Row r) {
