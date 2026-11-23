@@ -151,6 +151,9 @@ public class FavouritesActivity extends Activity {
     private android.view.View favPlayingBtn = null;
     private boolean favPlayingShown = false;
     private int favJumpTargetIdx = -1;
+    // v15.75 (slice 2108): "Back to top" on this screen — the Talks 1940 / Downloaded 2003 button, now on the second full-list screen without one: a starred list grows with every favourite tap, so its header is off-screen exactly when the jump is needed. favTopBtn is the floating gold ↑ button (GONE until ScrollTop.visible — the first visible row passes 8 — the 1940 shape, on the shown list's own scroll, not the sounding row); favTopShown is the last-painted state for the painter's change gate. Back to top landed in slice 2108.
+    private android.view.View favTopBtn = null;
+    private boolean favTopShown = false;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -202,6 +205,8 @@ public class FavouritesActivity extends Activity {
             listView.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
                 @Override public void onScrollStateChanged(android.widget.AbsListView v, int scrollState) {}
                 @Override public void onScroll(android.widget.AbsListView v, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
+                    // v15.75 (slice 2108): the top button paints on the same scroll (the 2003 shape — its only show rule is the first visible row, so no laid-out-window guard; the threshold keeps it hidden until row 8 anyway).
+                    paintFavTopBtn(firstVisibleItem);
                     if (visibleItemCount > 0) paintFavJumpBtn(firstVisibleItem, firstVisibleItem + visibleItemCount - 1);
                 }
             });
@@ -209,6 +214,7 @@ public class FavouritesActivity extends Activity {
         wireFavSearch(); // v15.65 (slice 2048): search on this screen, before the first refresh
         wireFavSort(); // v15.66 (slice 2056): sort on this screen, before the first refresh
         wireFavJumpBtn(); // v15.67 (slice 2060): jump-to-playing button on this list
+        wireFavTopBtn(); // v15.75 (slice 2108): back to top on this screen, before the first refresh
         refresh();
         // v15.64 (slice 2044): wire the Play-all button the same way
         // as the chooser's Play All (v13.76) — one tap plays the whole
@@ -307,6 +313,8 @@ public class FavouritesActivity extends Activity {
         // v15.67 (slice 2060): a search / sort / refresh re-shows the list — the jump button's cached target moves with it (new list, new filter), so refresh the target and repaint from the new position.
         refreshFavJumpTarget();
         paintFavJumpBtnFromList();
+        // v15.75 (slice 2108): a search / refresh can land the list deep without a scroll event — repaint the top button from the new position too (the 2003 shape).
+        paintFavTopBtnFromList();
     }
 
     // v15.65 (slice 2048): search on this screen — the Downloaded
@@ -520,6 +528,45 @@ public class FavouritesActivity extends Activity {
             @Override public void run() {
                 if (listView == null) return;
                 paintFavJumpBtn(listView.getFirstVisiblePosition(), listView.getLastVisiblePosition());
+            }
+        });
+    }
+
+    // v15.75 (slice 2108): wire the back-to-top button — one tap glides the open list to the top (the Talks 1940 / Downloaded 2003 shape: the tap needs no gate — the button only shows past row 8, so a tap always has somewhere to go; this screen HAS a search field, so the keyboard hides with the glide, the 2003 shape in this file's own inline form — the wireFavSort tap's two lines, not a new helper). A missing button simply never wires; a missing list never scrolls.
+    private void wireFavTopBtn() {
+        favTopBtn = findViewById(R.id.favTopBtn);
+        if (favTopBtn != null) favTopBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.tap(FavouritesActivity.this);
+                Fx.morph(v);
+                android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+                if (imm != null) imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                if (listView != null) listView.smoothScrollToPosition(0);
+            }
+        });
+    }
+
+    // v15.75 (slice 2108): the back-to-top state — shown once the first visible row passes ScrollTop's threshold, hidden at the top (the 1940 Talks / 2003 Downloaded shape verbatim: ScrollTop.visible, THRESHOLD 8 — about one screen of rows). No sounding gate: the rule is the shown list's own scroll. The change gate keeps steady scrolls and the search/refresh repaint from re-touching the button; the show/hide melts (Fx.fadeIn/fadeOut, 180ms) instead of snapping, and a cancelled fade never strands it half-transparent (the v2.62 gen guard, the 1940 shape).
+    private void paintFavTopBtn(int firstVisible) {
+        if (favTopBtn == null) return;
+        boolean want = ScrollTop.visible(firstVisible);
+        if (want == favTopShown) return;
+        favTopShown = want;
+        if (want) {
+            favTopBtn.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(favTopBtn, 180);
+        } else {
+            Fx.fadeOut(favTopBtn, 180);
+        }
+    }
+
+    // v15.75 (slice 2108): repaint from the list's own position after a scroll-less change — a search / refresh rebuild can land the list deep without a scroll event, so read the position after layout and paint from it. Posted, because the first visible row is only valid once the list has laid out (the 1940 shape). The rotation restore needs no separate hook: onCreate restores through refresh(), whose applyFavSearch tail already posts this repaint.
+    private void paintFavTopBtnFromList() {
+        if (listView == null) return;
+        listView.post(new Runnable() {
+            @Override public void run() {
+                if (listView == null) return;
+                paintFavTopBtn(listView.getFirstVisiblePosition());
             }
         });
     }

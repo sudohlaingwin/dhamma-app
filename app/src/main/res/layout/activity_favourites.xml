@@ -99,16 +99,30 @@
             android:textSize="15sp"
             android:visibility="gone" />
         <!-- v15.67 (slice 2060): jump-to-playing button — the
-             floating gold ▶ over the list's bottom-end corner (same
-             56dp oval, same maroon glyph, 16dp off the corner as
-             the chooser's 1994 button; no top button on this screen
-             to stack above): the rows carry the sounding gold mark
-             since slice 2042, but a listener who scrolled away
-             from the marked row had no visible way back. GONE
-             until a live session sounds AND that talk's row has
-             scrolled off-screen. -->
+             floating gold ▶ stacked above the ↑ back-to-top
+             (slice 2108, the Talks/Downloaded stacking: same 56dp
+             oval, same maroon glyph, 88dp off the corner): the rows
+             carry the sounding gold mark since slice 2042, but a
+             listener who scrolled away from the marked row had no
+             visible way back. GONE until a live session sounds AND
+             that talk's row has scrolled off-screen. -->
         <TextView
             android:id="@+id/favPlayingBtn"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="88dp"
+            android:background="@drawable/top_btn_bg"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="▶"
+            android:textColor="@color/maroon"
+            android:textSize="24sp"
+            android:visibility="gone" />
+        <!-- v15.75 (slice 2108): back-to-top button — the floating gold ↑ at the list's bottom-end corner (the Talks 1940 / Downloaded 2003 block verbatim: same 56dp oval, same maroon glyph, 16dp off the corner): the header tap already jumps to the top, but the header is off-screen exactly when the jump is needed, so deep in a long starred list the listener had to drag all the way back by hand. GONE until the list has scrolled past eight rows. Back to top landed in slice 2108. -->
+        <TextView
+            android:id="@+id/favTopBtn"
             android:layout_width="56dp"
             android:layout_height="56dp"
             android:layout_gravity="bottom|end"
@@ -117,7 +131,7 @@
             android:background="@drawable/top_btn_bg"
             android:gravity="center"
             android:includeFontPadding="false"
-            android:text="▶"
+            android:text="↑"
             android:textColor="@color/maroon"
             android:textSize="24sp"
             android:visibility="gone" />

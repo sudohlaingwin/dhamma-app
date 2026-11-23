@@ -117,6 +117,9 @@ public class NewTalksActivity extends Activity {
     private android.view.View newPlayingBtn = null;
     private boolean newPlayingShown = false;
     private int newJumpTargetIdx = -1;
+    // v15.75 (slice 2109): "Back to top" on this screen — the Talks 1940 / Downloaded 2003 button, now on the third full-list screen without one: a new-talks list grows with every catalogue refresh, so its header is off-screen exactly when the jump is needed. newTopBtn is the floating gold ↑ button (GONE until ScrollTop.visible — the first visible row passes 8 — the 1940 shape, on the shown list's own scroll, not the sounding row); newTopShown is the last-painted state for the painter's change gate. Back to top landed in slice 2109.
+    private android.view.View newTopBtn = null;
+    private boolean newTopShown = false;
     // v15.65 (slice 2047): "Play all new" on this screen (the
     // chooser's v13.76 Play All + the library's v15.50
     // play-listened + Favourites' v15.64 play-all, the fourth list
@@ -205,6 +208,8 @@ public class NewTalksActivity extends Activity {
             listView.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
                 @Override public void onScrollStateChanged(android.widget.AbsListView v, int scrollState) {}
                 @Override public void onScroll(android.widget.AbsListView v, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
+                    // v15.75 (slice 2109): the top button paints on the same scroll (the 2003 shape — its only show rule is the first visible row, so no laid-out-window guard; the threshold keeps it hidden until row 8 anyway).
+                    paintNewTopBtn(firstVisibleItem);
                     if (visibleItemCount > 0) paintNewJumpBtn(firstVisibleItem, firstVisibleItem + visibleItemCount - 1);
                 }
             });
@@ -212,6 +217,7 @@ public class NewTalksActivity extends Activity {
         wireNewSearch(); // v15.64 (slice 2045): search on this screen, before the first refresh
         wireNewSort(); // v15.66 (slice 2057): sort on this screen, before the first refresh
         wireNewJumpBtn(); // v15.67 (slice 2061): jump-to-playing button on this list
+        wireNewTopBtn(); // v15.75 (slice 2109): back to top on this screen, before the first refresh
         refresh();
         // v15.65 (slice 2047): wire the Play-all button the same way
         // as the chooser's Play All (v13.76) — one tap plays the whole
@@ -310,6 +316,8 @@ public class NewTalksActivity extends Activity {
         // v15.67 (slice 2061): a search / sort / refresh re-shows the list — the jump button's cached target moves with it (new list, new filter), so refresh the target and repaint from the new position.
         refreshNewJumpTarget();
         paintNewJumpBtnFromList();
+        // v15.75 (slice 2109): a search / refresh can land the list deep without a scroll event — repaint the top button from the new position too (the 2003 shape).
+        paintNewTopBtnFromList();
     }
 
     // v15.64 (slice 2045): search on this screen — the Downloaded
@@ -523,6 +531,45 @@ public class NewTalksActivity extends Activity {
             @Override public void run() {
                 if (listView == null) return;
                 paintNewJumpBtn(listView.getFirstVisiblePosition(), listView.getLastVisiblePosition());
+            }
+        });
+    }
+
+    // v15.75 (slice 2109): wire the back-to-top button — one tap glides the open list to the top (the Talks 1940 / Downloaded 2003 shape: the tap needs no gate — the button only shows past row 8, so a tap always has somewhere to go; this screen HAS a search field, so the keyboard hides with the glide, the 2003 shape in this file's own inline form — the wireNewSort tap's two lines, not a new helper). A missing button simply never wires; a missing list never scrolls.
+    private void wireNewTopBtn() {
+        newTopBtn = findViewById(R.id.newTopBtn);
+        if (newTopBtn != null) newTopBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.tap(NewTalksActivity.this);
+                Fx.morph(v);
+                android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+                if (imm != null) imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                if (listView != null) listView.smoothScrollToPosition(0);
+            }
+        });
+    }
+
+    // v15.75 (slice 2109): the back-to-top state — shown once the first visible row passes ScrollTop's threshold, hidden at the top (the 1940 Talks / 2003 Downloaded shape verbatim: ScrollTop.visible, THRESHOLD 8 — about one screen of rows). No sounding gate: the rule is the shown list's own scroll. The change gate keeps steady scrolls and the search/refresh repaint from re-touching the button; the show/hide melts (Fx.fadeIn/fadeOut, 180ms) instead of snapping, and a cancelled fade never strands it half-transparent (the v2.62 gen guard, the 1940 shape).
+    private void paintNewTopBtn(int firstVisible) {
+        if (newTopBtn == null) return;
+        boolean want = ScrollTop.visible(firstVisible);
+        if (want == newTopShown) return;
+        newTopShown = want;
+        if (want) {
+            newTopBtn.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(newTopBtn, 180);
+        } else {
+            Fx.fadeOut(newTopBtn, 180);
+        }
+    }
+
+    // v15.75 (slice 2109): repaint from the list's own position after a scroll-less change — a search / refresh rebuild can land the list deep without a scroll event, so read the position after layout and paint from it. Posted, because the first visible row is only valid once the list has laid out (the 1940 shape). The rotation restore needs no separate hook: onCreate restores through refresh(), whose applyNewSearch tail already posts this repaint.
+    private void paintNewTopBtnFromList() {
+        if (listView == null) return;
+        listView.post(new Runnable() {
+            @Override public void run() {
+                if (listView == null) return;
+                paintNewTopBtn(listView.getFirstVisiblePosition());
             }
         });
     }

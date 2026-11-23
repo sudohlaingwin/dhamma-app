@@ -142,6 +142,9 @@ public class BookmarksActivity extends Activity {
     private android.view.View bmPlayingBtn = null;
     private boolean bmPlayingShown = false;
     private int bmJumpTargetIdx = -1;
+    // v15.75 (slice 2110): "Back to top" on this screen — the Talks 1940 / Downloaded 2003 button, now on the last full-list screen without one: a marked list grows with every bookmark tap, so its header is off-screen exactly when the jump is needed. bmTopBtn is the floating gold ↑ button (GONE until ScrollTop.visible — the first visible row passes 8 — the 1940 shape, on the shown list's own scroll, not the sounding row); bmTopShown is the last-painted state for the painter's change gate. Back to top landed in slice 2110.
+    private android.view.View bmTopBtn = null;
+    private boolean bmTopShown = false;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -193,6 +196,8 @@ public class BookmarksActivity extends Activity {
             listView.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
                 @Override public void onScrollStateChanged(android.widget.AbsListView v, int scrollState) {}
                 @Override public void onScroll(android.widget.AbsListView v, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
+                    // v15.75 (slice 2110): the top button paints on the same scroll (the 2003 shape — its only show rule is the first visible row, so no laid-out-window guard; the threshold keeps it hidden until row 8 anyway).
+                    paintBmTopBtn(firstVisibleItem);
                     if (visibleItemCount > 0) paintBmJumpBtn(firstVisibleItem, firstVisibleItem + visibleItemCount - 1);
                 }
             });
@@ -200,6 +205,7 @@ public class BookmarksActivity extends Activity {
         wireBmSearch(); // v15.65 (slice 2049): search on this screen, before the first refresh
         wireBmSort(); // v15.65 (slice 2051): sort on this screen, before the first refresh
         wireBmJumpBtn(); // v15.67 (slice 2062): jump-to-playing button on this list
+        wireBmTopBtn(); // v15.75 (slice 2110): back to top on this screen, before the first refresh
         // v15.66 (slice 2055): "Play all marks" — the Favourites 2044 wiring, before the first refresh so the button shows on first paint; the label is the chooser's own pl_play_all key, so no new string. The button stays GONE until applyBmSearch shows it (syncBmPlayAllBtn below).
         btnBmPlayAll = findViewById(R.id.btnBmPlayAll);
         if (btnBmPlayAll != null) btnBmPlayAll.setText(Lang.t(this, "pl_play_all"));
@@ -284,6 +290,8 @@ public class BookmarksActivity extends Activity {
         // v15.67 (slice 2062): a search / sort / refresh re-shows the list — the jump button's cached target moves with it (new list, new filter), so refresh the target and repaint from the new position.
         refreshBmJumpTarget();
         paintBmJumpBtnFromList();
+        // v15.75 (slice 2110): a search / refresh can land the list deep without a scroll event — repaint the top button from the new position too (the 2003 shape).
+        paintBmTopBtnFromList();
         if (adapter != null) adapter.notifyDataSetChanged();
         refreshBmClear(bmSearchKeystroke);
         if (emptyText == null) return;
@@ -504,6 +512,45 @@ public class BookmarksActivity extends Activity {
             @Override public void run() {
                 if (listView == null) return;
                 paintBmJumpBtn(listView.getFirstVisiblePosition(), listView.getLastVisiblePosition());
+            }
+        });
+    }
+
+    // v15.75 (slice 2110): wire the back-to-top button — one tap glides the open list to the top (the Talks 1940 / Downloaded 2003 shape: the tap needs no gate — the button only shows past row 8, so a tap always has somewhere to go; this screen HAS a search field, so the keyboard hides with the glide, the 2003 shape in this file's own inline form — the wireBmSort tap's two lines, not a new helper). A missing button simply never wires; a missing list never scrolls.
+    private void wireBmTopBtn() {
+        bmTopBtn = findViewById(R.id.bmTopBtn);
+        if (bmTopBtn != null) bmTopBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.tap(BookmarksActivity.this);
+                Fx.morph(v);
+                android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+                if (imm != null) imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                if (listView != null) listView.smoothScrollToPosition(0);
+            }
+        });
+    }
+
+    // v15.75 (slice 2110): the back-to-top state — shown once the first visible row passes ScrollTop's threshold, hidden at the top (the 1940 Talks / 2003 Downloaded shape verbatim: ScrollTop.visible, THRESHOLD 8 — about one screen of rows). No sounding gate: the rule is the shown list's own scroll. The change gate keeps steady scrolls and the search/refresh repaint from re-touching the button; the show/hide melts (Fx.fadeIn/fadeOut, 180ms) instead of snapping, and a cancelled fade never strands it half-transparent (the v2.62 gen guard, the 1940 shape).
+    private void paintBmTopBtn(int firstVisible) {
+        if (bmTopBtn == null) return;
+        boolean want = ScrollTop.visible(firstVisible);
+        if (want == bmTopShown) return;
+        bmTopShown = want;
+        if (want) {
+            bmTopBtn.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(bmTopBtn, 180);
+        } else {
+            Fx.fadeOut(bmTopBtn, 180);
+        }
+    }
+
+    // v15.75 (slice 2110): repaint from the list's own position after a scroll-less change — a search / refresh rebuild can land the list deep without a scroll event, so read the position after layout and paint from it. Posted, because the first visible row is only valid once the list has laid out (the 1940 shape). The rotation restore needs no separate hook: onCreate restores through refresh(), whose applyBmSearch tail already posts this repaint.
+    private void paintBmTopBtnFromList() {
+        if (listView == null) return;
+        listView.post(new Runnable() {
+            @Override public void run() {
+                if (listView == null) return;
+                paintBmTopBtn(listView.getFirstVisiblePosition());
             }
         });
     }

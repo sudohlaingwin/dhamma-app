@@ -136,6 +136,9 @@ public class HistoryActivity extends Activity {
     private android.view.View hsPlayingBtn = null;
     private boolean hsPlayingShown = false;
     private int hsJumpTargetIdx = -1;
+    // v15.75 (slice 2107): "Back to top" on this screen — the Talks 1940 / Downloaded 2003 button, now on the first full-list screen without one: a history grows with every listen, so its header is off-screen exactly when the jump is needed. hsTopBtn is the floating gold ↑ button (GONE until ScrollTop.visible — the first visible row passes 8 — the 1940 shape, on the shown list's own scroll, not the sounding row); hsTopShown is the last-painted state for the painter's change gate. Back to top landed in slice 2107.
+    private android.view.View hsTopBtn = null;
+    private boolean hsTopShown = false;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -203,12 +206,15 @@ public class HistoryActivity extends Activity {
             listView.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
                 @Override public void onScrollStateChanged(android.widget.AbsListView v, int scrollState) {}
                 @Override public void onScroll(android.widget.AbsListView v, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
+                    // v15.75 (slice 2107): the top button paints on the same scroll (the 2003 shape — its only show rule is the first visible row, so no laid-out-window guard; the threshold keeps it hidden until row 8 anyway).
+                    paintHsTopBtn(firstVisibleItem);
                     if (visibleItemCount > 0) paintHsJumpBtn(firstVisibleItem, firstVisibleItem + visibleItemCount - 1);
                 }
             });
         }
         wireHsSearch(); // v15.65 (slice 2050): search on this screen, before the first refresh
         wireHsJumpBtn(); // v15.67 (slice 2063): jump-to-playing button on this list
+        wireHsTopBtn(); // v15.75 (slice 2107): back to top on this screen, before the first refresh
         wireHsSort(); // v15.68 (slice 2068): sort on this screen, before the first refresh
         wireHsShuffle(); // v15.73 (slice 2099): shuffle on this screen, before the first refresh
         wireHsPlayAll(); // v15.74 (slice 2102): play all on this screen, before the first refresh
@@ -465,6 +471,45 @@ public class HistoryActivity extends Activity {
     // and its gen bump stands the fade-out's end action down, so it
     // can never strand the view GONE), and a silent pass on a
     // mid-fadeOut view parks it at full alpha instead.
+    // v15.75 (slice 2107): wire the back-to-top button — one tap glides the open list to the top (the Talks 1940 / Downloaded 2003 shape: the tap needs no gate — the button only shows past row 8, so a tap always has somewhere to go; this screen HAS a search field, so the keyboard hides with the glide, the 2003 shape in this file's own inline form — the wireHsSort tap's two lines, not a new helper). A missing button simply never wires; a missing list never scrolls.
+    private void wireHsTopBtn() {
+        hsTopBtn = findViewById(R.id.hsTopBtn);
+        if (hsTopBtn != null) hsTopBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.tap(HistoryActivity.this);
+                Fx.morph(v);
+                android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+                if (imm != null) imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                if (listView != null) listView.smoothScrollToPosition(0);
+            }
+        });
+    }
+
+    // v15.75 (slice 2107): the back-to-top state — shown once the first visible row passes ScrollTop's threshold, hidden at the top (the 1940 Talks / 2003 Downloaded shape verbatim: ScrollTop.visible, THRESHOLD 8 — about one screen of rows). No sounding gate: the rule is the shown list's own scroll. The change gate keeps steady scrolls and the search/refresh repaint from re-touching the button; the show/hide melts (Fx.fadeIn/fadeOut, 180ms) instead of snapping, and a cancelled fade never strands it half-transparent (the v2.62 gen guard, the 1940 shape).
+    private void paintHsTopBtn(int firstVisible) {
+        if (hsTopBtn == null) return;
+        boolean want = ScrollTop.visible(firstVisible);
+        if (want == hsTopShown) return;
+        hsTopShown = want;
+        if (want) {
+            hsTopBtn.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(hsTopBtn, 180);
+        } else {
+            Fx.fadeOut(hsTopBtn, 180);
+        }
+    }
+
+    // v15.75 (slice 2107): repaint from the list's own position after a scroll-less change — a search / refresh rebuild can land the list deep without a scroll event, so read the position after layout and paint from it. Posted, because the first visible row is only valid once the list has laid out (the 1940 shape). The rotation restore needs no separate hook: onCreate restores through refresh(), whose applyHsSearch tail already posts this repaint.
+    private void paintHsTopBtnFromList() {
+        if (listView == null) return;
+        listView.post(new Runnable() {
+            @Override public void run() {
+                if (listView == null) return;
+                paintHsTopBtn(listView.getFirstVisiblePosition());
+            }
+        });
+    }
+
     private void refreshHsClear(boolean animate) {
         if (hsClearBtn == null) return;
         if (hsQuery != null && hsQuery.length() > 0) {
@@ -603,6 +648,8 @@ public class HistoryActivity extends Activity {
         // v15.67 (slice 2063): a search / refresh re-shows the list — the jump button's cached target moves with it (new list, new filter), so refresh the target and repaint from the new position.
         refreshHsJumpTarget();
         paintHsJumpBtnFromList();
+        // v15.75 (slice 2107): a search / refresh can land the list deep without a scroll event — repaint the top button from the new position too (the 2003 shape).
+        paintHsTopBtnFromList();
         // v15.73 (slice 2099): the Shuffle button follows the shown run — a search / refresh that empties the list hides it, and one that fills it shows it (the 2065 rule).
         refreshHsShuffleBtn();
         // v15.74 (slice 2102): the Play All button follows the shown run — the same 2065 rule as Shuffle, beside it.

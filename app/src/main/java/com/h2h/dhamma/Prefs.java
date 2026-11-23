@@ -2092,6 +2092,40 @@ public class Prefs {
         return sb.toString();
     }
 
+    // Returns the new raw store, or null when nothing changes
+    // (no such list, invalid new name, the new name is
+    // already another list's, or the unchanged name). Only
+    // the LIST line is rewritten — the ITEM lines carry no
+    // list name, so the talks move with the rename; other
+    // lists are untouched. The 40-char cap is the create
+    // leg (playlistCreatePure); the duplicate leg is the
+    // Room new-list dialog's (a name another list holds).
+    static String playlistRenamePure(String raw, String oldName, String newName) {
+        if (raw == null || raw.length() == 0) return null;
+        String oldC = playlistClean(oldName);
+        String newC = playlistClean(newName);
+        if (oldC.length() == 0 || newC.length() == 0) return null;
+        if (newC.length() > PLAYLIST_MAX_NAME) return null;
+        if (oldC.equals(newC)) return null;
+        java.util.List<String> names = playlistNamesPure(raw);
+        if (!names.contains(oldC)) return null;
+        if (names.contains(newC)) return null;
+        StringBuilder sb = new StringBuilder();
+        boolean changed = false;
+        for (String line : raw.split("\n")) {
+            if (line.startsWith("LIST\t") && playlistClean(line.substring(5)).equals(oldC)) {
+                if (sb.length() > 0) sb.append('\n');
+                sb.append("LIST\t").append(newC);
+                changed = true;
+                continue;
+            }
+            if (sb.length() > 0) sb.append('\n');
+            sb.append(line);
+        }
+        if (!changed) return null;
+        return sb.toString();
+    }
+
     // Returns the new raw store, or null when nothing changes (no
     // such list, invalid entry, duplicate URL, or the 200-item
     // cap). The new ITEM lands at the end of this list's block,
@@ -2198,6 +2232,15 @@ public class Prefs {
     public static boolean playlistDelete(Context c, String name) {
         try {
             String next = playlistDeletePure(playlistRaw(c), name);
+            if (next == null) return false;
+            sp(c).edit().putString(PLAYLIST_KEY, next).apply();
+            return true;
+        } catch (Exception ignored) { return false; }
+    }
+
+    public static boolean playlistRename(Context c, String oldName, String newName) {
+        try {
+            String next = playlistRenamePure(playlistRaw(c), oldName, newName);
             if (next == null) return false;
             sp(c).edit().putString(PLAYLIST_KEY, next).apply();
             return true;

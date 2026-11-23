@@ -91,6 +91,14 @@ public class PlaylistActivity extends Activity {
     private EditText newListEdit;
     private AlertDialog deleteDialog;
     private String deleteListName;
+    // v15.75 (slice 2111): rotation-restore track for the open
+    // rename dialog — the same v14.06 shape as the delete
+    // confirm (the dialog ref + the live EditText + the old
+    // name let onSaveInstanceState read what is open; the
+    // dismiss listener clears them on a normal close).
+    private AlertDialog renameDialog;
+    private EditText renameListEdit;
+    private String renameListName;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -155,9 +163,9 @@ public class PlaylistActivity extends Activity {
             listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
                 @Override public boolean onItemLongClick(AdapterView<?> p, View v,
                         int pos, long id) {
-                    // v15.74 (slice 2105): detail rows gain a row menu — the last list surface without one: a long-press used to return false here, so a listener deep in a playlist could only play a talk (tap) or drop it (the per-row remove) — the menu opens with the two verbs the screen needs (Play from here + Remove from list). Lists mode keeps its delete-list confirm. Row menu landed in slice 2105.
+                    // v15.75 (slice 2111): lists rows gain a list menu — a long-press used to jump straight to the delete confirm, so a listener who only wanted to fix a typo had no way to rename without deleting the list and re-adding every talk: the menu opens with the two verbs the screen needs (Rename + Delete — PlListMenu.menuKeys). Detail rows keep their row menu (2105). List menu landed in slice 2111.
                     if (curList != null) { showPlRowMenu(items.get(pos), pos); return true; }
-                    confirmDeleteList(names.get(pos));
+                    showPlListMenu(names.get(pos));
                     return true;
                 }
             });
@@ -184,6 +192,13 @@ public class PlaylistActivity extends Activity {
         if (restoredDel != null
                 && Prefs.playlistNames(this).contains(restoredDel))
             confirmDeleteList(restoredDel);
+        String restoredRename = savedInstanceState != null
+                ? savedInstanceState.getString("renameList") : null;
+        String restoredRenameText = savedInstanceState != null
+                ? savedInstanceState.getString("renameListText") : null;
+        if (restoredRename != null
+                && Prefs.playlistNames(this).contains(restoredRename))
+            showRenameListDialogWithText(restoredRename, restoredRenameText);
         wirePlaylistStrip(); // v13.53: real mini-player below the list
     }
 
@@ -235,6 +250,13 @@ public class PlaylistActivity extends Activity {
         if (deleteDialog != null && deleteDialog.isShowing()
                 && deleteListName != null)
             outState.putString("deleteList", deleteListName);
+        if (renameDialog != null && renameDialog.isShowing()
+                && renameListName != null)
+            outState.putString("renameList", renameListName);
+        if (renameDialog != null && renameDialog.isShowing()
+                && renameListEdit != null)
+            outState.putString("renameListText",
+                    renameListEdit.getText().toString());
     }
 
     private int titleColor() { return night ? 0xFFFFFFFF : 0xFF3B2314; }
@@ -408,6 +430,86 @@ public class PlaylistActivity extends Activity {
         refreshEmpty();
         plHeaderKnown40 = true;
         pourList40();
+    }
+
+    // v15.75 (slice 2111): lists-mode long-press menu — the PlRowMenu shell, now on the playlist rows: the dialog opens with the two verbs the screen needs ("Rename" first, "Delete" second — PlListMenu.menuKeys), titled with the list's own name. The menu is modal, so the long-press position stays valid at tap time. "Rename" opens the rename dialog (the new-list dialog's shape, prefilled with the current name); "Delete" keeps the existing delete confirm. A blank name names no list, so no menu opens on it. List menu landed in slice 2111.
+    private void showPlListMenu(final String name) {
+        if (name == null || name.length() == 0) return;
+        java.util.List<String> keys11 = PlListMenu.menuKeys(name);
+        if (keys11.isEmpty()) return;
+        java.util.ArrayList<String> opts11 = new java.util.ArrayList<String>();
+        for (String k11 : keys11) opts11.add(Lang.t(this, k11));
+        final String[] optArr11 = opts11.toArray(new String[0]);
+        final String[] keyArr11 = keys11.toArray(new String[0]);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(name)
+                .setItems(optArr11, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        if ("menu_pl_rename".equals(keyArr11[which])) {
+                            showRenameListDialog(name);
+                        } else if ("pl_delete_btn".equals(keyArr11[which])) {
+                            confirmDeleteList(name);
+                        }
+                    }
+                })
+                .show();
+    }
+
+    private void showRenameListDialog(final String oldName) {
+        showRenameListDialogWithText(oldName, oldName);
+    }
+
+    // v15.75 (slice 2111): rename dialog — the new-list dialog's shape (showNewListDialogWithText), prefilled with the current name instead of empty: the title and the positive button both carry the menu_pl_rename label, the hint is the same pl_name_hint, the cursor sits at the end of the old name (a rename starts from the old name, unlike a create), and the 40-char cap is the same leg (a longer name is cut, never refused). An empty name toasts the hint (the create flow's shape); the unchanged name and a name another list already holds both toast pl_exists (the Room new-list dialog's duplicate leg); a real rename rewrites the one LIST line in the store (the ITEM lines carry no list name, so the talks move with it) and repaints the lists — the renamed list shows in place, which is the confirmation, so no success toast. Rotation restore: the dialog + its EditText + the old name are tracked (the v14.06 shape), so a rotate re-shows the dialog with the typed text intact. Rename landed in slice 2111.
+    private void showRenameListDialogWithText(final String oldName, String initial) {
+        if (oldName == null || oldName.length() == 0) return;
+        final EditText et = new EditText(this);
+        et.setHint(Lang.t(this, "pl_name_hint"));
+        et.setSingleLine(true);
+        if (initial != null) et.setText(initial);
+        if (initial != null) et.setSelection(initial.length());
+        renameListEdit = et;
+        AlertDialog dlg = new AlertDialog.Builder(this)
+                .setTitle(Lang.t(this, "menu_pl_rename"))
+                .setView(et)
+                .setPositiveButton(Lang.t(this, "menu_pl_rename"),
+                        new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int which) {
+                        String name = et.getText().toString().trim();
+                        if (name.length() == 0) {
+                            Toast.makeText(PlaylistActivity.this,
+                                    Lang.t(PlaylistActivity.this, "pl_name_hint"),
+                                    Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        if (name.length() > 40) name = name.substring(0, 40);
+                        if (name.equals(oldName)) {
+                            Toast.makeText(PlaylistActivity.this,
+                                    Lang.t(PlaylistActivity.this, "pl_exists"),
+                                    Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        if (Prefs.playlistRename(PlaylistActivity.this, oldName, name)) {
+                            plNav40 = true;
+                            showLists();
+                            return;
+                        }
+                        Toast.makeText(PlaylistActivity.this,
+                                Lang.t(PlaylistActivity.this, "pl_exists"),
+                                Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton(Lang.t(this, "btn_no_clear"), null)
+                .create();
+        dlg.setOnDismissListener(new DialogInterface.OnDismissListener() {
+            @Override public void onDismiss(DialogInterface d) {
+                renameDialog = null;
+                renameListEdit = null;
+                renameListName = null;
+            }
+        });
+        renameListName = oldName;
+        renameDialog = dlg;
+        dlg.show();
     }
 
     private void confirmDeleteList(final String name) {
