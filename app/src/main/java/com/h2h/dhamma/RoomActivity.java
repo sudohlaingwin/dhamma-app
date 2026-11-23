@@ -101,6 +101,8 @@ public class RoomActivity extends Activity {
     // position is still behind it, then resumes normal updates.
     private long lastUserSeekMs = 0;
     private int lastUserSeekPos = 0;
+    // v15.82 (slice 2153): "Play from here" debounce clock — the 1942 Talks chooser's 700ms rule, on its own clock so an invalid tap never consumes the queue-from-here window (the v12.28 rule).
+    private long lastPlayFromHereMs = 0;
     // v12.72: the sounding talk the wave's bookmark pins belong
     // to — the poll refreshes the pins when this changes, not
     // only when the duration changes (a foreign head whose
@@ -2245,6 +2247,161 @@ public class RoomActivity extends Activity {
             }
         }
         return sayadawName;
+    }
+
+    // v15.82 (slice 2150): "Add to playlist" — the queue dialog's playlist verb (the Room's showPlaylistAddDialog, v12.65–v12.80, on the drawer queue dialog; the Room's dialog files only the sounding talk, and the chooser's addToPlaylistChooser (2101) files only a browsing talk — a queued talk in the Room drawer could be played, queued, shared, starred or marked from its dialog, but never filed in one of the listener's own lists without leaving the Room. The dialog is the drawer's per-talk verb surface for queued rows, so the verb belongs in the dialog, not in a new view. The talk's URL is the stream URL (no resolve, the v5.69 cost rule); the owner is passed in (sayadawName for this dialog's in-list rows — the queue dialog opens only over `talks`, this sayadaw's list, by construction; the foreign dialog will pass its own entry's sayadaw). The helper takes scalar params (url, title, sd) so the foreign (2151) and in-list (2152) slices reuse it with their own rows. Re-resolve nothing at tap time; toast talk_no_longer_in_list on a blank URL and no_talk_yet on a blank sayadaw (the Room's own guard), then offer the listener's lists (Prefs.playlistNames — the seed lists are there from the first read) plus a "new list" row (pl_new, last). A tap files the talk through Prefs.playlistAdd and toasts the v12.80 result (ChooserPlAdd.toastKey: added / already there / full / could-not-create); the new-list row opens the name dialog. An add mutates no favourite, queue or resume state; no pause guard (no sheet is left to return from); the sounding talk CAN reach this dialog (the v11.71 leftover) — filing it is the same verb the queue-bar button (2096) offers, so no sounding exclusion. Add to playlist landed in slice 2150.
+    private void addToPlaylistDrawer(final String url, final String title, final String sd) {
+        if (url == null || url.length() == 0) return;
+        final String streamUrl = url;
+        if (!ChooserPlAdd.canOffer(streamUrl)) {
+            android.widget.Toast.makeText(RoomActivity.this,
+                    Lang.t(RoomActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (sd == null || sd.length() == 0) {
+            android.widget.Toast.makeText(RoomActivity.this,
+                    Lang.t(RoomActivity.this, "no_talk_yet"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final String title50 = title != null ? title : "";
+        final String sdF50 = sd;
+        final java.util.List<String> names50 = Prefs.playlistNames(this);
+        final String[] items50 = new String[names50.size() + 1];
+        for (int i50 = 0; i50 < names50.size(); i50++) items50[i50] = names50.get(i50);
+        items50[names50.size()] = Lang.t(this, "pl_new");
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(Lang.t(this, "pl_choose"))
+                .setItems(items50, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        if (ChooserPlAdd.isNewRow(which, names50.size())) {
+                            showNewPlaylistDrawer(streamUrl, title50, sdF50);
+                            return;
+                        }
+                        int r50 = Prefs.playlistAdd(RoomActivity.this,
+                                names50.get(which), streamUrl, sdF50, title50);
+                        android.widget.Toast.makeText(RoomActivity.this,
+                                Lang.t(RoomActivity.this, ChooserPlAdd.toastKey(r50)),
+                                android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .show();
+    }
+
+    // v15.82 (slice 2150): the "new list" dialog for the playlist verb — the Room's showNewPlaylistDialog (v12.80), on the drawer dialog: a name field (pl_name_hint), a Create button (pl_create) and a cancel (btn_no_clear); an empty name re-prompts with the hint toast; the name caps at 40 chars (PLAYLIST_MAX_NAME); create is a no-op for an existing name, so a repeat name just adds to that list; at the 20-list cap a genuinely new name toasts pl_limit (ChooserPlAdd.limitToastKey), any other create failure pl_no_create — neither falls through to the add (the v12.80 leg). The add toasts the same v12.80 result as the choose dialog.
+    private void showNewPlaylistDrawer(final String url, final String title, final String sd) {
+        final android.widget.EditText et50 = new android.widget.EditText(this);
+        et50.setHint(Lang.t(this, "pl_name_hint"));
+        et50.setSingleLine(true);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(Lang.t(this, "pl_new"))
+                .setView(et50)
+                .setPositiveButton(Lang.t(this, "pl_create"),
+                        new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        String name50 = et50.getText().toString().trim();
+                        if (name50.length() == 0) {
+                            android.widget.Toast.makeText(RoomActivity.this,
+                                    Lang.t(RoomActivity.this, "pl_name_hint"),
+                                    android.widget.Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        if (name50.length() > 40) name50 = name50.substring(0, 40);
+                        boolean created50 = Prefs.playlistCreate(RoomActivity.this, name50);
+                        java.util.List<String> held50 = Prefs.playlistNames(RoomActivity.this);
+                        String limit50 = ChooserPlAdd.limitToastKey(created50,
+                                held50.contains(name50), held50.size());
+                        if (limit50 != null) {
+                            android.widget.Toast.makeText(RoomActivity.this,
+                                    Lang.t(RoomActivity.this, limit50),
+                                    android.widget.Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        int r50 = Prefs.playlistAdd(RoomActivity.this, name50, url, sd, title);
+                        android.widget.Toast.makeText(RoomActivity.this,
+                                Lang.t(RoomActivity.this, ChooserPlAdd.toastKey(r50)),
+                                android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton(Lang.t(this, "btn_no_clear"), null)
+                .show();
+    }
+
+    // v15.82 (slice 2153): "Play from here" — the drawer in-list dialog's first play verb (the 1942 Talks chooser shape, on the Room's own display mapping and queue): queue this talk + every shown talk below it AND play the anchor now, so a run starts mid-list in one tap. The guards mirror the chooser (empty list / no shown talk / anchor gone refuse with the same words), the anchor is re-resolved from dt at tap time (the v13.13 rule — the dialog can sit open across a filter rebuild, so the captured position may have moved), an anchor filtered out of view falls back to the anchor alone (the v13.04 shape), never a stale range; the 700ms debounce runs on its own clock (an invalid tap never consumes the window, v12.28 rule); the run is picked by the 1942 pure core (PlayFromHere.pick + anchorIndex — the sounding talk and already-queued talks stay where they are) over the drawer's own display order (drawerDisplayCount / drawerTalkIndex, the queue-from-here handler's mapping); the keep set carries every new URL through the funnel's stale drop (saveQueue BEFORE the play step, so the run is persisted before playIndex's own save re-reads prefs — a data-gate cancel then leaves a queued run, not a lost tap); the count toast is the queue-from-here toast, shown before the play step so a gate question cannot swallow it; the anchor plays through playIndex (the row-tap resume rule — savedPosFor, never 0), unless it sounds by tap time, in which case the run still queues and only the play is skipped (the 1942 anchorSounds rule). The fresh-play ahead-drop (v4.43/v13.52) is the row tap's own rule: pre-existing queue lines ahead of the anchor drop, the run below survives and auto-advances. No row fade (the queue-from-here handler has none); the bar follows at once (v14.53). Play from here landed in slice 2153.
+    private void playFromHereDrawer(final Talk dt) {
+        if (talks == null || talks.isEmpty() || dt == null || dt.url == null || dt.url.length() == 0) {
+            Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "talks_none_for_sayadaw"), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        int dispCount53 = drawerDisplayCount();
+        if (dispCount53 <= 0) {
+            Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "no_search_match"), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // The anchor's talk index, re-resolved from dt (never
+        // the captured long-press position — v13.13).
+        int anchorTi53 = talks.indexOf(dt);
+        if (anchorTi53 < 0 || anchorTi53 >= talks.size()) {
+            Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "no_search_match"), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        boolean anchorSounds53 = isSoundingTalk(dt.url);
+        long now53 = android.os.SystemClock.uptimeMillis();
+        if (now53 - lastPlayFromHereMs < 700) return;
+        lastPlayFromHereMs = now53;
+        // Display-order identity list (the queue-from-here
+        // mapping — drawerTalkIndex when a filter is active,
+        // else the full list), the queued set as identities,
+        // and the pick: the run from the anchor onward, minus
+        // the sounding talk and minus already-queued talks.
+        java.util.List<String> dispIds53 = new java.util.ArrayList<String>();
+        for (int d53 = 0; d53 < dispCount53; d53++) {
+            int ti53 = drawerTalkIndex(d53);
+            Talk t53 = (ti53 < 0 || ti53 >= talks.size()) ? null : talks.get(ti53);
+            dispIds53.add(t53 == null ? null : SiteHttp.identityUrl(t53.url));
+        }
+        java.util.Set<String> queuedIds53 = new java.util.HashSet<String>();
+        for (String q53 : queueUrls) queuedIds53.add(SiteHttp.identityUrl(queueLineUrl(q53)));
+        // The sounding in-list talk, if any (the queue
+        // dialog's qSnd11 scan) — a foreign sounding talk
+        // leaves this null, so no in-list row is skipped.
+        String snd53 = null;
+        for (int si53 = 0; si53 < talks.size(); si53++)
+            if (isSoundingTalk(talks.get(si53).url)) { snd53 = talks.get(si53).url; break; }
+        java.util.List<Integer> picked53 = PlayFromHere.pick(dispIds53,
+                SiteHttp.identityUrl(dt.url), queuedIds53, snd53, null);
+        int start53 = PlayFromHere.anchorIndex(dispIds53, SiteHttp.identityUrl(dt.url));
+        int added53 = 0;
+        java.util.Set<String> keep53 = new java.util.HashSet<String>();
+        if (start53 < 0) {
+            // Anchor filtered out while the dialog sat open:
+            // queue just the anchor itself, never a stale range
+            // (the v13.04 fallback shape).
+            if (!anchorSounds53 && queueLineIndexForUrl(dt.url) < 0) {
+                queueUrls.add(dt.url);
+                keep53.add(dt.url);
+                added53++;
+            }
+        } else for (Integer dpBox53 : picked53) {
+            int dp53 = dpBox53.intValue();
+            int ti53 = drawerTalkIndex(dp53);
+            if (ti53 < 0 || ti53 >= talks.size()) continue;
+            Talk t53 = talks.get(ti53);
+            if (t53 == null || t53.url == null || t53.url.length() == 0) continue;
+            if (queueLineIndexForUrl(t53.url) >= 0) continue;
+            if (isSoundingTalk(t53.url)) continue;
+            queueUrls.add(t53.url);
+            keep53.add(t53.url);
+            added53++;
+        }
+        saveQueue(keep53, true);
+        if (adapter != null) adapter.notifyDataSetChanged();
+        refreshQueueBar72();
+        Toast.makeText(RoomActivity.this, added53 > 0
+                ? Lang.t(RoomActivity.this, "queue_plain_prefix") + added53 + Lang.t(RoomActivity.this, "queue_added_suffix")
+                : Lang.t(RoomActivity.this, "already_in_queue"), Toast.LENGTH_SHORT).show();
+        if (!anchorSounds53) playIndex(anchorTi53, savedPosFor(dt.url));
     }
 
     private void showPlaylistAddDialog() {
@@ -4851,7 +5008,69 @@ if (snd65 >= 0) currentIndex = snd65;
                     Lang.t(RoomActivity.this, "dl_room_wifi_queued"), android.widget.Toast.LENGTH_LONG).show();
     }
 
+    // v15.82 (slice 2154): "Download" for the SOUNDING foreign row — the v11.71 shape, foreign form (see the offer above for the rule): enqueueRoomDownload mirrors this line for line — the same Wi-Fi-only enqueue, the same tap-time re-checks, the same hourglass mark + card sync + row melt — but it records this Room's sayadaw (sayadawName) beside the file, which would name the WRONG sayadaw on a foreign talk's library strips, share text and card (the v11.71 gap: "would record the wrong sayadaw"). This helper takes the queue line's own sayadaw (fe.sayadaw, the 2151 playlist owner) and records it through the 3-arg recordDownloadFile below. A v1-format line with an empty sayadaw records no dlSayadaw row (the record helper's own guard), exactly like an old download. The sounding foreign talk CAN reach this dialog (the v11.36 sounding-row mark) — downloading it is the same verb the queue dialog (v11.71) and the sounding dialog already offer for the sounding talk. Download for the sounding foreign row landed in slice 2154.
+    private void enqueueRoomDownloadForeign(final QueueEntry fe) {
+        if (fe == null || fe.url == null || fe.url.length() == 0) return;
+        refreshDownloadedSet();
+        if (isDownloadedFile(fe.url)) {
+            if (adapter != null) adapter.notifyDataSetChanged();
+            android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "downloaded_talk"), android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (roomIsDlQueued(fe.url)) {
+            android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "dl_already_queued"), android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        String file54 = downloadFileNameFor(fe.url);
+        try {
+            android.app.DownloadManager dm54 = (android.app.DownloadManager)
+                    getSystemService(android.content.Context.DOWNLOAD_SERVICE);
+            android.app.DownloadManager.Request req54 =
+                    new android.app.DownloadManager.Request(android.net.Uri.parse(SiteHttp.siteUrl(fe.url)));
+            req54.setTitle(fe.title != null && fe.title.length() > 0 ? fe.title : fe.url);
+            req54.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            req54.setAllowedNetworkTypes(android.app.DownloadManager.Request.NETWORK_WIFI);
+            req54.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, "Dhamma/" + file54);
+            dm54.enqueue(req54);
+            recordDownloadFile(fe.url, file54, fe.sayadaw);
+        } catch (Exception e) {
+            android.widget.Toast.makeText(RoomActivity.this,
+                    Lang.t(RoomActivity.this, "download_failed") + Fx.errDetail(e), android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        // The hourglass at once: addQueuedDownload + the rescan
+        // mirror the data-gate's v4.01 / v11.56 shape, and the
+        // card sync mirrors its v10.14 leg (a paused sounding
+        // talk queued here gains its card mark at once).
+        addQueuedDownload(fe.url);
+        refreshDownloadedSet();
+        refreshCardIfFlipped1025(fe.url);
+        if (adapter != null) adapter.notifyDataSetChanged();
+        // v15.28 (slice 1802): melt the row whose hourglass just appeared —
+        // enqueueRoomDownload used to end in a bare notify, so the
+        // hourglass snapped onto its drawer row in one frame while
+        // the fav/queue verbs beside it melt (menuMarkFadeUrl77).
+        // Same shape as the fav arm (posted resolve through
+        // drawerPosOfQueueUrl, Fx.fadeIn 250ms, drawer-open guard
+        // inside the helper); both dialog call sites ride it, and
+        // the already-downloaded / already-queued early returns
+        // above change no mark, so they arm nothing.
+        menuMarkFadeUrl77 = fe.url; fadeMenuMarkedDrawerRow77();
+        if (Fx.stripIsWifi(RoomActivity.this))
+            android.widget.Toast.makeText(RoomActivity.this,
+                    "\u2B07 " + (fe.title != null && fe.title.length() > 0 ? fe.title : fe.url) + Lang.t(RoomActivity.this, "dl_downloading_suffix"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+        else
+            android.widget.Toast.makeText(RoomActivity.this,
+                    Lang.t(RoomActivity.this, "dl_room_wifi_queued"), android.widget.Toast.LENGTH_LONG).show();
+    }
+
     private void recordDownloadFile(String url, String filename) {
+        // v15.82 (slice 2154): the 2-arg form records this Room's own sayadaw (sayadawName) — the data-gate leg and enqueueRoomDownload keep calling it unchanged. The foreign leg calls the 3-arg form with the queue line's own sayadaw instead (the v11.71 "wrong sayadaw" gap).
+        recordDownloadFile(url, filename, sayadawName);
+    }
+
+    private void recordDownloadFile(String url, String filename, String sayadaw) {
         // v13.68 (audit-1369 F11): dlMap/dlSayadaw/dlQueued read-modify-write - serialize on DlLock.LOCK (see DlLock).
         synchronized (DlLock.LOCK) {
         try {
@@ -4893,10 +5112,10 @@ if (snd65 >= 0) currentIndex = snd65;
             // card instead of a generic line. Older downloads
             // simply have no entry, and every reader falls back.
             String sayStr70 = null;
-            if (sayadawName != null && sayadawName.length() > 0) {
+            if (sayadaw != null && sayadaw.length() > 0) {
                 try {
                     org.json.JSONObject sm = new org.json.JSONObject(sp.getString("dlSayadaw", "{}"));
-                    sm.put(url, sayadawName);
+                    sm.put(url, sayadaw);
                     sayStr70 = sm.toString();
                 } catch (Exception ignored) {}
             }
@@ -10297,10 +10516,17 @@ if (snd67n >= 0) currentIndex = snd67n;
                         fKeys.add(fFav89 ? "menu_fav_remove" : "menu_fav_add");
                         // v15.52 (slice 1979): mark this one talk listened / unlistened — the drawer foreign dialog's first mark verb: the queue dialog gained it in slice 1978, but a queued talk of ANOTHER sayadaw could only earn its listened mark by playing to the end in its own Room, and a talk heard elsewhere could not be cleared from the drawer's unlistened view without opening the library. The verb sits in the existing dialog (no new view, no row menu resurrected), right after the favourite toggle — the other per-talk state toggle — and reuses the 1949 pure core (DlMark) and its keys (dl_menu_mark_one / dl_menu_unmark_one), so 0 new Lang keys. The label reads playedSet (the same cache the foreign rows render their tick from — fPlayed in the bind), so it can never disagree with the visible mark; the sounding foreign talk is excluded by the DlMark gate through isSoundingForeignTalk (the v11.32 mirror, the same one the move/play-next gates in this dialog read), and the tap-time re-check in the handler below guards the auto-advance window while the dialog sits open.
                         if (DlMark.canOffer(ffe.url, isSoundingForeignTalk(ffe.url, ffe.sayadaw))) { String markKey79 = DlMark.labelKey(DlMark.isMarked(playedSet, SiteHttp.identityUrl(ffe.url))); fOptList.add(Lang.t(RoomActivity.this, markKey79)); fKeys.add(markKey79); }
+                        // v15.82 (slice 2151): "Add to playlist" — the foreign dialog's playlist verb (ChooserPlAdd, the Room's showPlaylistAddDialog shape, v12.65–v12.80): the same talk URL (ffe.url — the stream URL, no resolve, the v5.69 cost rule) offers filing the talk in one of the listener's own lists, so a listener in the Room drawer never has to leave the Room to file a queued talk of another sayadaw. The gate is the same non-blank URL the share reads (ChooserPlAdd.canOffer), so a streamed-only talk still offers it (filing is not a file); only a blank URL hides it. The key composes right after the mark toggle (above), so the collect verbs — favourite, mark, playlist — sit together, and the share trio, the navigation and the queue verbs are never split by it. The owner is the queue line's own sayadaw (ffe.sayadaw — QueueEntry carries url + sayadaw + title; the dialog's share text already reads it), so no catalog lookup is needed; a v1-format line with an empty sayadaw is caught by the helper's blank-sayadaw guard. Add to playlist landed in slice 2151.
+                        if (ChooserPlAdd.canOffer(ffe.url)) { fOptList.add(Lang.t(RoomActivity.this, "pl_add")); fKeys.add("pl_add"); }
                         // v15.54 (slice 1985): "Go to sayadaw's talks" — the drawer foreign dialog's first navigation verb: a queued talk of ANOTHER sayadaw had no way to open that sayadaw's Talks list from the Room — the listener had to leave the Room, find the sayadaw on Main and open Talks. The library row gained the same verb in v15.46 (slice 1944), but the drawer foreign row is a different surface — the queue context, not the shelf — with the Room's own v7.08 resolver (exact-name match over the bundled catalog) and no bound service. Offered only while the sayadaw resolves to a page URL, so an unknown or unlisted sayadaw never offers a dead tap; the tap-time re-check below guards the catalog read while the dialog sits open. In-list rows never offer it — they are this Room's own sayadaw, and the Talks list behind them is the one already open.
                         if (GoSayadaw.canGo(catalogEntryForSayadaw(ffe.sayadaw))) { fOptList.add(Lang.t(RoomActivity.this, "menu_go_sayadaw")); fKeys.add("menu_go_sayadaw"); }
                         fOptList.add(Lang.t(RoomActivity.this, "menu_queue_remove"));
                         fKeys.add("menu_queue_remove");
+                    // v15.82 (slice 2154): "Download" for the SOUNDING row on the foreign dialog — the v11.71 shape, foreign form: the queue dialog has had the sounding-row download since v11.71 and the sounding dialog since v11.71, but the foreign dialog had none at all — a foreign talk that started sounding in its own Room could only be downloaded from its own chooser, one "Go to sayadaw" away. The gate is the queue dialog's own (sounding row only, neither downloaded nor already queued — a waiting foreign talk still downloads from its chooser, the v11.71 rule), read through the foreign mirror isSoundingForeignTalk (the v11.32 mirror, the same one the move/play-next gates in this dialog read). The key composes right after queue-remove (above), before the move offer — the queue dialog's own slot for it. Download for the sounding foreign row landed in slice 2154.
+                    if (isSoundingForeignTalk(ffe.url, ffe.sayadaw) && !isDownloadedFile(ffe.url) && !roomIsDlQueued(ffe.url)) {
+                        fOptList.add(Lang.t(RoomActivity.this, "dl_btn_download"));
+                        fKeys.add("dl_btn_download");
+                    }
                         final boolean fHeldRow = ffe.url.equals(moveHeldUrl)
                                 && queueLineIndexForUrl(ffe.url) >= 0;
                         // v11.34: never offer a move for the sounding foreign row — foreign form of the v11.22 in-list offer gate; bound this is isCurrentTalk, unbound the v11.32 foreign mirror.
@@ -10480,6 +10706,9 @@ if (snd67n >= 0) currentIndex = snd67n;
                                             if (adapter != null) adapter.notifyDataSetChanged();
                                             if (ffe != null && ffe.url != null) { menuMarkFadeUrl77 = ffe.url; menuMarkBurstFav41 = null; fadeMenuMarkedDrawerRow77(); }
                                             android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, (unmarked79 != null && unmarked79.changed) ? "dl_menu_unmark_one" : "nothing_to_unmark"), android.widget.Toast.LENGTH_SHORT).show();
+                                        } else if ("pl_add".equals(fKeyArr[which])) {
+                                            // v15.82 (slice 2151): "Add to playlist" — the foreign dialog's playlist verb (see the offer above for the rule): the dialog's own choose-list + new-list flow (addToPlaylistDrawer, built in slice 2150), the Room's showPlaylistAddDialog shape on the drawer. The sounding foreign talk CAN reach this dialog (the v11.36 sounding-row mark) — filing it is the same verb the queue-bar button (2096) already offers for the sounding talk, so no sounding re-check is needed; the tap-time canOffer re-check inside addToPlaylistDrawer guards the window anyway. An add mutates no favourite, queue or resume state. Add to playlist landed in slice 2151.
+                                            addToPlaylistDrawer(ffe.url, ffe.title, ffe.sayadaw);
                                         } else if ("menu_go_sayadaw".equals(fKeyArr[which])) {
                                             // v15.54 (slice 1985): "Go to sayadaw's talks" — the 1944 verb on the drawer surface: re-resolve the sayadaw through the bundled catalog at tap time (the offer and the tap can never disagree), toast no_sayadaw_page on a failed re-read, else open that sayadaw's Talks list inside the app with Main's own intent extras (name/group/url/photo). The name is the queue line's own sayadaw, never the catalog's — the catalog entry carries no name slot. A navigation mutates nothing: no queue, shelf or resume change, no pause guard (no sheet is left to return from).
                                             String[] cat85 = catalogEntryForSayadaw(ffe.sayadaw);
@@ -10555,6 +10784,13 @@ if (snd67n >= 0) currentIndex = snd67n;
                                             // the refresh is change-only, so it stays still.
                                             refreshQueueBar72();
                                             Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "removed_from_queue"), Toast.LENGTH_SHORT).show();
+                                        } else if ("dl_btn_download".equals(fKeyArr[which])) {
+                                            // v15.82 (slice 2154): "Download" for the sounding foreign row — the v11.71 shape on the foreign dialog (see the offer above for the rule): the tap-time sounding re-check is this dialog's own v11.34 rule — the dialog can sit open across a track change, so a row offered while sounding can be WAITING by tap time, and a waiting talk downloads from its chooser, never from the drawer (the queue dialog's v11.71 branch never got this re-check; its branch stays untouched). The enqueue re-checks downloaded/queued inside, like the v11.71 branch. The helper records fe.sayadaw, not sayadawName (the v11.71 "wrong sayadaw" gap). Download for the sounding foreign row landed in slice 2154.
+                                            if (!isSoundingForeignTalk(ffe.url, ffe.sayadaw)) {
+                                                android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+                                                return;
+                                            }
+                                            enqueueRoomDownloadForeign(ffe);
                                         } else if ("menu_move".equals(fKeyArr[which])) {
                                             // v7.15: arm the foreign row
                                             // for a pick-up/drop move —
@@ -10746,6 +10982,8 @@ if (snd67n >= 0) currentIndex = snd67n;
                     qKeys.add(qFav91 ? "menu_fav_remove" : "menu_fav_add");
                     // v15.52 (slice 1978): mark this one talk listened / unlistened — the drawer queue dialog's first mark verb: the library had per-row (v15.47, slice 1949) and the Talks chooser (v15.51, slice 1969), but a queued talk in the Room drawer could only earn its listened mark by playing to the end, and a talk heard elsewhere could not be cleared from the drawer's unlistened view without opening the library. The verb sits in the existing dialog (no new view, no row menu resurrected), right after the favourite toggle — the other per-talk state toggle — and reuses the 1949 pure core (DlMark) and its keys (dl_menu_mark_one / dl_menu_unmark_one), so 0 new Lang keys. The label reads playedSet (the same cache the drawer rows render their tick from), so it can never disagree with the visible mark; the sounding talk is excluded by the DlMark gate (it earns its mark by finishing, like the 1949 sounding exclusion), and the tap-time re-check in the handler below guards the auto-advance window while the dialog sits open.
                     if (DlMark.canOffer(qt.url, isSoundingTalk(qt.url))) { String markKey78 = DlMark.labelKey(DlMark.isMarked(playedSet, SiteHttp.identityUrl(qt.url))); qOptList.add(Lang.t(RoomActivity.this, markKey78)); qKeys.add(markKey78); }
+                    // v15.82 (slice 2150): "Add to playlist" — the queue dialog's playlist verb (ChooserPlAdd, the Room's showPlaylistAddDialog shape, v12.65–v12.80): the same talk URL (qt.url — the stream URL, no resolve, the v5.69 cost rule) offers filing the talk in one of the listener's own lists, so a listener in the Room drawer never has to leave the Room to file a queued talk. The gate is the same non-blank URL the share reads (ChooserPlAdd.canOffer), so a streamed-only talk still offers it (filing is not a file); only a blank URL hides it. The key composes right after the mark toggle (above), so the collect verbs — favourite, mark, playlist — sit together, and the share trio, the queue verbs and the navigation are never split by it. Add to playlist landed in slice 2150.
+                    if (ChooserPlAdd.canOffer(qt.url)) { qOptList.add(Lang.t(RoomActivity.this, "pl_add")); qKeys.add("pl_add"); }
                     qOptList.add(Lang.t(RoomActivity.this, "menu_queue_remove"));
                     qKeys.add("menu_queue_remove");
                     // v11.71: Download for the sounding row in this
@@ -10930,6 +11168,9 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         if (adapter != null) adapter.notifyDataSetChanged();
                                         if (qt != null && qt.url != null) { menuMarkFadeUrl77 = qt.url; menuMarkBurstFav41 = null; fadeMenuMarkedDrawerRow77(); }
                                         android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, (unmarked78 != null && unmarked78.changed) ? "dl_menu_unmark_one" : "nothing_to_unmark"), android.widget.Toast.LENGTH_SHORT).show();
+                                    } else if ("pl_add".equals(qKeyArr[which])) {
+                                        // v15.82 (slice 2150): "Add to playlist" — the queue dialog's playlist verb (see the offer above for the rule): the dialog's own choose-list + new-list flow (addToPlaylistDrawer), the Room's showPlaylistAddDialog shape on the drawer. The sounding talk CAN reach this dialog (the v11.71 service-restart leftover) — filing it is the same verb the queue-bar button (2096) already offers, so no sounding re-check is needed; the tap-time canOffer re-check inside addToPlaylistDrawer guards the window anyway. An add mutates no favourite, queue or resume state.
+                                        addToPlaylistDrawer(qt.url, qt.title, sayadawName);
                                     } else if ("menu_fav_add".equals(qKeyArr[which]) || "menu_fav_remove".equals(qKeyArr[which])) {
                                         boolean added91 = Fx.toggleFavTalk(RoomActivity.this, qt.url);
                                         // v10.02: same paused-card star sync as the foreign-row branch above.
@@ -11282,6 +11523,8 @@ if (snd67n >= 0) currentIndex = snd67n;
                     dKeys.add(dFav89 ? "menu_fav_remove" : "menu_fav_add");
                     // v15.52 (slice 1979): mark this one talk listened / unlistened — the drawer in-list dialog's first mark verb: the queue dialog gained it in slice 1978 and the foreign dialog in this slice, but a talk in this sayadaw's own list shown in the drawer could only earn its listened mark by playing to the end, and a talk heard elsewhere could not be cleared from the drawer's unlistened view without opening the library. The verb sits in the existing dialog (no new view, no row menu resurrected), right after the favourite toggle — the other per-talk state toggle — and reuses the 1949 pure core (DlMark) and its keys (dl_menu_mark_one / dl_menu_unmark_one), so 0 new Lang keys. The label reads playedSet (the same cache the in-list rows render their tick from), so it can never disagree with the visible mark; the dialog gate already excludes the sounding talk, and the offer keeps the isSoundingTalk mirror for the auto-advance window while the dialog sits open.
                     if (DlMark.canOffer(dt.url, isSoundingTalk(dt.url))) { String markKey79 = DlMark.labelKey(DlMark.isMarked(playedSet, SiteHttp.identityUrl(dt.url))); dOpts.add(Lang.t(RoomActivity.this, markKey79)); dKeys.add(markKey79); }
+                    // v15.82 (slice 2152): "Add to playlist" — the in-list dialog's playlist verb (ChooserPlAdd, the Room's showPlaylistAddDialog shape, v12.65–v12.80): the same talk URL (dt.url — the stream URL, no resolve, the v5.69 cost rule) offers filing the talk in one of the listener's own lists, so a listener in the Room drawer never has to leave the Room to file a talk from this sayadaw's own list. The gate is the same non-blank URL the share reads (ChooserPlAdd.canOffer), so a streamed-only talk still offers it (filing is not a file); only a blank URL hides it. The key composes right after the mark toggle (above), so the collect verbs — favourite, mark, playlist — sit together, and the share trio, the queue verbs and the navigation are never split by it. The owner is sayadawName — the in-list dialog opens only over `talks`, this sayadaw's list by construction (the queue dialog's owner rule, 2150). Add to playlist landed in slice 2152.
+                    if (ChooserPlAdd.canOffer(dt.url)) { dOpts.add(Lang.t(RoomActivity.this, "pl_add")); dKeys.add("pl_add"); }
                     final boolean dQueued = queueLineIndexForUrl(dt.url) >= 0;
                     if (dQueued) { dOpts.add(Lang.t(RoomActivity.this, "menu_queue_remove")); dKeys.add("menu_queue_remove"); }
                     else { dOpts.add(Lang.t(RoomActivity.this, "menu_queue_add")); dKeys.add("menu_queue_add"); }
@@ -11300,6 +11543,9 @@ if (snd67n >= 0) currentIndex = snd67n;
                     // by the handler, like the library verb.
                     dOpts.add(Lang.t(RoomActivity.this, "menu_queue_from_here"));
                     dKeys.add("menu_queue_from_here");
+                    // v15.82 (slice 2153): "Play from here" — the in-list dialog's first play verb (the 1942 Talks chooser shape): queue this talk + every shown talk below it AND play the anchor now, so a run starts mid-list in one tap — the sibling queue-from-here above queues the same range but never starts playback, and a row tap plays one talk without queueing the run below it. Right after its sibling (same range, no playback); share stays first, muscle memory preserved. Offered on any non-sounding row (the dialog gate already excludes the sounding talk); already-queued rows below are skipped by the handler, like the library verb. Play from here landed in slice 2153.
+                    dOpts.add(Lang.t(RoomActivity.this, "menu_play_from_here"));
+                    dKeys.add("menu_play_from_here");
                     final String dCur = currentTalkUrl();
                     final QueueEntry dFw = firstWaitingQueueEntry();
                     final boolean dPlaying = dCur != null && dCur.length() > 0;
@@ -11439,6 +11685,9 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         if (adapter != null) adapter.notifyDataSetChanged();
                                         if (dt != null && dt.url != null) { menuMarkFadeUrl77 = dt.url; menuMarkBurstFav41 = null; fadeMenuMarkedDrawerRow77(); }
                                         android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, (unmarked79 != null && unmarked79.changed) ? "dl_menu_unmark_one" : "nothing_to_unmark"), android.widget.Toast.LENGTH_SHORT).show();
+                                    } else if ("pl_add".equals(dKeyArr[which])) {
+                                        // v15.82 (slice 2152): "Add to playlist" — the in-list dialog's playlist verb (see the offer above for the rule): the dialog's own choose-list + new-list flow (addToPlaylistDrawer), the Room's showPlaylistAddDialog shape on the drawer. The dialog gate already excludes the sounding talk at open, and a talk that becomes sounding by tap time is still fileable — the same verb the queue-bar button (2096) already offers for the sounding talk — so no sounding re-check is needed; the tap-time canOffer re-check inside addToPlaylistDrawer guards the window anyway. An add mutates no favourite, queue or resume state. Add to playlist landed in slice 2152.
+                                        addToPlaylistDrawer(dt.url, dt.title, sayadawName);
                                     } else if ("menu_fav_add".equals(dKeyArr[which]) || "menu_fav_remove".equals(dKeyArr[which])) {
                                         // v7.89: refreshMarkSets reloads favSet from
                                         // prefs, so the ★ marks in these rows
@@ -11578,6 +11827,9 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         Toast.makeText(RoomActivity.this, added04 > 0
                                                 ? Lang.t(RoomActivity.this, "queue_plain_prefix") + added04 + Lang.t(RoomActivity.this, "queue_added_suffix")
                                                 : Lang.t(RoomActivity.this, "already_in_queue"), Toast.LENGTH_SHORT).show();
+                                    } else if ("menu_play_from_here".equals(dKeyArr[which])) {
+                                        // v15.82 (slice 2153): "Play from here" — the in-list dialog's first play verb (see the offer above for the rule): queue the run from this talk onward AND play the anchor now, in one tap (playFromHereDrawer below — the 1942 Talks chooser shape on the Room's own display mapping and queue). The tap-time sounding re-check lives inside the helper (a talk that became sounding while the dialog sat open still queues its run, it just is not re-played). Play from here landed in slice 2153.
+                                        playFromHereDrawer(dt);
                                     } else {
                                         // v11.12: same tap-time sounding re-check as the
                                         // queue-only dialog above — this dialog's gate also
