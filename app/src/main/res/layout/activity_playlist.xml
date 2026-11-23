@@ -76,6 +76,36 @@
             android:textColor="@color/muted"
             android:textSize="15sp"
             android:visibility="gone" />
+        <!-- v15.74 (slice 2103): jump-to-playing button — the floating gold ▶ stacked above the ↑ back-to-top (slice 2104, the Talks/Downloaded stacking: same 56dp oval, same maroon glyph, 88dp off the corner): the list tap already plays a talk, but a listener who scrolled away from the sounding row had no visible way back — the header is off-screen exactly when the jump is needed. GONE until a live session plays a talk in the open list AND that talk's row has scrolled off-screen. Jump to the playing talk landed in slice 2103. -->
+        <TextView
+            android:id="@+id/plJumpBtn"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="88dp"
+            android:background="@drawable/top_btn_bg"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="▶"
+            android:textColor="@color/maroon"
+            android:textSize="24sp"
+            android:visibility="gone" />
+        <!-- v15.74 (slice 2104): back-to-top button — the floating gold ↑ at the list's bottom-end corner (the Talks 1940 / Downloaded 2003 block verbatim: same 56dp oval, same maroon glyph, 16dp off the corner): the header tap already jumps to the top, but the header is off-screen exactly when the jump is needed, so deep in a long playlist the listener had to drag all the way back by hand. GONE until the list has scrolled past eight rows. Back to top landed in slice 2104. -->
+        <TextView
+            android:id="@+id/plTopBtn"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/top_btn_bg"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="↑"
+            android:textColor="@color/maroon"
+            android:textSize="24sp"
+            android:visibility="gone" />
     </FrameLayout>
     <!-- v13.53: real mini-player, the same strip as Talks' (v4.31) —
          GONE while nothing plays, so the lists stay list-only. A

@@ -3533,6 +3533,85 @@ public class TalksActivity extends Activity {
     // button re-opens the Room instead of toggling nothing.
     private boolean talksResumeStripMode = false;
 
+    // v15.74 (slice 2101): "Add to playlist" — the chooser dialog's playlist verb (the Room's showPlaylistAddDialog, v12.65–v12.80, on the browsing screen; the Room's dialog has its own entry point since the Room queue bar, 2096 — this is the verb's seventh live offer, on the screen where "this talk -> my morning / bedtime list" is the natural flow; premium backlog #2, the Spotify / YouTube Music / Apple Music dialog verb): the talk is this screen's sayadaw's by construction — the chooser lists one sayadaw's talks, so the owner is sayadawName, the Room's in-list leg (playlistOwnerFor) — no catalogFor on this screen (it has no ensureCatalog / catCache) and no "lib" leg (the Room consults the dlSayadaw record only for path-form URLs, and a chooser Talk URL is stream-form; the Talk inner class carries title + url only, so there is nothing stale to heal). Re-resolve nothing at tap time (dt.url IS the stream URL, the v5.69 cost rule — the tap-time canOffer re-check guards the window); toast talk_no_longer_in_list on a blank URL and no_talk_yet on a blank sayadaw (the Room's own guard), then offer the listener's lists (Prefs.playlistNames — the seed lists are there from the first read) plus a "new list" row (pl_new, last). A tap files the talk through Prefs.playlistAdd and toasts the v12.80 result (ChooserPlAdd.toastKey: added / already there / full / could-not-create); the new-list row opens the name dialog. An add mutates no favourite, queue or resume state; no pause guard (no sheet is left to return from); the sounding talk never reaches this dialog (the dialog gate excludes it). Add to playlist landed in slice 2101.
+    private void addToPlaylistChooser(final Talk dt) {
+        if (dt == null || dt.url == null || dt.url.length() == 0) return;
+        final String streamUrl = dt.url;
+        if (!ChooserPlAdd.canOffer(streamUrl)) {
+            android.widget.Toast.makeText(TalksActivity.this,
+                    Lang.t(TalksActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (sayadawName == null || sayadawName.length() == 0) {
+            android.widget.Toast.makeText(TalksActivity.this,
+                    Lang.t(TalksActivity.this, "no_talk_yet"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final String title01 = dt.title != null ? dt.title : "";
+        final String sdF01 = sayadawName;
+        final java.util.List<String> names01 = Prefs.playlistNames(this);
+        final String[] items01 = new String[names01.size() + 1];
+        for (int i01 = 0; i01 < names01.size(); i01++) items01[i01] = names01.get(i01);
+        items01[names01.size()] = Lang.t(this, "pl_new");
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(Lang.t(this, "pl_choose"))
+                .setItems(items01, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        if (ChooserPlAdd.isNewRow(which, names01.size())) {
+                            showNewPlaylistChooser(streamUrl, title01, sdF01);
+                            return;
+                        }
+                        int r01 = Prefs.playlistAdd(TalksActivity.this,
+                                names01.get(which), streamUrl, sdF01, title01);
+                        android.widget.Toast.makeText(TalksActivity.this,
+                                Lang.t(TalksActivity.this, ChooserPlAdd.toastKey(r01)),
+                                android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .show();
+    }
+
+    // v15.74 (slice 2101): the "new list" dialog for the playlist verb — the Room's showNewPlaylistDialog (v12.80), on the chooser dialog: a name field (pl_name_hint), a Create button (pl_create) and a cancel (btn_no_clear); an empty name re-prompts with the hint toast; the name caps at 40 chars (PLAYLIST_MAX_NAME); create is a no-op for an existing name, so a repeat name just adds to that list; at the 20-list cap a genuinely new name toasts pl_limit (ChooserPlAdd.limitToastKey), any other create failure pl_no_create — neither falls through to the add (the v12.80 leg). The add toasts the same v12.80 result as the choose dialog.
+    private void showNewPlaylistChooser(final String url, final String title, final String sd) {
+        final android.widget.EditText et01 = new android.widget.EditText(this);
+        et01.setHint(Lang.t(this, "pl_name_hint"));
+        et01.setSingleLine(true);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(Lang.t(this, "pl_new"))
+                .setView(et01)
+                .setPositiveButton(Lang.t(this, "pl_create"),
+                        new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        String name01 = et01.getText().toString().trim();
+                        if (name01.length() == 0) {
+                            android.widget.Toast.makeText(TalksActivity.this,
+                                    Lang.t(TalksActivity.this, "pl_name_hint"),
+                                    android.widget.Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        if (name01.length() > 40) name01 = name01.substring(0, 40);
+                        boolean created01 = Prefs.playlistCreate(TalksActivity.this, name01);
+                        java.util.List<String> held01 = Prefs.playlistNames(TalksActivity.this);
+                        String limit01 = ChooserPlAdd.limitToastKey(created01,
+                                held01.contains(name01), held01.size());
+                        if (limit01 != null) {
+                            android.widget.Toast.makeText(TalksActivity.this,
+                                    Lang.t(TalksActivity.this, limit01),
+                                    android.widget.Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        int r01 = Prefs.playlistAdd(TalksActivity.this, name01, url, sd, title);
+                        android.widget.Toast.makeText(TalksActivity.this,
+                                Lang.t(TalksActivity.this, ChooserPlAdd.toastKey(r01)),
+                                android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton(Lang.t(this, "btn_no_clear"), null)
+                .show();
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -4055,6 +4134,8 @@ public class TalksActivity extends Activity {
                     boolean dPlaying69 = (talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(dt.url, talkPlayingUrl))
                             || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(dt.url, talkPlayingLibUrl));
                     if (DlMark.canOffer(dt.url, dPlaying69)) { String markKey69 = DlMark.labelKey(DlMark.isMarked(talkPlayedCache, SiteHttp.identityUrl(dt.url))); dOpts.add(Lang.t(TalksActivity.this, markKey69)); dKeys.add(markKey69); }
+                    // v15.74 (slice 2101): "Add to playlist" — the chooser dialog's playlist verb (ChooserPlAdd, the Room's showPlaylistAddDialog shape, v12.65–v12.80): the same talk URL (dt.url — the stream URL, no resolve, the v5.69 cost rule) offers filing the talk in one of the listener's own lists, so a listener browsing a sayadaw's talks never has to open the Room to file one. The gate is the same non-blank URL the share reads (ChooserPlAdd.canOffer), so a streamed-only talk still offers it (filing is not a file); only a blank URL hides it. The key composes right after the mark toggle (above), so the collect verbs — favourite, mark, playlist — sit together, and the share trio, the queue verbs and the navigation are never split by it. Add to playlist landed in slice 2101.
+                    if (ChooserPlAdd.canOffer(dt.url)) { dOpts.add(Lang.t(TalksActivity.this, "pl_add")); dKeys.add("pl_add"); }
                     final boolean dQueued = talkQueueHas(dt.url);
                     if (dQueued) { dOpts.add(Lang.t(TalksActivity.this, "menu_queue_remove")); dKeys.add("menu_queue_remove"); }
                     else { dOpts.add(Lang.t(TalksActivity.this, "menu_queue_add")); dKeys.add("menu_queue_add"); }
@@ -4287,6 +4368,9 @@ public class TalksActivity extends Activity {
                                         if (adapter != null) adapter.notifyDataSetChanged();
                                         if (dt != null && dt.url != null) { menuMarkFadeUrl75 = dt.url; fadeMenuMarkedTalkRow(); }
                                         android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, (unmarked69 != null && unmarked69.changed) ? "dl_menu_unmark_one" : "nothing_to_unmark"), android.widget.Toast.LENGTH_SHORT).show();
+                                    } else if ("pl_add".equals(dKeyArr[which])) {
+                                        // v15.74 (slice 2101): "Add to playlist" — the chooser dialog's playlist verb (see the offer above for the rule): the dialog's own choose-list + new-list flow (addToPlaylistChooser), the Room's showPlaylistAddDialog shape on the browsing screen. The sounding talk never reaches this dialog (the dialog gate excludes it), so no sounding re-check is needed; the tap-time canOffer re-check inside addToPlaylistChooser guards the window anyway. An add mutates no favourite, queue or resume state.
+                                        addToPlaylistChooser(dt);
                                     } else if ("menu_queue_remove".equals(dKeyArr[which])) {
                                         if (!talkQueueHas(dt.url)) {
                                             android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();

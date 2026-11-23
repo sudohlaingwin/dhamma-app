@@ -42,6 +42,13 @@ public class PlaylistActivity extends Activity {
     // v15.73 (slice 2098): "Shuffle play" on this screen — the chooser's v13.93 shuffle-play, now on the playlist detail screen: one tap shuffles the open list into the queue and opens the Room on the first shuffled talk. lastPlShuffleMs is the handler's own 700ms debounce clock (an invalid tap never consumes the window, v12.28); plShuffleBtn is the header button beside Play-all (GONE until showDetail shows it, riding the Play-all gate — the 2065 rule, so the two header verbs show and hide together).
     private Button plShuffleBtn;
     private long lastPlShuffleMs = 0;
+    // v15.74 (slice 2103): "Jump to the playing talk" on this screen — the Talks chooser's v15.55 jump (slice 1994), now on the playlist detail screen, the last list surface without it: the detail rows carry the sounding gold mark since v13.55, but a listener who scrolled away from the marked row had no visible way back. plJumpBtn is the floating gold ▶ button (GONE until refreshPlJumpTarget + paintPlJumpBtn show it — the 1994 shape); plJumpTargetIdx is the cached shown-list index of the sounding talk (-1 in lists mode and while nothing live sounds in the open list); plJumpShown is the last-painted state for the painter's change gate. Jump to the playing talk landed in slice 2103.
+    private android.widget.TextView plJumpBtn = null;
+    private int plJumpTargetIdx = -1;
+    private boolean plJumpShown = false;
+    // v15.74 (slice 2104): "Back to top" on this screen — the Talks 1940 / Downloaded 2003 button, now on the last list surface without one: a long playlist's header is off-screen exactly when the jump is needed. plTopBtn is the floating gold ↑ button (GONE until ScrollTop.visible — the first visible row passes 8 — the 1940 shape, in lists mode and detail alike, since the rule is the list's own scroll, not the sounding row); plTopShown is the last-painted state for the painter's change gate. Back to top landed in slice 2104.
+    private android.widget.TextView plTopBtn = null;
+    private boolean plTopShown = false;
     private ListView listView;
     private TextView emptyText;
     private String curList = null; // null = lists mode
@@ -114,6 +121,8 @@ public class PlaylistActivity extends Activity {
             @Override public void onClick(View v) { shufflePlayPl(v); }
         });
         if (plShuffleBtn != null) Fx.press(plShuffleBtn);
+        wirePlJumpBtn(); // v15.74 (slice 2103): jump to the playing talk on this screen, before the first refresh
+        wirePlTopBtn(); // v15.74 (slice 2104): back to top on this screen, before the first refresh
         if (headerBtn != null) {
             headerBtn.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) {
@@ -146,7 +155,8 @@ public class PlaylistActivity extends Activity {
             listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
                 @Override public boolean onItemLongClick(AdapterView<?> p, View v,
                         int pos, long id) {
-                    if (curList != null) return false;
+                    // v15.74 (slice 2105): detail rows gain a row menu — the last list surface without one: a long-press used to return false here, so a listener deep in a playlist could only play a talk (tap) or drop it (the per-row remove) — the menu opens with the two verbs the screen needs (Play from here + Remove from list). Lists mode keeps its delete-list confirm. Row menu landed in slice 2105.
+                    if (curList != null) { showPlRowMenu(items.get(pos), pos); return true; }
                     confirmDeleteList(names.get(pos));
                     return true;
                 }
@@ -309,20 +319,7 @@ public class PlaylistActivity extends Activity {
         del.setFocusableInTouchMode(false);
         del.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                if (curList == null) return;
-                // v12.81: check the store result (sim1295 B) — a
-                // failed remove used to drop the row anyway.
-                if (!Prefs.playlistRemove(PlaylistActivity.this, curList, qe.url)) return;
-                items.remove(position);
-                adapter.notifyDataSetChanged();
-                // v12.81: Play All follows the list (sim1295 A) —
-                // an emptied list kept a dead Play All button.
-                if (playAllBtn != null) playAllBtn.setVisibility(items.isEmpty() ? View.GONE : View.VISIBLE);
-                if (plShuffleBtn != null) plShuffleBtn.setVisibility(items.isEmpty() ? View.GONE : View.VISIBLE);
-                refreshEmpty();
-                Toast.makeText(PlaylistActivity.this,
-                        Lang.t(PlaylistActivity.this, "pl_removed"),
-                        Toast.LENGTH_SHORT).show();
+                removePlItem(position);
             }
         });
         row.addView(del, new LinearLayout.LayoutParams(
@@ -383,6 +380,11 @@ public class PlaylistActivity extends Activity {
         meltHeader40(headerBtn, Lang.t(this, "pl_new"));
         Fx.crossfadeStripBtn(playAllBtn, false);
         Fx.crossfadeStripBtn(plShuffleBtn, false);
+        // v15.74 (slice 2103): lists mode has no sounding row — clear the jump target and hide the button (the target reads -1 with curList null).
+        refreshPlJumpTarget();
+        paintPlJumpBtnFromList();
+        // v15.74 (slice 2104): a return to the lists screen can land deep without a scroll event — repaint the top button from the new position too (the 2003 shape; the names list is a list too).
+        paintPlTopBtnFromList();
         if (adapter != null) adapter.notifyDataSetChanged();
         refreshEmpty();
         plHeaderKnown40 = true;
@@ -397,6 +399,11 @@ public class PlaylistActivity extends Activity {
         Fx.crossfadeStripBtn(playAllBtn, !items.isEmpty());
         Fx.crossfadeStripBtn(plShuffleBtn, !items.isEmpty());
         refreshPlaylistPlayingMarks(); // v13.55: mark right on first paint, not one tick late
+        // v15.74 (slice 2103): the open list's sounding row is the jump target — refresh it and repaint the button from the new position (the 2063 shape: a fresh detail open can land with the playing row off-screen).
+        refreshPlJumpTarget();
+        paintPlJumpBtnFromList();
+        // v15.74 (slice 2104): a fresh detail open can land deep without a scroll event — repaint the top button from the new position too (the 2003 shape).
+        paintPlTopBtnFromList();
         if (adapter != null) adapter.notifyDataSetChanged();
         refreshEmpty();
         plHeaderKnown40 = true;
@@ -708,6 +715,154 @@ public class PlaylistActivity extends Activity {
     // stop: a stopped talk is never the playing talk) + lastKind room -> lastUrl. Library: same live
     // guards + lastKind lib -> lastLibPath, resolved to its stream URL through the dlMap reverse lookup
     // (exactly-one claimant, v8.44). Prefs only, never per bind.
+    // v15.74 (slice 2103): wire the jump-to-playing button — one tap glides the open list to the sounding talk (the 1994 Talks shape: the tap re-resolves the target fresh, so a finish or an advance while the button sat visible can never glide to a stale row; the target is by construction in the shown list, so no search/filter clear is ever needed — this screen has no search). The tap gates on a live session with a track that has not ended (the v10.43 bound-trackless stop + the v11.15 ended gate, the History 2063 gate verbatim); a miss toasts no_talk_playing, never glides nowhere. A missing button simply never wires; a missing list never scrolls.
+    private void wirePlJumpBtn() {
+        plJumpBtn = findViewById(R.id.plJumpBtn);
+        if (plJumpBtn != null) plJumpBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                // v10.43: bound-trackless stop — liveSession stays true but the mirror is false, so toast instead of gliding to a stopped talk; the v11.15 gate: an ended talk is not playing either (its mark lifts, so there is no row to jump to).
+                if (listView == null || curList == null || items.isEmpty() || !AudioService.liveSession || !AudioService.liveHasTrack || AudioService.liveEnded) {
+                    android.widget.Toast.makeText(PlaylistActivity.this, Lang.t(PlaylistActivity.this, "no_talk_playing"), android.widget.Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                try {
+                    refreshPlaylistPlayingMarks();
+                    int target = PlJumpPlaying.findShownIndex(items, plPlayingUrl, plPlayingLibUrl, AudioService.liveEnded);
+                    if (target < 0) {
+                        android.widget.Toast.makeText(PlaylistActivity.this, Lang.t(PlaylistActivity.this, "no_talk_playing"), android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    Fx.tap(PlaylistActivity.this);
+                    Fx.morph(v);
+                    listView.smoothScrollToPosition(target);
+                } catch (Exception ignored) {}
+            }
+        });
+        if (listView != null) listView.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
+            @Override public void onScrollStateChanged(android.widget.AbsListView v, int state) {}
+            @Override public void onScroll(android.widget.AbsListView v, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
+                // v15.74 (slice 2104): the top button paints on the same scroll (the 2003 shape — its only show rule is the first visible row, so no laid-out-window guard; the threshold keeps it hidden until row 8 anyway).
+                paintPlTopBtn(firstVisibleItem);
+                // v15.74 (slice 2103): the jump button paints on the same scroll — off-screen is its only show rule, so a laid-out window is required (count 0 means no layout yet; the 1994 Talks shape).
+                if (visibleItemCount > 0) paintPlJumpBtn(firstVisibleItem, firstVisibleItem + visibleItemCount - 1);
+            }
+        });
+    }
+
+    // v15.74 (slice 2103): refresh the jump button's cached target — the shown-list index of the sounding talk, from the tick-fresh sounding identities (refreshPlaylistPlayingMarks runs first on every path that calls this: showDetail before its repaint, the strip-tick change branch, the tap's own re-resolution). Runs on detail-open / sounding change only, never on scroll; -1 in lists mode (curList null — the names list has no sounding row) and while nothing live sounds among the shown rows.
+    private void refreshPlJumpTarget() {
+        plJumpTargetIdx = curList == null ? -1 : PlJumpPlaying.findShownIndex(items, plPlayingUrl, plPlayingLibUrl, AudioService.liveEnded);
+    }
+
+    // v15.74 (slice 2103): the jump-to-playing state — shown only while a live talk has a cached target in the open list AND that row is off-screen (above or below the visible window, the JumpPlaying.wantShown rule, the 1994 shape). The change gate keeps steady scrolls and the detail-open / sounding-change repaints from re-touching the button; the show/hide melts (Fx.fadeIn/fadeOut, 180ms) instead of snapping, and a cancelled fade never strands it half-transparent (the v2.62 gen guard, the 1940 shape). A stop clears the identities on the next tick, so the button hides within a tick of the session ending.
+    private void paintPlJumpBtn(int firstVisible, int lastVisible) {
+        if (plJumpBtn == null) return;
+        boolean want = curList != null && plJumpTargetIdx >= 0
+                && JumpPlaying.wantShown(plJumpTargetIdx, firstVisible, lastVisible);
+        if (want == plJumpShown) return;
+        plJumpShown = want;
+        if (want) {
+            plJumpBtn.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(plJumpBtn, 180);
+        } else {
+            Fx.fadeOut(plJumpBtn, 180);
+        }
+    }
+
+    // v15.74 (slice 2103): repaint from the list's own position after a scroll-less change — a detail open, a return to the lists screen, or a sounding change can move the playing row off-screen with no scroll event, so read the position after layout and paint from it. Posted, because the first / last visible rows are only valid once the list has laid out (the 1940 shape).
+    private void paintPlJumpBtnFromList() {
+        if (listView == null) return;
+        listView.post(new Runnable() {
+            @Override public void run() {
+                if (listView == null) return;
+                paintPlJumpBtn(listView.getFirstVisiblePosition(), listView.getLastVisiblePosition());
+            }
+        });
+    }
+
+    // v15.74 (slice 2104): wire the back-to-top button — one tap glides the open list to the top (the Talks 1940 / Downloaded 2003 shape: the tap needs no gate — the button only shows past row 8, so a tap always has somewhere to go; this screen has no search field, so no keyboard hides with the glide, the 1940 Talks tap shape). A missing button simply never wires; a missing list never scrolls.
+    private void wirePlTopBtn() {
+        plTopBtn = findViewById(R.id.plTopBtn);
+        if (plTopBtn != null) plTopBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.tap(PlaylistActivity.this);
+                Fx.morph(v);
+                if (listView != null) listView.smoothScrollToPosition(0);
+            }
+        });
+    }
+
+    // v15.74 (slice 2104): the back-to-top state — shown once the first visible row passes ScrollTop's threshold, hidden at the top (the 1940 Talks / 2003 Downloaded shape verbatim: ScrollTop.visible, THRESHOLD 8 — about one screen of rows). No curList gate: the rule is the shown list's own scroll, so the names list in lists mode grows one too once it passes eight rows. The change gate keeps steady scrolls and the detail-open / lists-return repaints from re-touching the button; the show/hide melts (Fx.fadeIn/fadeOut, 180ms) instead of snapping, and a cancelled fade never strands it half-transparent (the v2.62 gen guard, the 1940 shape).
+    private void paintPlTopBtn(int firstVisible) {
+        if (plTopBtn == null) return;
+        boolean want = ScrollTop.visible(firstVisible);
+        if (want == plTopShown) return;
+        plTopShown = want;
+        if (want) {
+            plTopBtn.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(plTopBtn, 180);
+        } else {
+            Fx.fadeOut(plTopBtn, 180);
+        }
+    }
+
+    // v15.74 (slice 2104): repaint from the list's own position after a scroll-less change — a detail open or a return to the lists screen can land the list deep without a scroll event, so read the position after layout and paint from it. Posted, because the first visible row is only valid once the list has laid out (the 1940 shape). The rotation restore needs no separate hook: onCreate restores through showDetail/showLists, whose tails already post this repaint.
+    private void paintPlTopBtnFromList() {
+        if (listView == null) return;
+        listView.post(new Runnable() {
+            @Override public void run() {
+                if (listView == null) return;
+                paintPlTopBtn(listView.getFirstVisiblePosition());
+            }
+        });
+    }
+
+    // v15.74 (slice 2105): row long-press menu on this screen — the FavRowMenu / BmRowMenu shell, now on the Playlist detail rows: the dialog opens with the two verbs the screen needs ("Play from here" first when offered, "Remove from list" always — PlRowMenu.menuKeys), titled with the row's title (the itemRow rule: title, else URL). The menu is modal, so the long-press position stays valid at tap time. "Play from here" calls playFrom(position) directly — the row tap's own verb, which queues from the row onward and opens the Room; there is no second queue path. "Remove from list" calls removePlItem(position) — the per-row remove's verb, shared with the row menu. A blank URL names no talk, so no menu opens on it; a missing list never opens one either. Row menu landed in slice 2105.
+    private void showPlRowMenu(final QueueEntry qe, final int position) {
+        if (qe == null || qe.url == null || qe.url.length() == 0) return;
+        refreshPlaylistPlayingMarks();
+        final String url = qe.url;
+        final String sd = qe.sayadaw;
+        java.util.List<String> keys05 = PlRowMenu.menuKeys(url, sd, plPlayingUrl, plPlayingLibUrl, AudioService.liveEnded);
+        java.util.ArrayList<String> opts05 = new java.util.ArrayList<String>();
+        for (String k05 : keys05) opts05.add(Lang.t(this, k05));
+        final String[] optArr05 = opts05.toArray(new String[0]);
+        final String[] keyArr05 = keys05.toArray(new String[0]);
+        String title05 = qe.title != null && qe.title.length() > 0 ? qe.title : url;
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(title05)
+                .setItems(optArr05, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        if ("menu_play_from_here".equals(keyArr05[which])) {
+                            playFrom(position);
+                        } else if ("menu_pl_remove".equals(keyArr05[which])) {
+                            removePlItem(position);
+                        }
+                    }
+                })
+                .show();
+    }
+
+    // v15.74 (slice 2105): the row removal the per-row remove button and the row menu share — extracted from the button (behaviour byte-identical: the store result gates the row drop, sim1295 B; Play All + Shuffle follow the list, sim1295 A; the empty state refreshes; the pl_removed toast confirms). A bounds guard: the menu's position is the long-press row, the button's is the bound row — both are valid at tap time, but a stale position never drops the wrong row. The store remove is the only write this verb makes.
+    private void removePlItem(int position) {
+        if (curList == null) return;
+        if (position < 0 || position >= items.size()) return;
+        QueueEntry qe = items.get(position);
+        // v12.81: check the store result (sim1295 B) — a
+        // failed remove used to drop the row anyway.
+        if (!Prefs.playlistRemove(this, curList, qe.url)) return;
+        items.remove(position);
+        adapter.notifyDataSetChanged();
+        // v12.81: Play All follows the list (sim1295 A) —
+        // an emptied list kept a dead Play All button.
+        if (playAllBtn != null) playAllBtn.setVisibility(items.isEmpty() ? View.GONE : View.VISIBLE);
+        if (plShuffleBtn != null) plShuffleBtn.setVisibility(items.isEmpty() ? View.GONE : View.VISIBLE);
+        refreshEmpty();
+        Toast.makeText(this,
+                Lang.t(this, "pl_removed"),
+                Toast.LENGTH_SHORT).show();
+    }
+
     private void refreshPlaylistPlayingMarks() {
         plPlayingUrl = "";
         plPlayingLibUrl = "";
@@ -833,6 +988,9 @@ public class PlaylistActivity extends Activity {
             plRowPlayingLibUrl = plPlayingLibUrl;
             plRowEnded = AudioService.liveEnded;
             adapter.notifyDataSetChanged();
+            // v15.74 (slice 2103): the sounding change above moves the playing talk (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button.
+            refreshPlJumpTarget();
+            paintPlJumpBtnFromList();
         }
         android.view.View strip = findViewById(R.id.nowStrip);
         if (strip == null) return;

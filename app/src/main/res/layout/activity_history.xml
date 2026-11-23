@@ -35,6 +35,16 @@
             android:textColor="#FFFFFF"
             android:textSize="14sp" />
         <!-- v15.73 (slice 2099): Shuffle play — the chooser's v13.93 shuffle-play on the History screen: one tap shuffles the shown recent run into the queue and opens the Room on the first shuffled talk. It sits in the header row beside Sort (the Favourites header-row shape — the two play verbs there ride one gate; here Shuffle rides the shown-run gate alone, GONE until the run is non-empty, so it never sits live over an empty list). The label comes from Lang "shuffle" in code, so no literal sits here. Shuffle play landed in slice 2099. -->
+        <!-- v15.74 (slice 2102): Play all — the chooser's v13.76 Play All on the History screen: one tap queues the shown recent run in order and opens the Room on the first talk. It sits in the header row before Shuffle (the Favourites header-row shape — Play All before Shuffle there too), GONE until the run is non-empty, so it never sits live over an empty list. The label comes from Lang "pl_play_all" in code, so no literal sits here. Play all landed in slice 2102. -->
+        <Button
+            android:id="@+id/btnHsPlayAll"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="8dp"
+            android:background="@drawable/glass_btn_dark"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:visibility="gone" />
         <Button
             android:id="@+id/btnHsShuffle"
             android:layout_width="wrap_content"

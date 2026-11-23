@@ -122,6 +122,10 @@ public class HistoryActivity extends Activity {
     private android.widget.Button btnHsShuffle = null;
     private long lastHsShuffleMs = 0;
     private boolean hsShuffleShown = false;
+    // v15.74 (slice 2102): "Play all" on this screen — the chooser's v13.76 Play All, now on the History screen: one tap queues the shown recent run in order and opens the Room on the first talk at its saved spot. lastHsPlayAllMs is the handler's own 700ms debounce clock (an invalid tap never consumes the window, v12.28); btnHsPlayAll is the header button before Shuffle (GONE until refreshHsPlayAllBtn shows it, riding the shown-run gate — the 2065 rule, so the verb never sits live over an empty list); hsPlayAllShown is the last-painted state for the painter's change gate.
+    private android.widget.Button btnHsPlayAll = null;
+    private long lastHsPlayAllMs = 0;
+    private boolean hsPlayAllShown = false;
     // v15.67 (slice 2063): "Jump to the playing talk" — the
     // floating gold ▶ over the list's bottom-end corner; hsPlayingShown is the last-painted state
     // for the painter's change gate, and hsJumpTargetIdx is the
@@ -207,6 +211,7 @@ public class HistoryActivity extends Activity {
         wireHsJumpBtn(); // v15.67 (slice 2063): jump-to-playing button on this list
         wireHsSort(); // v15.68 (slice 2068): sort on this screen, before the first refresh
         wireHsShuffle(); // v15.73 (slice 2099): shuffle on this screen, before the first refresh
+        wireHsPlayAll(); // v15.74 (slice 2102): play all on this screen, before the first refresh
         refresh();
         wireHistoryStrip(); // v13.54: real mini-player below the list
     }
@@ -279,6 +284,16 @@ public class HistoryActivity extends Activity {
             @Override public void onClick(View v) { shufflePlayHs(v); }
         });
         if (btnHsShuffle != null) Fx.press(btnHsShuffle);
+    }
+
+    // v15.74 (slice 2102): wire the Play All button — one tap queues the shown recent run in order and opens the Room on the first talk (playAllHs). The label is the pre-existing Lang "pl_play_all" key, so no new key is added. Play all landed in slice 2102.
+    private void wireHsPlayAll() {
+        btnHsPlayAll = findViewById(R.id.btnHsPlayAll);
+        if (btnHsPlayAll != null) btnHsPlayAll.setText(Lang.t(this, "pl_play_all"));
+        if (btnHsPlayAll != null) btnHsPlayAll.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { playAllHs(v); }
+        });
+        if (btnHsPlayAll != null) Fx.press(btnHsPlayAll);
     }
 
     // v15.68 (slice 2068): the sort label — the Downloaded
@@ -489,6 +504,20 @@ public class HistoryActivity extends Activity {
         }
     }
 
+    // v15.74 (slice 2102): the Play All button shows exactly when the shown run is non-empty — the 2065 rule: a play verb never sits live over an empty list (a search-narrowed empty list has nothing to play, and clearing the search restores the full run). The change gate keeps steady keystrokes and refreshes from re-touching the button; the show/hide melts (Fx.fadeIn/fadeOut, 180ms) instead of snapping, and a cancelled fade never strands it half-transparent (the v2.62 gen guard, the 1940 shape).
+    private void refreshHsPlayAllBtn() {
+        if (btnHsPlayAll == null) return;
+        boolean show = items != null && !items.isEmpty();
+        if (show == hsPlayAllShown) return;
+        hsPlayAllShown = show;
+        if (show) {
+            btnHsPlayAll.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(btnHsPlayAll, 180);
+        } else {
+            Fx.fadeOut(btnHsPlayAll, 180);
+        }
+    }
+
     private int goldColor() { return 0xFFC9A227; }
 
     // Numbers in Myanmar digits when the UI language is Burmese,
@@ -576,6 +605,8 @@ public class HistoryActivity extends Activity {
         paintHsJumpBtnFromList();
         // v15.73 (slice 2099): the Shuffle button follows the shown run — a search / refresh that empties the list hides it, and one that fills it shows it (the 2065 rule).
         refreshHsShuffleBtn();
+        // v15.74 (slice 2102): the Play All button follows the shown run — the same 2065 rule as Shuffle, beside it.
+        refreshHsPlayAllBtn();
     }
 
     private View itemRow(final int position) {
@@ -810,6 +841,128 @@ public class HistoryActivity extends Activity {
             it99.putExtra("autoTitle", first99.title);
             Fx.tap(this);
             Fx.go(this, it99);
+        }
+    }
+
+    // v15.74 (slice 2102): "Play all" on the History screen — the chooser's v13.76 Play All, now on the last list surface that lacked it: the recent talks used to play one row tap at a time (playRecent) or as an in-order run from a row onward (histPlayFromHere, v15.62) or shuffled (shufflePlayHs, 2099); one tap here queues the SHOWN run (the filtered + sorted list, the 2047 rule — a search-narrowed list plays the narrowed run) in order (HistPlayAll.run over the shown list — the 2065 rule: the shown run is the run) and opens the Room on the first talk at its saved spot. Same guards as the chooser: empty list refuses with the same words, the 700ms debounce has its own clock (an invalid tap never consumes the window, v12.28), the sounding talk is never re-queued (the stay-put branch: the rest queue behind it, no restart — this screen's THREE sounding identities collapse to the two the queue pick takes, the v13.55 mark rule — a path-form row's stream URL resolves through histStreamUrlFor, so a library session's URL matches it), and the count toast counts written lines only. The anchor sayadaw is the FIRST entry's sayadaw, healed exactly like playRecent's first item (catalog + the sayadawForTalk heal); leading entries with no resolvable stream URL or no catalog page are skipped, not refused (the v12.79 leg, over the shown order — a path-form row with no dlMap claimant has no stream verb, so its run belongs to the library, not this Room-queue run). No catalog, no run: the queue is untouched. A talk heard twice sits twice in History, so the run dedupes by identity (HistPlayFromHere.lines). The Room open is histPlayFromHere's own block verbatim (autoUrl canonicalised, six extras, NO fromPlaylist — History is not a playlist), so a queued anchor plays from its queue spot. The in-order queue is an APPEND to the anchor's hand queue (the FavPlayAll semantics — saved lines are carried verbatim, histQueueAdd's discipline), not a replace: a history tap means "play these again", and replacing would wipe the anchor's hand queue (which may hold foreign lines from the Room drawer) behind a sounding talk.
+    private void playAllHs(android.view.View v) {
+        if (items == null || items.isEmpty()) {
+            android.widget.Toast.makeText(HistoryActivity.this,
+                    Lang.t(HistoryActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        long now02 = android.os.SystemClock.uptimeMillis();
+        if (now02 - lastHsPlayAllMs < 700) return;
+        lastHsPlayAllMs = now02;
+        refreshHistoryPlayingMarks(); // tap-time sounding identities
+        java.util.List<Prefs.HistEntry> ordered02 = HistPlayAll.run(items);
+        if (ordered02.isEmpty()) {
+            android.widget.Toast.makeText(HistoryActivity.this,
+                    Lang.t(HistoryActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // The first playable entry — skip leading entries with no resolvable stream URL or no catalog page (the v12.79 leg, over the shown order), healing the sayadaw exactly like playRecent's (catalog + the sayadawForTalk heal). No playable entry: the queue is untouched.
+        Prefs.HistEntry first02 = null;
+        String firstStream02 = "";
+        String sd02 = null;
+        String[] cat02 = null;
+        int start02 = 0;
+        for (int i02 = 0; i02 < ordered02.size(); i02++) {
+            Prefs.HistEntry e02 = ordered02.get(i02);
+            if (e02 == null || e02.url == null || e02.url.length() == 0) continue;
+            String stream02 = histStreamUrlFor(e02);
+            if (stream02.length() == 0) continue;
+            String sdTry02 = histSayadawFor(e02);
+            String[] catTry02 = catalogFor(sdTry02);
+            if (catTry02 == null || catTry02[1] == null || catTry02[1].length() == 0) {
+                String owner02 = Prefs.sayadawForTalk(this, "lib", e02.url, "");
+                if (owner02 != null && owner02.length() > 0 && !owner02.equals(sdTry02)) {
+                    sdTry02 = owner02;
+                    catTry02 = catalogFor(sdTry02);
+                }
+            }
+            if (catTry02 != null && catTry02[1] != null && catTry02[1].length() > 0) {
+                first02 = e02;
+                firstStream02 = stream02;
+                sd02 = sdTry02;
+                cat02 = catTry02;
+                start02 = i02;
+                break;
+            }
+        }
+        if (first02 == null) {
+            android.widget.Toast.makeText(HistoryActivity.this,
+                    Lang.t(HistoryActivity.this, "pl_no_play"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        boolean firstSounds02 = (histPlayingUrl.length() > 0 && SiteHttp.sameTalk(firstStream02, histPlayingUrl))
+                || (histPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(firstStream02, histPlayingLibUrl));
+        // The run from the first playable on, in shown order (the PlayFromHere pick's input), each row carrying its own sayadaw + title for the v2 lines. A row with no resolvable stream URL reads as null and the pick skips it.
+        java.util.List<String> ids02 = new java.util.ArrayList<String>();
+        java.util.List<String> sds02 = new java.util.ArrayList<String>();
+        java.util.List<String> titles02 = new java.util.ArrayList<String>();
+        for (int i02 = start02; i02 < ordered02.size(); i02++) {
+            Prefs.HistEntry r02 = ordered02.get(i02);
+            if (r02 == null) { ids02.add(null); sds02.add(""); titles02.add(""); continue; }
+            String ru02 = histStreamUrlFor(r02);
+            ids02.add(ru02.length() > 0 ? SiteHttp.identityUrl(ru02) : null);
+            sds02.add(histSayadawFor(r02));
+            titles02.add(r02.title);
+        }
+        // The first line carries the healed sayadaw.
+        sds02.set(0, sd02);
+        // The anchor sayadaw's current queue, as identities — the pick skips talks already queued (they stay where they are). Saved lines are carried verbatim (histQueueAdd's discipline), so a foreign line the Room drawer moved mid-queue survives the write.
+        java.util.Set<String> queuedIds02 = new java.util.HashSet<String>();
+        java.util.ArrayList<String> saved02 = new java.util.ArrayList<String>();
+        try {
+            String savedRaw02 = Prefs.savedQueue(this, sd02);
+            if (savedRaw02 != null && savedRaw02.length() > 0) {
+                for (String ln02 : savedRaw02.split("\n")) {
+                    if (ln02.length() == 0) continue;
+                    saved02.add(ln02);
+                    QueueEntry qe02 = QueueEntry.parse(ln02);
+                    if (qe02 != null && qe02.url.length() > 0)
+                        queuedIds02.add(SiteHttp.identityUrl(qe02.url));
+                }
+            }
+        } catch (Exception ignored) {}
+        java.util.List<Integer> picked02 = PlayFromHere.pick(ids02,
+                SiteHttp.identityUrl(firstStream02), queuedIds02,
+                histPlayingUrl, histPlayingLibUrl);
+        java.util.List<String> run02 = HistPlayFromHere.lines(ids02, sds02, titles02, picked02);
+        int added02 = 0;
+        for (String ln02 : run02) {
+            QueueEntry qe02 = QueueEntry.parse(ln02);
+            if (qe02 == null || qe02.url.length() == 0) continue;
+            boolean dup02 = false;
+            for (String ex02 : saved02) {
+                QueueEntry qx02 = QueueEntry.parse(ex02);
+                if (qx02 != null && SiteHttp.sameTalk(qx02.url, qe02.url)) { dup02 = true; break; }
+            }
+            if (dup02) continue;
+            saved02.add(ln02);
+            added02++;
+        }
+        Prefs.saveQueue(this, sd02, saved02);
+        if (adapter != null) adapter.notifyDataSetChanged();
+        android.widget.Toast.makeText(HistoryActivity.this, added02 > 0
+                ? Lang.t(HistoryActivity.this, "queue_plain_prefix") + added02 + Lang.t(HistoryActivity.this, "queue_added_suffix")
+                : Lang.t(HistoryActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
+        Fx.morph(v);
+        if (!firstSounds02) {
+            // Open the Room on the anchor (histPlayFromHere's tail, same six extras) — a queued anchor plays from its queue spot.
+            android.content.Intent it02 = new android.content.Intent(this, RoomActivity.class);
+            it02.putExtra("name", sd02);
+            it02.putExtra("group", cat02[0]);
+            it02.putExtra("url", cat02[1]);
+            it02.putExtra("photo", cat02[2]);
+            it02.putExtra("autoUrl", SiteHttp.identityUrl(firstStream02));
+            it02.putExtra("autoTitle", first02.title);
+            Fx.tap(this);
+            Fx.go(this, it02);
         }
     }
 
