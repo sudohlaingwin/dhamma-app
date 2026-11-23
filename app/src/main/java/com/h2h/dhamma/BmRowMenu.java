@@ -26,6 +26,7 @@ package com.h2h.dhamma;
 // leg, so the offer and the gold mark never disagree). "Delete
 // bookmark" is always offered — the row IS a bookmark by
 // construction — so an opened menu is never empty.
+// v15.83 (slice 2159): "Queue from here" joins the menu through a separate pure leg — BmRowMenu.queueFromHereKey, NOT inside menuKeys: the gate is EXACTLY the play-from-here gate (canPlayFromHere — a resolved stream URL with a sayadaw, not sounding), which IS a pure function of the args menuKeys already carries — but the 2075/2077/2084/2086/2090/2093/2132/2135/2141 precedent inserts post-hoc keys in the Activity so the pinned menus stand, and the position is right after the queue key, not before remove (the queue verbs sit together — the chooser's order: queue add/remove, queue-from-here, play-from-here). The Activity inserts queueFromHereKey's result right after menu_queue_add / menu_queue_remove, so the display order reads Share, Minute, Copy, File, PlayFromHere, Queue, QueueFromHere, Go, Download, PlAdd, Mark, Remove. menuKeys itself is untouched: its pinned menus stand as written.
 public class BmRowMenu {
     // True when this mark can start a run from here: a resolved
     // stream URL with a sayadaw, not sounding. Null/blank names
@@ -37,6 +38,19 @@ public class BmRowMenu {
         if (sayadaw == null || sayadaw.length() == 0) return false;
         if (BmPlayAll.isSounding(url, soundingUrl, soundingLibUrl)) return false;
         return true;
+    }
+
+    // v15.83 (slice 2159): True when this mark can queue the run below it: the gate is EXACTLY the play-from-here gate (canPlayFromHere — a resolved stream URL with a sayadaw, not sounding), because the run starts at the anchor; rows below that cannot queue are skipped by the helper, not by the offer. Null/blank reads as no-offer, never a crash.
+    static boolean canQueueFromHere(String url, String sayadaw,
+            String soundingUrl, String soundingLibUrl) {
+        return canPlayFromHere(url, sayadaw, soundingUrl, soundingLibUrl);
+    }
+
+    // v15.83 (slice 2159): The queue-from-here key for this row, or null when it offers none: the menu_queue_from_here key the Activity inserts right after the queue key (menu_queue_add / menu_queue_remove). menuKeys itself carries NO queue-from-here key (see the header note) — its pinned menus stand as written.
+    static String queueFromHereKey(String url, String sayadaw,
+            String soundingUrl, String soundingLibUrl) {
+        if (!canQueueFromHere(url, sayadaw, soundingUrl, soundingLibUrl)) return null;
+        return "menu_queue_from_here";
     }
 
     // The menu's keys, in display order: "Play from here" first

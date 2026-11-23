@@ -11388,6 +11388,8 @@ if (snd67n >= 0) currentIndex = snd67n;
                     } catch (Exception ignored) {}
                     sOpts.add(sFav71 ? Lang.t(RoomActivity.this, "menu_fav_remove") : Lang.t(RoomActivity.this, "menu_fav_add"));
                     sKeys.add(sFav71 ? "menu_fav_remove" : "menu_fav_add");
+                    // v15.83 (slice 2156): "Add to playlist" — the sounding dialog's playlist verb (the 2150 shape, on the fourth drawer dialog): the queue dialog gained it in slice 2150, the foreign dialog in 2151 and the in-list dialog in 2152, but the sounding dialog — the v11.71 long-press dialog on the sounding row in the drawer — never got it, so a listener in the drawer could file every queued, foreign and listed talk but never the one actually sounding (the queue-bar button, 2096, is a Room surface, invisible while the drawer sits open). The gate is the same non-blank URL the share reads (ChooserPlAdd.canOffer), so a streamed-only talk still offers it (filing is not a file); only a blank URL hides it. The key composes right after the favourite toggle (above) — the collect verbs sit together, with no mark toggle on this dialog (DlMark excludes sounding) — before the download offer, so the download never splits the share trio, the collect verbs or the bookmarks. The owner is sayadawName — the sounding talk is this sayadaw's by construction (the dialog gate requires isSoundingTalk). Add to playlist landed in slice 2156.
+                    if (ChooserPlAdd.canOffer(st.url)) { sOpts.add(Lang.t(RoomActivity.this, "pl_add")); sKeys.add("pl_add"); }
                     if (!isDownloadedFile(st.url) && !roomIsDlQueued(st.url)) {
                         sOpts.add(Lang.t(RoomActivity.this, "dl_btn_download"));
                         sKeys.add("dl_btn_download");
@@ -11457,6 +11459,9 @@ if (snd67n >= 0) currentIndex = snd67n;
                                         if (adapter != null) adapter.notifyDataSetChanged();
                                         menuMarkFadeUrl77 = st.url; menuMarkBurstFav41 = Boolean.valueOf(added71); fadeMenuMarkedDrawerRow77();
                                         Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, added71 ? "fav_added" : "fav_removed"), Toast.LENGTH_SHORT).show();
+                                    } else if ("pl_add".equals(sKeyArr[which])) {
+                                        // v15.83 (slice 2156): "Add to playlist" on the sounding dialog — the 2150 shape (see the offer above for the rule): one line calling addToPlaylistDrawer(st.url, st.title, sayadawName), the helper slice 2150 built for the queue dialog and 2151/2152 reused for the foreign and in-list dialogs. Filing the sounding talk is the same verb the queue-bar button (2096) already offers for it, so no sounding exclusion and no tap-time sounding re-check; the tap-time canOffer re-check inside addToPlaylistDrawer guards the window anyway (the 2151 precedent). Add to playlist landed in slice 2156.
+                                        addToPlaylistDrawer(st.url, st.title, sayadawName);
                                     } else if ("dl_btn_download".equals(sKeyArr[which])) {
                                         enqueueRoomDownload(st);
                                     } else if ("bm_add".equals(sKeyArr[which])) {

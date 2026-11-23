@@ -1448,6 +1448,47 @@ public class PlaylistActivity extends Activity {
                     android.widget.Toast.LENGTH_LONG).show();
     }
 
+    // v15.83 (slice 2157): "Queue from here" — the bulk queue verb the Playlist detail row menu lacked that the Downloaded library row menu has carried since before v13.04 (the Talks chooser ported it in v13.04), the Talks chooser itself since v13.04 and the Room drawer in-list dialog since v15.82 (slice 2153): a playlist talk could be queued one by one or played from here, but never queued as a run for later without playing now. Queues the anchor talk and every playlist talk below it, in playlist order, each into ITS OWN sayadaw's saved queue (plQueueAdd — the 2117 helper, per-sayadaw queues, unlike the chooser/library single-queue shapes), skipping the sounding talk (tap-time re-check), already-queued talks (they stay where they are) and rows that resolve to no stream URL or no sayadaw. The anchor is re-resolved by URL in the fresh list at tap time (the v13.13 T1 shape — the dialog can sit open across a rebuild); if the anchor is gone, only the anchor itself queues (the chooser fallback). No position param (a stale position must never queue a stale range). The toast counts written lines only (the library/chooser shape: queue_plain_prefix + N + queue_added_suffix, already_in_queue when nothing new queued — the shuffle-play toast on this screen, 2098). Writes only the sayadaws' saved queues — the list, the lifetime totals and resume positions stay. No playback: this is the queue-only run; play-from-here is the sibling that plays.
+    private void queueFromHerePl(final QueueEntry qe) {
+        if (qe == null || qe.url == null || qe.url.length() == 0) return;
+        if (curList == null) return;
+        refreshPlaylistPlayingMarks();
+        java.util.List<QueueEntry> all57 = Prefs.playlistItems(this, curList);
+        if (all57 == null || all57.isEmpty()) return;
+        int start57 = -1;
+        for (int i57 = 0; i57 < all57.size(); i57++) {
+            QueueEntry it57 = all57.get(i57);
+            if (it57 != null && it57.url != null && it57.url.equals(qe.url)) { start57 = i57; break; }
+        }
+        int added57 = 0;
+        if (start57 < 0) {
+            // Anchor no longer in the list (removed while the dialog sat open): queue just the anchor itself, never a stale range (the chooser's v13.13 fallback shape).
+            String stream57 = plShareUrlFor(qe);
+            String sd57 = qe.sayadaw != null ? qe.sayadaw : "";
+            if (stream57 != null && stream57.length() > 0 && sd57.length() > 0
+                    && !PlRowMenu.isSounding(stream57, plPlayingUrl, plPlayingLibUrl, AudioService.liveEnded)
+                    && !plQueueHas(sd57, stream57)
+                    && plQueueAdd(sd57, stream57, qe.title)) added57++;
+        } else {
+            for (int i57 = start57; i57 < all57.size(); i57++) {
+                QueueEntry it57 = all57.get(i57);
+                if (it57 == null || it57.url == null || it57.url.length() == 0) continue;
+                String stream57 = plShareUrlFor(it57);
+                if (stream57 == null || stream57.length() == 0) continue;
+                String sd57 = it57.sayadaw != null ? it57.sayadaw : "";
+                if (sd57.length() == 0) continue;
+                if (PlRowMenu.isSounding(stream57, plPlayingUrl, plPlayingLibUrl, AudioService.liveEnded)) continue;
+                if (plQueueHas(sd57, stream57)) continue;
+                if (plQueueAdd(sd57, stream57, it57.title)) added57++;
+            }
+        }
+        if (adapter != null) adapter.notifyDataSetChanged();
+        android.widget.Toast.makeText(PlaylistActivity.this,
+                added57 > 0 ? Lang.t(PlaylistActivity.this, "queue_plain_prefix") + added57 + Lang.t(PlaylistActivity.this, "queue_added_suffix")
+                        : Lang.t(PlaylistActivity.this, "already_in_queue"),
+                android.widget.Toast.LENGTH_SHORT).show();
+    }
+
     // v15.81 (slice 2144): History histIsDownloaded (v13.77), Playlist-local — the dlMap mapped file + length gate, plus the basename leg, so a streamed-only talk never offers it and a downloaded talk never offers it twice. Fresh prefs read at offer/tap time, so a download landing while the menu sits open is read, never guessed.
     private boolean plIsDownloaded(String url) {
         if (url == null || url.length() == 0) return false;
@@ -1631,6 +1672,13 @@ public class PlaylistActivity extends Activity {
             int at44 = keys05.indexOf("menu_pl_remove");
             keys05.add(at44 < 0 ? keys05.size() : at44, dlKey44);
         }
+        // v15.83 (slice 2157): the queue-from-here key — gated on the new PlRowMenu.queueFromHereKey leg (the canQueue gate — a resolved stream URL with a sayadaw, not sounding — so the anchor itself can join the run; rows below that cannot queue are skipped by the helper, not by the offer). It composes right after the queue key (indexOf menu_queue_add / menu_queue_remove — the queue verbs sit together, the chooser's order: queue add/remove, queue-from-here, play-from-here — play-from-here already leads this menu), so the display order reads ..., Go, Queue, QueueFromHere, PlAdd, Mark, Download, Remove. The queue key is always present when the gate passes (the same canQueue gate feeds menuKeys), so the < 0 leg is defensive only.
+        String qfhKey57 = PlRowMenu.queueFromHereKey(streamUrl05, sd, plPlayingUrl, plPlayingLibUrl, AudioService.liveEnded);
+        if (qfhKey57 != null) {
+            int at57 = keys05.indexOf("menu_queue_add");
+            if (at57 < 0) at57 = keys05.indexOf("menu_queue_remove");
+            keys05.add(at57 < 0 ? keys05.size() : at57 + 1, qfhKey57);
+        }
         java.util.ArrayList<String> opts05 = new java.util.ArrayList<String>();
         for (String k05 : keys05) opts05.add(Lang.t(this, k05));
         final String[] optArr05 = opts05.toArray(new String[0]);
@@ -1712,6 +1760,9 @@ public class PlaylistActivity extends Activity {
                             }
                             if (adapter != null) adapter.notifyDataSetChanged();
                             android.widget.Toast.makeText(PlaylistActivity.this, Lang.t(PlaylistActivity.this, "removed_from_queue"), android.widget.Toast.LENGTH_SHORT).show();
+                        } else if ("menu_queue_from_here".equals(keyArr05[which])) {
+                            // v15.83 (slice 2157): "Queue from here" — the bulk queue verb on the Playlist detail row menu, through queueFromHerePl below (the file routes every menu verb through a named helper or an inline block). Queue from here landed in slice 2157.
+                            queueFromHerePl(qe);
                         } else if ("pl_add".equals(keyArr05[which])) {
                             addToPlaylistPl(qe);
                         } else if ("dl_menu_mark_one".equals(keyArr05[which])) {

@@ -63,6 +63,7 @@ package com.h2h.dhamma;
 // is now COMPLETE — the playlist-add family is on EIGHT
 // surfaces.
 // v15.80 (slice 2142): "Mark as listened / Unmark as listened" joins the menu through a separate pure leg — PlRowMenu.markKey, NOT inside menuKeys: the gate needs the played set (the listened boolean), which no menuKeys arg carries, and extending menuKeys to a 10th arg would force re-deriving every pinned menu in WgTest sections 173/181/182/183 for a key whose label flips with the played set anyway (the 2118 precedent kept menuKeys at 9 args for exactly this reason — a gate must be a pure function of the args it already carries). The Activity calls markKey with the prefs-fresh played state and inserts the key right before menu_pl_remove (always last), so the display order reads ..., PlAdd, Mark, Remove — the siblings' order. menuKeys itself is untouched: its pinned menus stand as written.
+// v15.83 (slice 2157): "Queue from here" joins the menu through a separate pure leg — PlRowMenu.queueFromHereKey, NOT inside menuKeys: the gate is the canQueue gate (a resolved stream URL with a sayadaw, not sounding), which IS a pure function of the args menuKeys already carries — but the 2142/2144 precedent inserts post-hoc keys in the Activity so the pinned menus stand, and the position is right after the queue key, not before remove (the queue verbs sit together — the chooser's order: queue add/remove, queue-from-here, play-from-here). The Activity inserts queueFromHereKey's result right after menu_queue_add / menu_queue_remove, so the display order reads ..., Go, Queue, QueueFromHere, PlAdd, Mark, Download, Remove. menuKeys itself is untouched: its pinned menus stand as written.
 public class PlRowMenu {
     // True when this row's talk is the sounding one — a Room
     // session (lastUrl) or a library session (dlMap reverse
@@ -155,6 +156,19 @@ public class PlRowMenu {
     static String markKey(String streamUrl, String soundingUrl, String soundingLibUrl, boolean ended, boolean listened) {
         if (!canMark(streamUrl, soundingUrl, soundingLibUrl, ended)) return null;
         return DlMark.labelKey(listened);
+    }
+
+    // v15.83 (slice 2157): True when this row can queue the run below it: the anchor must itself be queueable (the canQueue gate — a resolved stream URL with a sayadaw, not sounding), because the run starts at the anchor; rows below that cannot queue are skipped by the helper, not by the offer. Null/blank reads as no-offer, never a crash.
+    static boolean canQueueFromHere(String streamUrl, String sayadaw,
+            String soundingUrl, String soundingLibUrl, boolean ended) {
+        return canQueue(streamUrl, sayadaw, soundingUrl, soundingLibUrl, ended);
+    }
+
+    // v15.83 (slice 2157): The queue-from-here key for this row, or null when it offers none: the menu_queue_from_here key the Activity inserts right after the queue key (menu_queue_add / menu_queue_remove). menuKeys itself carries NO queue-from-here key (see the header note) — its pinned menus stand as written.
+    static String queueFromHereKey(String streamUrl, String sayadaw,
+            String soundingUrl, String soundingLibUrl, boolean ended) {
+        if (!canQueueFromHere(streamUrl, sayadaw, soundingUrl, soundingLibUrl, ended)) return null;
+        return "menu_queue_from_here";
     }
 
     // The menu's keys, in display order: "Play from here" first

@@ -120,6 +120,8 @@ public class FavouritesActivity extends Activity {
     // 700ms clock (the chooser's v12.28 rule — a separate clock from
     // Play-all's, so a Play-from-here tap never eats a Play-all tap).
     private long lastFavPlayFromHereMs = 0;
+    // v15.83 (slice 2160): "Queue from here" debounce — queueFromHereFav's own 700ms clock (the chooser's v12.28 rule), beside lastFavPlayFromHereMs, so a queue-from-here tap never eats a play-from-here tap.
+    private long lastFavQueueFromHereMs = 0;
     // v15.65 (slice 2048): search on this screen — the field, the
     // clear ✕, the live query and the keystroke flag (the
     // Downloaded dlSearchField / dlClearBtn / dlQuery /
@@ -1008,6 +1010,13 @@ public class FavouritesActivity extends Activity {
             int at73 = keys69.contains("menu_play_from_here") ? 1 : 0;
             keys69.add(at73, qKey73);
         }
+        // v15.83 (slice 2160): the queue-from-here key — gated on the new FavRowMenu.queueFromHereKey leg (EXACTLY the play-from-here gate — a stream URL with a sayadaw, not sounding — so the anchor itself can join the run; rows below that cannot queue are skipped by the helper's pick, not by the offer). It composes right after the queue key (indexOf qKey73, fallback indexOf menu_play_from_here — the queue verbs sit together, the chooser's order: queue add/remove, queue-from-here, play-from-here — play-from-here already leads this menu's play verbs), so the display order reads Share, Minute, Copy, File, PlayFromHere, Queue, QueueFromHere, Go, Download, PlAdd, Mark, Remove. The queue key is always present when the gate passes (the same sounding rule feeds both), so the < 0 leg is defensive only.
+        String qfhKey60 = FavRowMenu.queueFromHereKey(url, sd, favPlayingUrl, favPlayingLibUrl);
+        if (qfhKey60 != null) {
+            int at60 = keys69.indexOf(qKey73);
+            if (at60 < 0) at60 = keys69.indexOf("menu_play_from_here");
+            keys69.add(at60 < 0 ? keys69.size() : at60 + 1, qfhKey60);
+        }
         // v15.70 (slice 2078): the navigation verb — "Go to
         // sayadaw's talks" (FavGo, the BmGo mirror over
         // GoSayadaw): the row's sayadaw resolved through the
@@ -1182,6 +1191,9 @@ public class FavouritesActivity extends Activity {
                             queueAddFav(c);
                         } else if ("menu_queue_remove".equals(keyArr[which])) {
                             queueRemoveFav(c);
+                        } else if ("menu_queue_from_here".equals(keyArr[which])) {
+                            // v15.83 (slice 2160): "Queue from here" — the bulk queue verb on the Favourites row menu, through queueFromHereFav below (the file routes every menu verb through a named helper). Queue from here landed in slice 2160.
+                            queueFromHereFav(c);
                         } else if ("menu_go_sayadaw".equals(keyArr[which])) {
                             goToSayadawFav(c);
                         } else if ("dl_menu_mark_one".equals(keyArr[which])) {
@@ -1350,6 +1362,128 @@ public class FavouritesActivity extends Activity {
         it69.putExtra("autoTitle", c.e.title);
         Fx.tap(this);
         Fx.go(this, it69);
+    }
+
+    // v15.83 (slice 2160): "Queue from here" — the bulk queue verb the Favourites row menu lacked that the Downloaded library row menu has carried since before v13.04 (the Talks chooser ported it in v13.04), the Room drawer in-list dialog since v15.82 (slice 2153), the Playlist detail row menu since v15.83 (slice 2157), the History row menu since v15.83 (slice 2158) and the Bookmarks row menu since v15.83 (slice 2159): a starred talk could be queued one by one or played from here, but never queued as a run for later without playing now. playFromHereFav MINUS the Room open, verbatim: queues the run from the long-pressed row onward — in display order, each talk carrying its own sayadaw (the v2 lines, 2030) — into the anchor sayadaw's saved queue, and stops there. No playback: this is the queue-only run; play-from-here is the sibling that plays. The anchor is re-resolved at tap time (the v13.13 rule): the dialog can sit open across a search/sort/refresh, so the captured position may have moved — the scan below matches by identity (SiteHttp.sameTalk over the shown list). A row the scan cannot find falls back to the anchor alone (the chooser's v13.04 fallback shape), never a stale range. Stream anchors only: on this screen the card's URL IS the stream URL, so a path-form row names no stream URL at all — the offer gate enforces it, and the tap re-check refuses it whole (queue_changed); a path-form row BELOW the anchor reads as a null id and the pick skips it. The sounding anchor is refused whole at the offer (the queue branches' rule), NOT skipped-while-below-queue: unlike the Playlist/library shape where a sounding anchor skips only itself, here the offer never appears for a sounding row, so the helper never sees one — and the tap-time re-check below refuses the whole run (queue_changed, no partial queue) if the anchor turned sounding while the dialog sat open. The anchor sayadaw is healed exactly like playFromHereFav (catalog + the sayadawForTalk heal) — the queue key must be the healed name, never a stale banked one. No catalog, no run: the queue is untouched, toast pl_no_play (same as playFromHereFav). The debounce has its own clock (lastFavQueueFromHereMs, the chooser's 700ms rule, v12.28): validity BEFORE consuming the window, so an invalid tap never consumes it. The toast counts written lines only (queue_plain_prefix + N + queue_added_suffix, already_in_queue when nothing new queued). Writes only the anchor sayadaw's saved queue via Prefs.saveQueue (the playFromHereFav write block verbatim); the star set, the resume positions and the played set stay.
+    private void queueFromHereFav(final FavTalkRail.Card c) {
+        if (items == null || items.isEmpty() || c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        long now60 = android.os.SystemClock.uptimeMillis();
+        if (now60 - lastFavQueueFromHereMs < 700) return;
+        lastFavQueueFromHereMs = now60;
+        // Tap-time re-checks (the dialog's own shape): the anchor
+        // may have lost its stream URL or its sayadaw while the
+        // dialog sat open, turned into the sounding talk, or left
+        // the list (un-starred from another screen).
+        refreshFavouritesPlayingMarks();
+        final String streamUrl = c.e.url;
+        if (streamUrl.startsWith("/")) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if ((favPlayingUrl.length() > 0 && SiteHttp.sameTalk(streamUrl, favPlayingUrl))
+                || (favPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(streamUrl, favPlayingLibUrl))) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String sd60 = c.e.sayadaw;
+        String[] cat60 = catalogFor(sd60);
+        if (cat60 == null || cat60[1] == null || cat60[1].length() == 0) {
+            String owner60 = Prefs.sayadawForTalk(this, "lib", streamUrl, "");
+            if (owner60 != null && owner60.length() > 0 && !owner60.equals(sd60)) {
+                sd60 = owner60;
+                cat60 = catalogFor(sd60);
+            }
+        }
+        if (cat60 == null || cat60[1] == null || cat60[1].length() == 0) {
+            android.widget.Toast.makeText(FavouritesActivity.this,
+                    Lang.t(FavouritesActivity.this, "pl_no_play"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // The anchor's display position, re-resolved by identity —
+        // the dialog can sit open across a search/sort/refresh, so
+        // the captured position may have moved (the v13.13 rule).
+        int anchorIdx60 = -1;
+        for (int i60 = 0; i60 < items.size(); i60++) {
+            FavTalkRail.Card r60 = items.get(i60);
+            if (r60 == null || r60.e == null || r60.e.url == null) continue;
+            if (SiteHttp.sameTalk(r60.e.url, streamUrl)) { anchorIdx60 = i60; break; }
+        }
+        // Display-order identity list from the anchor onward (the
+        // PlayFromHere pick's input), each row carrying its own
+        // sayadaw + title for the v2 lines. A path-form row reads as
+        // null and the pick skips it (a card is a stream URL by
+        // FavAll's construction, but the gate costs nothing).
+        java.util.List<String> ids60 = new java.util.ArrayList<String>();
+        java.util.List<String> sds60 = new java.util.ArrayList<String>();
+        java.util.List<String> titles60 = new java.util.ArrayList<String>();
+        if (anchorIdx60 < 0) {
+            // Anchor gone from the list while the dialog sat open:
+            // queue just the anchor itself, never a stale range.
+            ids60.add(SiteHttp.identityUrl(streamUrl));
+            sds60.add(sd60);
+            titles60.add(c.e.title);
+        } else {
+            for (int i60 = anchorIdx60; i60 < items.size(); i60++) {
+                FavTalkRail.Card r60 = items.get(i60);
+                if (r60 == null || r60.e == null) { ids60.add(null); sds60.add(""); titles60.add(""); continue; }
+                String u60 = r60.e.url;
+                ids60.add(u60 != null && u60.length() > 0 && !u60.startsWith("/") ? SiteHttp.identityUrl(u60) : null);
+                sds60.add(r60.e.sayadaw != null ? r60.e.sayadaw : "");
+                titles60.add(r60.e.title != null ? r60.e.title : "");
+            }
+            // The anchor's own line carries the healed sayadaw.
+            sds60.set(0, sd60);
+        }
+        // The anchor sayadaw's current queue, as identities — the
+        // pick skips talks already queued (they stay where they
+        // are). Saved lines are carried verbatim (histQueueAdd's
+        // discipline), so a foreign line the Room drawer moved
+        // mid-queue survives the write.
+        java.util.Set<String> queuedIds60 = new java.util.HashSet<String>();
+        java.util.ArrayList<String> saved60 = new java.util.ArrayList<String>();
+        try {
+            String savedRaw60 = Prefs.savedQueue(this, sd60);
+            if (savedRaw60 != null && savedRaw60.length() > 0) {
+                for (String ln60 : savedRaw60.split("\n")) {
+                    if (ln60.length() == 0) continue;
+                    saved60.add(ln60);
+                    QueueEntry qe60 = QueueEntry.parse(ln60);
+                    if (qe60 != null && qe60.url.length() > 0)
+                        queuedIds60.add(SiteHttp.identityUrl(qe60.url));
+                }
+            }
+        } catch (Exception ignored) {}
+        java.util.List<Integer> picked60 = PlayFromHere.pick(ids60,
+                SiteHttp.identityUrl(streamUrl), queuedIds60,
+                favPlayingUrl, favPlayingLibUrl);
+        java.util.List<String> run60 = HistPlayFromHere.lines(ids60, sds60, titles60, picked60);
+        int added60 = 0;
+        for (String ln60 : run60) {
+            QueueEntry qe60 = QueueEntry.parse(ln60);
+            if (qe60 == null || qe60.url.length() == 0) continue;
+            boolean dup60 = false;
+            for (String ex60 : saved60) {
+                QueueEntry qx60 = QueueEntry.parse(ex60);
+                if (qx60 != null && SiteHttp.sameTalk(qx60.url, qe60.url)) { dup60 = true; break; }
+            }
+            if (dup60) continue;
+            saved60.add(ln60);
+            added60++;
+        }
+        Prefs.saveQueue(this, sd60, saved60);
+        android.widget.Toast.makeText(FavouritesActivity.this, added60 > 0
+                ? Lang.t(FavouritesActivity.this, "queue_plain_prefix") + added60 + Lang.t(FavouritesActivity.this, "queue_added_suffix")
+                : Lang.t(FavouritesActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
     }
 
     // v15.68 (slice 2069): "Remove from favourites" — the row
