@@ -29,15 +29,31 @@
             android:textColor="#FFFFFF"
             android:textSize="14sp" />
     </LinearLayout>
-    <Button
-        android:id="@+id/plPlayAll"
+    <!-- v15.73 (slice 2098): Shuffle play beside Play All — the chooser's v13.93 shuffle-play on the playlist detail screen: one tap shuffles the open list into the queue and opens the Room on the first shuffled talk. The two header verbs share one row (Play All weight 1 + Shuffle wrap, the Favourites header-row shape) so they show and hide together; the labels come from Lang in code, so no literal sits here. Shuffle play landed in slice 2098. -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:background="@drawable/glass_btn_dark"
-        android:textColor="#FFFFFF"
-        android:textSize="16sp"
-        android:visibility="gone" />
+        android:orientation="horizontal">
+        <Button
+            android:id="@+id/plPlayAll"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@drawable/glass_btn_dark"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:visibility="gone" />
+        <Button
+            android:id="@+id/plShuffle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/glass_btn_dark"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:visibility="gone" />
+    </LinearLayout>
     <!-- v14.06 (F5, sixth pass slice 5): same bottom-edge
          empty text as History - the FrameLayout centers it in
          the list area; ids unchanged, so refreshEmpty() works

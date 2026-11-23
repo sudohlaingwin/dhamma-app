@@ -39,6 +39,9 @@ public class PlaylistActivity extends Activity {
     private TextView headerTitle;
     private Button headerBtn;
     private Button playAllBtn;
+    // v15.73 (slice 2098): "Shuffle play" on this screen — the chooser's v13.93 shuffle-play, now on the playlist detail screen: one tap shuffles the open list into the queue and opens the Room on the first shuffled talk. lastPlShuffleMs is the handler's own 700ms debounce clock (an invalid tap never consumes the window, v12.28); plShuffleBtn is the header button beside Play-all (GONE until showDetail shows it, riding the Play-all gate — the 2065 rule, so the two header verbs show and hide together).
+    private Button plShuffleBtn;
+    private long lastPlShuffleMs = 0;
     private ListView listView;
     private TextView emptyText;
     private String curList = null; // null = lists mode
@@ -104,6 +107,13 @@ public class PlaylistActivity extends Activity {
                 @Override public void onClick(View v) { playFrom(0); }
             });
         }
+        // v15.73 (slice 2098): wire the Shuffle button the same way — one tap shuffles the open list into the queue and opens the Room on the first shuffled talk (shufflePlayPl). The label is the pre-existing Lang "shuffle" key, so no new key is added. Shuffle play landed in slice 2098.
+        plShuffleBtn = findViewById(R.id.plShuffle);
+        if (plShuffleBtn != null) plShuffleBtn.setText(Lang.t(this, "shuffle"));
+        if (plShuffleBtn != null) plShuffleBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { shufflePlayPl(v); }
+        });
+        if (plShuffleBtn != null) Fx.press(plShuffleBtn);
         if (headerBtn != null) {
             headerBtn.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) {
@@ -308,6 +318,7 @@ public class PlaylistActivity extends Activity {
                 // v12.81: Play All follows the list (sim1295 A) —
                 // an emptied list kept a dead Play All button.
                 if (playAllBtn != null) playAllBtn.setVisibility(items.isEmpty() ? View.GONE : View.VISIBLE);
+                if (plShuffleBtn != null) plShuffleBtn.setVisibility(items.isEmpty() ? View.GONE : View.VISIBLE);
                 refreshEmpty();
                 Toast.makeText(PlaylistActivity.this,
                         Lang.t(PlaylistActivity.this, "pl_removed"),
@@ -371,6 +382,7 @@ public class PlaylistActivity extends Activity {
         meltHeader40(headerTitle, Lang.t(this, "pl_title"));
         meltHeader40(headerBtn, Lang.t(this, "pl_new"));
         Fx.crossfadeStripBtn(playAllBtn, false);
+        Fx.crossfadeStripBtn(plShuffleBtn, false);
         if (adapter != null) adapter.notifyDataSetChanged();
         refreshEmpty();
         plHeaderKnown40 = true;
@@ -383,6 +395,7 @@ public class PlaylistActivity extends Activity {
         meltHeader40(headerTitle, name);
         meltHeader40(headerBtn, Lang.t(this, "back"));
         Fx.crossfadeStripBtn(playAllBtn, !items.isEmpty());
+        Fx.crossfadeStripBtn(plShuffleBtn, !items.isEmpty());
         refreshPlaylistPlayingMarks(); // v13.55: mark right on first paint, not one tick late
         if (adapter != null) adapter.notifyDataSetChanged();
         refreshEmpty();
@@ -539,6 +552,99 @@ public class PlaylistActivity extends Activity {
     // list now"), and the Room opens on the first talk. The Room's
     // play pops the head; the service's advance walks the rest,
     // across sayadaws, exactly like a hand queue.
+    // v15.73 (slice 2098): "Shuffle play" on the Playlist detail screen — the chooser's v13.93 shuffle-play, now on the playlist: the open list used to play in stored order only (Play All, playFrom); one tap here shuffles the OPEN list into the queue in random order (PlShuffle.shuffleEntries over the list — the 2065 rule: the shown run is the run) and opens the Room on the first shuffled talk at its saved spot (playFrom's own route — the Room resumes where the listener left off, v1.56). Same guards as the chooser: empty list refuses with the same words, the 700ms debounce has its own clock (an invalid tap never consumes the window, v12.28), the sounding talk is never re-queued (the stay-put branch: the rest queue behind it, no restart — this screen's TWO sounding identities, the v13.55 mark rule), and the count toast counts written lines only. The anchor sayadaw is the FIRST SHUFFLED entry's sayadaw, healed exactly like playFrom's first item (catalog + the sayadawForTalk heal); leading entries whose sayadaw has no catalog page are skipped, not refused (the v12.79 leg, over the shuffled order). No catalog, no run: the queue is untouched. The semantics are this screen's own Play All semantics, not the chooser's append: shuffle REPLACES the anchor sayadaw's hand queue with the shuffled run (playFrom's "play this list now" semantic), because a playlist tap always means "play this list now". When nothing is written (the only playable item already sounds) the toast is already_in_queue and the queue is left untouched — never cleared behind a sounding talk. The Room open is playFrom's own block verbatim (autoUrl canonicalised, fromPlaylist true), so the Room's load completion may fall through to the next playable queued line when the first item went stale (the v12.79 leg). The shuffled queue IS the shuffle — the global shuffle-continuous toggle is left alone, so a user who deliberately left it off is not surprised, and after the queue drains normal advance resumes.
+    private void shufflePlayPl(android.view.View v) {
+        if (items == null || items.isEmpty()) {
+            android.widget.Toast.makeText(PlaylistActivity.this,
+                    Lang.t(PlaylistActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        long now98 = android.os.SystemClock.uptimeMillis();
+        if (now98 - lastPlShuffleMs < 700) return;
+        lastPlShuffleMs = now98;
+        refreshPlaylistPlayingMarks(); // tap-time sounding identities
+        java.util.List<QueueEntry> shuffled98 = PlShuffle.shuffleEntries(items, new java.util.Random());
+        if (shuffled98.isEmpty()) {
+            android.widget.Toast.makeText(PlaylistActivity.this,
+                    Lang.t(PlaylistActivity.this, "talks_none_for_sayadaw"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // The first playable shuffled entry — skip leading entries whose sayadaw has no catalog page (the v12.79 leg, over the shuffled order), healing the sayadaw exactly like the chooser's shuffle (catalog + the sayadawForTalk heal). No playable entry: the queue is untouched.
+        QueueEntry first98 = null;
+        String sd98 = null;
+        String[] cat98 = null;
+        int start98 = 0;
+        for (int i98 = 0; i98 < shuffled98.size(); i98++) {
+            QueueEntry qe98 = shuffled98.get(i98);
+            if (qe98 == null || qe98.url == null || qe98.url.length() == 0) continue;
+            String sdTry98 = qe98.sayadaw;
+            String[] catTry98 = catalogFor(sdTry98);
+            if (catTry98 == null || catTry98[1] == null || catTry98[1].length() == 0) {
+                String owner98 = Prefs.sayadawForTalk(this, "lib", qe98.url, "");
+                if (owner98 != null && owner98.length() > 0 && !owner98.equals(sdTry98)) {
+                    sdTry98 = owner98;
+                    catTry98 = catalogFor(sdTry98);
+                }
+            }
+            if (catTry98 != null && catTry98[1] != null && catTry98[1].length() > 0) {
+                first98 = qe98;
+                sd98 = sdTry98;
+                cat98 = catTry98;
+                start98 = i98;
+                break;
+            }
+        }
+        if (first98 == null) {
+            android.widget.Toast.makeText(PlaylistActivity.this,
+                    Lang.t(PlaylistActivity.this, "pl_no_play"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        boolean firstSounds98 = (plPlayingUrl.length() > 0 && SiteHttp.sameTalk(first98.url, plPlayingUrl))
+                || (plPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(first98.url, plPlayingLibUrl));
+        // The shuffled queue: the shuffled run from the first playable on, minus the sounding talk when it leads (the stay-put branch — the rest queue behind it, no restart). Saved lines are carried verbatim (histQueueAdd's discipline), so a foreign line the Room drawer moved mid-queue survives the write.
+        java.util.ArrayList<String> lines98 = new java.util.ArrayList<String>();
+        for (int i98 = start98; i98 < shuffled98.size(); i98++) {
+            QueueEntry qe98 = shuffled98.get(i98);
+            if (qe98 == null) continue;
+            if (firstSounds98 && i98 == start98) continue;
+            String ln98 = QueueEntry.format(qe98);
+            if (ln98.length() > 0) lines98.add(ln98);
+        }
+        // Nothing written (the only playable item already sounds): the queue is left untouched — never cleared behind a sounding talk — and the toast says so.
+        if (lines98.isEmpty()) {
+            android.widget.Toast.makeText(PlaylistActivity.this,
+                    Lang.t(PlaylistActivity.this, "already_in_queue"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Prefs.saveQueue(this, sd98, lines98);
+        android.widget.Toast.makeText(PlaylistActivity.this,
+                Lang.t(PlaylistActivity.this, "queue_plain_prefix") + lines98.size() + Lang.t(PlaylistActivity.this, "queue_added_suffix"),
+                android.widget.Toast.LENGTH_SHORT).show();
+        Fx.morph(v);
+        if (!firstSounds98) {
+            Intent it = new Intent(this, RoomActivity.class);
+            it.putExtra("name", sd98);
+            it.putExtra("group", cat98[0]);
+            it.putExtra("url", cat98[1]);
+            it.putExtra("photo", cat98[2]);
+            // v13.65 (planters): a legacy http ITEM row must not plant an
+            // http autoUrl — canonicalise at the source (the queue lines
+            // stay as stored; advance / sounding match them by identity).
+            it.putExtra("autoUrl", SiteHttp.identityUrl(first98.url));
+            it.putExtra("autoTitle", first98.title);
+            // v12.79: marks a playlist-originated auto-play, so the
+            // Room's load completion may fall through to the next
+            // playable queued line when the first item went stale.
+            it.putExtra("fromPlaylist", true);
+            Fx.tap(this);
+            Fx.go(this, it);
+        }
+    }
+
     private void playFrom(int idx) {
         if (curList == null) return;
         java.util.List<QueueEntry> all = Prefs.playlistItems(this, curList);

@@ -12084,6 +12084,48 @@ if (snd65s >= 0) currentIndex = snd65s;
             });
             Fx.press(qClean46);
         }
+        // v15.73 (slice 2096): the queue bar's playlist button —
+        // "Add to playlist" for the sounding talk (RoomPlAdd, the
+        // Room's showPlaylistAddDialog, v12.65–v12.80): the dialog
+        // has lived in this file since v12.65 with no entry point
+        // anywhere in the app (defined once, called zero times),
+        // so a listener hearing a talk could file it only from a
+        // row menu, never from the Room itself. The button sits in
+        // the bar between the toggle and the Clean / Clear pair —
+        // the always-visible pair first, the queue-only pair last —
+        // and is always visible like the toggle (it files the
+        // sounding talk, not the queue mode, so it never follows
+        // the Clear / Clean visibility family; refreshQueueBar72
+        // never touches it). The tap blips + morphs like its
+        // siblings, gates through RoomPlAdd.canOffer on the
+        // sounding talk (bookmarkTalkUrl + sayadawName — the
+        // dialog's own guard, mirrored so a tap with nothing
+        // sounding toasts no_talk_yet instead of opening a
+        // dialog with nothing to file), then opens the dialog
+        // itself — the choose-list + new-list flow and the store
+        // calls are the dialog's own, reused untouched. Filing
+        // never touches playback, the queue or the drawer: the
+        // dialog leaves the drawer open behind it, and the
+        // sounding row keeps the verb — the Room's dialog finally
+        // has a live offer, playlist-add landed in slice 2096.
+        android.view.View qPlAdd96 = findViewById(R.id.roomQueuePlAdd);
+        if (qPlAdd96 != null) {
+            ((android.widget.Button) qPlAdd96).setText(Lang.t(this, RoomPlAdd.labelKey()));
+            qPlAdd96.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    Fx.tap(RoomActivity.this);
+                    Fx.morph(v);
+                    if (!RoomPlAdd.canOffer(bookmarkTalkUrl(), sayadawName)) {
+                        android.widget.Toast.makeText(RoomActivity.this,
+                                Lang.t(RoomActivity.this, RoomPlAdd.guardKey()),
+                                android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    showPlaylistAddDialog();
+                }
+            });
+            Fx.press(qPlAdd96);
+        }
         refreshQueueBar72();
 
         // v5.15: Previous talk — the Room had Next in the control row

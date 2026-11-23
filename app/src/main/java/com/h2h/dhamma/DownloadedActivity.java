@@ -11568,6 +11568,25 @@ public class DownloadedActivity extends Activity {
         // disagree with the visible mark; a file with no dlMap
         // entry simply shows no entry, never a guessed link.
         if (DlMark.canOffer(shareUrl653, playing)) { String markKey49 = DlMark.labelKey(libListenedFiles.contains(t.file.getName())); items.add(Lang.t(DownloadedActivity.this, markKey49)); itemKeys.add(markKey49); }
+        // v15.73 (slice 2097): "Add to playlist" — the library row menu's playlist verb
+        // (the Room's showPlaylistAddDialog, v12.65–v12.80, on this screen's menu):
+        // a downloaded talk is the listener's own kept copy, so filing it in one of
+        // their own lists (morning / bedtime — the seed lists
+        // Prefs seeds on first read, premium backlog #2) is the
+        // natural flow, and the library was the last list surface
+        // with a row menu that lacked the verb (Favourites 2091,
+        // New talks 2092, Bookmarks 2093, History 2095, the Room
+        // bar 2096 — the sixth live offer). Offered right after
+        // the mark toggle, so the collect verbs (favourite, mark,
+        // playlist) sit together and the copy link stays last
+        // (the v6.56 order); gated on DlPlAdd.canOffer — the same
+        // shareUrl653 final as share/fav/copy (the v8.42
+        // exactly-one-match rule: a file with no dlMap entry, or
+        // a dual-claimed one, shows no entry, never a guessed
+        // link). The playing file is included, like share and
+        // copy beside it: filing is not a play order.
+        // Playlist-add landed in slice 2097.
+        if (DlPlAdd.canOffer(shareUrl653)) { items.add(Lang.t(DownloadedActivity.this, "pl_add")); itemKeys.add("pl_add"); }
         // v6.56: copy this one file's link — the library mirror
         // of the chooser's v6.54 and the drawer's v6.55 single-talk
         // copies, and the last mirror surface those runs flagged:
@@ -14756,6 +14775,24 @@ public class DownloadedActivity extends Activity {
                                         : new java.util.HashSet<String>(played49);
                             } catch (Exception ignored) {}
                             Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, (unmarked49 != null && unmarked49.changed) ? "dl_menu_unmark_one" : "nothing_to_unmark"), Toast.LENGTH_SHORT).show();
+                        } else if ("pl_add".equals(choiceKey)) {
+                            // v15.73 (slice 2097): file this one
+                            // downloaded talk in one of the
+                            // listener's own lists — the row menu's
+                            // playlist verb (addToPlaylistDl below,
+                            // the Room's showPlaylistAddDialog
+                            // v12.65–v12.80 flow mirrored, not
+                            // copied: tap-time re-resolve through
+                            // the dlMap reverse lookup, the
+                            // dlSayadaw owner, the choose-list +
+                            // new-list dialogs). Filing mutates
+                            // nothing on this screen, so the shared
+                            // saveLibQueue + updateTotal tail below
+                            // is a no-op rewrite, like v6.53.
+                            // No pause guard (no sheet is left to
+                            // return from); the sounding row keeps
+                            // it (filing never touches playback).
+                            addToPlaylistDl(t);
                         } else if ("dl_menu_copy_link".equals(choiceKey)) {
                             // v6.56: copy this one file's own
                             // original link — shareUrl653 verbatim
@@ -14804,6 +14841,147 @@ public class DownloadedActivity extends Activity {
                         fadeMenuMarkedDlRow();
                     }
                 }).show();
+    }
+
+    // v15.73 (slice 2097): the dlMap reverse lookup for the
+    // playlist verb — the file's stream URL by its name, with
+    // the v8.42 exactly-one-match rule (the menu-open shareUrl653
+    // block's shape, as a tap-time helper): one claimant names
+    // the URL; zero claimants (never downloaded through the app,
+    // or the entry dropped) or two (a dual-claimed file) name
+    // nothing, never a guessed link. Returns "" on a miss so
+    // DlPlAdd.canOffer refuses the tap, like histStreamUrlFor
+    // on History (the 2095 shape).
+    private String dlStreamUrlFor(String fileName) {
+        if (fileName == null || fileName.length() == 0) return "";
+        try {
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map =
+                    new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            java.util.Iterator<String> keys = map.keys();
+            String hit = null;
+            int matches = 0;
+            while (keys.hasNext()) {
+                String k = keys.next();
+                if (fileName.equals(map.optString(k, ""))) { hit = k; matches++; }
+            }
+            return matches == 1 ? hit : "";
+        } catch (Exception ignored) { return ""; }
+    }
+
+    // v15.73 (slice 2097): "Add to playlist" — the row menu's
+    // playlist verb (the Room's showPlaylistAddDialog, v12.65–
+    // v12.80, on this screen's menu; the Room's dialog has no
+    // entry point of its own on this screen — the library menu
+    // mirrors its flow, it does not call the dialog):
+    // re-resolve the row to its stream URL at tap time
+    // (dlStreamUrlFor — the offer and the tap can never
+    // disagree), toast talk_no_longer_in_list when the file
+    // no longer resolves (the share-file precedent on this
+    // screen), take the owner from the download-time record
+    // (Prefs.sayadawForTalk, "lib" — the dlSayadaw record the
+    // offer reads, so there is no second source to heal from:
+    // the v12.78 lesson is satisfied at the source, and no
+    // catalog check rides here because the banked name IS the
+    // record the other screens heal toward), then offer the
+    // listener's lists (Prefs.playlistNames — the seed lists
+    // are there from the first read) plus a "new list" row
+    // (pl_new, last). A tap files the talk through
+    // Prefs.playlistAdd and toasts the v12.80 result
+    // (DlPlAdd.toastKey: added / already there / full /
+    // could-not-create); the new-list row opens the name
+    // dialog. An add mutates no download, queue or resume
+    // state; no pause guard (no sheet is left to return
+    // from); the sounding row keeps it (filing never touches
+    // playback). The filed unit is the TALK, not the file
+    // (the 2084 adjudication, extended): the playlist store
+    // carries url / sayadaw / title and no minute, so a filed
+    // talk plays from its saved spot like every other
+    // playlist item — the file's own saved spot stays a
+    // library-screen concept.
+    private void addToPlaylistDl(final Entry t) {
+        if (t == null || t.file == null) return;
+        final String streamUrl = dlStreamUrlFor(t.file.getName());
+        if (!DlPlAdd.canOffer(streamUrl)) {
+            android.widget.Toast.makeText(DownloadedActivity.this,
+                    Lang.t(DownloadedActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String sd97 = Prefs.sayadawForTalk(this, "lib", streamUrl, "");
+        final String title97 = t.title != null ? t.title : "";
+        final String sdF97 = sd97;
+        final java.util.List<String> names97 = Prefs.playlistNames(this);
+        final String[] items97 = new String[names97.size() + 1];
+        for (int i97 = 0; i97 < names97.size(); i97++) items97[i97] = names97.get(i97);
+        items97[names97.size()] = Lang.t(this, "pl_new");
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(Lang.t(this, "pl_choose"))
+                .setItems(items97, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        if (DlPlAdd.isNewRow(which, names97.size())) {
+                            showNewPlaylistDl(streamUrl, title97, sdF97);
+                            return;
+                        }
+                        int r97 = Prefs.playlistAdd(DownloadedActivity.this,
+                                names97.get(which), streamUrl, sdF97, title97);
+                        android.widget.Toast.makeText(DownloadedActivity.this,
+                                Lang.t(DownloadedActivity.this, DlPlAdd.toastKey(r97)),
+                                android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .show();
+    }
+
+    // v15.73 (slice 2097): the "new list" dialog for the
+    // playlist verb — the Room's showNewPlaylistDialog
+    // (v12.80), on this screen: a name field (pl_name_hint),
+    // a Create button (pl_create) and a cancel (btn_no_clear);
+    // an empty name re-prompts with the hint toast; the name
+    // caps at 40 chars (PLAYLIST_MAX_NAME); create is a
+    // no-op for an existing name, so a repeat name just adds
+    // to that list; at the 20-list cap a genuinely new name
+    // toasts pl_limit (DlPlAdd.limitToastKey), any other
+    // create failure pl_no_create — neither falls through to
+    // the add (the v12.80 leg). The add toasts the same
+    // v12.80 result as the choose dialog.
+    private void showNewPlaylistDl(final String url, final String title, final String sd) {
+        final android.widget.EditText et97 = new android.widget.EditText(this);
+        et97.setHint(Lang.t(this, "pl_name_hint"));
+        et97.setSingleLine(true);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(Lang.t(this, "pl_new"))
+                .setView(et97)
+                .setPositiveButton(Lang.t(this, "pl_create"),
+                        new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        String name97 = et97.getText().toString().trim();
+                        if (name97.length() == 0) {
+                            android.widget.Toast.makeText(DownloadedActivity.this,
+                                    Lang.t(DownloadedActivity.this, "pl_name_hint"),
+                                    android.widget.Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        if (name97.length() > 40) name97 = name97.substring(0, 40);
+                        boolean created97 = Prefs.playlistCreate(DownloadedActivity.this, name97);
+                        java.util.List<String> held97 = Prefs.playlistNames(DownloadedActivity.this);
+                        String limit97 = DlPlAdd.limitToastKey(created97,
+                                held97.contains(name97), held97.size());
+                        if (limit97 != null) {
+                            android.widget.Toast.makeText(DownloadedActivity.this,
+                                    Lang.t(DownloadedActivity.this, limit97),
+                                    android.widget.Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        int r97 = Prefs.playlistAdd(DownloadedActivity.this, name97, url, sd, title);
+                        android.widget.Toast.makeText(DownloadedActivity.this,
+                                Lang.t(DownloadedActivity.this, DlPlAdd.toastKey(r97)),
+                                android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton(Lang.t(this, "btn_no_clear"), null)
+                .show();
     }
 
     private class DlAdapter extends BaseAdapter {
