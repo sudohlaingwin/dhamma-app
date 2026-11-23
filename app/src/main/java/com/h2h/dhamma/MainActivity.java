@@ -5431,6 +5431,43 @@ public class MainActivity extends Activity {
         return DlLanded.downloadedFileName(MainActivity.this, e.url, null, null) != null;
     }
 
+    // v15.81 (slice 2145): "Mark as listened / Unmark as listened" — the mark verb the Recently played rail menu lacked that the New talks rail has had since v15.59 (slice 2017), the Downloaded library row menu since v15.47 (slice 1949), the Talks chooser since v15.51 (slice 1969), the Room drawer dialogs since v15.52 (slices 1978/1979) and the History / Favourites / Bookmarks / Playlist detail row menus since v15.80 (slices 2138-2142): a just-heard talk could only earn or lose its listened mark by playing it to the end or opening the library — and a Recently played card is exactly where both legs are live, because playedTalks is banked only on natural finish (AudioService.markPlayedForCurrent) while statsRecent banks on play: a card stopped early sits unmarked (offers Mark), a finished one sits marked (offers Unmark — it returns to the New talks rail). Same verb through the same rules, so the surfaces can never disagree: the 1949 pure core (DlMark — canOffer / labelKey / isMarked / mark / unmark, inputs never mutated), the v11.14 tap-time sounding re-check over the live session URL (the dialog can sit open across an auto-advance, so this talk can BE sounding by tap time — it earns its mark by finishing, never by this verb; the toast is queue_changed, the 1969 shape), the prefs-fresh playedTalks read at tap time, and the mark landing in the SAME playedTalks key AudioService banks on finish and the library, the rails, the header new-count and the filters all read. No refresh and no repaint on this rail: the card renders no listened tick (only the title + the downloaded badge + the listened-progress hairline, none of which reads playedTalks), so nothing here rebinds from it — the visible effect is the menu label flipping mark<->unmark on the next open, the verb toast, and the propagation (the New talks rail card drops/reappears + the header new-count moves, on Main itself; refreshNewTalkRail + the 1926 dot-set block + refreshFavNewRow below, the 2017 shape). Neither the history REC line, the lifetime totals, the queue, the shelf order, the star itself nor any saved resume position is mutated.
+    private void markListenedRail87(final Prefs.HistEntry e, final boolean unmark) {
+        if (e == null || e.url == null || e.url.length() == 0) return;
+        // Tap-time sounding re-check (Talks v11.14): the dialog can sit open across an auto-advance, so this talk can BE sounding by tap time — it earns its mark by finishing, never by this verb.
+        String sounding87 = (AudioService.liveSession && AudioService.liveHasTrack)
+                ? AudioService.liveUrl : null;
+        if (sounding87 != null && sounding87.length() > 0 && SiteHttp.sameTalk(e.url, sounding87)) {
+            android.widget.Toast.makeText(MainActivity.this,
+                    Lang.t(MainActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        DlMark.Result res87 = null;
+        try {
+            android.content.SharedPreferences sp87 = getSharedPreferences("dhamma", MODE_PRIVATE);
+            java.util.Set<String> cur87 = sp87.getStringSet("playedTalks", new java.util.HashSet<String>());
+            res87 = unmark ? DlMark.unmark(cur87, SiteHttp.identityUrl(e.url), e.url)
+                    : DlMark.mark(cur87, SiteHttp.identityUrl(e.url));
+            sp87.edit().putStringSet("playedTalks", res87.set).apply();
+        } catch (Exception ignored) {}
+        refreshNewTalkRail();
+        java.util.Set<String> dotsBefore87 = new java.util.HashSet<String>(gridNewSayadawUrls);
+        refreshGridNewDots();
+        if (newOnly && !dotsBefore87.equals(gridNewSayadawUrls)) {
+            if (gridNewSayadawUrls.isEmpty()) {
+                newOnly = false; mainNewToggleChange = true;
+                android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "all_listened"), android.widget.Toast.LENGTH_SHORT).show();
+            }
+            applyFilter();
+            refreshFavHint();
+        } else if (adapter != null) adapter.notifyDataSetChanged();
+        refreshFavNewRow();
+        android.widget.Toast.makeText(MainActivity.this,
+                Lang.t(MainActivity.this, (res87 != null && res87.changed) ? (unmark ? "dl_menu_unmark_one" : "dl_menu_mark_one") : (unmark ? "nothing_to_unmark" : "already_listened")),
+                android.widget.Toast.LENGTH_SHORT).show();
+    }
+
     private void refreshRecentRail() {
         if (recentRailWrap == null || recentRail == null) return;
         boolean show = query != null && query.length() == 0 && !favOnly && !newOnly && all != null;
@@ -5613,14 +5650,29 @@ public class MainActivity extends Activity {
                     // shapes; each rail menu site is its own wiring
                     // — the 1992/1993 rail-only-verb precedent).
                     if (MainDl.canOffer(mainIsDownloaded(e.url), mainIsDlQueued(e.url))) keys87.add("dl_btn_download");
+                    // v15.81 (slice 2145): "Mark as listened / Unmark as listened" — the mark verb the Recently played rail menu lacked that the New talks rail has had since v15.59 (slice 2017), the Downloaded library row menu since v15.47 (slice 1949), the Talks chooser since v15.51 (slice 1969), the Room drawer dialogs since v15.52 (slices 1978/1979) and the History / Favourites / Bookmarks / Playlist detail row menus since v15.80 (slices 2138-2142): a just-heard talk could be shared, copied, filed, starred, opened or downloaded, but never marked listened without playing it to the end — and a Recently played card is exactly where both legs are live, because playedTalks is banked only on natural finish (AudioService.markPlayedForCurrent) while statsRecent banks on play: a card stopped early sits unmarked (offers Mark), a finished one sits marked (offers Unmark — it returns to the New talks rail). Same verb through the same 1949 pure core (DlMark — canOffer / labelKey / isMarked / mark / unmark, inputs never mutated), so the surfaces can never disagree. The 1991 rule ("the state varies and no tick renders") is re-checked this run and does NOT hold here: the row-menu pieces (2138-2142) ship the same shape — their rows render no listened tick either — and the rail card is no different. The sounding talk never reaches this menu at offer time (RecentRail.pick excludes it) and the tap-time re-check in markListenedRail87 below covers the dialog sitting open across an auto-advance (the v11.14 rule). Inserted right after the favourite toggle (the 1969 chooser position, the 2017 position — the other per-talk state toggle).
+                    String sounding87 = (AudioService.liveSession && AudioService.liveHasTrack)
+                            ? AudioService.liveUrl : null;
+                    boolean soundingTalk87 = sounding87 != null && sounding87.length() > 0
+                            && SiteHttp.sameTalk(e.url, sounding87);
+                    java.util.Set<String> played87 = readPlayedTalks1966();
+                    boolean marked87 = DlMark.isMarked(played87, SiteHttp.identityUrl(e.url));
+                    if (DlMark.canOffer(e.url, soundingTalk87)) {
+                        String markKey87 = DlMark.labelKey(marked87);
+                        int fi87 = keys87.indexOf(fav87 ? "menu_fav_remove" : "menu_fav_add");
+                        if (fi87 >= 0) keys87.add(fi87 + 1, markKey87);
+                    }
                     // v15.78 (slice 2126): the playlist key composes right after the favourite toggle (indexOf — the collect verbs sit together, the 2101 chooser precedent; a playlist add implies a share, since both gates are the same non-blank stream URL — the atPl87 < 0 leg is defensive only).
                     String plKey87 = "";
                     try {
                         String streamUrl87 = mainRailStreamUrlFor(e.url);
                         if (RailPlAdd.canOffer(streamUrl87)) plKey87 = "pl_add";
                     } catch (Exception ignored) {}
+                    // v15.81 (slice 2145): the playlist anchor now prefers the mark key (the 2130 shape — favourite, mark, playlist sit together; the mark key is whichever leg the card offers, so both legs are tried before the favourite fallback).
                     if (plKey87.length() > 0) {
-                        int atPl87 = keys87.indexOf("menu_fav_add");
+                        int atPl87 = keys87.indexOf("dl_menu_mark_one");
+                        if (atPl87 < 0) atPl87 = keys87.indexOf("dl_menu_unmark_one");
+                        if (atPl87 < 0) atPl87 = keys87.indexOf("menu_fav_add");
                         if (atPl87 < 0) atPl87 = keys87.indexOf("menu_fav_remove");
                         keys87.add(atPl87 < 0 ? keys87.size() : atPl87 + 1, plKey87);
                     }
@@ -5664,6 +5716,12 @@ public class MainActivity extends Activity {
                                         boolean added87 = Fx.toggleFavTalk(MainActivity.this, e.url);
                                         refreshFavTalkRail();
                                         android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, added87 ? "fav_added" : "fav_removed"), android.widget.Toast.LENGTH_SHORT).show();
+                                    } else if ("dl_menu_mark_one".equals(key87[which])) {
+                                        // v15.81 (slice 2145): "Mark as listened" — the 1949 mark verb on the Recently played rail, through markListenedRail87 below (the file routes every menu verb through a named helper or an inline block).
+                                        markListenedRail87(e, false);
+                                    } else if ("dl_menu_unmark_one".equals(key87[which])) {
+                                        // v15.81 (slice 2145): "Unmark as listened" — the 1949 unmark leg on the Recently played rail, through markListenedRail87 below (both-forms rule: the canonical URL and the raw URL leave the played set together).
+                                        markListenedRail87(e, true);
                                     } else if ("pl_add".equals(key87[which])) {
                                         // v15.78 (slice 2126): "Add to playlist" — the 2101 chooser verb on the Recently played rail: the menu could share a just-heard talk, copy its link, star it, open its sayadaw's full list, download it or share its file, but never file it in one of the listener's own lists. Same verb the full-list row menus carry since slices 2091-2097 and the chooser since 2101, through the same RailPlAdd core (same gate, same toast mapping, same create adjudication), so the surfaces can never disagree. The tap re-resolves the stream URL (a path-form row resolves through the dlMap reverse lookup, the v8.44 exactly-one-claimant rule) and re-checks the offer — a file deleted while the menu sat open toasts talk_no_longer_in_list instead of filing a dead row. The sayadaw is the rail's own canonical Sayadaw (s.name), falling back to the row's recorded sayadaw (e.sayadaw); a blank sayadaw toasts no_talk_yet (the Room's guard). An add mutates no favourite, queue or resume state; no pause guard (no sheet is left to return from). The sounding talk never reaches this menu (RecentRail.pick excludes it).
                                         addToPlaylistRail(mainRailStreamUrlFor(e.url), (s != null && s.name != null && s.name.length() > 0) ? s.name : e.sayadaw, e.title != null ? e.title : "");
@@ -5780,6 +5838,43 @@ public class MainActivity extends Activity {
             if (durI21 == null && dlPath21 != null) durI21 = dur21.get(dlPath21);
         }
         return RailHair.fraction(rp21, durI21 == null ? 0 : durI21.intValue());
+    }
+
+    // v15.81 (slice 2146): "Mark as listened / Unmark as listened" — the mark verb the Downloaded rail menu lacked that the New talks rail has had since v15.59 (slice 2017), the Downloaded library row menu since v15.47 (slice 1949), the Talks chooser since v15.51 (slice 1969), the Room drawer dialogs since v15.52 (slices 1978/1979) and the History / Favourites / Bookmarks / Playlist detail row menus since v15.80 (slices 2138-2142): a just-downloaded talk could only earn or lose its listened mark by playing it to the end or opening the library — and a Downloaded card is exactly where both legs are live, because the rail is a projection of finished downloads, not filtered by played state: a talk heard to the end sits marked (offers Unmark — it returns to the New talks rail), one downloaded but only partly heard sits unmarked (offers Mark). Same verb through the same rules, so the surfaces can never disagree: the 1949 pure core (DlMark — canOffer / labelKey / isMarked / mark / unmark, inputs never mutated), the v11.14 tap-time sounding re-check over the live session URL (the dialog can sit open across an auto-advance, so this talk can BE sounding by tap time — it earns its mark by finishing, never by this verb; the toast is queue_changed, the 1969 shape), the prefs-fresh playedTalks read at tap time, and the mark landing in the SAME playedTalks key AudioService banks on finish and the library, the rails, the header new-count and the filters all read. No refresh and no repaint on this rail: the card renders no listened tick (only the photo + the title + the downloaded badge + the listened-progress hairline, none of which reads playedTalks), so nothing here rebinds from it — the visible effect is the menu label flipping mark<->unmark on the next open, the verb toast, and the propagation (the New talks rail card drops/reappears + the header new-count moves, on Main itself; refreshNewTalkRail + the 1926 dot-set block + refreshFavNewRow below, the 2017 shape). Neither the history REC line, the lifetime totals, the queue, the shelf order, the star itself nor any saved resume position is mutated.
+    private void markListenedRail88(final Prefs.HistEntry e, final boolean unmark) {
+        if (e == null || e.url == null || e.url.length() == 0) return;
+        // Tap-time sounding re-check (Talks v11.14): the dialog can sit open across an auto-advance, so this talk can BE sounding by tap time — it earns its mark by finishing, never by this verb.
+        String sounding88 = (AudioService.liveSession && AudioService.liveHasTrack)
+                ? AudioService.liveUrl : null;
+        if (sounding88 != null && sounding88.length() > 0 && SiteHttp.sameTalk(e.url, sounding88)) {
+            android.widget.Toast.makeText(MainActivity.this,
+                    Lang.t(MainActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        DlMark.Result res88 = null;
+        try {
+            android.content.SharedPreferences sp88 = getSharedPreferences("dhamma", MODE_PRIVATE);
+            java.util.Set<String> cur88 = sp88.getStringSet("playedTalks", new java.util.HashSet<String>());
+            res88 = unmark ? DlMark.unmark(cur88, SiteHttp.identityUrl(e.url), e.url)
+                    : DlMark.mark(cur88, SiteHttp.identityUrl(e.url));
+            sp88.edit().putStringSet("playedTalks", res88.set).apply();
+        } catch (Exception ignored) {}
+        refreshNewTalkRail();
+        java.util.Set<String> dotsBefore88 = new java.util.HashSet<String>(gridNewSayadawUrls);
+        refreshGridNewDots();
+        if (newOnly && !dotsBefore88.equals(gridNewSayadawUrls)) {
+            if (gridNewSayadawUrls.isEmpty()) {
+                newOnly = false; mainNewToggleChange = true;
+                android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "all_listened"), android.widget.Toast.LENGTH_SHORT).show();
+            }
+            applyFilter();
+            refreshFavHint();
+        } else if (adapter != null) adapter.notifyDataSetChanged();
+        refreshFavNewRow();
+        android.widget.Toast.makeText(MainActivity.this,
+                Lang.t(MainActivity.this, (res88 != null && res88.changed) ? (unmark ? "dl_menu_unmark_one" : "dl_menu_mark_one") : (unmark ? "nothing_to_unmark" : "already_listened")),
+                android.widget.Toast.LENGTH_SHORT).show();
     }
 
     private void refreshDlRecentRail() {
@@ -5948,14 +6043,29 @@ public class MainActivity extends Activity {
                     // streamed in the common case (the 1992/1993
                     // precedent).
                     if (DlLanded.downloadedFileName(MainActivity.this, e.url, null, null) != null) keys88.add(1, "dl_menu_share_file");
+                    // v15.81 (slice 2146): "Mark as listened / Unmark as listened" — the mark verb the Downloaded rail menu lacked that the New talks rail has had since v15.59 (slice 2017), the Downloaded library row menu since v15.47 (slice 1949), the Talks chooser since v15.51 (slice 1969), the Room drawer dialogs since v15.52 (slices 1978/1979) and the History / Favourites / Bookmarks / Playlist detail row menus since v15.80 (slices 2138-2142): a just-downloaded talk could be shared, filed, copied, starred or opened, but never marked listened without playing it to the end — and a Downloaded card is exactly where both legs are live, because the rail is a projection of finished downloads, not filtered by played state: a talk heard to the end sits marked (offers Unmark — it returns to the New talks rail), one downloaded but only partly heard sits unmarked (offers Mark). Same verb through the same 1949 pure core (DlMark — canOffer / labelKey / isMarked / mark / unmark, inputs never mutated), so the surfaces can never disagree. The 1991 rule ("the state varies and no tick renders") is re-checked this run and does NOT hold here: the row-menu pieces (2138-2142) ship the same shape — their rows render no listened tick either — and the rail card is no different. The sounding talk never reaches this menu at offer time (DlRecentRail.pick excludes it) and the tap-time re-check in markListenedRail88 below covers the dialog sitting open across an auto-advance (the v11.14 rule). The card's URL is already the canonical stream URL (DlRecentRail.pick maps each filename to it through the dlMap reverse lookup), so the gate reads e.url directly. Inserted right after the favourite toggle (the 1969 chooser position, the 2017 position — the other per-talk state toggle).
+                    String sounding88 = (AudioService.liveSession && AudioService.liveHasTrack)
+                            ? AudioService.liveUrl : null;
+                    boolean soundingTalk88 = sounding88 != null && sounding88.length() > 0
+                            && SiteHttp.sameTalk(e.url, sounding88);
+                    java.util.Set<String> played88 = readPlayedTalks1966();
+                    boolean marked88 = DlMark.isMarked(played88, SiteHttp.identityUrl(e.url));
+                    if (DlMark.canOffer(e.url, soundingTalk88)) {
+                        String markKey88 = DlMark.labelKey(marked88);
+                        int fi88 = keys88.indexOf(fav88 ? "menu_fav_remove" : "menu_fav_add");
+                        if (fi88 >= 0) keys88.add(fi88 + 1, markKey88);
+                    }
                     // v15.78 (slice 2127): the playlist key composes right after the favourite toggle (indexOf — the collect verbs sit together, the 2101 chooser precedent; a playlist add implies a share, since both gates are the same non-blank stream URL — the atPl88 < 0 leg is defensive only).
                     String plKey88 = "";
                     try {
                         String streamUrl88 = mainRailStreamUrlFor(e.url);
                         if (RailPlAdd.canOffer(streamUrl88)) plKey88 = "pl_add";
                     } catch (Exception ignored) {}
+                    // v15.81 (slice 2146): the playlist anchor now prefers the mark key (the 2145 shape — favourite, mark, playlist sit together; the mark key is whichever leg the card offers, so both legs are tried before the favourite fallback).
                     if (plKey88.length() > 0) {
-                        int atPl88 = keys88.indexOf("menu_fav_add");
+                        int atPl88 = keys88.indexOf("dl_menu_mark_one");
+                        if (atPl88 < 0) atPl88 = keys88.indexOf("dl_menu_unmark_one");
+                        if (atPl88 < 0) atPl88 = keys88.indexOf("menu_fav_add");
                         if (atPl88 < 0) atPl88 = keys88.indexOf("menu_fav_remove");
                         keys88.add(atPl88 < 0 ? keys88.size() : atPl88 + 1, plKey88);
                     }
@@ -5999,6 +6109,12 @@ public class MainActivity extends Activity {
                                         boolean added88 = Fx.toggleFavTalk(MainActivity.this, e.url);
                                         refreshFavTalkRail();
                                         android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, added88 ? "fav_added" : "fav_removed"), android.widget.Toast.LENGTH_SHORT).show();
+                                    } else if ("dl_menu_mark_one".equals(key88[which])) {
+                                        // v15.81 (slice 2146): "Mark as listened" — the 1949 mark verb on the Downloaded rail, through markListenedRail88 below (the file routes every menu verb through a named helper or an inline block).
+                                        markListenedRail88(e, false);
+                                    } else if ("dl_menu_unmark_one".equals(key88[which])) {
+                                        // v15.81 (slice 2146): "Unmark as listened" — the 1949 unmark leg on the Downloaded rail, through markListenedRail88 below (both-forms rule: the canonical URL and the raw URL leave the played set together).
+                                        markListenedRail88(e, true);
                                     } else if ("pl_add".equals(key88[which])) {
                                         // v15.78 (slice 2127): "Add to playlist" — the 2101 chooser verb on the Downloaded rail: the menu could share a just-downloaded talk, copy its link, star it, open its sayadaw's full list or share its file, but never file it in one of the listener's own lists. Same verb the full-list Downloaded row menu carries since slice 2097 (DlPlAdd) and the Recently-played rail since slice 2126, through the same RailPlAdd core (same gate, same toast mapping, same create adjudication), so the surfaces can never disagree. The tap re-resolves the stream URL (a path-form row resolves through the dlMap reverse lookup, the v8.44 exactly-one-claimant rule) and re-checks the offer — a file deleted while the menu sat open toasts talk_no_longer_in_list instead of filing a dead row. The sayadaw is the rail's own canonical Sayadaw (s.name), falling back to the row's recorded sayadaw (e.sayadaw); a blank sayadaw toasts no_talk_yet (the Room's guard). An add mutates no favourite, queue or resume state; no pause guard (no sheet is left to return from). The sounding talk never reaches this menu (DlRecentRail.pick excludes it).
                                         addToPlaylistRail(mainRailStreamUrlFor(e.url), (s != null && s.name != null && s.name.length() > 0) ? s.name : e.sayadaw, e.title != null ? e.title : "");
@@ -6092,6 +6208,43 @@ public class MainActivity extends Activity {
     private boolean bmDlBadge26(Prefs.HistEntry e) {
         if (e == null || e.url == null) return false;
         return DlLanded.downloadedFileName(MainActivity.this, e.url, null, null) != null;
+    }
+
+    // v15.81 (slice 2147): "Mark as listened / Unmark as listened" — the mark verb the Bookmarks rail menu lacked that the New talks rail has had since v15.59 (slice 2017), the Downloaded library row menu since v15.47 (slice 1949), the Talks chooser since v15.51 (slice 1969), the Room drawer dialogs since v15.52 (slices 1978/1979) and the History / Favourites / Bookmarks / Playlist detail row menus since v15.80 (slices 2138-2142): a marked talk could only earn or lose its listened mark by playing it to the end or opening the Bookmarks list — and a Bookmarks card is exactly where both legs are live, because the rail is a projection of bookmarked talks, not filtered by played state: a talk heard to the end sits marked (offers Unmark — it returns to the New talks rail), one marked but only partly heard sits unmarked (offers Mark). Same verb through the same rules, so the surfaces can never disagree: the 1949 pure core (DlMark — canOffer / labelKey / isMarked / mark / unmark, inputs never mutated), the v11.14 tap-time sounding re-check over the live session URL (the dialog can sit open across an auto-advance, so this talk can BE sounding by tap time — it earns its mark by finishing, never by this verb; the toast is queue_changed, the 1969 shape), the prefs-fresh playedTalks read at tap time, and the mark landing in the SAME playedTalks key AudioService banks on finish and the library, the rails, the header new-count and the filters all read. No refresh and no repaint on this rail: the card renders no listened tick (only the photo + the sayadaw name + the "12:34 · title" mark minute + the downloaded badge + the listened-progress hairline, none of which reads playedTalks), so nothing here rebinds from it — the visible effect is the menu label flipping mark<->unmark on the next open, the verb toast, and the propagation (the New talks rail card drops/reappears + the header new-count moves, on Main itself; refreshNewTalkRail + the 1926 dot-set block + refreshFavNewRow below, the 2017 shape). Neither the history REC line, the lifetime totals, the queue, the shelf order, the star itself, the mark minute (c.posMs) nor any saved resume position is mutated.
+    private void markListenedRail89(final Prefs.HistEntry e, final boolean unmark) {
+        if (e == null || e.url == null || e.url.length() == 0) return;
+        // Tap-time sounding re-check (Talks v11.14): the dialog can sit open across an auto-advance, so this talk can BE sounding by tap time — it earns its mark by finishing, never by this verb.
+        String sounding89 = (AudioService.liveSession && AudioService.liveHasTrack)
+                ? AudioService.liveUrl : null;
+        if (sounding89 != null && sounding89.length() > 0 && SiteHttp.sameTalk(e.url, sounding89)) {
+            android.widget.Toast.makeText(MainActivity.this,
+                    Lang.t(MainActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        DlMark.Result res89 = null;
+        try {
+            android.content.SharedPreferences sp89 = getSharedPreferences("dhamma", MODE_PRIVATE);
+            java.util.Set<String> cur89 = sp89.getStringSet("playedTalks", new java.util.HashSet<String>());
+            res89 = unmark ? DlMark.unmark(cur89, SiteHttp.identityUrl(e.url), e.url)
+                    : DlMark.mark(cur89, SiteHttp.identityUrl(e.url));
+            sp89.edit().putStringSet("playedTalks", res89.set).apply();
+        } catch (Exception ignored) {}
+        refreshNewTalkRail();
+        java.util.Set<String> dotsBefore89 = new java.util.HashSet<String>(gridNewSayadawUrls);
+        refreshGridNewDots();
+        if (newOnly && !dotsBefore89.equals(gridNewSayadawUrls)) {
+            if (gridNewSayadawUrls.isEmpty()) {
+                newOnly = false; mainNewToggleChange = true;
+                android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "all_listened"), android.widget.Toast.LENGTH_SHORT).show();
+            }
+            applyFilter();
+            refreshFavHint();
+        } else if (adapter != null) adapter.notifyDataSetChanged();
+        refreshFavNewRow();
+        android.widget.Toast.makeText(MainActivity.this,
+                Lang.t(MainActivity.this, (res89 != null && res89.changed) ? (unmark ? "dl_menu_unmark_one" : "dl_menu_mark_one") : (unmark ? "nothing_to_unmark" : "already_listened")),
+                android.widget.Toast.LENGTH_SHORT).show();
     }
 
     private void refreshBmRail() {
@@ -6302,14 +6455,29 @@ public class MainActivity extends Activity {
                     // v15.55 (slice 1993): the minute-share verb is inserted here, not in RailMenu.keys — it is bm-rail-only (only bm cards carry a mark minute to share at) and it sits right after menu_share (the share verbs sit together, the 1955/1986 drawer precedent).
                     int si89 = keys89.indexOf("menu_share");
                     if (si89 >= 0) keys89.add(si89 + 1, "bm_menu_share_minute");
+                    // v15.81 (slice 2147): "Mark as listened / Unmark as listened" — the mark verb the Bookmarks rail menu lacked that the New talks rail has had since v15.59 (slice 2017), the Downloaded library row menu since v15.47 (slice 1949), the Talks chooser since v15.51 (slice 1969), the Room drawer dialogs since v15.52 (slices 1978/1979) and the History / Favourites / Bookmarks / Playlist detail row menus since v15.80 (slices 2138-2142): a marked talk could be shared, shared at its minute, filed, copied, starred, opened, downloaded or unmarked, but never marked listened without playing it to the end — and a Bookmarks card is exactly where both legs are live, because the rail is a projection of bookmarked talks, not filtered by played state: a talk heard to the end sits marked (offers Unmark — it returns to the New talks rail), one marked but only partly heard sits unmarked (offers Mark). Same verb through the same 1949 pure core (DlMark — canOffer / labelKey / isMarked / mark / unmark, inputs never mutated), so the surfaces can never disagree. The 1991 rule ("the state varies and no tick renders") is re-checked this run and does NOT hold here: the row-menu pieces (2138-2142) ship the same shape — their rows render no listened tick either — and the rail card is no different. The sounding talk never reaches this menu at offer time (BmRail.pick excludes it, the :61 sameTalk skip) and the tap-time re-check in markListenedRail89 below covers the dialog sitting open across an auto-advance (the v11.14 rule). The card's URL is already the canonical stream URL (bookmarks are keyed by stream URL), so the gate reads c.e.url directly. Inserted right after the favourite toggle (the 1969 chooser position, the 2017 position — the other per-talk state toggle).
+                    String sounding89 = (AudioService.liveSession && AudioService.liveHasTrack)
+                            ? AudioService.liveUrl : null;
+                    boolean soundingTalk89 = sounding89 != null && sounding89.length() > 0
+                            && SiteHttp.sameTalk(c.e.url, sounding89);
+                    java.util.Set<String> played89 = readPlayedTalks1966();
+                    boolean marked89 = DlMark.isMarked(played89, SiteHttp.identityUrl(c.e.url));
+                    if (DlMark.canOffer(c.e.url, soundingTalk89)) {
+                        String markKey89 = DlMark.labelKey(marked89);
+                        int fi89 = keys89.indexOf(fav89 ? "menu_fav_remove" : "menu_fav_add");
+                        if (fi89 >= 0) keys89.add(fi89 + 1, markKey89);
+                    }
                     // v15.78 (slice 2128): the playlist key composes right after the favourite toggle (indexOf — the collect verbs sit together, the 2101 chooser precedent; a playlist add implies a share, since both gates are the same non-blank stream URL — the atPl89 < 0 leg is defensive only).
                     String plKey89 = "";
                     try {
                         String streamUrl89 = mainRailStreamUrlFor(c.e.url);
                         if (RailPlAdd.canOffer(streamUrl89)) plKey89 = "pl_add";
                     } catch (Exception ignored) {}
+                    // v15.81 (slice 2147): the playlist anchor now prefers the mark key (the 2145 shape — favourite, mark, playlist sit together; the mark key is whichever leg the card offers, so both legs are tried before the favourite fallback).
                     if (plKey89.length() > 0) {
-                        int atPl89 = keys89.indexOf("menu_fav_add");
+                        int atPl89 = keys89.indexOf("dl_menu_mark_one");
+                        if (atPl89 < 0) atPl89 = keys89.indexOf("dl_menu_unmark_one");
+                        if (atPl89 < 0) atPl89 = keys89.indexOf("menu_fav_add");
                         if (atPl89 < 0) atPl89 = keys89.indexOf("menu_fav_remove");
                         keys89.add(atPl89 < 0 ? keys89.size() : atPl89 + 1, plKey89);
                     }
@@ -6359,6 +6527,12 @@ public class MainActivity extends Activity {
                                         boolean added89 = Fx.toggleFavTalk(MainActivity.this, c.e.url);
                                         refreshFavTalkRail();
                                         android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, added89 ? "fav_added" : "fav_removed"), android.widget.Toast.LENGTH_SHORT).show();
+                                    } else if ("dl_menu_mark_one".equals(key89[which])) {
+                                        // v15.81 (slice 2147): "Mark as listened" — the 1949 mark verb on the Bookmarks rail, through markListenedRail89 below (the file routes every menu verb through a named helper or an inline block).
+                                        markListenedRail89(c.e, false);
+                                    } else if ("dl_menu_unmark_one".equals(key89[which])) {
+                                        // v15.81 (slice 2147): "Unmark as listened" — the 1949 unmark leg on the Bookmarks rail, through markListenedRail89 below (both-forms rule: the canonical URL and the raw URL leave the played set together).
+                                        markListenedRail89(c.e, true);
                                     } else if ("pl_add".equals(key89[which])) {
                                         // v15.78 (slice 2128): "Add to playlist" — the 2101 chooser verb on the Bookmarks rail: the menu could share a marked talk, share it at its minute, copy its link, star it, open its sayadaw's full list, download it or delete the mark, but never file it in one of the listener's own lists. Same verb the full-list Bookmarks row menu carries since slice 2093 (BmPlAdd), the Recently-played rail since slice 2126 and the Downloaded rail since slice 2127, through the same RailPlAdd core (same gate, same toast mapping, same create adjudication), so the surfaces can never disagree. The tap re-resolves the stream URL (a path-form row resolves through the dlMap reverse lookup, the v8.44 exactly-one-claimant rule) and re-checks the offer — a file deleted while the menu sat open toasts talk_no_longer_in_list instead of filing a dead row. The sayadaw is the rail's own canonical Sayadaw (s.name), falling back to the row's recorded sayadaw (c.e.sayadaw); a blank sayadaw toasts no_talk_yet (the Room's guard). An add mutates no favourite, queue or resume state; no pause guard (no sheet is left to return from). The sounding talk never reaches this menu (BmRail.pick excludes it, the 1962 gate). The mark minute (c.posMs) stays the tap's job — the playlist add needs no minute.
                                         addToPlaylistRail(mainRailStreamUrlFor(c.e.url), (s != null && s.name != null && s.name.length() > 0) ? s.name : c.e.sayadaw, c.e.title != null ? c.e.title : "");
@@ -6530,6 +6704,43 @@ public class MainActivity extends Activity {
     private boolean favDlBadge25(Prefs.HistEntry e) {
         if (e == null || e.url == null) return false;
         return DlLanded.downloadedFileName(MainActivity.this, e.url, null, null) != null;
+    }
+
+    // v15.81 (slice 2148): "Mark as listened / Unmark as listened" — the mark verb the Favourite-talks rail menu lacked that the New talks rail has had since v15.59 (slice 2017), the Downloaded library row menu since v15.47 (slice 1949), the Talks chooser since v15.51 (slice 1969), the Room drawer dialogs since v15.52 (slices 1978/1979) and the History / Favourites / Bookmarks / Playlist detail row menus since v15.80 (slices 2138-2142): a starred talk could only earn or lose its listened mark by playing it to the end or opening the Favourites list — and a Favourite-talks card is exactly where both legs are live, because the rail is a projection of starred talks, not filtered by played state: a talk heard to the end sits marked (offers Unmark — it returns to the New talks rail), one starred but only partly heard sits unmarked (offers Mark). Same verb through the same rules, so the surfaces can never disagree: the 1949 pure core (DlMark — canOffer / labelKey / isMarked / mark / unmark, inputs never mutated), the v11.14 tap-time sounding re-check over the live session URL (the dialog can sit open across an auto-advance, so this talk can BE sounding by tap time — it earns its mark by finishing, never by this verb; the toast is queue_changed, the 1969 shape), the prefs-fresh playedTalks read at tap time, and the mark landing in the SAME playedTalks key AudioService banks on finish and the library, the rails, the header new-count and the filters all read. No refresh and no repaint on this rail: the card renders no listened tick (only the photo + the sayadaw name + the "↺ 12:34 · title" saved spot + the downloaded ⬇ badge + the listened-progress hairline, none of which reads playedTalks), so nothing here rebinds from it — the visible effect is the menu label flipping mark<->unmark on the next open, the verb toast, and the propagation (the New talks rail card drops/reappears + the header new-count moves, on Main itself; refreshNewTalkRail + the 1926 dot-set block + refreshFavNewRow below, the 2017 shape). Neither the history REC line, the lifetime totals, the queue, the shelf order, the star itself, the mark minute (c.posMs) nor any saved resume position is mutated.
+    private void markListenedRail90(final Prefs.HistEntry e, final boolean unmark) {
+        if (e == null || e.url == null || e.url.length() == 0) return;
+        // Tap-time sounding re-check (Talks v11.14): the dialog can sit open across an auto-advance, so this talk can BE sounding by tap time — it earns its mark by finishing, never by this verb.
+        String sounding90 = (AudioService.liveSession && AudioService.liveHasTrack)
+                ? AudioService.liveUrl : null;
+        if (sounding90 != null && sounding90.length() > 0 && SiteHttp.sameTalk(e.url, sounding90)) {
+            android.widget.Toast.makeText(MainActivity.this,
+                    Lang.t(MainActivity.this, "queue_changed"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        DlMark.Result res90 = null;
+        try {
+            android.content.SharedPreferences sp90 = getSharedPreferences("dhamma", MODE_PRIVATE);
+            java.util.Set<String> cur90 = sp90.getStringSet("playedTalks", new java.util.HashSet<String>());
+            res90 = unmark ? DlMark.unmark(cur90, SiteHttp.identityUrl(e.url), e.url)
+                    : DlMark.mark(cur90, SiteHttp.identityUrl(e.url));
+            sp90.edit().putStringSet("playedTalks", res90.set).apply();
+        } catch (Exception ignored) {}
+        refreshNewTalkRail();
+        java.util.Set<String> dotsBefore90 = new java.util.HashSet<String>(gridNewSayadawUrls);
+        refreshGridNewDots();
+        if (newOnly && !dotsBefore90.equals(gridNewSayadawUrls)) {
+            if (gridNewSayadawUrls.isEmpty()) {
+                newOnly = false; mainNewToggleChange = true;
+                android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, "all_listened"), android.widget.Toast.LENGTH_SHORT).show();
+            }
+            applyFilter();
+            refreshFavHint();
+        } else if (adapter != null) adapter.notifyDataSetChanged();
+        refreshFavNewRow();
+        android.widget.Toast.makeText(MainActivity.this,
+                Lang.t(MainActivity.this, (res90 != null && res90.changed) ? (unmark ? "dl_menu_unmark_one" : "dl_menu_mark_one") : (unmark ? "nothing_to_unmark" : "already_listened")),
+                android.widget.Toast.LENGTH_SHORT).show();
     }
 
     private void refreshFavTalkRail() {
@@ -6767,14 +6978,29 @@ public class MainActivity extends Activity {
                     // + Favourite talks 2000, the last rail without
                     // it) — the 1992/1993 rail-only-verb precedent.
                     if (MainDl.canOffer(mainIsDownloaded(c.e.url), mainIsDlQueued(c.e.url))) keys90.add("dl_btn_download");
+                    // v15.81 (slice 2148): "Mark as listened / Unmark as listened" — the mark verb the Favourite-talks rail menu lacked that the New talks rail has had since v15.59 (slice 2017), the Downloaded library row menu since v15.47 (slice 1949), the Talks chooser since v15.51 (slice 1969), the Room drawer dialogs since v15.52 (slices 1978/1979) and the History / Favourites / Bookmarks / Playlist detail row menus since v15.80 (slices 2138-2142): a starred talk could be shared, shared at its minute, filed, copied, un-starred, opened or downloaded, but never marked listened without playing it to the end — and a Favourite-talks card is exactly where both legs are live, because the rail is a projection of starred talks, not filtered by played state: a talk heard to the end sits marked (offers Unmark — it returns to the New talks rail), one starred but only partly heard sits unmarked (offers Mark). Same verb through the same 1949 pure core (DlMark — canOffer / labelKey / isMarked / mark / unmark, inputs never mutated), so the surfaces can never disagree. The 1991 rule ("the state varies and no tick renders") is re-checked this run and does NOT hold here: the row-menu pieces (2138-2142) ship the same shape — their rows render no listened tick either — and the rail card is no different. The sounding talk never reaches this menu at offer time (FavTalkRail.pick excludes it, the :50 sameTalk skip) and the tap-time re-check in markListenedRail90 below covers the dialog sitting open across an auto-advance (the v11.14 rule). The card's URL is already the canonical stream URL (statsRecent REC rows are canonicalised to their identityUrl form, Prefs.java:707 — the same source the Recently-played rail reads), so the gate reads c.e.url directly. Inserted right after the favourite toggle (the 1969 chooser position, the 2017 position — the other per-talk state toggle).
+                    String sounding90 = (AudioService.liveSession && AudioService.liveHasTrack)
+                            ? AudioService.liveUrl : null;
+                    boolean soundingTalk90 = sounding90 != null && sounding90.length() > 0
+                            && SiteHttp.sameTalk(c.e.url, sounding90);
+                    java.util.Set<String> played90 = readPlayedTalks1966();
+                    boolean marked90 = DlMark.isMarked(played90, SiteHttp.identityUrl(c.e.url));
+                    if (DlMark.canOffer(c.e.url, soundingTalk90)) {
+                        String markKey90 = DlMark.labelKey(marked90);
+                        int fi90 = keys90.indexOf(fav90 ? "menu_fav_remove" : "menu_fav_add");
+                        if (fi90 >= 0) keys90.add(fi90 + 1, markKey90);
+                    }
                     // v15.78 (slice 2129): the playlist key composes right after the favourite toggle (indexOf — the collect verbs sit together, the 2101 chooser precedent; a playlist add implies a share, since both gates are the same non-blank stream URL — the atPl90 < 0 leg is defensive only).
                     String plKey90 = "";
                     try {
                         String streamUrl90 = mainRailStreamUrlFor(c.e.url);
                         if (RailPlAdd.canOffer(streamUrl90)) plKey90 = "pl_add";
                     } catch (Exception ignored) {}
+                    // v15.81 (slice 2148): the playlist anchor now prefers the mark key (the 2145 shape — favourite, mark, playlist sit together; the mark key is whichever leg the card offers, so both legs are tried before the favourite fallback).
                     if (plKey90.length() > 0) {
-                        int atPl90 = keys90.indexOf("menu_fav_add");
+                        int atPl90 = keys90.indexOf("dl_menu_mark_one");
+                        if (atPl90 < 0) atPl90 = keys90.indexOf("dl_menu_unmark_one");
+                        if (atPl90 < 0) atPl90 = keys90.indexOf("menu_fav_add");
                         if (atPl90 < 0) atPl90 = keys90.indexOf("menu_fav_remove");
                         keys90.add(atPl90 < 0 ? keys90.size() : atPl90 + 1, plKey90);
                     }
@@ -6824,6 +7050,12 @@ public class MainActivity extends Activity {
                                         boolean added90 = Fx.toggleFavTalk(MainActivity.this, c.e.url);
                                         refreshFavTalkRail();
                                         android.widget.Toast.makeText(MainActivity.this, Lang.t(MainActivity.this, added90 ? "fav_added" : "fav_removed"), android.widget.Toast.LENGTH_SHORT).show();
+                                    } else if ("dl_menu_mark_one".equals(key90[which])) {
+                                        // v15.81 (slice 2148): "Mark as listened" — the 1949 mark verb on the Favourite-talks rail, through markListenedRail90 below (the file routes every menu verb through a named helper or an inline block).
+                                        markListenedRail90(c.e, false);
+                                    } else if ("dl_menu_unmark_one".equals(key90[which])) {
+                                        // v15.81 (slice 2148): "Unmark as listened" — the 1949 unmark leg on the Favourite-talks rail, through markListenedRail90 below (both-forms rule: the canonical URL and the raw URL leave the played set together).
+                                        markListenedRail90(c.e, true);
                                     } else if ("pl_add".equals(key90[which])) {
                                         // v15.78 (slice 2129): "Add to playlist" — the 2101 chooser verb on the Favourite talks rail: the menu could share a starred talk, share it at its minute, share its file, copy its link, un-star it, open its sayadaw's full list or download it, but never file it in one of the listener's own lists. Same verb the full-list Favourites row menu carries since slice 2091 (FavPlAdd), the Recently-played rail since slice 2126, the Downloaded rail since slice 2127 and the Bookmarks rail since slice 2128, through the same RailPlAdd core (same gate, same toast mapping, same create adjudication), so the surfaces can never disagree. The tap re-resolves the stream URL (a path-form row resolves through the dlMap reverse lookup, the v8.44 exactly-one-claimant rule) and re-checks the offer — a file deleted while the menu sat open toasts talk_no_longer_in_list instead of filing a dead row. The sayadaw is the rail's own canonical Sayadaw (s.name), falling back to the row's recorded sayadaw (c.e.sayadaw); a blank sayadaw toasts no_talk_yet (the Room's guard). An add mutates no favourite, queue or resume state; no pause guard (no sheet is left to return from). The sounding talk never reaches this menu (FavTalkRail.pick excludes it). The saved spot (c.posMs) stays the tap's job — the playlist add needs no minute.
                                         addToPlaylistRail(mainRailStreamUrlFor(c.e.url), (s != null && s.name != null && s.name.length() > 0) ? s.name : c.e.sayadaw, c.e.title != null ? c.e.title : "");

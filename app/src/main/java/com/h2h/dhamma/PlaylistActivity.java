@@ -1390,6 +1390,180 @@ public class PlaylistActivity extends Activity {
         } catch (Exception ignored) { return false; }
     }
 
+    // v15.81 (slice 2144): "Download" — the download verb the Playlist detail row menu lacked that the History row menu has had since v13.77, the Favourite-talks rail since v15.57 (slice 2000), the Talks chooser since v11.70, the Room drawer rows since v11.70, the Favourites row menu since v15.79 (slice 2134), the Bookmarks row menu since v15.79 (slice 2135) and the New talks row menu since v15.79 (slice 2136): a playlist talk could be shared, copied, filed, marked or opened, but never saved for offline listening without leaving the list. Same verb through the same rules, so the surfaces can never disagree: tap-time re-checks (a Wi-Fi job can land, or another path can queue this talk, while the dialog sits open), a Wi-Fi-only DownloadManager request (NETWORK_WIFI, so a tap here can never silently spend mobile data — the data-saver rule), the filename from the download-name helper below, and the record under DlLock in ONE apply (the record helper below — dlMap + dlSayadaw + dlQueued, identityUrl banking). Mirrors History's download dispatch verbatim, with the Playlist-local read side (the plShareUrlFor resolve + the download-state readers below). The blank-URL guard toasts talk_no_longer_in_list — the share helpers' precedent: PlaylistActivity re-resolves at tap time, so a file deleted while the menu sat open must toast, never enqueue a blank URL. No sounding gate (History offers it on sounding rows too); no pause guard (no sheet is left to return from). The adapter repaint + success toast are History's: Wi-Fi shows "\u2B07 title + dl_downloading_suffix", mobile data shows dl_room_wifi_queued. The download verb is now COMPLETE on every full-list row menu.
+    private void downloadTalkPl(final QueueEntry qe) {
+        if (qe == null || qe.url == null || qe.url.length() == 0) return;
+        final String streamUrl = plShareUrlFor(qe);
+        if (streamUrl == null || streamUrl.length() == 0) {
+            android.widget.Toast.makeText(PlaylistActivity.this,
+                    Lang.t(PlaylistActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // Tap-time re-checks (Talks v11.70): a Wi-Fi job can land, or another path can queue this talk, while the dialog sits open.
+        if (plIsDownloaded(streamUrl)) {
+            if (adapter != null) adapter.notifyDataSetChanged();
+            android.widget.Toast.makeText(PlaylistActivity.this,
+                    Lang.t(PlaylistActivity.this, "downloaded_talk"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (plIsDlQueued(streamUrl)) {
+            android.widget.Toast.makeText(PlaylistActivity.this,
+                    Lang.t(PlaylistActivity.this, "dl_already_queued"),
+                    android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        String file = plDownloadFileNameFor(streamUrl);
+        try {
+            android.app.DownloadManager dm = (android.app.DownloadManager)
+                    getSystemService(android.content.Context.DOWNLOAD_SERVICE);
+            android.app.DownloadManager.Request req =
+                    new android.app.DownloadManager.Request(
+                            android.net.Uri.parse(SiteHttp.siteUrl(streamUrl)));
+            req.setTitle(qe.title != null && qe.title.length() > 0 ? qe.title : streamUrl);
+            req.setNotificationVisibility(android.app.DownloadManager.Request
+                    .VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            // Wi-Fi-only, exactly like Talks' chooser enqueue and History's row enqueue — on Wi-Fi it starts at once, on mobile data it waits for Wi-Fi, so a tap here can never silently spend mobile data.
+            req.setAllowedNetworkTypes(android.app.DownloadManager.Request.NETWORK_WIFI);
+            req.setDestinationInExternalPublicDir(
+                    android.os.Environment.DIRECTORY_DOWNLOADS, "Dhamma/" + file);
+            dm.enqueue(req);
+            plRecordDownload(streamUrl, file, qe.sayadaw);
+        } catch (Exception ex) {
+            android.widget.Toast.makeText(PlaylistActivity.this,
+                    Lang.t(PlaylistActivity.this, "download_failed") + Fx.errDetail(ex),
+                    android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (adapter != null) adapter.notifyDataSetChanged();
+        if (Fx.stripIsWifi(PlaylistActivity.this))
+            android.widget.Toast.makeText(PlaylistActivity.this,
+                    "\u2B07 " + (qe.title != null && qe.title.length() > 0 ? qe.title : streamUrl)
+                            + Lang.t(PlaylistActivity.this, "dl_downloading_suffix"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+        else
+            android.widget.Toast.makeText(PlaylistActivity.this,
+                    Lang.t(PlaylistActivity.this, "dl_room_wifi_queued"),
+                    android.widget.Toast.LENGTH_LONG).show();
+    }
+
+    // v15.81 (slice 2144): History histIsDownloaded (v13.77), Playlist-local — the dlMap mapped file + length gate, plus the basename leg, so a streamed-only talk never offers it and a downloaded talk never offers it twice. Fresh prefs read at offer/tap time, so a download landing while the menu sits open is read, never guessed.
+    private boolean plIsDownloaded(String url) {
+        if (url == null || url.length() == 0) return false;
+        try {
+            java.io.File dir = new java.io.File(android.os.Environment
+                    .getExternalStoragePublicDirectory(
+                            android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            String mapped = map.optString(SiteHttp.identityUrl(url), "");
+            if (mapped.length() > 0) {
+                java.io.File f = new java.io.File(dir, mapped);
+                if (f.isFile() && f.length() > 0) return true;
+            }
+            String base = url.substring(url.lastIndexOf('/') + 1);
+            int q = base.indexOf('?');
+            if (q >= 0) base = base.substring(0, q);
+            int h = base.indexOf('#');
+            if (h >= 0) base = base.substring(0, h);
+            if (base.length() > 0) {
+                java.io.File f = new java.io.File(dir, base);
+                if (f.isFile() && f.length() > 0) return true;
+            }
+            return false;
+        } catch (Exception ignored) { return false; }
+    }
+
+    // v15.81 (slice 2144): History histIsDlQueued (v13.77), Playlist-local — fresh prefs read at offer/tap time, so a job queued from the Room a second earlier still blocks a double enqueue. Raw-equals scan like History's — the banked form is identityUrl and the offer and the tap read the same resolved stream URL.
+    private boolean plIsDlQueued(String url) {
+        if (url == null) return false;
+        try {
+            org.json.JSONArray qa = new org.json.JSONArray(
+                    getSharedPreferences("dhamma", MODE_PRIVATE).getString("dlQueued", "[]"));
+            for (int i = 0; i < qa.length(); i++)
+                if (url.equals(qa.optString(i))) return true;
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    // v15.81 (slice 2144): History histRecordDownload (v13.77), Playlist-local — dlMap, dlSayadaw and dlQueued land in ONE apply under DlLock.LOCK (v13.68/v13.70), the URL banked in identity form (v13.71).
+    private void plRecordDownload(String url, String file, String sd) {
+        synchronized (DlLock.LOCK) {
+        try {
+            url = SiteHttp.identityUrl(url);
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            map.put(url, file);
+            String sayStr = null;
+            if (sd != null && sd.length() > 0) {
+                try {
+                    org.json.JSONObject sm = new org.json.JSONObject(sp.getString("dlSayadaw", "{}"));
+                    sm.put(url, sd);
+                    sayStr = sm.toString();
+                } catch (Exception ignored) {}
+            }
+            org.json.JSONArray queued = new org.json.JSONArray(sp.getString("dlQueued", "[]"));
+            boolean found = false;
+            for (int i = 0; i < queued.length(); i++) {
+                if (SiteHttp.sameTalk(url, queued.optString(i))) { found = true; break; }
+            }
+            if (!found) queued.put(url);
+            android.content.SharedPreferences.Editor ed = sp.edit()
+                    .putString("dlMap", map.toString())
+                    .putString("dlQueued", queued.toString());
+            if (sayStr != null) ed.putString("dlSayadaw", sayStr);
+            ed.apply();
+        } catch (Exception ignored) {}
+        }
+    }
+
+    // v15.81 (slice 2144): History histDownloadFileNameFor (v13.77), Playlist-local — the dlMap name wins, else the URL basename (+ .mp3), with the claimed-name MD5 leg so two talks never share one file.
+    private String plDownloadFileNameFor(String url) {
+        try {
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            String mapped = map.optString(SiteHttp.identityUrl(url), "");
+            if (mapped.length() > 0) return mapped;
+            String base = url.substring(url.lastIndexOf('/') + 1);
+            int q = base.indexOf('?');
+            if (q >= 0) base = base.substring(0, q);
+            int hh = base.indexOf('#');
+            if (hh >= 0) base = base.substring(0, hh);
+            if (!base.toLowerCase().endsWith(".mp3")) base = base + ".mp3";
+            java.util.Iterator<String> keys = map.keys();
+            boolean claimed = false;
+            while (keys.hasNext()) {
+                String k = keys.next();
+                if (!SiteHttp.sameTalk(k, url) && base.equals(map.optString(k, ""))) {
+                    claimed = true;
+                    break;
+                }
+            }
+            if (claimed) {
+                String hash = "";
+                try {
+                    java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+                    byte[] d = md.digest(url.getBytes("UTF-8"));
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 0; i < 4; i++) sb.append(String.format("%02x", d[i]));
+                    hash = sb.toString();
+                } catch (Exception ignored) { hash = String.format("%08x", url.hashCode()); }
+                if (base.toLowerCase().endsWith(".mp3"))
+                    return base.substring(0, base.length() - 4) + "_" + hash + base.substring(base.length() - 4);
+                return base + "_" + hash;
+            }
+            return base;
+        } catch (Exception ignored) {
+            String base = url.substring(url.lastIndexOf('/') + 1);
+            if (!base.toLowerCase().endsWith(".mp3")) base = base + ".mp3";
+            return base;
+        }
+    }
+
     // v15.80 (slice 2142): "Mark as listened / Unmark as listened" — the mark verb the Playlist detail row menu lacked that the Downloaded library row menu has had since v15.47 (slice 1949), the Talks chooser since v15.51 (slice 1969), the Room drawer dialogs since v15.52 (slices 1978/1979), the New talks row menu since v15.80 (slice 2138), the History row menu since v15.80 (slice 2139), the Favourites row menu since v15.80 (slice 2140) and the Bookmarks row menu since v15.80 (slice 2141): a playlist talk could only earn or lose its listened mark by playing it to the end or opening the library — and a Playlist detail row is exactly where both legs are live, because playedTalks is banked only on natural finish (AudioService.markPlayedForCurrent) and playlist membership is independent of it: a playlist talk stopped early sits unmarked (offers Mark), a finished one sits marked (offers Unmark — it returns to the New talks list). Same verb through the same rules, so the surfaces can never disagree: the 1949 pure core (DlMark — canOffer / labelKey / isMarked / mark / unmark, inputs never mutated), the v11.14 tap-time sounding re-check over this screen's PlRowMenu sounding rule (the queue branches' rule), the prefs-fresh playedTalks read at tap time, and the mark landing in the SAME playedTalks key AudioService banks on finish and the library, the rails, the header new-count and the filters all read. The helper re-resolves the row to its stream URL at tap time (plShareUrlFor — the Playlist-local shape, the offer and the tap can never disagree). No refresh and no repaint on this screen: the row renders no listened tick (only the sounding ▶ prefix in gold), so nothing here rebinds from playedTalks — the visible effect is the menu label flipping mark<->unmark on the next open, the verb toast, and the propagation (New talks list + header new-count + chooser tick). Neither the history REC line, the lifetime totals, the queue, the shelf order, the playlist membership itself nor any saved resume position is mutated.
     private void markListenedPl(final QueueEntry qe, final boolean unmark) {
         if (qe == null || qe.url == null || qe.url.length() == 0) return;
@@ -1449,6 +1623,13 @@ public class PlaylistActivity extends Activity {
         if (markKey42 != null) {
             int at42 = keys05.indexOf("menu_pl_remove");
             keys05.add(at42 < 0 ? keys05.size() : at42, markKey42);
+        }
+        // v15.81 (slice 2144): the download key — gated on the v11.70 rule through the pinned pure core MainDl.canOffer (slice 1997: neither downloaded nor already queued), plus the non-blank stream URL leg like History's offer, so an unresolvable row never offers it. The sounding row keeps it (History offers it on sounding rows too — downloading the talk now playing is harmless, the Room keeps streaming). It composes right before Remove from list (indexOf — menuKeys always adds menu_pl_remove last, and the download follows the mark insert, so the display order reads ..., Go, Queue, PlAdd, Mark, Download, Remove — the collect verbs sit together last and the removal stays last, the 2136 History order).
+        String dlKey44 = "";
+        if (streamUrl05 != null && streamUrl05.length() > 0 && MainDl.canOffer(plIsDownloaded(streamUrl05), plIsDlQueued(streamUrl05))) dlKey44 = "dl_btn_download";
+        if (dlKey44.length() > 0) {
+            int at44 = keys05.indexOf("menu_pl_remove");
+            keys05.add(at44 < 0 ? keys05.size() : at44, dlKey44);
         }
         java.util.ArrayList<String> opts05 = new java.util.ArrayList<String>();
         for (String k05 : keys05) opts05.add(Lang.t(this, k05));
@@ -1539,6 +1720,9 @@ public class PlaylistActivity extends Activity {
                         } else if ("dl_menu_unmark_one".equals(keyArr05[which])) {
                             // v15.80 (slice 2142): "Unmark as listened" — the 1949 unmark leg on the Playlist detail row menu, through markListenedPl below (both-forms rule: the canonical URL and the raw URL leave the played set together).
                             markListenedPl(qe, true);
+                        } else if ("dl_btn_download".equals(keyArr05[which])) {
+                            // v15.81 (slice 2144): "Download" — the v11.70 download verb on the Playlist detail row menu, through downloadTalkPl below (the file routes every menu verb through a named helper or an inline block).
+                            downloadTalkPl(qe);
                         } else if ("menu_pl_remove".equals(keyArr05[which])) {
                             removePlItem(position);
                         }
