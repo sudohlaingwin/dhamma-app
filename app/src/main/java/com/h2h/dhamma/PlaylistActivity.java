@@ -99,6 +99,14 @@ public class PlaylistActivity extends Activity {
     private AlertDialog renameDialog;
     private EditText renameListEdit;
     private String renameListName;
+    // v15.76 (slice 2114): rotation-restore track for the open
+    // copy dialog — the same v14.06 shape as the rename dialog
+    // (the dialog ref + the live EditText + the old name let
+    // onSaveInstanceState read what is open; the dismiss
+    // listener clears them on a normal close).
+    private AlertDialog copyDialog;
+    private EditText copyListEdit;
+    private String copyListName;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -163,7 +171,7 @@ public class PlaylistActivity extends Activity {
             listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
                 @Override public boolean onItemLongClick(AdapterView<?> p, View v,
                         int pos, long id) {
-                    // v15.75 (slice 2111): lists rows gain a list menu — a long-press used to jump straight to the delete confirm, so a listener who only wanted to fix a typo had no way to rename without deleting the list and re-adding every talk: the menu opens with the two verbs the screen needs (Rename + Delete — PlListMenu.menuKeys). Detail rows keep their row menu (2105). List menu landed in slice 2111.
+                    // v15.76 (slice 2114): lists rows gain a copy verb — the menu used to open with three verbs (Rename + Share + Delete), so a listener who built a morning list and wanted a bedtime variant had to re-add every talk by hand: Copy joins second (PlListMenu.menuKeys — the copy dialog is prefilled with the old name). Detail rows keep their row menu (2105). Copy playlist landed in slice 2114.
                     if (curList != null) { showPlRowMenu(items.get(pos), pos); return true; }
                     showPlListMenu(names.get(pos));
                     return true;
@@ -199,6 +207,13 @@ public class PlaylistActivity extends Activity {
         if (restoredRename != null
                 && Prefs.playlistNames(this).contains(restoredRename))
             showRenameListDialogWithText(restoredRename, restoredRenameText);
+        String restoredCopy = savedInstanceState != null
+                ? savedInstanceState.getString("copyList") : null;
+        String restoredCopyText = savedInstanceState != null
+                ? savedInstanceState.getString("copyListText") : null;
+        if (restoredCopy != null
+                && Prefs.playlistNames(this).contains(restoredCopy))
+            showCopyListDialogWithText(restoredCopy, restoredCopyText);
         wirePlaylistStrip(); // v13.53: real mini-player below the list
     }
 
@@ -257,6 +272,13 @@ public class PlaylistActivity extends Activity {
                 && renameListEdit != null)
             outState.putString("renameListText",
                     renameListEdit.getText().toString());
+        if (copyDialog != null && copyDialog.isShowing()
+                && copyListName != null)
+            outState.putString("copyList", copyListName);
+        if (copyDialog != null && copyDialog.isShowing()
+                && copyListEdit != null)
+            outState.putString("copyListText",
+                    copyListEdit.getText().toString());
     }
 
     private int titleColor() { return night ? 0xFFFFFFFF : 0xFF3B2314; }
@@ -432,11 +454,14 @@ public class PlaylistActivity extends Activity {
         pourList40();
     }
 
-    // v15.75 (slice 2111): lists-mode long-press menu — the PlRowMenu shell, now on the playlist rows: the dialog opens with the two verbs the screen needs ("Rename" first, "Delete" second — PlListMenu.menuKeys), titled with the list's own name. The menu is modal, so the long-press position stays valid at tap time. "Rename" opens the rename dialog (the new-list dialog's shape, prefilled with the current name); "Delete" keeps the existing delete confirm. A blank name names no list, so no menu opens on it. List menu landed in slice 2111.
+    // v15.76 (slice 2114): lists-mode long-press menu gains "Copy" — the dialog opens with the verbs the screen needs ("Rename" first, "Copy" second, "Share" third, "Delete" last — PlListMenu.menuKeys plus the PlShare offer, inserted at index 2 only while the list has a resolvable talk), titled with the list's own name. The menu is modal, so the long-press position stays valid at tap time. "Rename" opens the rename dialog (2111); "Copy" opens the copy dialog (2114); "Share" opens the Android share sheet with the whole list as one message (sharePlaylist); "Delete" keeps the existing delete confirm. A blank name names no list, so no menu opens on it; an empty or unresolvable list offers no Share. Copy playlist landed in slice 2114.
     private void showPlListMenu(final String name) {
         if (name == null || name.length() == 0) return;
         java.util.List<String> keys11 = PlListMenu.menuKeys(name);
         if (keys11.isEmpty()) return;
+        java.util.List<QueueEntry> items11 = Prefs.playlistItems(this, name);
+        java.util.Map<String, String> dlMap11 = plDlMap();
+        if (PlShare.canShare(name, items11, dlMap11)) keys11.add(2, "menu_pl_share");
         java.util.ArrayList<String> opts11 = new java.util.ArrayList<String>();
         for (String k11 : keys11) opts11.add(Lang.t(this, k11));
         final String[] optArr11 = opts11.toArray(new String[0]);
@@ -447,12 +472,48 @@ public class PlaylistActivity extends Activity {
                     @Override public void onClick(android.content.DialogInterface d, int which) {
                         if ("menu_pl_rename".equals(keyArr11[which])) {
                             showRenameListDialog(name);
+                        } else if ("menu_pl_copy".equals(keyArr11[which])) {
+                            showCopyListDialog(name);
+                        } else if ("menu_pl_share".equals(keyArr11[which])) {
+                            sharePlaylist(name);
                         } else if ("pl_delete_btn".equals(keyArr11[which])) {
                             confirmDeleteList(name);
                         }
                     }
                 })
                 .show();
+    }
+
+    // v15.76 (slice 2113): "Share playlist" — the whole list as one message through the Android sheet (the shareTalkBm shape: ACTION_SEND text/plain, the chooser titled with the menu_pl_share label itself): the items + dlMap are re-read fresh and the offer re-checked (PlShare.canShare — the offer and the tap can never disagree), so a list emptied while the menu sat open shares nothing instead of a bare header. The text is PlShare.shareText (the list name + one numbered talk per shareable line + the share_source credit). A share mutates nothing: no store write, no queue or resume change, no pause guard (no sheet is left to return from — the shareTalkBm precedent); the sounding row keeps it. Share playlist landed in slice 2113.
+    private void sharePlaylist(final String name) {
+        if (name == null || name.length() == 0) return;
+        java.util.List<QueueEntry> items13 = Prefs.playlistItems(this, name);
+        java.util.Map<String, String> dlMap13 = plDlMap();
+        if (!PlShare.canShare(name, items13, dlMap13)) return;
+        android.content.Intent send13 = new android.content.Intent(android.content.Intent.ACTION_SEND);
+        send13.setType("text/plain");
+        send13.putExtra(android.content.Intent.EXTRA_TEXT,
+                PlShare.shareText(name, items13, dlMap13,
+                        Lang.t(PlaylistActivity.this, "share_source")));
+        Fx.tap(PlaylistActivity.this);
+        startActivity(android.content.Intent.createChooser(send13,
+                Lang.t(PlaylistActivity.this, "menu_pl_share")));
+    }
+
+    // v15.76 (slice 2113): the dlMap as a plain map for the share resolve — the refreshPlaylistPlayingMarks shape (the "dhamma" prefs' dlMap JSON, keys = stream URLs, values = downloaded basenames), parsed fresh at each call so a download landing while the menu sits open can never be missed. Any failure reads as an empty map (no resolution, never a crash) — the pure core treats a null / empty map as no claimant.
+    private java.util.Map<String, String> plDlMap() {
+        java.util.Map<String, String> out = new java.util.HashMap<String, String>();
+        try {
+            android.content.SharedPreferences sp =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            java.util.Iterator<String> keys = map.keys();
+            while (keys.hasNext()) {
+                String k = keys.next();
+                out.put(k, map.optString(k, ""));
+            }
+        } catch (Exception ignored) {}
+        return out;
     }
 
     private void showRenameListDialog(final String oldName) {
@@ -509,6 +570,75 @@ public class PlaylistActivity extends Activity {
         });
         renameListName = oldName;
         renameDialog = dlg;
+        dlg.show();
+    }
+
+    private void showCopyListDialog(final String oldName) {
+        showCopyListDialogWithText(oldName, oldName);
+    }
+
+    // v15.76 (slice 2114): copy dialog — the rename dialog's shape (showRenameListDialogWithText), prefilled with the current name instead of empty: the title and the positive button both carry the menu_pl_copy label, the hint is the same pl_name_hint, the cursor sits at the end of the old name (a copy starts from the old name, unlike a create), and the 40-char cap is the same leg (a longer name is cut, never refused). An empty name toasts the hint (the create flow's shape); the unchanged name and a name another list already holds both toast pl_exists (the Room new-list dialog's duplicate leg); at the 20-list cap the copy toasts pl_limit, and any other failure toasts pl_no_create (the create flow's shape). A real copy appends a new LIST block with the source block's ITEM lines verbatim (Prefs.playlistDuplicate) and repaints the lists — the copied list shows in place, which is the confirmation, so no success toast. Rotation restore: the dialog + its EditText + the old name are tracked (the v14.06 shape), so a rotate re-shows the dialog with the typed text intact. Copy playlist landed in slice 2114.
+    private void showCopyListDialogWithText(final String oldName, String initial) {
+        if (oldName == null || oldName.length() == 0) return;
+        final EditText et = new EditText(this);
+        et.setHint(Lang.t(this, "pl_name_hint"));
+        et.setSingleLine(true);
+        if (initial != null) et.setText(initial);
+        if (initial != null) et.setSelection(initial.length());
+        copyListEdit = et;
+        AlertDialog dlg = new AlertDialog.Builder(this)
+                .setTitle(Lang.t(this, "menu_pl_copy"))
+                .setView(et)
+                .setPositiveButton(Lang.t(this, "menu_pl_copy"),
+                        new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int which) {
+                        String name = et.getText().toString().trim();
+                        if (name.length() == 0) {
+                            Toast.makeText(PlaylistActivity.this,
+                                    Lang.t(PlaylistActivity.this, "pl_name_hint"),
+                                    Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        if (name.length() > 40) name = name.substring(0, 40);
+                        if (name.equals(oldName)) {
+                            Toast.makeText(PlaylistActivity.this,
+                                    Lang.t(PlaylistActivity.this, "pl_exists"),
+                                    Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        if (Prefs.playlistDuplicate(PlaylistActivity.this, oldName, name)) {
+                            plNav40 = true;
+                            showLists();
+                            return;
+                        }
+                        java.util.List<String> held =
+                                Prefs.playlistNames(PlaylistActivity.this);
+                        if (held.contains(name)) {
+                            Toast.makeText(PlaylistActivity.this,
+                                    Lang.t(PlaylistActivity.this, "pl_exists"),
+                                    Toast.LENGTH_SHORT).show();
+                        } else if (held.size() >= 20) {
+                            Toast.makeText(PlaylistActivity.this,
+                                    Lang.t(PlaylistActivity.this, "pl_limit"),
+                                    Toast.LENGTH_SHORT).show();
+                        } else {
+                            Toast.makeText(PlaylistActivity.this,
+                                    Lang.t(PlaylistActivity.this, "pl_no_create"),
+                                    Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                })
+                .setNegativeButton(Lang.t(this, "btn_no_clear"), null)
+                .create();
+        dlg.setOnDismissListener(new DialogInterface.OnDismissListener() {
+            @Override public void onDismiss(DialogInterface d) {
+                copyDialog = null;
+                copyListEdit = null;
+                copyListName = null;
+            }
+        });
+        copyListName = oldName;
+        copyDialog = dlg;
         dlg.show();
     }
 
@@ -919,13 +1049,102 @@ public class PlaylistActivity extends Activity {
         });
     }
 
-    // v15.74 (slice 2105): row long-press menu on this screen — the FavRowMenu / BmRowMenu shell, now on the Playlist detail rows: the dialog opens with the two verbs the screen needs ("Play from here" first when offered, "Remove from list" always — PlRowMenu.menuKeys), titled with the row's title (the itemRow rule: title, else URL). The menu is modal, so the long-press position stays valid at tap time. "Play from here" calls playFrom(position) directly — the row tap's own verb, which queues from the row onward and opens the Room; there is no second queue path. "Remove from list" calls removePlItem(position) — the per-row remove's verb, shared with the row menu. A blank URL names no talk, so no menu opens on it; a missing list never opens one either. Row menu landed in slice 2105.
+    // v15.76 (slice 2116): the stream URL a detail row shares / copies — the row's own URL when it is a stream URL; a downloaded (path-form) row resolves through the dlMap reverse lookup (the refreshPlaylistPlayingMarks exactly-one-claimant shape: the basename of the path claims exactly one stream URL, else null — a path whose basename no stream URL claims shares nothing). Null when the row names no stream URL.
+    private String plShareUrlFor(QueueEntry qe) {
+        if (qe == null || qe.url == null || qe.url.length() == 0) return null;
+        if (!qe.url.startsWith("/")) return qe.url;
+        String base = qe.url.substring(qe.url.lastIndexOf('/') + 1);
+        if (base.length() == 0) return null;
+        java.util.Map<String, String> m = plDlMap();
+        String hit = null;
+        int matches = 0;
+        for (java.util.Map.Entry<String, String> e : m.entrySet()) {
+            if (base.equals(e.getValue())) { hit = e.getKey(); matches++; }
+        }
+        return matches == 1 ? hit : null;
+    }
+
+    // v15.76 (slice 2116): the downloaded file name a detail row shares — a downloaded (path-form) row's own basename; a stream row's dlMap name. Only when the file is really on disk (TalkFileShare.resolve — the canonical-path containment + isFile gate), so the menu never offers a file that is gone; the tap-time shareUriFor re-checks, so a file that vanished while the menu sat open toasts instead of a guessed URI. Null when nothing is downloadable.
+    private String plShareFileFor(QueueEntry qe) {
+        if (qe == null || qe.url == null || qe.url.length() == 0) return null;
+        String name;
+        if (qe.url.startsWith("/")) name = qe.url.substring(qe.url.lastIndexOf('/') + 1);
+        else name = plDlMap().get(qe.url);
+        if (name == null || name.length() == 0) return null;
+        java.io.File dir = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+        return TalkFileShare.resolve(dir, name) != null ? name : null;
+    }
+
+    // v15.76 (slice 2117): the sayadaw's saved-queue membership, read straight from the store (no in-memory queue on this screen) — the History v13.77 shape: a v2 line and a bare v1 line both parse through QueueEntry.
+    private boolean plQueueHas(String sd, String url) {
+        if (sd == null || sd.length() == 0 || url == null || url.length() == 0) return false;
+        try {
+            String saved = Prefs.savedQueue(this, sd);
+            if (saved == null || saved.length() == 0) return false;
+            for (String ln : saved.split("\n")) {
+                QueueEntry qe = QueueEntry.parse(ln);
+                if (qe != null && SiteHttp.sameTalk(qe.url, url)) return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    // v15.76 (slice 2117): append the talk as a v2 line (identity URL, sayadaw, title) and save the queue back — the History v13.77 shape: every other line is carried verbatim, so foreign lines are never re-spelled or dropped here.
+    private boolean plQueueAdd(String sd, String url, String title) {
+        if (sd == null || sd.length() == 0 || url == null || url.length() == 0) return false;
+        try {
+            String saved = Prefs.savedQueue(this, sd);
+            java.util.ArrayList<String> lines = new java.util.ArrayList<String>();
+            if (saved != null && saved.length() > 0) {
+                for (String ln : saved.split("\n")) {
+                    if (ln.length() == 0) continue;
+                    QueueEntry qe = QueueEntry.parse(ln);
+                    if (qe != null && SiteHttp.sameTalk(qe.url, url)) return false;
+                    lines.add(ln);
+                }
+            }
+            String line = QueueEntry.format(
+                    new QueueEntry(SiteHttp.identityUrl(url), sd, title));
+            if (line.length() == 0) return false;
+            lines.add(line);
+            Prefs.saveQueue(this, sd, lines);
+            return true;
+        } catch (Exception ignored) { return false; }
+    }
+
+    // v15.76 (slice 2117): drop the talk from the sayadaw's saved queue — the History v13.77 shape: every other line is carried verbatim, so foreign lines survive the write.
+    private boolean plQueueRemove(String sd, String url) {
+        if (sd == null || sd.length() == 0 || url == null || url.length() == 0) return false;
+        try {
+            String saved = Prefs.savedQueue(this, sd);
+            if (saved == null || saved.length() == 0) return false;
+            java.util.ArrayList<String> lines = new java.util.ArrayList<String>();
+            boolean dropped = false;
+            for (String ln : saved.split("\n")) {
+                if (ln.length() == 0) continue;
+                QueueEntry qe = QueueEntry.parse(ln);
+                if (qe != null && SiteHttp.sameTalk(qe.url, url)) { dropped = true; continue; }
+                lines.add(ln);
+            }
+            if (!dropped) return false;
+            Prefs.saveQueue(this, sd, lines);
+            return true;
+        } catch (Exception ignored) { return false; }
+    }
+
+    // v15.76 (slice 2116): row long-press menu gains the share trio — the 2105 shell opened with "Play from here" + "Remove from list" and left the menu OPEN for the share / copy / file / go-to-sayadaw / queue verbs (one per slice, the 2073-2091 pattern); this slice lands the trio History carries (menu_share + dl_menu_copy_link, slice 1981, + dl_menu_share_file, slice 1982) through the same pure cores (RoomCopyLink + TalkFileShare), so the detail rows can never disagree with History about what shares, copies or sends. The trio sits between play-from-here and remove (constructive first, destructive last — the 2114 lists-menu order): the stream URL is plShareUrlFor (the row's own URL, or the dlMap reverse lookup for a downloaded row — a row with no resolvable stream URL offers neither share nor copy), the file name is plShareFileFor (the dlMap name for a stream row, the basename for a downloaded row, only when the file is on disk). The sounding row keeps the trio (share/copy/file touch neither playback nor the queue, like History's). The tap-time gates re-check the offer (RoomCopyLink.canOffer / TalkFileShare.shareUriFor), so a file that vanished while the menu sat open toasts talk_no_longer_in_list instead of a guessed URI. A share/copy mutates nothing — the list, the queue and the lifetime totals stay. No Fx.tap in the three branches (History's row-menu precedent — the 2113 lists-menu share taps, the row-menu shares do not). Row menu trio landed in slice 2116.
+    // v15.76 (slice 2117): row long-press menu gains go-to-sayadaw + queue — the 2105 shell opened with "Play from here" + "Remove from list" and left the menu OPEN for the share / copy / file / go-to-sayadaw / queue verbs (one per slice, the 2073-2091 pattern); the 2116 trio landed first, and this slice lands the last two History verbs the detail rows lacked: "Go to sayadaw" (menu_go_sayadaw, slice 1995, through HistGo + GoSayadaw — the row's sayadaw resolved through this screen's own catalogFor, cached per process with alias healing, so a pre-rename name still opens its Talks list) and the queue toggle (menu_queue_add / menu_queue_remove, v13.77, through plQueueHas/plQueueAdd/plQueueRemove — the History shapes, v2 lines carried verbatim). Both sit after the trio and before remove (constructive first, destructive last — the 2114 lists-menu order): the go verb is offered sounding or not (navigation never touches playback, History's rule); the queue verb only when the talk can queue (a resolved stream URL with a sayadaw, not sounding — the Talks v5.82 gate). The tap-time gates re-check the offer (catalogFor re-resolve + GoSayadaw.canGo, so a stale entry toasts no_sayadaw_page; the sounding re-check, so a talk that started sounding while the menu sat open toasts queue_changed instead of queueing a replay). A go mutates nothing; a queue add/remove writes only that sayadaw's saved queue — the list, the lifetime totals and the other sayadaws' queues stay. Fx.tap + Fx.go on the go branch (History's 1995 shape). Row menu go + queue landed in slice 2117; the menu stays OPEN for playlist-add (piece 5/5).
+    // v15.76 (slice 2118): row long-press menu gains "Add to playlist" — the 2105 shell opened with "Play from here" + "Remove from list" and left the menu OPEN for the share / copy / file / go-to-sayadaw / queue / playlist-add verbs (one per slice, the 2073-2091 pattern); the 2116 trio landed first, then go + queue in 2117, and this slice lands the last one the detail rows lacked: "Add to playlist" (pl_add, slice 2095, through HistPlAdd + Prefs.playlistAdd — the History / Favourites / New talks / Bookmarks / Downloaded / Room-queue / Talks-chooser shapes, Favourites' addToPlaylistFav the closest). It sits after the queue verb and before remove (constructive first, destructive last — the 2114 lists-menu order; History's own order inserts pl_add right before its remove too): the gate is the same non-blank stream URL the share reads (HistPlAdd.canOffer), so a streamed-only talk still offers it (filing is not a file); only a row with no resolvable stream URL hides it. The tap-time gates re-check the offer (plShareUrlFor re-resolve, so a downloaded row whose file vanished toasts talk_no_longer_in_list; the sayadaw heal, so a stale banked sayadaw never strands the item under the wrong owner). An add writes only the chosen list — this list, the queue and the lifetime totals stay. The sounding row keeps it (filing never touches playback). Row menu playlist-add landed in slice 2118; the menu's 2105 open set is now COMPLETE — the playlist-add family is on EIGHT surfaces.
     private void showPlRowMenu(final QueueEntry qe, final int position) {
         if (qe == null || qe.url == null || qe.url.length() == 0) return;
         refreshPlaylistPlayingMarks();
         final String url = qe.url;
         final String sd = qe.sayadaw;
-        java.util.List<String> keys05 = PlRowMenu.menuKeys(url, sd, plPlayingUrl, plPlayingLibUrl, AudioService.liveEnded);
+        final String streamUrl05 = plShareUrlFor(qe);
+        final String fileName05 = plShareFileFor(qe);
+        final String[] goCat05 = catalogFor(sd);
+        final boolean queued05 = plQueueHas(sd, streamUrl05);
+        java.util.List<String> keys05 = PlRowMenu.menuKeys(url, sd, plPlayingUrl, plPlayingLibUrl, AudioService.liveEnded, streamUrl05, fileName05, goCat05, queued05);
         java.util.ArrayList<String> opts05 = new java.util.ArrayList<String>();
         for (String k05 : keys05) opts05.add(Lang.t(this, k05));
         final String[] optArr05 = opts05.toArray(new String[0]);
@@ -937,11 +1156,200 @@ public class PlaylistActivity extends Activity {
                     @Override public void onClick(android.content.DialogInterface d, int which) {
                         if ("menu_play_from_here".equals(keyArr05[which])) {
                             playFrom(position);
+                        } else if ("menu_share".equals(keyArr05[which])) {
+                            android.content.Intent send05 = new android.content.Intent(android.content.Intent.ACTION_SEND);
+                            send05.setType("text/plain");
+                            send05.putExtra(android.content.Intent.EXTRA_TEXT, (sd != null && sd.length() > 0 ? sd + " — " : "")
+                                    + (qe.title != null ? qe.title : "")
+                                    + "\n" + streamUrl05 + Lang.t(PlaylistActivity.this, "share_source"));
+                            startActivity(android.content.Intent.createChooser(send05, Lang.t(PlaylistActivity.this, "share_talk")));
+                        } else if ("dl_menu_copy_link".equals(keyArr05[which])) {
+                            if (RoomCopyLink.canOffer(streamUrl05)) {
+                                try {
+                                    android.content.ClipboardManager cm05 =
+                                            (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                                    if (cm05 != null)
+                                        cm05.setPrimaryClip(android.content.ClipData.newPlainText(
+                                                Lang.t(PlaylistActivity.this, "clip_talk"), RoomCopyLink.clipText(streamUrl05)));
+                                    android.widget.Toast.makeText(PlaylistActivity.this,
+                                            RoomCopyLink.toastText(Lang.t(PlaylistActivity.this, "link_copied_prefix"), qe.title, streamUrl05),
+                                            android.widget.Toast.LENGTH_SHORT).show();
+                                } catch (Exception ignored) {}
+                            }
+                        } else if ("dl_menu_share_file".equals(keyArr05[which])) {
+                            java.io.File dir05 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
+                            String fn05 = plShareFileFor(qe);
+                            String uri05 = TalkFileShare.shareUriFor(dir05, fn05);
+                            if (uri05 == null) {
+                                android.widget.Toast.makeText(PlaylistActivity.this, Lang.t(PlaylistActivity.this, "talk_no_longer_in_list"), android.widget.Toast.LENGTH_SHORT).show();
+                            } else {
+                                android.content.Intent send05 = new android.content.Intent(android.content.Intent.ACTION_SEND);
+                                send05.setType("audio/mpeg");
+                                send05.putExtra(android.content.Intent.EXTRA_STREAM, android.net.Uri.parse(uri05));
+                                send05.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                startActivity(android.content.Intent.createChooser(send05, Lang.t(PlaylistActivity.this, "share_talk")));
+                            }
+                        } else if ("menu_go_sayadaw".equals(keyArr05[which])) {
+                            String[] cat05 = catalogFor(sd);
+                            if (!GoSayadaw.canGo(cat05)) {
+                                android.widget.Toast.makeText(PlaylistActivity.this, Lang.t(PlaylistActivity.this, "no_sayadaw_page"), android.widget.Toast.LENGTH_SHORT).show();
+                            } else {
+                                android.content.Intent gi05 = new android.content.Intent(PlaylistActivity.this, TalksActivity.class);
+                                gi05.putExtra("name", sd);
+                                gi05.putExtra("group", GoSayadaw.group(cat05));
+                                gi05.putExtra("url", GoSayadaw.page(cat05));
+                                gi05.putExtra("photo", GoSayadaw.photo(cat05));
+                                Fx.tap(PlaylistActivity.this);
+                                Fx.go(PlaylistActivity.this, gi05);
+                            }
+                        } else if ("menu_queue_add".equals(keyArr05[which])) {
+                            refreshPlaylistPlayingMarks();
+                            if (PlRowMenu.isSounding(streamUrl05, plPlayingUrl, plPlayingLibUrl, AudioService.liveEnded)) {
+                                android.widget.Toast.makeText(PlaylistActivity.this, Lang.t(PlaylistActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            if (!plQueueAdd(sd, streamUrl05, qe.title)) {
+                                android.widget.Toast.makeText(PlaylistActivity.this, Lang.t(PlaylistActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            if (adapter != null) adapter.notifyDataSetChanged();
+                            android.widget.Toast.makeText(PlaylistActivity.this, Lang.t(PlaylistActivity.this, "added_to_queue"), android.widget.Toast.LENGTH_SHORT).show();
+                        } else if ("menu_queue_remove".equals(keyArr05[which])) {
+                            refreshPlaylistPlayingMarks();
+                            if (PlRowMenu.isSounding(streamUrl05, plPlayingUrl, plPlayingLibUrl, AudioService.liveEnded)) {
+                                android.widget.Toast.makeText(PlaylistActivity.this, Lang.t(PlaylistActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            if (!plQueueRemove(sd, streamUrl05)) {
+                                android.widget.Toast.makeText(PlaylistActivity.this, Lang.t(PlaylistActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            if (adapter != null) adapter.notifyDataSetChanged();
+                            android.widget.Toast.makeText(PlaylistActivity.this, Lang.t(PlaylistActivity.this, "removed_from_queue"), android.widget.Toast.LENGTH_SHORT).show();
+                        } else if ("pl_add".equals(keyArr05[which])) {
+                            addToPlaylistPl(qe);
                         } else if ("menu_pl_remove".equals(keyArr05[which])) {
                             removePlItem(position);
                         }
                     }
                 })
+                .show();
+    }
+
+    // v15.76 (slice 2118): "Add to playlist" — the row menu's
+    // playlist verb (the Room's showPlaylistAddDialog, v12.65–
+    // v12.80, on this screen's menu; History's 2095 verb through
+    // HistPlAdd + Prefs.playlistAdd — the Favourites 2091 / New
+    // talks 2092 / Bookmarks 2093 shapes, Favourites'
+    // addToPlaylistFav the closest: the same catalogFor +
+    // sayadawForTalk heal): re-resolve the row to its stream URL
+    // at tap time (plShareUrlFor — the offer and the tap can never
+    // disagree), toast talk_no_longer_in_list when a downloaded
+    // row no longer resolves, heal the sayadaw exactly like the
+    // Favourites verb (catalogFor + the sayadawForTalk heal — a
+    // stale banked sayadaw would strand the playlist item under
+    // the wrong owner, the v12.78 lesson), then offer the
+    // listener's lists (Prefs.playlistNames — the seed lists are
+    // there from the first read) plus a "new list" row (pl_new,
+    // last). A tap files the talk through Prefs.playlistAdd and
+    // toasts the v12.80 result (HistPlAdd.toastKey: added /
+    // already there / full / could-not-create); the new-list row
+    // opens the name dialog. An add mutates no list membership
+    // here, no queue or resume state; no pause guard (no sheet
+    // is left to return from); the sounding row keeps it (filing
+    // never touches playback). The filed unit is the TALK, not
+    // the listen (the 2084 adjudication, extended): the playlist
+    // store carries url / sayadaw / title and no minute, so a
+    // filed talk plays from its saved spot like every other
+    // playlist item.
+    private void addToPlaylistPl(final QueueEntry qe) {
+        if (qe == null || qe.url == null || qe.url.length() == 0) return;
+        final String streamUrl05 = plShareUrlFor(qe);
+        if (!HistPlAdd.canOffer(streamUrl05)) {
+            android.widget.Toast.makeText(PlaylistActivity.this,
+                    Lang.t(PlaylistActivity.this, "talk_no_longer_in_list"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String sd05 = qe.sayadaw != null ? qe.sayadaw : "";
+        String[] cat05 = catalogFor(sd05);
+        if (cat05 == null || cat05[1] == null || cat05[1].length() == 0) {
+            String owner05 = Prefs.sayadawForTalk(this, "lib", streamUrl05, "");
+            if (owner05 != null && owner05.length() > 0 && !owner05.equals(sd05)) {
+                sd05 = owner05;
+            }
+        }
+        final String title05 = qe.title != null ? qe.title : "";
+        final String sdF05 = sd05;
+        final java.util.List<String> names05 = Prefs.playlistNames(this);
+        final String[] items05 = new String[names05.size() + 1];
+        for (int i05 = 0; i05 < names05.size(); i05++) items05[i05] = names05.get(i05);
+        items05[names05.size()] = Lang.t(this, "pl_new");
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(Lang.t(this, "pl_choose"))
+                .setItems(items05, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        if (HistPlAdd.isNewRow(which, names05.size())) {
+                            showNewPlaylistPl(streamUrl05, title05, sdF05);
+                            return;
+                        }
+                        int r05 = Prefs.playlistAdd(PlaylistActivity.this,
+                                names05.get(which), streamUrl05, sdF05, title05);
+                        android.widget.Toast.makeText(PlaylistActivity.this,
+                                Lang.t(PlaylistActivity.this, HistPlAdd.toastKey(r05)),
+                                android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .show();
+    }
+
+    // v15.76 (slice 2118): the "new list" dialog for the
+    // playlist verb — the Room's showNewPlaylistDialog
+    // (v12.80), on this screen: a name field (pl_name_hint),
+    // a Create button (pl_create) and a cancel (btn_no_clear);
+    // an empty name re-prompts with the hint toast; the name
+    // caps at 40 chars (PLAYLIST_MAX_NAME); create is a
+    // no-op for an existing name, so a repeat name just adds
+    // to that list; at the 20-list cap a genuinely new name
+    // toasts pl_limit (HistPlAdd.limitToastKey), any other
+    // create failure pl_no_create — neither falls through to
+    // the add (the v12.80 leg). The add toasts the same
+    // v12.80 result as the choose dialog.
+    private void showNewPlaylistPl(final String url, final String title, final String sd) {
+        final android.widget.EditText et05 = new android.widget.EditText(this);
+        et05.setHint(Lang.t(this, "pl_name_hint"));
+        et05.setSingleLine(true);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(Lang.t(this, "pl_new"))
+                .setView(et05)
+                .setPositiveButton(Lang.t(this, "pl_create"),
+                        new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        String name05 = et05.getText().toString().trim();
+                        if (name05.length() == 0) {
+                            android.widget.Toast.makeText(PlaylistActivity.this,
+                                    Lang.t(PlaylistActivity.this, "pl_name_hint"),
+                                    android.widget.Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        if (name05.length() > 40) name05 = name05.substring(0, 40);
+                        boolean created05 = Prefs.playlistCreate(PlaylistActivity.this, name05);
+                        java.util.List<String> held05 = Prefs.playlistNames(PlaylistActivity.this);
+                        String limit05 = HistPlAdd.limitToastKey(created05,
+                                held05.contains(name05), held05.size());
+                        if (limit05 != null) {
+                            android.widget.Toast.makeText(PlaylistActivity.this,
+                                    Lang.t(PlaylistActivity.this, limit05),
+                                    android.widget.Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        int r05 = Prefs.playlistAdd(PlaylistActivity.this, name05, url, sd, title);
+                        android.widget.Toast.makeText(PlaylistActivity.this,
+                                Lang.t(PlaylistActivity.this, HistPlAdd.toastKey(r05)),
+                                android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton(Lang.t(this, "btn_no_clear"), null)
                 .show();
     }
 

@@ -6,10 +6,11 @@ package com.h2h.dhamma;
 // rename anywhere in the app: a long-press on a list row
 // jumped straight to the delete confirm, so a listener who
 // only wanted to fix a typo had to delete the list and
-// re-add every talk. The menu opens with the two verbs the
+// re-add every talk. The menu opens with the three verbs the
 // screen needs: "Rename" first (the constructive verb, the
-// PlRowMenu order) and "Delete" second (the screen's own
-// delete verb, the confirmDeleteList flow). The offer is
+// PlRowMenu order), "Copy" second (a whole-list copy — the
+// v15.76 slice 2114 verb), and "Delete" last (the screen's
+// own delete verb, the confirmDeleteList flow). The offer is
 // pure selection only: the Activity owns the dialog, the
 // rename dialog, the store rename and the delete confirm.
 // A blank name names no list, so it offers nothing — the
@@ -27,12 +28,14 @@ public class PlListMenu {
     }
 
     // The menu's keys, in display order: "Rename" first,
-    // "Delete" second. A fresh list per call, never a shared
+    // "Copy" second, "Delete" last. A fresh list per call,
+    // never a shared
     // one. Empty when the name names no list.
     static java.util.List<String> menuKeys(String name) {
         java.util.List<String> out = new java.util.ArrayList<String>();
         if (!canRename(name)) return out;
         out.add("menu_pl_rename");
+        out.add("menu_pl_copy");
         out.add("pl_delete_btn");
         return out;
     }

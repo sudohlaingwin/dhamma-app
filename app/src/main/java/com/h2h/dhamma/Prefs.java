@@ -2126,6 +2126,41 @@ public class Prefs {
         return sb.toString();
     }
 
+    // Returns the new raw store, or null when nothing changes
+    // (no such list, invalid new name, the new name is already
+    // another list's, the unchanged name, or the 20-list cap).
+    // The copy is a new LIST block appended at the end of the
+    // store (the createPure append shape) with the source
+    // block's ITEM lines copied verbatim after it, so the copy
+    // holds the same talks in the same order; other lists are
+    // untouched. The 40-char cap is the create leg
+    // (playlistCreatePure); the duplicate leg is the Room
+    // new-list dialog's (a name another list holds).
+    static String playlistDuplicatePure(String raw, String oldName, String newName) {
+        if (raw == null || raw.length() == 0) return null;
+        String oldC = playlistClean(oldName);
+        String newC = playlistClean(newName);
+        if (oldC.length() == 0 || newC.length() == 0) return null;
+        if (newC.length() > PLAYLIST_MAX_NAME) return null;
+        if (oldC.equals(newC)) return null;
+        java.util.List<String> names = playlistNamesPure(raw);
+        if (!names.contains(oldC)) return null;
+        if (names.contains(newC)) return null;
+        if (names.size() >= PLAYLIST_MAX_LISTS) return null;
+        java.util.List<String> itemLines = new java.util.ArrayList<String>();
+        String cur = null;
+        for (String line : raw.split("\n")) {
+            if (line.startsWith("LIST\t")) { cur = playlistClean(line.substring(5)); continue; }
+            if (oldC.equals(cur) && line.startsWith("ITEM\t")) itemLines.add(line);
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append(raw);
+        sb.append('\n');
+        sb.append("LIST\t").append(newC);
+        for (String line : itemLines) { sb.append('\n'); sb.append(line); }
+        return sb.toString();
+    }
+
     // Returns the new raw store, or null when nothing changes (no
     // such list, invalid entry, duplicate URL, or the 200-item
     // cap). The new ITEM lands at the end of this list's block,
@@ -2241,6 +2276,15 @@ public class Prefs {
     public static boolean playlistRename(Context c, String oldName, String newName) {
         try {
             String next = playlistRenamePure(playlistRaw(c), oldName, newName);
+            if (next == null) return false;
+            sp(c).edit().putString(PLAYLIST_KEY, next).apply();
+            return true;
+        } catch (Exception ignored) { return false; }
+    }
+
+    public static boolean playlistDuplicate(Context c, String oldName, String newName) {
+        try {
+            String next = playlistDuplicatePure(playlistRaw(c), oldName, newName);
             if (next == null) return false;
             sp(c).edit().putString(PLAYLIST_KEY, next).apply();
             return true;
