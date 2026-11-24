@@ -89,6 +89,8 @@ public class FavouritesActivity extends Activity {
     private java.util.Set<String> favPlayedSet = new java.util.HashSet<String>();
     // v15.89 (slice 2195): the downloaded-badge snapshot for the rows — the identity forms of the unfiltered pick's stream addresses that are already on the phone, built once per refresh from the unfiltered pick, refreshed on refresh and on the one-second tick's change detector, so a download landing while the list sits open rebinds the rows here.
     private java.util.Set<String> favDlSet95 = new java.util.HashSet<String>();
+    // v15.90 (slice 2199): the total-duration snapshot for the rows — favDurCache is the per-talk total durations (Prefs.talkDurMap, one parse per refresh, never talkDurGet per row per bind, the v13.97 rule); refreshed on refresh() and on the strip tick's change detector, so a length landing while the list sits open rebinds the rows here.
+    private java.util.Map<String, Integer> favDurCache = new java.util.HashMap<String, Integer>();
     // v15.64 (slice 2044): "Play all" on this screen (the chooser's
     // v13.76 Play All + the library's v15.50 play-listened, the third
     // list that deserves the verb) — the starred talks used to play
@@ -283,6 +285,7 @@ public class FavouritesActivity extends Activity {
         refreshFavouritesPlayingMarks(); // v15.64 (slice 2042): mark right on first paint, not one tick late
         refreshFavPlayedSet(); // v15.85 (slice 2171): the tick snapshot fresh on first paint, beside the playing marks
         refreshFavDlSet(); // v15.89 (slice 2195): the badge snapshot fresh on first paint, beside the tick snapshot — the rows read the snapshot, never a per-row store test
+        refreshFavDurCache(); // v15.90 (slice 2199): the duration snapshot fresh on first paint, beside the badge snapshot
         applyFavSearch();
     }
 
@@ -655,6 +658,19 @@ public class FavouritesActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT));
         row.addView(col, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        // v15.90 (slice 2199): a starred talk's total length clocks on the row's right edge — the chooser's 1094 clock, now on the last full-list screen without any length readout (History rows clock heard time, Bookmarks rows clock the mark minute, Favourites rows clock the resume spot — no Favourites row ever said how long its talk runs). The clock reads favRowDurMs (the duration snapshot, refreshed on refresh() and on the strip tick's change detector), formatted by Fx.fmtTime ("42:15", "1:05:22" past the hour, the chooser's clock shape); the playing row clocks too (its length is a property of the talk, the 1094 rule — its live position is on the strip). Hidden when no duration was ever banked — GONE, never guessed, never "0:00". No Lang key, no Prefs write, no layout change — the row is built in code.
+        int favRowDur98 = favRowDurMs(e);
+        TextView favDur98 = new TextView(this);
+        favDur98.setText(favRowDur98 > 0 ? Fx.fmtTime(favRowDur98) : "");
+        favDur98.setTextColor(night ? android.graphics.Color.parseColor("#AAAAAA")
+                : android.graphics.Color.parseColor("#7A6A58"));
+        favDur98.setTextSize(12);
+        favDur98.setVisibility(favRowDur98 > 0 ? android.view.View.VISIBLE : android.view.View.GONE);
+        LinearLayout.LayoutParams favDurParams98 = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        favDurParams98.setMargins(0, 0, (int) (8 * d), 0);
+        favDur98.setLayoutParams(favDurParams98);
+        row.addView(favDur98);
         TextView go = new TextView(this);
         go.setText("\u203a");
         go.setTextColor(night ? android.graphics.Color.parseColor("#AAAAAA")
@@ -663,7 +679,32 @@ public class FavouritesActivity extends Activity {
         row.addView(go, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
-        return row;
+        // v15.90 (slice 2201): a partly-heard favourite's listened-progress hairline — the Talks-row line (v13.97, slice 1092) and the rail cards' line (v15.60, slice 2020) now under this row: 3dp tall, 4dp below the row, faint-gold track (#33C9A227) with a solid-gold fill (#C9A227, @color/gold) split by weight, weightSum 1. The fraction is the card's own resume spot over the 2199 clock's total (the shared fraction helper — the Talks-row rule verbatim: 0 when never meaningfully heard, spot at or below 5s, or no duration ever stored; clamped to 1, never below a 3% sliver, so a barely-started talk still reads as a visible gold dash). Never the playing row (its live position is on the strip, the 1092 gate). GONE unless a fraction was set — Fx.crossfadeHairline owns the show/hide (on these freshly built rows it seeds instantly, no melt ever plays here, the 2020 rail shape). No Lang key, no Prefs write, no layout change — the row is built in code.
+        float favHairFrac98 = favRowPlaying ? 0f : RailHair.fraction(c.posMs, favRowDur98);
+        LinearLayout favHairTrack98 = new LinearLayout(this);
+        favHairTrack98.setOrientation(LinearLayout.HORIZONTAL);
+        favHairTrack98.setBackgroundColor(android.graphics.Color.parseColor("#33C9A227"));
+        favHairTrack98.setWeightSum(1f);
+        LinearLayout.LayoutParams favHairParams98 = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, (int) (3 * d));
+        favHairParams98.topMargin = (int) (4 * d);
+        favHairTrack98.setLayoutParams(favHairParams98);
+        android.view.View favHairFill98 = new android.view.View(this);
+        favHairFill98.setBackgroundColor(android.graphics.Color.parseColor("#C9A227"));
+        favHairFill98.setLayoutParams(new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.MATCH_PARENT, favHairFrac98));
+        android.view.View favHairSpace98 = new android.view.View(this);
+        favHairSpace98.setLayoutParams(new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.MATCH_PARENT, 1f - favHairFrac98));
+        favHairTrack98.addView(favHairFill98);
+        favHairTrack98.addView(favHairSpace98);
+        Fx.crossfadeHairline(favHairTrack98, favHairFrac98 > 0f);
+        LinearLayout favWrap98 = new LinearLayout(this);
+        favWrap98.setOrientation(LinearLayout.VERTICAL);
+        favWrap98.addView(row, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        favWrap98.addView(favHairTrack98);
+        return favWrap98;
     }
 
     // v15.64 (slice 2044): Play-all visibility — the chooser's
@@ -2255,6 +2296,20 @@ public class FavouritesActivity extends Activity {
 
     private boolean favRowPlayed(Prefs.HistEntry e) { if (e == null) return false; String stream = favStreamUrlFor(e); return stream.length() > 0 && favPlayedSet != null && favPlayedSet.contains(stream); }
 
+    // v15.90 (slice 2199): the duration snapshot (the chooser 1094 clock shape) — favDurCacheNow parses the durations store once (Prefs.talkDurMap, the talkPosKeysOver shape); refreshFavDurCache adopts it; favRowDurMs resolves the row's stream URL through favStreamUrlFor (a downloaded path-form row claims its stream URL, the 2084 reverse lookup) and reads its length, falling back to the row's own URL for a downloaded row whose length was banked under its path form (talkDurPutBoth banks both forms, the v13.96 rule), so a starred talk clocks exactly when its stream twin does. Null stream names no talk; an unknown length reads 0 — the clock hides, never guesses.
+    private java.util.Map<String, Integer> favDurCacheNow() { return Prefs.talkDurMap(this); }
+
+    private void refreshFavDurCache() { favDurCache = favDurCacheNow(); }
+
+    private int favRowDurMs(Prefs.HistEntry e) {
+        if (e == null || favDurCache == null) return 0;
+        Integer d98 = null;
+        String stream = favStreamUrlFor(e);
+        if (stream != null && stream.length() > 0) d98 = favDurCache.get(SiteHttp.identityUrl(stream));
+        if ((d98 == null || d98.intValue() <= 0) && e.url != null) d98 = favDurCache.get(e.url);
+        return d98 != null && d98.intValue() > 0 ? d98.intValue() : 0;
+    }
+
     private void refreshFavouritesPlayingMarks() {
         favPlayingUrl = "";
         favPlayingLibUrl = "";
@@ -2380,18 +2435,22 @@ public class FavouritesActivity extends Activity {
         java.util.Set<String> favPlayedNow71 = favPlayedSetNow();
         // v15.89 (slice 2195): the badge snapshot joins the change detector — a download landing while the list sits open rebinds the rows here.
         java.util.Set<String> favDlNow95 = favDlSetNow();
+        // v15.90 (slice 2199): the duration snapshot joins the change detector — a length landing while the list sits open (a talk just prepared banks its duration) rebinds the rows here.
+        java.util.Map<String, Integer> favDurNow98 = favDurCacheNow();
         if (adapter != null && (!favPlayingUrl.equals(favRowPlayingUrl == null ? "" : favRowPlayingUrl)
                 || !favPlayingLibUrl.equals(favRowPlayingLibUrl == null ? "" : favRowPlayingLibUrl)
                 || !favPlayingLibPath.equals(favRowPlayingLibPath == null ? "" : favRowPlayingLibPath)
                 || AudioService.liveEnded != favRowEnded
                 || !favPlayedNow71.equals(favPlayedSet)
-                || !favDlNow95.equals(favDlSet95))) {
+                || !favDlNow95.equals(favDlSet95)
+                || !favDurNow98.equals(favDurCache))) {
             favRowPlayingUrl = favPlayingUrl;
             favRowPlayingLibUrl = favPlayingLibUrl;
             favRowPlayingLibPath = favPlayingLibPath;
             favRowEnded = AudioService.liveEnded;
             favPlayedSet = favPlayedNow71;
             favDlSet95 = favDlNow95;
+            favDurCache = favDurNow98;
             adapter.notifyDataSetChanged();
             // v15.67 (slice 2060): the sounding change above moves the playing talk (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button.
             refreshFavJumpTarget();

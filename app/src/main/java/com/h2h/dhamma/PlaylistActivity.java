@@ -88,6 +88,8 @@ public class PlaylistActivity extends Activity {
     private java.util.Set<String> plPlayedSet = new java.util.HashSet<String>();
     // v15.86 (slice 2175): the total-duration snapshot for the detail rows — plDurCache is the per-talk total durations (Prefs.talkDurMap, one parse per refresh, never talkDurGet per row per bind, the v13.97 rule); refreshed on detail open and on the strip tick's change detector, so a length landing while the list sits open rebinds the rows here.
     private java.util.Map<String, Integer> plDurCache = new java.util.HashMap<String, Integer>();
+    // v15.90 (slice 2198): the downloaded-badge snapshot for the detail rows — the identity forms of the open list's stream addresses that are already on the phone, built once per refresh from the open list, refreshed on detail open and on the one-second tick's change detector, so a download landing while the list sits open rebinds the rows here.
+    private java.util.Set<String> plDlSet97 = new java.util.HashSet<String>();
     // v14.06 (F4, sixth pass slice 5): rotation-restore track for
     // the open new-list / delete-confirm dialogs - the dialog refs
     // (+ the live EditText) let onSaveInstanceState read what is
@@ -437,7 +439,9 @@ public class PlaylistActivity extends Activity {
         // v15.86 (slice 2174): a finished list talk says so — "✓ " after the "★ " star when both apply (the library v4.24 order, play first, star second, tick third), gold either way; the tick reads the plPlayedSet snapshot (refreshed on detail open and on the strip tick's change detector), resolved through plShareUrlFor — a downloaded (path-form) row claims its stream URL through the dlMap reverse lookup, so it ticks exactly when its stream twin does. A row stopped early sits in the list but NOT in playedTalks (the 2142 mark verb offers Mark there), so the tick distinguishes finished from merely started. The playing row never ticks — its live position is on the strip, not a finished mark. No Lang key, no Prefs write, no layout change — the row is built in code.
         boolean plRowFav66 = plRowFav(qe);
         boolean plRowPlayed74 = !plRowPlaying && plRowPlayed(qe);
-        LinearLayout col = textRows((plRowPlaying ? "▶ " : "") + (plRowFav66 ? "★ " : "") + (plRowPlayed74 ? "✓ " : "") + title, qe.sayadaw, plRowPlaying || plRowFav66);
+        // v15.90 (slice 2198): a downloaded list talk says so — the badge after the tick when both apply (this screen's order: play first, star second, tick third, badge fourth), so a list talk already on the phone reads as offline at a glance. The row reads the snapshot the refresh filled; a row whose stream address sits in the set is downloaded. The badge alone does not gold the row — only a sounding or favourited row turns gold. The sounding row badges too — downloaded is a property of the talk, not a state. No Lang key, no Prefs write, no layout change — the row is built in code.
+        boolean plRowDl97 = plRowDl(qe);
+        LinearLayout col = textRows((plRowPlaying ? "▶ " : "") + (plRowFav66 ? "★ " : "") + (plRowPlayed74 ? "✓ " : "") + (plRowDl97 ? "⬇ " : "") + title, qe.sayadaw, plRowPlaying || plRowFav66);
         col.setPadding(0, (int) (10 * d), (int) (12 * d), (int) (10 * d));
         row.addView(col, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
@@ -594,6 +598,7 @@ public class PlaylistActivity extends Activity {
         refreshPlFavSet(); // v15.84 (slice 2166): the star snapshot fresh on first paint, beside the playing marks
         refreshPlPlayedSet(); // v15.86 (slice 2174): the tick snapshot fresh on first paint, beside the star snapshot
         refreshPlDurCache(); // v15.86 (slice 2175): the duration snapshot fresh on first paint, beside the tick snapshot
+        refreshPlDlSet(); // v15.90 (slice 2198): the badge snapshot fresh on first paint, beside the duration snapshot — the rows read the snapshot, never a per-row store test
         // v15.74 (slice 2103): the open list's sounding row is the jump target — refresh it and repaint the button from the new position (the 2063 shape: a fresh detail open can land with the playing row off-screen).
         refreshPlJumpTarget();
         paintPlJumpBtnFromList();
@@ -1532,16 +1537,54 @@ public class PlaylistActivity extends Activity {
                 android.widget.Toast.LENGTH_SHORT).show();
     }
 
+    // v15.90 (slice 2198): the downloaded-badge snapshot — the set is the open list's downloaded stream addresses, built from the open list through the same gate the row menu's download offer reads, so the badge and the offer can never disagree about a talk; the map is parsed once per build, never per row. The refresh adopts it; the row predicate resolves the row to its stream address the same way the star does (a downloaded path-form row claims its stream address through the exactly-one-claimant resolve) and tests membership. A null list reads empty; a null entry or an unresolvable stream is skipped; in lists mode the set reads empty — there are no detail rows there. The badge paints on the sounding row too — downloaded is a property of the talk, not a state. The badge alone does not gold the row — only a sounding or favourited row turns gold.
+    private java.util.Set<String> plDlSetNow() {
+        java.util.Set<String> out97 = new java.util.HashSet<String>();
+        if (curList == null || items == null) return out97;
+        try {
+            android.content.SharedPreferences sp97 =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map97 = new org.json.JSONObject(sp97.getString("dlMap", "{}"));
+            for (QueueEntry r97 : items) {
+                if (r97 == null) continue;
+                String stream97 = plShareUrlFor(r97);
+                if (stream97 == null || stream97.length() == 0) continue;
+                if (plIsDownloaded(stream97, map97)) {
+                    String id97 = SiteHttp.identityUrl(stream97);
+                    if (id97 != null) out97.add(id97);
+                }
+            }
+        } catch (Exception ignored) {}
+        return out97;
+    }
+
+    private void refreshPlDlSet() { plDlSet97 = plDlSetNow(); }
+
+    private boolean plRowDl(QueueEntry qe) {
+        if (qe == null) return false;
+        String stream97 = plShareUrlFor(qe);
+        return stream97 != null && stream97.length() > 0 && plDlSet97 != null
+                && plDlSet97.contains(SiteHttp.identityUrl(stream97));
+    }
+
     // v15.81 (slice 2144): History histIsDownloaded (v13.77), Playlist-local — the dlMap mapped file + length gate, plus the basename leg, so a streamed-only talk never offers it and a downloaded talk never offers it twice. Fresh prefs read at offer/tap time, so a download landing while the menu sits open is read, never guessed.
     private boolean plIsDownloaded(String url) {
         if (url == null || url.length() == 0) return false;
         try {
-            java.io.File dir = new java.io.File(android.os.Environment
-                    .getExternalStoragePublicDirectory(
-                            android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
             android.content.SharedPreferences sp =
                     getSharedPreferences("dhamma", MODE_PRIVATE);
             org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            return plIsDownloaded(url, map);
+        } catch (Exception ignored) { return false; }
+    }
+
+    // v15.90 (slice 2198): the same gate with a caller-supplied map — the snapshot builder parses the map once per build and tests every row against it, instead of re-parsing per row; the one-argument form above keeps its exact behaviour (a fresh map per call) for the menu offers.
+    private boolean plIsDownloaded(String url, org.json.JSONObject map) {
+        if (url == null || url.length() == 0 || map == null) return false;
+        try {
+            java.io.File dir = new java.io.File(android.os.Environment
+                    .getExternalStoragePublicDirectory(
+                            android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
             String mapped = map.optString(SiteHttp.identityUrl(url), "");
             if (mapped.length() > 0) {
                 java.io.File f = new java.io.File(dir, mapped);
@@ -2153,18 +2196,22 @@ public class PlaylistActivity extends Activity {
         // v15.86 (slice 2175): the duration snapshot joins the change detector — a length
         // landing while the list sits open (a talk just prepared banks its duration) rebinds the rows here.
         java.util.Map<String, Integer> plDurNow75 = plDurCacheNow();
+        // v15.90 (slice 2198): the badge snapshot joins the change detector — a download landing while the list sits open rebinds the rows here.
+        java.util.Set<String> plDlNow97 = plDlSetNow();
         if (adapter != null && (!plPlayingUrl.equals(plRowPlayingUrl == null ? "" : plRowPlayingUrl)
                 || !plPlayingLibUrl.equals(plRowPlayingLibUrl == null ? "" : plRowPlayingLibUrl)
                 || AudioService.liveEnded != plRowEnded
                 || !plFavNow66.equals(plFavSet)
                 || !plPlayedNow74.equals(plPlayedSet)
-                || !plDurNow75.equals(plDurCache))) {
+                || !plDurNow75.equals(plDurCache)
+                || !plDlNow97.equals(plDlSet97))) {
             plRowPlayingUrl = plPlayingUrl;
             plRowPlayingLibUrl = plPlayingLibUrl;
             plRowEnded = AudioService.liveEnded;
             plFavSet = plFavNow66;
             plPlayedSet = plPlayedNow74;
             plDurCache = plDurNow75;
+            plDlSet97 = plDlNow97;
             adapter.notifyDataSetChanged();
             // v15.74 (slice 2103): the sounding change above moves the playing talk (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button.
             refreshPlJumpTarget();

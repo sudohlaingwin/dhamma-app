@@ -84,6 +84,10 @@ public class BookmarksActivity extends Activity {
     private java.util.Set<String> bmPlayedSet = new java.util.HashSet<String>();
     // v15.89 (slice 2194): the downloaded-badge snapshot for the rows — the identity forms of the unfiltered pick's stream addresses that are already on the phone, built once per refresh from the unfiltered pick, refreshed on refresh and on the one-second tick's change detector, so a download landing while the list sits open rebinds the rows here.
     private java.util.Set<String> bmDlSet94 = new java.util.HashSet<String>();
+    // v15.90 (slice 2200): the total-duration snapshot for the rows — bmDurCache is the per-talk total durations (Prefs.talkDurMap, one parse per refresh, never talkDurGet per row per bind, the v13.97 rule); refreshed on refresh() and on the strip tick's change detector, so a length landing while the list sits open rebinds the rows here.
+    private java.util.Map<String, Integer> bmDurCache = new java.util.HashMap<String, Integer>();
+    // v15.90 (slice 2202): the resume-spot snapshot for the rows — bmPosCache is the per-talk resume spots (one parse per refresh, never a per-row store test, the v5.69 rule); refreshed on refresh() and on the strip tick's change detector, so a spot landing while the list sits open rebinds the rows here.
+    private java.util.Map<String, Integer> bmPosCache = new java.util.HashMap<String, Integer>();
     // v15.85 (slice 2168): the favourite-star snapshot for the rows (History v13.77) — bmFavSet is the favTalks set copied once per refresh (never read per row per bind, the v1.59 rule); refreshed on refresh() and on the strip tick's change detector, so a star flipped from the notification card rebinds the rows here.
     private java.util.Set<String> bmFavSet = new java.util.HashSet<String>();
     // v15.65 (slice 2049): search on this screen — the field, the
@@ -273,6 +277,8 @@ public class BookmarksActivity extends Activity {
         refreshBmFavSet(); // v15.85 (slice 2168): the star snapshot fresh on first paint, beside the playing marks
         refreshBmPlayedSet(); // v15.85 (slice 2170): the tick snapshot fresh on first paint, beside the star snapshot
         refreshBmDlSet(); // v15.89 (slice 2194): the badge snapshot fresh on first paint, beside the tick snapshot — the rows read the snapshot, never a per-row store test
+        refreshBmDurCache(); // v15.90 (slice 2200): the duration snapshot fresh on first paint, beside the badge snapshot
+        refreshBmPosCache(); // v15.90 (slice 2202): the pos snapshot fresh on first paint, beside the duration snapshot
         applyBmSearch();
     }
 
@@ -640,6 +646,19 @@ public class BookmarksActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT));
         row.addView(col, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        // v15.90 (slice 2200): a bookmarked talk's total length clocks on the row's right edge — the chooser's 1094 clock, now on the last full-list screen without any length readout (History rows clock heard time, Bookmarks rows clock the mark minute, Favourites rows clock the resume spot — no Bookmarks row ever said how long its talk runs). The clock reads bmRowDurMs (the duration snapshot, refreshed on refresh() and on the strip tick's change detector), formatted by Fx.fmtTime ("42:15", "1:05:22" past the hour, the chooser's clock shape); the playing row clocks too (its length is a property of the talk, the 1094 rule — its live position is on the strip). Hidden when no duration was ever banked — GONE, never guessed, never "0:00". No Lang key, no Prefs write, no layout change — the row is built in code.
+        int bmRowDur99 = bmRowDurMs(e);
+        TextView bmDur99 = new TextView(this);
+        bmDur99.setText(bmRowDur99 > 0 ? Fx.fmtTime(bmRowDur99) : "");
+        bmDur99.setTextColor(night ? android.graphics.Color.parseColor("#AAAAAA")
+                : android.graphics.Color.parseColor("#7A6A58"));
+        bmDur99.setTextSize(12);
+        bmDur99.setVisibility(bmRowDur99 > 0 ? android.view.View.VISIBLE : android.view.View.GONE);
+        LinearLayout.LayoutParams bmDurParams99 = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        bmDurParams99.setMargins(0, 0, (int) (8 * d), 0);
+        bmDur99.setLayoutParams(bmDurParams99);
+        row.addView(bmDur99);
         TextView go = new TextView(this);
         go.setText("\u203a");
         go.setTextColor(night ? android.graphics.Color.parseColor("#AAAAAA")
@@ -648,7 +667,33 @@ public class BookmarksActivity extends Activity {
         row.addView(go, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
-        return row;
+        // v15.90 (slice 2202): a partly-heard bookmark's listened-progress hairline — the Talks-row line (v13.97, slice 1092) and the rail cards' line (v15.60, slices 2020, 2027) now under this row: 3dp tall, 4dp below the row, faint-gold track (#33C9A227) with a solid-gold fill (#C9A227, @color/gold) split by weight, weightSum 1. The fraction is the talk's RESUME spot from the pos snapshot — never the row's frozen mark minute (the mark is where the listener bookmarked, the resume spot is how far they got, the 2027 rail rule) — over the 2200 clock's total (the shared fraction helper — the Talks-row rule verbatim: 0 when never meaningfully heard, spot at or below 5s, or no duration ever stored; clamped to 1, never below a 3% sliver, so a barely-started talk still reads as a visible gold dash). Never the playing row (its live position is on the strip, the 1092 gate). GONE unless a fraction was set — Fx.crossfadeHairline owns the show/hide (on these freshly built rows it seeds instantly, no melt ever plays here, the 2020 rail shape). No Lang key, no Prefs write, no layout change — the row is built in code.
+        int bmRowPos99 = bmRowPosMs(e);
+        float bmHairFrac99 = bmRowPlaying ? 0f : RailHair.fraction(bmRowPos99, bmRowDur99);
+        LinearLayout bmHairTrack99 = new LinearLayout(this);
+        bmHairTrack99.setOrientation(LinearLayout.HORIZONTAL);
+        bmHairTrack99.setBackgroundColor(android.graphics.Color.parseColor("#33C9A227"));
+        bmHairTrack99.setWeightSum(1f);
+        LinearLayout.LayoutParams bmHairParams99 = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, (int) (3 * d));
+        bmHairParams99.topMargin = (int) (4 * d);
+        bmHairTrack99.setLayoutParams(bmHairParams99);
+        android.view.View bmHairFill99 = new android.view.View(this);
+        bmHairFill99.setBackgroundColor(android.graphics.Color.parseColor("#C9A227"));
+        bmHairFill99.setLayoutParams(new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.MATCH_PARENT, bmHairFrac99));
+        android.view.View bmHairSpace99 = new android.view.View(this);
+        bmHairSpace99.setLayoutParams(new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.MATCH_PARENT, 1f - bmHairFrac99));
+        bmHairTrack99.addView(bmHairFill99);
+        bmHairTrack99.addView(bmHairSpace99);
+        Fx.crossfadeHairline(bmHairTrack99, bmHairFrac99 > 0f);
+        LinearLayout bmWrap99 = new LinearLayout(this);
+        bmWrap99.setOrientation(LinearLayout.VERTICAL);
+        bmWrap99.addView(row, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        bmWrap99.addView(bmHairTrack99);
+        return bmWrap99;
     }
 
     // v15.66 (slice 2055): Play-all visibility — the chooser's
@@ -2278,6 +2323,58 @@ public class BookmarksActivity extends Activity {
 
     private boolean bmRowPlayed(Prefs.HistEntry e) { if (e == null) return false; String stream = streamUrlFor(e); return stream.length() > 0 && bmPlayedSet != null && bmPlayedSet.contains(stream); }
 
+    // v15.90 (slice 2200): the duration snapshot (the chooser 1094 clock shape) — bmDurCacheNow parses the durations store once (Prefs.talkDurMap, the talkPosKeysOver shape); refreshBmDurCache adopts it; bmRowDurMs resolves the row's stream URL through the row's stream resolver (a downloaded path-form row claims its stream URL, the 2084 reverse lookup) and reads its length, falling back to the row's own URL for a downloaded row whose length was banked under its path form (talkDurPutBoth banks both forms, the v13.96 rule), so a bookmarked talk clocks exactly when its stream twin does. Null stream names no talk; an unknown length reads 0 — the clock hides, never guesses.
+    private java.util.Map<String, Integer> bmDurCacheNow() { return Prefs.talkDurMap(this); }
+
+    private void refreshBmDurCache() { bmDurCache = bmDurCacheNow(); }
+
+    private int bmRowDurMs(Prefs.HistEntry e) {
+        if (e == null || bmDurCache == null) return 0;
+        Integer d99 = null;
+        String stream = streamUrlFor(e);
+        if (stream != null && stream.length() > 0) d99 = bmDurCache.get(SiteHttp.identityUrl(stream));
+        if ((d99 == null || d99.intValue() <= 0) && e.url != null) d99 = bmDurCache.get(e.url);
+        return d99 != null && d99.intValue() > 0 ? d99.intValue() : 0;
+    }
+
+    // v15.90 (slice 2202): the resume-spot snapshot (the one-parse shape the rail refresh uses) — bmPosCacheNow parses the saved-spot store once, identity-keyed with the first line per identity winning (the single-lookup first-match rule); refreshBmPosCache adopts it; bmRowPosMs resolves the row's stream URL through the row's stream resolver and reads its spot, falling through to the row's own URL when the stream spot is at or below 5s (a downloaded row's spot was banked under its path form), so a bookmarked talk lines exactly when its stream twin does. Null stream names no talk; an unknown spot reads 0 — the line hides, never guesses.
+    private java.util.Map<String, Integer> bmPosCacheNow() {
+        java.util.Map<String, Integer> out = new java.util.HashMap<String, Integer>();
+        try {
+            String raw = getSharedPreferences("dhamma", MODE_PRIVATE).getString("talkPosMap", "");
+            if (raw != null && raw.length() > 0) {
+                for (String line : raw.split("\n")) {
+                    int t = line.indexOf('\t');
+                    if (t <= 0) continue;
+                    String id = SiteHttp.identityUrl(line.substring(0, t));
+                    if (id == null || out.containsKey(id)) continue;
+                    try {
+                        int pos = Integer.parseInt(line.substring(t + 1));
+                        if (pos > 0) out.put(id, Integer.valueOf(pos));
+                    } catch (Exception ignored) {}
+                }
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    private void refreshBmPosCache() { bmPosCache = bmPosCacheNow(); }
+
+    private int bmRowPosMs(Prefs.HistEntry e) {
+        if (e == null || bmPosCache == null) return 0;
+        int p99 = 0;
+        String stream = streamUrlFor(e);
+        if (stream != null && stream.length() > 0) {
+            Integer p = bmPosCache.get(SiteHttp.identityUrl(stream));
+            if (p != null) p99 = p.intValue();
+        }
+        if (p99 <= 5000 && e.url != null) {
+            Integer q = bmPosCache.get(e.url);
+            if (q != null) p99 = q.intValue();
+        }
+        return p99;
+    }
+
     private void refreshBookmarksPlayingMarks() {
         bmPlayingUrl = "";
         bmPlayingLibUrl = "";
@@ -2407,13 +2504,19 @@ public class BookmarksActivity extends Activity {
         java.util.Set<String> bmPlayedNow70 = bmPlayedSetNow();
         // v15.89 (slice 2194): the badge snapshot joins the change detector — a download landing while the list sits open rebinds the rows here.
         java.util.Set<String> bmDlNow94 = bmDlSetNow();
+        // v15.90 (slice 2200): the duration snapshot joins the change detector — a length landing while the list sits open (a talk just prepared banks its duration) rebinds the rows here.
+        java.util.Map<String, Integer> bmDurNow99 = bmDurCacheNow();
+        // v15.90 (slice 2202): the pos snapshot joins the change detector — a spot landing while the list sits open (a talk just heard banks its spot) rebinds the rows here.
+        java.util.Map<String, Integer> bmPosNow99 = bmPosCacheNow();
         if (adapter != null && (!bmPlayingUrl.equals(bmRowPlayingUrl == null ? "" : bmRowPlayingUrl)
                 || !bmPlayingLibUrl.equals(bmRowPlayingLibUrl == null ? "" : bmRowPlayingLibUrl)
                 || !bmPlayingLibPath.equals(bmRowPlayingLibPath == null ? "" : bmRowPlayingLibPath)
                 || AudioService.liveEnded != bmRowEnded
                 || !bmFavNow68.equals(bmFavSet)
                 || !bmPlayedNow70.equals(bmPlayedSet)
-                || !bmDlNow94.equals(bmDlSet94))) {
+                || !bmDlNow94.equals(bmDlSet94)
+                || !bmDurNow99.equals(bmDurCache)
+                || !bmPosNow99.equals(bmPosCache))) {
             bmRowPlayingUrl = bmPlayingUrl;
             bmRowPlayingLibUrl = bmPlayingLibUrl;
             bmRowPlayingLibPath = bmPlayingLibPath;
@@ -2421,6 +2524,8 @@ public class BookmarksActivity extends Activity {
             bmFavSet = bmFavNow68;
             bmPlayedSet = bmPlayedNow70;
             bmDlSet94 = bmDlNow94;
+            bmDurCache = bmDurNow99;
+            bmPosCache = bmPosNow99;
             adapter.notifyDataSetChanged();
             // v15.67 (slice 2062): the sounding change above moves the playing talk (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button.
             refreshBmJumpTarget();
