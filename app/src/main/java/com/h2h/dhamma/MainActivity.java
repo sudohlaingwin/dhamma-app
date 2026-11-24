@@ -4023,8 +4023,8 @@ public class MainActivity extends Activity {
     // (talks_search_hint, v9.88); an empty query shows the honesty
     // line (search_talks_empty — the index only covers sayadaws
     // already visited, never the whole catalog); a query with no
-    // hit shows the existing no_search_match. Rows are two lines
-    // (title over sayadaw, simple_list_item_2, 16sp/14sp — the
+    // hit shows the existing no_search_match. Rows are photo-led
+    // (44dp sayadaw photo + title over sayadaw, 16sp/14sp — the
     // app's readable sizes). A tap plays the talk straight in the
     // Room: the sayadaw is re-resolved fresh at tap time (the
     // 1985 go-to-sayadaw shape — sayadawByName1930 + GoSayadaw,
@@ -4037,6 +4037,168 @@ public class MainActivity extends Activity {
     // a fresh install indexes as the listener browses, so the store
     // stays small in practice (one visited sayadaw is ~100 titles);
     // a 30k-entry store would still be one pass, no network.
+    // v15.88 (slice 2186): a search result row carries its sayadaw's photo — the 2029 two-line row rendered title over sayadaw as bare text, so a hit read as a ledger line beside the photo-led rows everywhere else in the app (the full-list rows, the rail cards). The photo is the 44dp circle from the same resolve the tap already makes, so the row and the tap can never disagree on whose face it is; a blank or uncatalogued sayadaw loads "" and the loader paints its initials fallback, the same rule the sister screens use. Title 16sp over sayadaw 14sp, the 2029 sizes, kept — only the face joins. No Lang key, no Prefs write, no layout change — the row is built in code.
+    private android.view.View searchRow29(TalkIndex.Entry e29) {
+        float d29 = getResources().getDisplayMetrics().density;
+        android.widget.LinearLayout row29 = new android.widget.LinearLayout(this);
+        row29.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        row29.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        final Sayadaw s29 = sayadawByName1930(e29 == null ? null : e29.sayadaw);
+        CircleImageView photo29 = new CircleImageView(this);
+        int px29 = (int) (44 * d29);
+        android.widget.LinearLayout.LayoutParams pp29 =
+                new android.widget.LinearLayout.LayoutParams(px29, px29);
+        pp29.setMargins(0, 0, (int) (8 * d29), 0);
+        photo29.setLayoutParams(pp29);
+        photo29.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+        ImageLoader.load(this, s29 == null || s29.photo == null ? "" : s29.photo, e29 == null || e29.sayadaw == null ? "" : e29.sayadaw, photo29);
+        row29.addView(photo29);
+        android.widget.LinearLayout col29 = new android.widget.LinearLayout(this);
+        col29.setOrientation(android.widget.LinearLayout.VERTICAL);
+        col29.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        col29.setPadding(0, (int) (10 * d29), 0, (int) (10 * d29));
+        col29.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        android.widget.TextView title29 = new android.widget.TextView(this);
+        // v15.88 (slice 2187): the sounding row says so — the mark ahead of its title in gold (the chooser/library shape), for a live session; an ended talk is not sounding, so its mark lifts at once. The row reads the snapshot the dialog filled (room leg + library leg); a hit whose address matches either leg is the sounding talk.
+        boolean rowPlaying87 = e29 != null && e29.url != null && !AudioService.liveEnded
+                && ((srchPlayingUrl87 != null && srchPlayingUrl87.length() > 0 && SiteHttp.sameTalk(e29.url, srchPlayingUrl87))
+                        || (srchPlayingLibUrl87 != null && srchPlayingLibUrl87.length() > 0 && SiteHttp.sameTalk(e29.url, srchPlayingLibUrl87)));
+        // v15.88 (slice 2188): the favourited row says so — the star after the playing mark (the chooser/library shape), gold either way, so the mark reads at a glance. The row reads the snapshot the dialog filled; a hit whose identity form sits in the set is a favourite.
+        boolean rowFav88 = e29 != null && e29.url != null && srchFavSet88 != null
+                && srchFavSet88.contains(SiteHttp.identityUrl(e29.url));
+        // v15.88 (slice 2189): the listened row says so — the tick after the star when both apply (the chooser/library shape), so a finished talk reads as finished at a glance. The row reads the snapshot the dialog filled; a hit whose identity form sits in the set is a listened talk. The playing row never ticks — its live position is on the strip, not a finished mark.
+        boolean rowPlayed89 = !rowPlaying87 && e29 != null && e29.url != null && srchPlayedSet89 != null
+                && srchPlayedSet89.contains(SiteHttp.identityUrl(e29.url));
+        title29.setText((rowPlaying87 ? "▶ " : "") + (rowFav88 ? "★ " : "") + (rowPlayed89 ? "✓ " : "") + (e29 == null || e29.title == null ? "" : e29.title));
+        title29.setTextColor((rowPlaying87 || rowFav88) ? android.graphics.Color.parseColor("#C9A227")
+                : cachedNight ? android.graphics.Color.WHITE
+                : android.graphics.Color.parseColor("#3B2314"));
+        title29.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16);
+        title29.setMaxLines(1);
+        title29.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        col29.addView(title29);
+        android.widget.TextView name29 = new android.widget.TextView(this);
+        name29.setText(e29 == null || e29.sayadaw == null ? "" : e29.sayadaw);
+        name29.setTextColor(cachedNight ? android.graphics.Color.parseColor("#AAAAAA")
+                : android.graphics.Color.parseColor("#7A6A58"));
+        name29.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14);
+        name29.setMaxLines(1);
+        name29.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        col29.addView(name29);
+        row29.addView(col29);
+        // v15.88 (slice 2190): the talk's total length clocks at the row's right edge — the 2184 rail clock, now on the search sheet (the row showed the photo, the marks, the title and the sayadaw, but never how long the talk runs). The clock reads the duration snapshot the dialog filled (one parse per dialog open); no playing gate is needed — the clock is a length, not a state, so it paints on the sounding row too. Hidden when no duration was ever banked — GONE, never guessed, never "0:00". No Lang key, no Prefs write, no layout change — the row is built in code.
+        int srchDur90 = srchRowDurMs90(srchDurMap90, e29);
+        android.widget.TextView srchDurClock90 = new android.widget.TextView(this);
+        srchDurClock90.setText(srchDur90 > 0 ? Fx.fmtTime(srchDur90) : "");
+        srchDurClock90.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
+        srchDurClock90.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
+        srchDurClock90.setVisibility(srchDur90 > 0 ? android.view.View.VISIBLE : android.view.View.GONE);
+        android.widget.LinearLayout.LayoutParams srchDurParams90 = new android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+        srchDurParams90.setMargins((int) (8 * d29), 0, 0, 0);
+        srchDurClock90.setLayoutParams(srchDurParams90);
+        row29.addView(srchDurClock90);
+        return row29;
+    }
+
+    // The sounding snapshot the search rows read (room address + library address, blank when nothing sounds).
+    private String srchPlayingUrl87 = "";
+    private String srchPlayingLibUrl87 = "";
+
+    // v15.88 (slice 2187): the sounding snapshot, resolved once per dialog open and refreshed on every keystroke rebuild — the room leg reads the stored stream address, the library leg reads the stored file path and claims its stream address through the download map's exactly-one-claimant walk (a file claimed by two talks names no talk, the dual-claim rule). An ended talk is not sounding — the row itself lifts the mark, so this resolve stays a plain identity read. Called before the first build and before every rebuild; the rows never parse the map themselves.
+    private void refreshSearchPlaying87() {
+        srchPlayingUrl87 = "";
+        srchPlayingLibUrl87 = "";
+        try {
+            android.content.SharedPreferences sp87 =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            if (AudioService.liveSession && AudioService.liveHasTrack
+                    && "room".equals(sp87.getString("lastKind", "")))
+                srchPlayingUrl87 = sp87.getString("lastUrl", "");
+            if (AudioService.liveSession && AudioService.liveHasTrack
+                    && "lib".equals(sp87.getString("lastKind", ""))) {
+                String libPath87 = sp87.getString("lastLibPath", "");
+                if (libPath87.length() > 0) {
+                    String base87 = libPath87.substring(libPath87.lastIndexOf('/') + 1);
+                    org.json.JSONObject map87 = new org.json.JSONObject(sp87.getString("dlMap", "{}"));
+                    java.util.Iterator<String> keys87 = map87.keys();
+                    String hit87 = null;
+                    int matches87 = 0;
+                    while (keys87.hasNext()) {
+                        String k87 = keys87.next();
+                        if (base87.equals(map87.optString(k87, ""))) { hit87 = k87; matches87++; }
+                    }
+                    if (matches87 == 1) srchPlayingLibUrl87 = hit87;
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    // The favourite-star snapshot the search rows read (a copy of the favourites set, refreshed per dialog open and per keystroke rebuild, so a star flipped elsewhere repaints on the next keystroke).
+    private java.util.Set<String> srchFavSet88 = new java.util.HashSet<String>();
+
+    // v15.88 (slice 2188): the favourite-star snapshot — copies the favourites set (migrated first, the v13.66 rule — a pre-migration http key must star its https twin); the rows test membership through the identity form, so a favourited talk stars exactly when its stream twin does. Called before the first build and before every rebuild; the rows never read the store themselves.
+    private void refreshSearchFav88() {
+        try {
+            Prefs.migrateLegacyHttpRows66(this);
+            java.util.Set<String> ft88 = getSharedPreferences("dhamma", MODE_PRIVATE)
+                    .getStringSet("favTalks", null);
+            srchFavSet88 = ft88 == null ? new java.util.HashSet<String>()
+                    : new java.util.HashSet<String>(ft88);
+        } catch (Exception ignored) {
+            srchFavSet88 = new java.util.HashSet<String>();
+        }
+    }
+
+    // The listened-tick snapshot the search rows read (a copy of the listened set, refreshed per dialog open and per keystroke rebuild, so a tick flipped elsewhere repaints on the next keystroke).
+    private java.util.Set<String> srchPlayedSet89 = new java.util.HashSet<String>();
+
+    // v15.88 (slice 2189): the listened-tick snapshot — copies the listened set (migrated first, the v13.66 rule — a pre-migration http key must tick its https twin); the rows test membership through the identity form, so a listened talk ticks exactly when its stream twin does. Called before the first build and before every rebuild; the rows never read the store themselves.
+    private void refreshSearchPlayed89() {
+        try {
+            Prefs.migrateLegacyHttpRows66(this);
+            java.util.Set<String> ptk89 = getSharedPreferences("dhamma", MODE_PRIVATE)
+                    .getStringSet("playedTalks", null);
+            srchPlayedSet89 = ptk89 == null ? new java.util.HashSet<String>()
+                    : new java.util.HashSet<String>(ptk89);
+        } catch (Exception ignored) {
+            srchPlayedSet89 = new java.util.HashSet<String>();
+        }
+    }
+
+    // The total-duration snapshot the search rows read (the durations map, one parse per dialog open and per keystroke rebuild, so a duration landing mid-dialog repaints on the next keystroke).
+    private java.util.Map<String, Integer> srchDurMap90 = new java.util.LinkedHashMap<String, Integer>();
+
+    // v15.88 (slice 2190): the search-row total-duration resolver — the 2184 rail-clock shape for a search hit: the stream leg first (the raw url, then the identity form — a pre-migration http twin still clocks its https twin), then the downloaded path leg through the download map's file-name claim (a talk banked under its downloaded path clocks exactly when its stream twin does). Null entry, null url or null map reads 0; an unknown length reads 0 — the clock hides, never guesses.
+    private int srchRowDurMs90(java.util.Map<String, Integer> dur90, TalkIndex.Entry e29) {
+        if (e29 == null || e29.url == null || dur90 == null) return 0;
+        Integer dv90 = dur90.get(e29.url);
+        if (dv90 == null || dv90.intValue() <= 0) {
+            String id90 = SiteHttp.identityUrl(e29.url);
+            if (id90 != null) dv90 = dur90.get(id90);
+        }
+        if (dv90 == null || dv90.intValue() <= 0) {
+            String fn90 = DlLanded.downloadedFileName(MainActivity.this, e29.url, null, null);
+            if (fn90 != null) {
+                String path90 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + fn90).getAbsolutePath();
+                dv90 = dur90.get(path90);
+            }
+        }
+        return dv90 != null && dv90.intValue() > 0 ? dv90.intValue() : 0;
+    }
+
+    // v15.88 (slice 2190): the duration snapshot refresh — one parse of the durations map, fail-closed to empty (a missing store paints no clock, never a crash). Called before the first build and before every rebuild; the rows never parse the store themselves.
+    private void refreshSearchDur90() {
+        try {
+            srchDurMap90 = Prefs.talkDurMap(this);
+        } catch (Exception ignored) {
+            srchDurMap90 = new java.util.LinkedHashMap<String, Integer>();
+        }
+        if (srchDurMap90 == null) srchDurMap90 = new java.util.LinkedHashMap<String, Integer>();
+    }
+
     private void showTalkSearch() {
         final android.widget.LinearLayout root29 = new android.widget.LinearLayout(MainActivity.this);
         root29.setOrientation(android.widget.LinearLayout.VERTICAL);
@@ -4051,21 +4213,18 @@ public class MainActivity extends Activity {
         empty29.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15);
         int top29 = (int) (12 * getResources().getDisplayMetrics().density + 0.5f);
         empty29.setPadding(0, top29, 0, 0);
-        final android.widget.ArrayAdapter<TalkIndex.Entry> ad29 = new android.widget.ArrayAdapter<TalkIndex.Entry>(MainActivity.this, android.R.layout.simple_list_item_2, android.R.id.text1, new java.util.ArrayList<TalkIndex.Entry>()) {
+        // the rows read the sounding snapshot, so fill it before the first build.
+        refreshSearchPlaying87();
+        // the rows read the favourite snapshot too, so fill it before the first build.
+        refreshSearchFav88();
+        // the rows read the listened snapshot too, so fill it before the first build.
+        refreshSearchPlayed89();
+        // the rows read the duration snapshot too, so fill it before the first build.
+        refreshSearchDur90();
+        final android.widget.ArrayAdapter<TalkIndex.Entry> ad29 = new android.widget.ArrayAdapter<TalkIndex.Entry>(MainActivity.this, 0, 0, new java.util.ArrayList<TalkIndex.Entry>()) {
             @Override public android.view.View getView(int pos, android.view.View cv, android.view.ViewGroup parent) {
-                android.view.View v29 = super.getView(pos, cv, parent);
-                TalkIndex.Entry e29 = getItem(pos);
-                android.widget.TextView t1 = (android.widget.TextView) v29.findViewById(android.R.id.text1);
-                android.widget.TextView t2 = (android.widget.TextView) v29.findViewById(android.R.id.text2);
-                if (t1 != null) {
-                    t1.setText(e29 == null || e29.title == null ? "" : e29.title);
-                    t1.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16);
-                }
-                if (t2 != null) {
-                    t2.setText(e29 == null || e29.sayadaw == null ? "" : e29.sayadaw);
-                    t2.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14);
-                }
-                return v29;
+                // v15.88 (slice 2186): the row is built in code now — the 2029 two-line row rendered title + sayadaw as bare text, so a hit read as a ledger line beside the photo-led rows everywhere else; the helper below builds the photo-led row (44dp face + title 16sp over sayadaw 14sp, the full-list row shape), so the constructor passes 0, 0 — no layout is ever inflated, and the recycled view is ignored (a recycled two-line view cannot host a photo row). The tap path is untouched — the same Intent, the same extras.
+                return searchRow29(getItem(pos));
             }
         };
         final android.widget.ListView lv29 = new android.widget.ListView(MainActivity.this);
@@ -4087,6 +4246,14 @@ public class MainActivity extends Activity {
             @Override public void afterTextChanged(android.text.Editable e) {
                 String qq29 = e.toString();
                 java.util.List<TalkIndex.Entry> res29 = TalkIndex.search(Prefs.talkIndexRaw(MainActivity.this), qq29);
+                // refill before the rebuild, so a talk change mid-dialog repaints the mark.
+                refreshSearchPlaying87();
+                // refill before the rebuild, so a star flipped elsewhere repaints too.
+                refreshSearchFav88();
+                // refill before the rebuild, so a tick flipped elsewhere repaints too.
+                refreshSearchPlayed89();
+                // refill before the rebuild, so a duration landing mid-dialog repaints too.
+                refreshSearchDur90();
                 ad29.clear();
                 if (res29 != null) for (TalkIndex.Entry r29 : res29) ad29.add(r29);
                 if (qq29.trim().length() == 0) {
