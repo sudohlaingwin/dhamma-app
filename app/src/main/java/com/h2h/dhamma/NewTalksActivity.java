@@ -88,6 +88,8 @@ public class NewTalksActivity extends Activity {
     private boolean newRowEnded = false;
     // v15.85 (slice 2169): the favourite-star snapshot for the rows (History v13.77) — newFavSet is the favTalks set copied once per refresh (never read per row per bind, the v1.59 rule); refreshed on refresh() and on the strip tick's change detector, so a star flipped from the notification card rebinds the rows here.
     private java.util.Set<String> newFavSet = new java.util.HashSet<String>();
+    // v15.86 (slice 2176): the total-duration snapshot for the rows — newDurCache is the per-talk total durations (Prefs.talkDurMap, one parse per refresh, never talkDurGet per row per bind, the v13.97 rule); refreshed on refresh() and on the strip tick's change detector, so a length landing while the list sits open rebinds the rows here.
+    private java.util.Map<String, Integer> newDurCache = new java.util.HashMap<String, Integer>();
     // v15.64 (slice 2045): search on this screen — the field, the
     // clear ✕, the live query and the keystroke flag (the
     // Downloaded dlSearchField / dlClearBtn / dlQuery /
@@ -286,6 +288,7 @@ public class NewTalksActivity extends Activity {
                 played, resumeKeys);
         refreshNewTalksPlayingMarks(); // v15.64 (slice 2043): mark right on first paint, not one tick late
         refreshNewFavSet(); // v15.85 (slice 2169): the star snapshot fresh on first paint, beside the playing marks
+        refreshNewDurCache(); // v15.86 (slice 2176): the duration snapshot fresh on first paint, beside the star snapshot
         applyNewSearch();
     }
 
@@ -654,6 +657,19 @@ public class NewTalksActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT));
         row.addView(col, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        // v15.86 (slice 2176): a new talk's total length clocks on the row's right edge — the chooser's 1094 clock, now on the last full-list screen without one (History rows clock heard time, not length; Bookmarks rows clock the mark minute; Favourites rows clock the resume spot — no New talks row ever said how long its talk runs). The clock reads newRowDurMs (the duration snapshot, refreshed on refresh() and on the strip tick's change detector), formatted by Fx.fmtTime ("42:15", "1:05:22" past the hour, the chooser's clock shape); the playing row clocks too (its length is a property of the talk, the 1094 rule — its live position is on the strip). Hidden when no duration was ever banked — GONE, never guessed, never "0:00". No Lang key, no Prefs write, no layout change — the row is built in code.
+        int newRowDur76 = newRowDurMs(e);
+        TextView newDur76 = new TextView(this);
+        newDur76.setText(newRowDur76 > 0 ? Fx.fmtTime(newRowDur76) : "");
+        newDur76.setTextColor(night ? android.graphics.Color.parseColor("#AAAAAA")
+                : android.graphics.Color.parseColor("#7A6A58"));
+        newDur76.setTextSize(12);
+        newDur76.setVisibility(newRowDur76 > 0 ? android.view.View.VISIBLE : android.view.View.GONE);
+        LinearLayout.LayoutParams newDurParams76 = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        newDurParams76.setMargins(0, 0, (int) (8 * d), 0);
+        newDur76.setLayoutParams(newDurParams76);
+        row.addView(newDur76);
         TextView go = new TextView(this);
         go.setText("\u203a");
         go.setTextColor(night ? android.graphics.Color.parseColor("#AAAAAA")
@@ -2242,6 +2258,20 @@ public class NewTalksActivity extends Activity {
                 && newFavSet.contains(stream);
     }
 
+    // v15.86 (slice 2176): the duration snapshot (the chooser 1094 clock shape) — newDurCacheNow parses the durations store once (Prefs.talkDurMap, the talkPosKeysOver shape); refreshNewDurCache adopts it; newRowDurMs resolves the row's stream URL through newStreamUrlFor (a downloaded path-form row claims its stream URL, the 2084 reverse lookup) and reads its length, falling back to the row's own URL for a downloaded row whose length was banked under its path form (talkDurPutBoth banks both forms, the v13.96 rule), so a new talk clocks exactly when its stream twin does. Null stream names no talk; an unknown length reads 0 — the clock hides, never guesses.
+    private java.util.Map<String, Integer> newDurCacheNow() { return Prefs.talkDurMap(this); }
+
+    private void refreshNewDurCache() { newDurCache = newDurCacheNow(); }
+
+    private int newRowDurMs(Prefs.HistEntry e) {
+        if (e == null || newDurCache == null) return 0;
+        Integer d76 = null;
+        String stream = newStreamUrlFor(e);
+        if (stream != null && stream.length() > 0) d76 = newDurCache.get(SiteHttp.identityUrl(stream));
+        if ((d76 == null || d76.intValue() <= 0) && e.url != null) d76 = newDurCache.get(e.url);
+        return d76 != null && d76.intValue() > 0 ? d76.intValue() : 0;
+    }
+
     private void refreshNewTalksPlayingMarks() {
         newPlayingUrl = "";
         newPlayingLibUrl = "";
@@ -2365,16 +2395,21 @@ public class NewTalksActivity extends Activity {
         // v15.85 (slice 2169): the star snapshot joins the change detector — a star
         // flipped from the notification card rebinds the rows here (History v13.77).
         java.util.Set<String> newFavNow69 = newFavSetNow();
+        // v15.86 (slice 2176): the duration snapshot joins the change detector — a length
+        // landing while the list sits open (a talk just prepared banks its duration) rebinds the rows here.
+        java.util.Map<String, Integer> newDurNow76 = newDurCacheNow();
         if (adapter != null && (!newPlayingUrl.equals(newRowPlayingUrl == null ? "" : newRowPlayingUrl)
                 || !newPlayingLibUrl.equals(newRowPlayingLibUrl == null ? "" : newRowPlayingLibUrl)
                 || !newPlayingLibPath.equals(newRowPlayingLibPath == null ? "" : newRowPlayingLibPath)
                 || AudioService.liveEnded != newRowEnded
-                || !newFavNow69.equals(newFavSet))) {
+                || !newFavNow69.equals(newFavSet)
+                || !newDurNow76.equals(newDurCache))) {
             newRowPlayingUrl = newPlayingUrl;
             newRowPlayingLibUrl = newPlayingLibUrl;
             newRowPlayingLibPath = newPlayingLibPath;
             newRowEnded = AudioService.liveEnded;
             newFavSet = newFavNow69;
+            newDurCache = newDurNow76;
             adapter.notifyDataSetChanged();
             // v15.67 (slice 2061): the sounding change above moves the playing talk (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button.
             refreshNewJumpTarget();

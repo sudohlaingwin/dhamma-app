@@ -84,6 +84,10 @@ public class PlaylistActivity extends Activity {
     private boolean plRowEnded = false;
     // v15.84 (slice 2166): the favourite-star snapshot for the detail rows (History v13.77) — plFavSet is the favTalks set copied once per refresh (never read per row per bind, the v1.59 rule); refreshed on detail open and on the strip tick's change detector, so a star flipped from the notification card rebinds the rows here.
     private java.util.Set<String> plFavSet = new java.util.HashSet<String>();
+    // v15.86 (slice 2174): the listened-tick snapshot for the detail rows — plPlayedSet is the playedTalks set copied once per refresh (never read per row per bind, the v1.59 rule); refreshed on detail open and on the strip tick's change detector, so a tick flipped from the notification card or the mark verb rebinds the rows here.
+    private java.util.Set<String> plPlayedSet = new java.util.HashSet<String>();
+    // v15.86 (slice 2175): the total-duration snapshot for the detail rows — plDurCache is the per-talk total durations (Prefs.talkDurMap, one parse per refresh, never talkDurGet per row per bind, the v13.97 rule); refreshed on detail open and on the strip tick's change detector, so a length landing while the list sits open rebinds the rows here.
+    private java.util.Map<String, Integer> plDurCache = new java.util.HashMap<String, Integer>();
     // v14.06 (F4, sixth pass slice 5): rotation-restore track for
     // the open new-list / delete-confirm dialogs - the dialog refs
     // (+ the live EditText) let onSaveInstanceState read what is
@@ -382,12 +386,16 @@ public class PlaylistActivity extends Activity {
 
     private View listRow(final int position) {
         String name = names.get(position);
-        int count = Prefs.playlistItems(this, name).size();
+        java.util.List<QueueEntry> items77 = Prefs.playlistItems(this, name);
+        int count = items77.size();
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout col = textRows(name,
-                count + " " + Lang.t(this, "pl_talks"));
+        // v15.86 (slice 2177): a list's total listening time joins its sub-line — "5 talks · 3:20:00" — the sum of the banked total lengths of the list's talks (plListTotalMs77, the 2175 resolver per talk, so a downloaded list talk counts exactly when its stream twin does), formatted by Fx.fmtTime, the detail rows' own clock language. The sub-line keeps exactly today's text when nothing in the list has a banked length — never "· 0:00", never guessed. No Lang key, no Prefs write, no layout change — the row is built in code.
+        String sub77 = count + " " + Lang.t(this, "pl_talks");
+        int total77 = plListTotalMs77(items77);
+        if (total77 > 0) sub77 += " · " + Fx.fmtTime(total77);
+        LinearLayout col = textRows(name, sub77);
         row.addView(col, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         TextView go = new TextView(this);
@@ -426,11 +434,25 @@ public class PlaylistActivity extends Activity {
                 && ((plPlayingUrl.length() > 0 && SiteHttp.sameTalk(qe.url, plPlayingUrl))
                         || (plPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(qe.url, plPlayingLibUrl)));
         // v15.84 (slice 2166): a favourited list talk says so — "★ " after the "▶ " playing mark when both apply (History v13.77), gold either way, so the mark reads at a glance. The star reads the plFavSet snapshot (refreshed on detail open and on the strip tick's change detector, the History shape), resolved through plShareUrlFor — a downloaded (path-form) row claims its stream URL through the dlMap reverse lookup, so it stars exactly when its stream twin does. No Lang key, no Prefs write, no layout change — the row is built in code.
+        // v15.86 (slice 2174): a finished list talk says so — "✓ " after the "★ " star when both apply (the library v4.24 order, play first, star second, tick third), gold either way; the tick reads the plPlayedSet snapshot (refreshed on detail open and on the strip tick's change detector), resolved through plShareUrlFor — a downloaded (path-form) row claims its stream URL through the dlMap reverse lookup, so it ticks exactly when its stream twin does. A row stopped early sits in the list but NOT in playedTalks (the 2142 mark verb offers Mark there), so the tick distinguishes finished from merely started. The playing row never ticks — its live position is on the strip, not a finished mark. No Lang key, no Prefs write, no layout change — the row is built in code.
         boolean plRowFav66 = plRowFav(qe);
-        LinearLayout col = textRows((plRowPlaying ? "▶ " : "") + (plRowFav66 ? "★ " : "") + title, qe.sayadaw, plRowPlaying || plRowFav66);
+        boolean plRowPlayed74 = !plRowPlaying && plRowPlayed(qe);
+        LinearLayout col = textRows((plRowPlaying ? "▶ " : "") + (plRowFav66 ? "★ " : "") + (plRowPlayed74 ? "✓ " : "") + title, qe.sayadaw, plRowPlaying || plRowFav66);
         col.setPadding(0, (int) (10 * d), (int) (12 * d), (int) (10 * d));
         row.addView(col, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        // v15.86 (slice 2175): a list talk's total length clocks on the row's right edge — the chooser's 1094 clock, now on the last full-list screen without one (History rows clock heard time, not length; Bookmarks rows clock the mark minute; Favourites rows clock the resume spot — no Playlist detail row ever said how long its talk runs). The clock reads plRowDurMs (the duration snapshot, refreshed on detail open and on the strip tick's change detector), formatted by Fx.fmtTime ("42:15", "1:05:22" past the hour, the chooser's clock shape); the playing row clocks too (its length is a property of the talk, the 1094 rule — its live position is on the strip). Hidden when no duration was ever banked — GONE, never guessed, never "0:00". No Lang key, no Prefs write, no layout change — the row is built in code.
+        int plRowDur75 = plRowDurMs(qe);
+        TextView plDur75 = new TextView(this);
+        plDur75.setText(plRowDur75 > 0 ? Fx.fmtTime(plRowDur75) : "");
+        plDur75.setTextColor(subColor());
+        plDur75.setTextSize(12);
+        plDur75.setVisibility(plRowDur75 > 0 ? android.view.View.VISIBLE : android.view.View.GONE);
+        LinearLayout.LayoutParams plDurParams75 = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        plDurParams75.setMargins(0, 0, (int) (8 * d), 0);
+        plDur75.setLayoutParams(plDurParams75);
+        row.addView(plDur75);
         Button del = new Button(this);
         del.setText("✕");
         del.setTextColor(0xFFFFFFFF);
@@ -530,6 +552,7 @@ public class PlaylistActivity extends Activity {
         paintPlJumpBtnFromList();
         // v15.74 (slice 2104): a return to the lists screen can land deep without a scroll event — repaint the top button from the new position too (the 2003 shape; the names list is a list too).
         paintPlTopBtnFromList();
+        refreshPlDurCache(); // v15.86 (slice 2177): the duration snapshot fresh on first paint of the lists screen too (the 2175 refresh lives in showDetail only), beside the rebind — the totals read the snapshot, never a per-row parse
         if (adapter != null) adapter.notifyDataSetChanged();
         refreshEmpty();
         plHeaderKnown40 = true;
@@ -569,6 +592,8 @@ public class PlaylistActivity extends Activity {
         Fx.crossfadeStripBtn(plDeleteBtn, true);
         refreshPlaylistPlayingMarks(); // v13.55: mark right on first paint, not one tick late
         refreshPlFavSet(); // v15.84 (slice 2166): the star snapshot fresh on first paint, beside the playing marks
+        refreshPlPlayedSet(); // v15.86 (slice 2174): the tick snapshot fresh on first paint, beside the star snapshot
+        refreshPlDurCache(); // v15.86 (slice 2175): the duration snapshot fresh on first paint, beside the tick snapshot
         // v15.74 (slice 2103): the open list's sounding row is the jump target — refresh it and repaint the button from the new position (the 2063 shape: a fresh detail open can land with the playing row off-screen).
         refreshPlJumpTarget();
         paintPlJumpBtnFromList();
@@ -1967,6 +1992,40 @@ public class PlaylistActivity extends Activity {
                 && plFavSet.contains(stream);
     }
 
+    // v15.86 (slice 2174): the listened-tick snapshot (the 2172 tick shape, verbatim) — plPlayedSetNow copies the playedTalks set (the SAME set the 2142 mark verb reads, so the tick and the menu label can never disagree); refreshPlPlayedSet adopts it; plRowPlayed resolves the row's stream URL through plShareUrlFor (a downloaded path-form row claims its stream URL, the 2116 reverse lookup) and tests membership, so a list talk ticks exactly when its stream twin does. Null stream names no talk. The identityUrl normalisation is this screen's own: plShareUrlFor returns the raw row URL where histStreamUrlFor normalises, so the test applies SiteHttp.identityUrl here — the same normalisation the 2142 mark verb applies (DlMark.isMarked over identityUrl), and playedTalks keys are identity form.
+    private java.util.Set<String> plPlayedSetNow() { return readPlayedTalksPl(); }
+
+    private void refreshPlPlayedSet() { plPlayedSet = plPlayedSetNow(); }
+
+    private boolean plRowPlayed(QueueEntry qe) {
+        if (qe == null) return false;
+        String stream = plShareUrlFor(qe);
+        return stream != null && stream.length() > 0 && plPlayedSet != null
+                && plPlayedSet.contains(SiteHttp.identityUrl(stream));
+    }
+
+    // v15.86 (slice 2175): the duration snapshot (the chooser 1094 clock shape) — plDurCacheNow parses the durations store once (Prefs.talkDurMap, the talkPosKeysOver shape); refreshPlDurCache adopts it; plRowDurMs resolves the row's stream URL through plShareUrlFor (a downloaded path-form row claims its stream URL, the 2116 reverse lookup) and reads its length, falling back to the row's own URL for a downloaded row whose length was banked under its path form (talkDurPutBoth banks both forms, the v13.96 rule), so a list talk clocks exactly when its stream twin does. Null stream names no talk; an unknown length reads 0 — the clock hides, never guesses.
+    private java.util.Map<String, Integer> plDurCacheNow() { return Prefs.talkDurMap(this); }
+
+    private void refreshPlDurCache() { plDurCache = plDurCacheNow(); }
+
+    private int plRowDurMs(QueueEntry qe) {
+        if (qe == null || plDurCache == null) return 0;
+        Integer d75 = null;
+        String stream = plShareUrlFor(qe);
+        if (stream != null && stream.length() > 0) d75 = plDurCache.get(SiteHttp.identityUrl(stream));
+        if ((d75 == null || d75.intValue() <= 0) && qe.url != null) d75 = plDurCache.get(qe.url);
+        return d75 != null && d75.intValue() > 0 ? d75.intValue() : 0;
+    }
+
+    // v15.86 (slice 2177): the lists-row total — plListTotalMs77 sums the banked total lengths of one list's talks through plRowDurMs (the 2175 resolver, stream leg then path leg, so a downloaded list talk counts exactly when its stream twin does); a talk with no banked length contributes 0, never a guess. 0 means "nothing banked in this list" and the row keeps exactly today's sub-line. The list is passed in (listRow already fetched it for the count) so the total costs no second store read; the snapshot is parsed once per refresh, never per row per bind (the v13.97 rule).
+    private int plListTotalMs77(java.util.List<QueueEntry> items77) {
+        if (items77 == null || plDurCache == null) return 0;
+        int sum77 = 0;
+        for (int i77 = 0; i77 < items77.size(); i77++) sum77 += plRowDurMs(items77.get(i77));
+        return sum77;
+    }
+
     private void refreshPlaylistPlayingMarks() {
         plPlayingUrl = "";
         plPlayingLibUrl = "";
@@ -2088,14 +2147,24 @@ public class PlaylistActivity extends Activity {
         // v15.84 (slice 2166): the star snapshot joins the change detector — a star
         // flipped from the notification card rebinds the rows here (History v13.77).
         java.util.Set<String> plFavNow66 = plFavSetNow();
+        // v15.86 (slice 2174): the tick snapshot joins the change detector — a tick
+        // flipped from the notification card or the mark verb rebinds the rows here.
+        java.util.Set<String> plPlayedNow74 = plPlayedSetNow();
+        // v15.86 (slice 2175): the duration snapshot joins the change detector — a length
+        // landing while the list sits open (a talk just prepared banks its duration) rebinds the rows here.
+        java.util.Map<String, Integer> plDurNow75 = plDurCacheNow();
         if (adapter != null && (!plPlayingUrl.equals(plRowPlayingUrl == null ? "" : plRowPlayingUrl)
                 || !plPlayingLibUrl.equals(plRowPlayingLibUrl == null ? "" : plRowPlayingLibUrl)
                 || AudioService.liveEnded != plRowEnded
-                || !plFavNow66.equals(plFavSet))) {
+                || !plFavNow66.equals(plFavSet)
+                || !plPlayedNow74.equals(plPlayedSet)
+                || !plDurNow75.equals(plDurCache))) {
             plRowPlayingUrl = plPlayingUrl;
             plRowPlayingLibUrl = plPlayingLibUrl;
             plRowEnded = AudioService.liveEnded;
             plFavSet = plFavNow66;
+            plPlayedSet = plPlayedNow74;
+            plDurCache = plDurNow75;
             adapter.notifyDataSetChanged();
             // v15.74 (slice 2103): the sounding change above moves the playing talk (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button.
             refreshPlJumpTarget();

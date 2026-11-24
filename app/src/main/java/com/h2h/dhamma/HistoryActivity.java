@@ -96,6 +96,8 @@ public class HistoryActivity extends Activity {
     private java.util.Set<String> histFavSet = new java.util.HashSet<String>();
     // v15.85 (slice 2172): the listened-tick snapshot for the rows — histPlayedSet is the playedTalks set copied once per refresh (never read per row per bind, the v1.59 rule); refreshed on refresh() and on the 1s tick's change detector, so a tick flipped from the notification card or the mark verb rebinds the rows here.
     private java.util.Set<String> histPlayedSet = new java.util.HashSet<String>();
+    // v15.86 (slice 2178): the total-length snapshot for the rows — histDurCache is the banked talk lengths (Prefs.talkDurMap, one parse per refresh, never talkDurGet per row per bind, the v13.97 rule); refreshed on refresh() and on the 1s tick's change detector, so a length landing while the list sits open rebinds the rows here.
+    private java.util.Map<String, Integer> histDurCache = new java.util.HashMap<String, Integer>();
     // v15.62 (slice 2030): "Play from here" debounce — its own
     // clock (the chooser's 700ms rule, v12.28: an invalid tap
     // never consumes the window).
@@ -598,6 +600,7 @@ public class HistoryActivity extends Activity {
         hsAllItems = Prefs.statsRecent(this);
         refreshHistFavSet(); // v13.77: rows bind their star mark from this snapshot
         refreshHistPlayedSet(); // v15.85 (slice 2172): the tick snapshot fresh on first paint, beside the star snapshot
+        refreshHistDurCache(); // v15.86 (slice 2178): the duration snapshot fresh on first paint, beside the tick snapshot — the clocks read the snapshot, never a per-row parse
         if (totalValue != null) {
             meltStat40(totalValue, fmtDur(total));
             totalValue.setTextColor(goldColor());
@@ -725,6 +728,18 @@ public class HistoryActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT));
         row.addView(col, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        // v15.86 (slice 2178): the talk's total length clocks on the row's right edge — "42:15", "1:05:22" past the hour — so a listener can judge "how long is this talk" without opening it; the sub-line already says how LONG it was heard (2163 fmtDur) and WHEN (2163 day stamp), but never the total. The clock reads the histDurCache snapshot (one parse per refresh, never talkDurGet per row per bind, the v13.97 rule), resolved through the pre-existing histStreamUrlFor — a URL-form row reads its own stream URL (identityUrl-normalised), a downloaded (path-form) row falls back to its own URL for a length banked under its path form (talkDurPutBoth banks both forms, the v13.96 rule), so it clocks exactly when its stream twin does. The clock is a muted 12sp TextView (subColor — the chevron's own muted colour) between the text column and the "›" chevron, with an 8dp right margin. The playing row clocks too (its length is a property of the talk, the 1094 rule — its live position is on the strip, not the clock). Hidden when no duration was ever banked — GONE, never guessed, never "0:00" — so a row with no banked length keeps exactly today's layout. No Lang key, no Prefs write, no layout change — the row is built in code.
+        int hsRowDur78 = histRowDurMs(e);
+        TextView hsDur78 = new TextView(this);
+        hsDur78.setText(hsRowDur78 > 0 ? Fx.fmtTime(hsRowDur78) : "");
+        hsDur78.setTextColor(subColor());
+        hsDur78.setTextSize(12);
+        hsDur78.setVisibility(hsRowDur78 > 0 ? android.view.View.VISIBLE : android.view.View.GONE);
+        LinearLayout.LayoutParams hsDurParams78 = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        hsDurParams78.setMargins(0, 0, (int) (8 * d), 0);
+        hsDur78.setLayoutParams(hsDurParams78);
+        row.addView(hsDur78);
         TextView go = new TextView(this);
         go.setText("›");
         go.setTextColor(subColor());
@@ -1546,6 +1561,20 @@ public class HistoryActivity extends Activity {
                 && histPlayedSet.contains(stream);
     }
 
+    // v15.86 (slice 2178): the total-length clock's snapshot + resolver (the 2175 Playlist detail shape, verbatim) — histDurCacheNow copies the banked lengths (Prefs.talkDurMap, the SAME store the 2172 tick reads for finished talks, so the clock and the tick can never disagree about which talk a row is); refreshHistDurCache adopts it; histRowDurMs resolves the row's stream URL through histStreamUrlFor (a downloaded path-form row claims its stream URL, the 2084 exactly-one-claimant resolve) and reads its length, falling back to the row's own URL for a length banked under its path form (talkDurPutBoth banks both forms, the v13.96 rule). Null stream names no talk; an unknown length reads 0 and the view hides.
+    private java.util.Map<String, Integer> histDurCacheNow() { return Prefs.talkDurMap(this); }
+
+    private void refreshHistDurCache() { histDurCache = histDurCacheNow(); }
+
+    private int histRowDurMs(Prefs.HistEntry e) {
+        if (e == null || histDurCache == null) return 0;
+        Integer d78 = null;
+        String stream = histStreamUrlFor(e);
+        if (stream != null && stream.length() > 0) d78 = histDurCache.get(SiteHttp.identityUrl(stream));
+        if ((d78 == null || d78.intValue() <= 0) && e.url != null) d78 = histDurCache.get(e.url);
+        return d78 != null && d78.intValue() > 0 ? d78.intValue() : 0;
+    }
+
     // v13.77: Talks isTalkDownloaded, History-local — the dlMap
     // mapped file with the v13.66 length gate (a 0-byte file is not
     // downloaded), plus the plain basename leg for files the app
@@ -2362,18 +2391,22 @@ public class HistoryActivity extends Activity {
         // v15.85 (slice 2172): the tick snapshot joins the change detector — a tick
         // flipped from the notification card or the mark verb rebinds the rows here.
         java.util.Set<String> hsPlayedNow72 = histPlayedSetNow();
+        // v15.86 (slice 2178): the duration snapshot joins the change detector — a length landing while the list sits open rebinds the rows here (the 2172 tick leg, verbatim).
+        java.util.Map<String, Integer> hsDurNow78 = histDurCacheNow();
         if (adapter != null && (!histPlayingUrl.equals(histRowPlayingUrl == null ? "" : histRowPlayingUrl)
                 || !histPlayingLibUrl.equals(histRowPlayingLibUrl == null ? "" : histRowPlayingLibUrl)
                 || !histPlayingLibPath.equals(histRowPlayingLibPath == null ? "" : histRowPlayingLibPath)
                 || AudioService.liveEnded != histRowEnded
                 || !hsFavNow77.equals(histFavSet)
-                || !hsPlayedNow72.equals(histPlayedSet))) {
+                || !hsPlayedNow72.equals(histPlayedSet)
+                || !hsDurNow78.equals(histDurCache))) {
             histRowPlayingUrl = histPlayingUrl;
             histRowPlayingLibUrl = histPlayingLibUrl;
             histRowPlayingLibPath = histPlayingLibPath;
             histRowEnded = AudioService.liveEnded;
             histFavSet = hsFavNow77;
             histPlayedSet = hsPlayedNow72;
+            histDurCache = hsDurNow78;
             adapter.notifyDataSetChanged();
             // v15.67 (slice 2063): the sounding change above moves the playing talk (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button.
             refreshHsJumpTarget();
