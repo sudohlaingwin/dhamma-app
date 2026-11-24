@@ -5425,6 +5425,25 @@ public class MainActivity extends Activity {
         return RailHair.fraction(rp20, durI20 == null ? 0 : durI20.intValue());
     }
 
+    // v15.87 (slice 2180): the Recently-played card's total-duration resolver — the 2175 plRowDurMs shape for a rail card: the duration snapshot (dur20, Prefs.talkDurMap, one parse per refresh) is passed in, never re-parsed per card (the v5.69 rule); the stream leg first (identityUrl-normalised), then the downloaded path leg through DlLanded (talkDurPutBoth banks both forms, the v13.96 rule), so a card clocks exactly when its stream twin does. Null row or null map reads 0; an unknown length reads 0 — the clock hides, never guesses.
+    private int recentRowDurMs80(java.util.Map<String, Integer> dur20, Prefs.HistEntry e) {
+        if (e == null || e.url == null || dur20 == null) return 0;
+        Integer d80 = dur20.get(e.url);
+        if (d80 == null || d80.intValue() <= 0) {
+            String id80 = SiteHttp.identityUrl(e.url);
+            if (id80 != null) d80 = dur20.get(id80);
+        }
+        if (d80 == null || d80.intValue() <= 0) {
+            String fn80 = DlLanded.downloadedFileName(MainActivity.this, e.url, null, null);
+            if (fn80 != null) {
+                String path80 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + fn80).getAbsolutePath();
+                d80 = dur20.get(path80);
+            }
+        }
+        return d80 != null && d80.intValue() > 0 ? d80.intValue() : 0;
+    }
+
     // v15.61 (slice 2023): the "Recently played" rail card's downloaded badge — the shared DlLanded definition (v13.69), the exact call the file-share offer on the same card makes (slice 2006, DlLanded.downloadedFileName with the null,null legs), so the badge and the offer can never disagree: a card shows ⬇ exactly when its menu offers the file share. No sounding gate needed — the caller picks through RecentRail.pick, which already excludes the sounding talk. The (null,null) legs are the menu's reading, not the Talks-row caches' full live-job exclusion: a mid-download partial file reads as landed, so a card can show ⬇ for a few seconds while its file is still arriving, exactly as the file-share verb already offers it. Cost is bounded: at most 5 cards, only on a rebuild (the key gate), one small dlMap JSON parse per card — the v5.69 distinction (a bounded 5-card rail, not an unbounded list).
     private boolean recentDlBadge23(Prefs.HistEntry e) {
         if (e == null || e.url == null) return false;
@@ -5487,7 +5506,8 @@ public class MainActivity extends Activity {
         kb.append(cachedNight ? "N" : "D");
         // v15.60 (slice 2020): the key carries the painted fraction, not just the URL — a resume spot moves while a talk plays, and the rail repaints only when this key moves, so a spot-only change (same five talks, one heard further, back on Main) must move the key or the line would freeze at its first paint. The fraction is the card's own helper, so key and paint can never disagree; Float.toString is deterministic for the same value, so equal fractions never repaint.
         // v15.61 (slice 2023): the key carries the downloaded badge bit beside the painted fraction — a download landing while Main sits open must move the key or the rail would freeze the card at its first paint (the 2020 lesson). The bit is the card's own helper, so key and paint can never disagree; a badge flip moves the key even when the fraction cannot.
-        for (Prefs.HistEntry e : picked) kb.append('|').append(SiteHttp.identityUrl(e.url)).append(':').append(recentHairFrac20(pos20, dur20, e)).append(':').append(recentDlBadge23(e) ? '1' : '0');
+        // v15.87 (slice 2180): the key carries the painted clock, beside the fraction and the badge bit — a duration landing while Main sits open must move the key or the card would freeze clockless at its first paint (the 2020 lesson). The value is the card's own helper, so key and paint can never disagree.
+        for (Prefs.HistEntry e : picked) kb.append('|').append(SiteHttp.identityUrl(e.url)).append(':').append(recentHairFrac20(pos20, dur20, e)).append(':').append(recentDlBadge23(e) ? '1' : '0').append(':').append(recentRowDurMs80(dur20, e));
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (recentRailWrap.getVisibility() != android.view.View.GONE)
@@ -5551,6 +5571,18 @@ public class MainActivity extends Activity {
             title.setEllipsize(android.text.TextUtils.TruncateAt.END);
             col.addView(title);
             row20.addView(col);
+            // v15.87 (slice 2180): a just-heard talk's total length clocks at the right edge of the photo+text row — the 2175 Playlist detail clock, now on the first Main rail card (the card showed the sayadaw, the title, the downloaded badge and the listened-progress hairline, but never how long the talk runs). The clock reads recentRowDurMs80 (the duration snapshot, one parse per refresh, the same 3-leg resolve as the hairline below), formatted by Fx.fmtTime ("42:15", "1:05:22" past the hour); no playing gate is needed — RecentRail.pick already excludes the sounding talk. Hidden when no duration was ever banked — GONE, never guessed, never "0:00". No Lang key, no Prefs write, no layout change — the card is built in code.
+            int recentDur80 = recentRowDurMs80(dur20, e);
+            android.widget.TextView recentDurClock80 = new android.widget.TextView(this);
+            recentDurClock80.setText(recentDur80 > 0 ? Fx.fmtTime(recentDur80) : "");
+            recentDurClock80.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
+            recentDurClock80.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
+            recentDurClock80.setVisibility(recentDur80 > 0 ? android.view.View.VISIBLE : android.view.View.GONE);
+            android.widget.LinearLayout.LayoutParams recentDurParams80 = new android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+            recentDurParams80.setMargins((int) (8 * d), 0, 0, 0);
+            recentDurClock80.setLayoutParams(recentDurParams80);
+            row20.addView(recentDurClock80);
             card.addView(row20);
             // v15.60 (slice 2020): the hairline — the row_talk.xml line in code: 3dp tall, 4dp below the row, faint-gold track (#33C9A227) with a solid-gold fill (#C9A227, @color/gold) split by weight, weightSum 1. GONE unless a fraction was set; Fx.crossfadeHairline (v15.25) owns the show/hide — on these freshly built cards it seeds instantly (no recorded state yet), so no melt ever plays here, and a rebuild repaints from scratch like the rest of the card. The fraction is recentHairFrac20 below (the key block above already called it for the change gate, so key and paint agree). No download-progress override here — the 1928 override stays a Talks-row behaviour; the rail repaints only on a real change, so a download's 1s ticks never reach it.
             float hairFrac20 = recentHairFrac20(pos20, dur20, e);
@@ -5840,6 +5872,25 @@ public class MainActivity extends Activity {
         return RailHair.fraction(rp21, durI21 == null ? 0 : durI21.intValue());
     }
 
+    // v15.87 (slice 2181): the Downloaded card's total-duration resolver — the 2175 plRowDurMs shape for a rail card: the duration snapshot (dur21, Prefs.talkDurMap, one parse per refresh) is passed in, never re-parsed per card (the v5.69 rule); the stream leg first (identityUrl-normalised), then the downloaded path leg through DlLanded (talkDurPutBoth banks both forms, the v13.96 rule), so a card clocks exactly when its stream twin does. The path leg is the common case here — the rail's entries are dlMap-claimed finished .mp3s — but the stream leg stays first. Null row or null map reads 0; an unknown length reads 0 — the clock hides, never guesses.
+    private int dlRowDurMs81(java.util.Map<String, Integer> dur21, Prefs.HistEntry e) {
+        if (e == null || e.url == null || dur21 == null) return 0;
+        Integer d81 = dur21.get(e.url);
+        if (d81 == null || d81.intValue() <= 0) {
+            String id81 = SiteHttp.identityUrl(e.url);
+            if (id81 != null) d81 = dur21.get(id81);
+        }
+        if (d81 == null || d81.intValue() <= 0) {
+            String fn81 = DlLanded.downloadedFileName(MainActivity.this, e.url, null, null);
+            if (fn81 != null) {
+                String path81 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + fn81).getAbsolutePath();
+                d81 = dur21.get(path81);
+            }
+        }
+        return d81 != null && d81.intValue() > 0 ? d81.intValue() : 0;
+    }
+
     // v15.81 (slice 2146): "Mark as listened / Unmark as listened" — the mark verb the Downloaded rail menu lacked that the New talks rail has had since v15.59 (slice 2017), the Downloaded library row menu since v15.47 (slice 1949), the Talks chooser since v15.51 (slice 1969), the Room drawer dialogs since v15.52 (slices 1978/1979) and the History / Favourites / Bookmarks / Playlist detail row menus since v15.80 (slices 2138-2142): a just-downloaded talk could only earn or lose its listened mark by playing it to the end or opening the library — and a Downloaded card is exactly where both legs are live, because the rail is a projection of finished downloads, not filtered by played state: a talk heard to the end sits marked (offers Unmark — it returns to the New talks rail), one downloaded but only partly heard sits unmarked (offers Mark). Same verb through the same rules, so the surfaces can never disagree: the 1949 pure core (DlMark — canOffer / labelKey / isMarked / mark / unmark, inputs never mutated), the v11.14 tap-time sounding re-check over the live session URL (the dialog can sit open across an auto-advance, so this talk can BE sounding by tap time — it earns its mark by finishing, never by this verb; the toast is queue_changed, the 1969 shape), the prefs-fresh playedTalks read at tap time, and the mark landing in the SAME playedTalks key AudioService banks on finish and the library, the rails, the header new-count and the filters all read. No refresh and no repaint on this rail: the card renders no listened tick (only the photo + the title + the downloaded badge + the listened-progress hairline, none of which reads playedTalks), so nothing here rebinds from it — the visible effect is the menu label flipping mark<->unmark on the next open, the verb toast, and the propagation (the New talks rail card drops/reappears + the header new-count moves, on Main itself; refreshNewTalkRail + the 1926 dot-set block + refreshFavNewRow below, the 2017 shape). Neither the history REC line, the lifetime totals, the queue, the shelf order, the star itself nor any saved resume position is mutated.
     private void markListenedRail88(final Prefs.HistEntry e, final boolean unmark) {
         if (e == null || e.url == null || e.url.length() == 0) return;
@@ -5896,7 +5947,8 @@ public class MainActivity extends Activity {
         StringBuilder kb = new StringBuilder();
         kb.append(cachedNight ? "N" : "D");
         // v15.60 (slice 2021): the key carries the painted fraction, not just the URL — a resume spot moves while a talk plays, and the rail repaints only when this key moves, so a spot-only change (same five talks, one heard further, back on Main) must move the key or the line would freeze at its first paint. The fraction is the card's own helper, so key and paint can never disagree; Float.toString is deterministic for the same value, so equal fractions never repaint.
-        for (Prefs.HistEntry e : picked) kb.append('|').append(SiteHttp.identityUrl(e.url)).append(':').append(dlRecentHairFrac21(pos21, dur21, e));
+        // v15.87 (slice 2181): the key carries the painted clock, beside the fraction — a duration landing while Main sits open must move the key or the card would freeze clockless at its first paint (the 2021 lesson). The value is the card's own helper, so key and paint can never disagree. No badge bit on this rail — every card here IS downloaded, so there is no badge to carry.
+        for (Prefs.HistEntry e : picked) kb.append('|').append(SiteHttp.identityUrl(e.url)).append(':').append(dlRecentHairFrac21(pos21, dur21, e)).append(':').append(dlRowDurMs81(dur21, e));
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (dlRecentRailWrap.getVisibility() != android.view.View.GONE)
@@ -5959,6 +6011,18 @@ public class MainActivity extends Activity {
             title.setEllipsize(android.text.TextUtils.TruncateAt.END);
             col.addView(title);
             row21.addView(col);
+            // v15.87 (slice 2181): a just-downloaded talk's total length clocks at the right edge of the photo+text row — the 2175 Playlist detail clock, now on the second Main rail card (the card showed the sayadaw, the title and the listened-progress hairline, but never how long the talk runs). The clock reads dlRowDurMs81 (the duration snapshot, one parse per refresh, the same 3-leg resolve as the hairline below), formatted by Fx.fmtTime ("42:15", "1:05:22" past the hour); no playing gate is needed — DlRecentRail.pick already excludes the sounding talk. Hidden when no duration was ever banked — GONE, never guessed, never "0:00". No Lang key, no Prefs write, no layout change — the card is built in code.
+            int dlDur81 = dlRowDurMs81(dur21, e);
+            android.widget.TextView dlDurClock81 = new android.widget.TextView(this);
+            dlDurClock81.setText(dlDur81 > 0 ? Fx.fmtTime(dlDur81) : "");
+            dlDurClock81.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
+            dlDurClock81.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
+            dlDurClock81.setVisibility(dlDur81 > 0 ? android.view.View.VISIBLE : android.view.View.GONE);
+            android.widget.LinearLayout.LayoutParams dlDurParams81 = new android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+            dlDurParams81.setMargins((int) (8 * d), 0, 0, 0);
+            dlDurClock81.setLayoutParams(dlDurParams81);
+            row21.addView(dlDurClock81);
             card.addView(row21);
             // v15.60 (slice 2021): the hairline — the row_talk.xml line in code: 3dp tall, 4dp below the row, faint-gold track (#33C9A227) with a solid-gold fill (#C9A227, @color/gold) split by weight, weightSum 1. GONE unless a fraction was set; Fx.crossfadeHairline (v15.25) owns the show/hide — on these freshly built cards it seeds instantly (no recorded state yet), so no melt ever plays here, and a rebuild repaints from scratch like the rest of the card. The fraction is dlRecentHairFrac21 below (the key block above already called it for the change gate, so key and paint agree). No download-progress override here — the 1928 override stays a Talks-row behaviour; the rail repaints only on a real change, so a download's 1s ticks never reach it.
             float hairFrac21 = dlRecentHairFrac21(pos21, dur21, e);
@@ -6205,6 +6269,25 @@ public class MainActivity extends Activity {
         return RailHair.fraction(rp27, durI27 == null ? 0 : durI27.intValue());
     }
 
+    // v15.87 (slice 2182): the Bookmarks card's total-duration resolver — the 2175 plRowDurMs shape for a rail card: the duration snapshot (dur27, Prefs.talkDurMap, one parse per refresh) is passed in, never re-parsed per card (the v5.69 rule); the stream leg first (identityUrl-normalised), then the downloaded path leg through DlLanded (talkDurPutBoth banks both forms, the v13.96 rule), so a card clocks exactly when its stream twin does. The path leg is not the common case here — the rail's entries are bookmarked talks, only some of them downloaded — but the stream leg stays first. Null row or null map reads 0; an unknown length reads 0 — the clock hides, never guesses.
+    private int bmRowDurMs82(java.util.Map<String, Integer> dur27, Prefs.HistEntry e) {
+        if (e == null || e.url == null || dur27 == null) return 0;
+        Integer d82 = dur27.get(e.url);
+        if (d82 == null || d82.intValue() <= 0) {
+            String id82 = SiteHttp.identityUrl(e.url);
+            if (id82 != null) d82 = dur27.get(id82);
+        }
+        if (d82 == null || d82.intValue() <= 0) {
+            String fn82 = DlLanded.downloadedFileName(MainActivity.this, e.url, null, null);
+            if (fn82 != null) {
+                String path82 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + fn82).getAbsolutePath();
+                d82 = dur27.get(path82);
+            }
+        }
+        return d82 != null && d82.intValue() > 0 ? d82.intValue() : 0;
+    }
+
     private boolean bmDlBadge26(Prefs.HistEntry e) {
         if (e == null || e.url == null) return false;
         return DlLanded.downloadedFileName(MainActivity.this, e.url, null, null) != null;
@@ -6266,7 +6349,8 @@ public class MainActivity extends Activity {
         java.util.Map<String, Integer> dur27 = Prefs.talkDurMap(this);
         // v15.61 (slice 2026): the key carries the downloaded badge bit beside the mark minute — a download landing while Main sits open must move the key or the rail would freeze the card at its first paint (the 2020 lesson). The bit is the card's own helper, so key and paint can never disagree; a badge flip moves the key even when the identity and the mark minute cannot. The key already carried identity + mark minute; the bit rides after the minute.
         // v15.61 (slice 2027): the key carries the painted fraction between the mark minute and the badge bit — the card's title renders the mark minute ("12:34 · title"), so the key must keep c.posMs or a mark-only change would not repaint; and a resume spot moves while a talk plays, so the fraction must ride too or a spot-only change would freeze the line at its first paint (the 2020 lesson). The fraction is the card's own helper, so key and paint can never disagree; Float.toString is deterministic for the same value, so equal fractions never repaint.
-        for (BmRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(c.posMs).append(':').append(bmHairFrac27(pos27, dur27, c.e)).append(':').append(bmDlBadge26(c.e) ? '1' : '0');
+        // v15.87 (slice 2182): the key carries the painted clock, after the badge bit — a duration landing while Main sits open must move the key or the card would freeze clockless at its first paint (the 2027 lesson). The value is the card's own helper, so key and paint can never disagree. The clock rides after the badge bit, beside the fraction.
+        for (BmRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(c.posMs).append(':').append(bmHairFrac27(pos27, dur27, c.e)).append(':').append(bmDlBadge26(c.e) ? '1' : '0').append(':').append(bmRowDurMs82(dur27, c.e));
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (bmRailWrap.getVisibility() != android.view.View.GONE)
@@ -6330,6 +6414,18 @@ public class MainActivity extends Activity {
             title.setEllipsize(android.text.TextUtils.TruncateAt.END);
             col.addView(title);
             row27.addView(col);
+            // v15.87 (slice 2182): a marked talk's total length clocks at the right edge of the photo+text row — the 2175 Playlist detail clock, now on the third Main rail card (the card showed the sayadaw, the mark minute, the downloaded badge and the listened-progress hairline, but never how long the talk runs). The clock reads bmRowDurMs82 (the duration snapshot, one parse per refresh, the same 3-leg resolve as the hairline below), formatted by Fx.fmtTime ("42:15", "1:05:22" past the hour); no playing gate is needed — BmRail.pick already excludes the sounding talk. Hidden when no duration was ever banked — GONE, never guessed, never "0:00". No Lang key, no Prefs write, no layout change — the card is built in code.
+            int bmDur82 = bmRowDurMs82(dur27, c.e);
+            android.widget.TextView bmDurClock82 = new android.widget.TextView(this);
+            bmDurClock82.setText(bmDur82 > 0 ? Fx.fmtTime(bmDur82) : "");
+            bmDurClock82.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
+            bmDurClock82.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
+            bmDurClock82.setVisibility(bmDur82 > 0 ? android.view.View.VISIBLE : android.view.View.GONE);
+            android.widget.LinearLayout.LayoutParams bmDurParams82 = new android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+            bmDurParams82.setMargins((int) (8 * d), 0, 0, 0);
+            bmDurClock82.setLayoutParams(bmDurParams82);
+            row27.addView(bmDurClock82);
             card.addView(row27);
             // v15.61 (slice 2027): the hairline — the row_talk.xml line in code: 3dp tall, 4dp below the row, faint-gold track (#33C9A227) with a solid-gold fill (#C9A227, @color/gold) split by weight, weightSum 1. GONE unless a fraction was set; Fx.crossfadeHairline (v15.25) owns the show/hide — on these freshly built cards it seeds instantly (no recorded state yet), so no melt ever plays here, and a rebuild repaints from scratch like the rest of the card. The fraction is bmHairFrac27 above (the key block above already called it for the change gate, so key and paint agree). No download-progress override here — the 1928 override stays a Talks-row behaviour; the rail repaints only on a real change, so a download's 1s ticks never reach it.
             float hairFrac27 = bmHairFrac27(pos27, dur27, c.e);
@@ -6700,6 +6796,25 @@ public class MainActivity extends Activity {
         return RailHair.fraction(rp22, durI22 == null ? 0 : durI22.intValue());
     }
 
+    // v15.87 (slice 2183): the Favourite-talks card's total-duration resolver — the 2175 plRowDurMs shape for a rail card: the duration snapshot (dur22, Prefs.talkDurMap, one parse per refresh) is passed in, never re-parsed per card (the v5.69 rule); the stream leg first (identityUrl-normalised), then the downloaded path leg through DlLanded (talkDurPutBoth banks both forms, the v13.96 rule), so a card clocks exactly when its stream twin does. The path leg is not the common case here — the rail's entries are starred talks, only some of them downloaded — but the stream leg stays first. Null row or null map reads 0; an unknown length reads 0 — the clock hides, never guesses.
+    private int favRowDurMs83(java.util.Map<String, Integer> dur22, Prefs.HistEntry e) {
+        if (e == null || e.url == null || dur22 == null) return 0;
+        Integer d83 = dur22.get(e.url);
+        if (d83 == null || d83.intValue() <= 0) {
+            String id83 = SiteHttp.identityUrl(e.url);
+            if (id83 != null) d83 = dur22.get(id83);
+        }
+        if (d83 == null || d83.intValue() <= 0) {
+            String fn83 = DlLanded.downloadedFileName(MainActivity.this, e.url, null, null);
+            if (fn83 != null) {
+                String path83 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + fn83).getAbsolutePath();
+                d83 = dur22.get(path83);
+            }
+        }
+        return d83 != null && d83.intValue() > 0 ? d83.intValue() : 0;
+    }
+
     // v15.61 (slice 2025): the "Favourite talks" rail card's downloaded badge — the shared DlLanded definition (v13.69), the exact call the file-share offer on the same card makes (slice 2009, DlLanded.downloadedFileName with the null,null legs), so the badge and the offer can never disagree: a card shows ⬇ exactly when its menu offers the file share. No sounding gate needed — the caller picks through FavTalkRail.pick, which already excludes the sounding talk (the 1964 gate). The (null,null) legs are the menu's reading, not the Talks-row caches' full live-job exclusion: a mid-download partial file reads as landed, so a card can show ⬇ for a few seconds while its file is still arriving, exactly as the file-share verb already offers it. Cost is bounded: at most 5 cards, only on a rebuild (the key gate), one small dlMap JSON parse per card — the v5.69 distinction (a bounded 5-card rail, not an unbounded list).
     private boolean favDlBadge25(Prefs.HistEntry e) {
         if (e == null || e.url == null) return false;
@@ -6762,7 +6877,8 @@ public class MainActivity extends Activity {
         kb.append(cachedNight ? "N" : "D");
         // v15.60 (slice 2022): the key carries the painted fraction as well as the saved spot — the card's title renders the saved spot ("↺ 12:34 · title"), so the key must keep c.posMs or a spot-only title change would not repaint; and a resume spot moves while a talk plays, so the fraction must ride too or a spot-only change would freeze the line at its first paint (the 2020 lesson). The fraction is the card's own helper, so key and paint can never disagree; Float.toString is deterministic for the same value, so equal fractions never repaint.
         // v15.61 (slice 2025): the key carries the downloaded badge bit beside the painted fraction — a download landing while Main sits open must move the key or the rail would freeze the card at its first paint (the 2020 lesson). The bit is the card's own helper, so key and paint can never disagree; a badge flip moves the key even when the identity, the saved spot and the fraction cannot. The 2022 key already carried identity + saved spot + fraction; the bit rides after the fraction.
-        for (FavTalkRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(c.posMs).append(':').append(favTalkHairFrac22(pos22, dur22, c.e)).append(':').append(favDlBadge25(c.e) ? '1' : '0');
+        // v15.87 (slice 2183): the key carries the painted clock, after the badge bit — a duration landing while Main sits open must move the key or the card would freeze clockless at its first paint (the 2022 lesson). The value is the card's own helper, so key and paint can never disagree. The clock rides after the badge bit, beside the fraction.
+        for (FavTalkRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(c.posMs).append(':').append(favTalkHairFrac22(pos22, dur22, c.e)).append(':').append(favDlBadge25(c.e) ? '1' : '0').append(':').append(favRowDurMs83(dur22, c.e));
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (favTalkRailWrap.getVisibility() != android.view.View.GONE)
@@ -6826,6 +6942,18 @@ public class MainActivity extends Activity {
             title.setEllipsize(android.text.TextUtils.TruncateAt.END);
             col.addView(title);
             row22.addView(col);
+            // v15.87 (slice 2183): a starred talk's total length clocks at the right edge of the photo+text row — the 2175 Playlist detail clock, now on the fourth Main rail card (the card showed the sayadaw, the saved spot, the downloaded badge and the listened-progress hairline, but never how long the talk runs). The clock reads favRowDurMs83 (the duration snapshot, one parse per refresh, the same 3-leg resolve as the hairline below), formatted by Fx.fmtTime ("42:15", "1:05:22" past the hour); no playing gate is needed — FavTalkRail.pick already excludes the sounding talk. Hidden when no duration was ever banked — GONE, never guessed, never "0:00". No Lang key, no Prefs write, no layout change — the card is built in code.
+            int favDur83 = favRowDurMs83(dur22, c.e);
+            android.widget.TextView favDurClock83 = new android.widget.TextView(this);
+            favDurClock83.setText(favDur83 > 0 ? Fx.fmtTime(favDur83) : "");
+            favDurClock83.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
+            favDurClock83.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
+            favDurClock83.setVisibility(favDur83 > 0 ? android.view.View.VISIBLE : android.view.View.GONE);
+            android.widget.LinearLayout.LayoutParams favDurParams83 = new android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+            favDurParams83.setMargins((int) (8 * d), 0, 0, 0);
+            favDurClock83.setLayoutParams(favDurParams83);
+            row22.addView(favDurClock83);
             card.addView(row22);
             // v15.60 (slice 2022): the hairline — the row_talk.xml line in code: 3dp tall, 4dp below the row, faint-gold track (#33C9A227) with a solid-gold fill (#C9A227, @color/gold) split by weight, weightSum 1. GONE unless a fraction was set; Fx.crossfadeHairline (v15.25) owns the show/hide — on these freshly built cards it seeds instantly (no recorded state yet), so no melt ever plays here, and a rebuild repaints from scratch like the rest of the card. The fraction is favTalkHairFrac22 below (the key block above already called it for the change gate, so key and paint agree). No download-progress override here — the 1928 override stays a Talks-row behaviour; the rail repaints only on a real change, so a download's 1s ticks never reach it.
             float hairFrac22 = favTalkHairFrac22(pos22, dur22, c.e);
@@ -7386,6 +7514,25 @@ public class MainActivity extends Activity {
         return DlLanded.downloadedFileName(MainActivity.this, e.url, null, null) != null;
     }
 
+    // v15.87 (slice 2184): the New talks card's total-duration resolver — the 2175 plRowDurMs shape for a rail card: the duration snapshot (dur23, Prefs.talkDurMap, one parse per refresh) is passed in, never re-parsed per card (the v5.69 rule); the stream leg first (identityUrl-normalised), then the downloaded path leg through DlLanded (talkDurPutBoth banks both forms, the v13.96 rule), so a card clocks exactly when its stream twin does. The path leg is not the common case here — the rail's entries are brand-new talks, only some of them downloaded — but the stream leg stays first. Null row or null map reads 0; an unknown length reads 0 — the clock hides, never guesses.
+    private int newRowDurMs84(java.util.Map<String, Integer> dur23, Prefs.HistEntry e) {
+        if (e == null || e.url == null || dur23 == null) return 0;
+        Integer d84 = dur23.get(e.url);
+        if (d84 == null || d84.intValue() <= 0) {
+            String id84 = SiteHttp.identityUrl(e.url);
+            if (id84 != null) d84 = dur23.get(id84);
+        }
+        if (d84 == null || d84.intValue() <= 0) {
+            String fn84 = DlLanded.downloadedFileName(MainActivity.this, e.url, null, null);
+            if (fn84 != null) {
+                String path84 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + fn84).getAbsolutePath();
+                d84 = dur23.get(path84);
+            }
+        }
+        return d84 != null && d84.intValue() > 0 ? d84.intValue() : 0;
+    }
+
     private void refreshNewTalkRail() {
         if (newTalkRailWrap == null || newTalkRail == null) return;
         boolean show = query != null && query.length() == 0 && !favOnly && !newOnly && all != null;
@@ -7400,10 +7547,12 @@ public class MainActivity extends Activity {
             picked = NewTalkRail.pick(collectNewTalkEntries1966(played, resumeKeys),
                     played, resumeKeys, sounding);
         }
+        // v15.87 (slice 2184): the duration snapshot for this rail's clock — the durations map, one parse per refresh, passed to the resolver per card (the v5.69 rule); the other four rails parse the same way at their key blocks (dur20 Recent, dur21 Downloaded, dur27 Bookmarks, dur22 Favourite-talks) — this rail parsed none until now, because it carried no hairline and no clock. The key below carries the painted clock after the badge bit, so a duration landing while Main sits open moves the key or the card would freeze clockless at its first paint (the 2022 lesson). The value is the card's own helper, so key and paint can never disagree.
+        java.util.Map<String, Integer> dur23 = Prefs.talkDurMap(this);
         StringBuilder kb = new StringBuilder();
         kb.append(cachedNight ? "N" : "D");
         // v15.61 (slice 2024): the key carries the downloaded badge bit beside the identity — a download landing while Main sits open must move the key or the rail would freeze the card at its first paint (the 2020 lesson). The bit is the card's own helper, so key and paint can never disagree; a badge flip moves the key even when the identity cannot. This rail's key carried the identity only (no fraction — no hairline here, per the 2017 adjudication), so the bit rides directly after the identity.
-        for (NewTalkRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(newDlBadge24(c.e) ? '1' : '0');
+        for (NewTalkRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(newDlBadge24(c.e) ? '1' : '0').append(':').append(newRowDurMs84(dur23, c.e));
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (newTalkRailWrap.getVisibility() != android.view.View.GONE)
@@ -7461,6 +7610,18 @@ public class MainActivity extends Activity {
             title.setEllipsize(android.text.TextUtils.TruncateAt.END);
             col.addView(title);
             card.addView(col);
+            // v15.87 (slice 2184): a brand-new talk's total length clocks at the right edge of the photo+text row — the 2175 Playlist detail clock, now on the fifth and last Main rail card (the card showed the sayadaw, the title and the downloaded badge, but never how long the talk runs). The clock reads newRowDurMs84 (the duration snapshot, one parse per refresh, the same 3-leg resolve as the other rails' clocks), formatted by Fx.fmtTime ("42:15", "1:05:22" past the hour); no playing gate is needed — NewTalkRail.pick already excludes the sounding talk. Hidden when no duration was ever banked — GONE, never guessed, never "0:00". No Lang key, no Prefs write, no layout change — the card is built in code.
+            int newDur84 = newRowDurMs84(dur23, c.e);
+            android.widget.TextView newDurClock84 = new android.widget.TextView(this);
+            newDurClock84.setText(newDur84 > 0 ? Fx.fmtTime(newDur84) : "");
+            newDurClock84.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
+            newDurClock84.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
+            newDurClock84.setVisibility(newDur84 > 0 ? android.view.View.VISIBLE : android.view.View.GONE);
+            android.widget.LinearLayout.LayoutParams newDurParams84 = new android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+            newDurParams84.setMargins((int) (8 * d), 0, 0, 0);
+            newDurClock84.setLayoutParams(newDurParams84);
+            card.addView(newDurClock84);
             Fx.press(card);
             card.setOnClickListener(new android.view.View.OnClickListener() {
                 @Override public void onClick(android.view.View v) {
