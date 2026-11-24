@@ -667,10 +667,21 @@ public class HistoryActivity extends Activity {
         row.setGravity(Gravity.CENTER_VERTICAL);
         float d = getResources().getDisplayMetrics().density;
         int pad = (int) (12 * d);
+        // v15.84 (slice 2164): the sayadaw's photo joins the row — Bookmarks, Favourites and New talks rows carry the 44dp circle photo (their itemRow photo block, verbatim here), but History rows stayed text-only, so the screen read as a ledger beside its photo-led sisters. The photo comes from the same catalogFor cache this Activity already keeps (cat[2] is the photo_url; a null cat — a blank or uncatalogued sayadaw — loads "" and ImageLoader paints its initials fallback, the same rule the three sister screens use). The column's left padding drops to 0, the photo's own 8dp right margin carrying the gap, so the photo sits at the same inset as the sisters (the root's 16dp padding is shared). No Lang key, no Prefs write, no layout change — the row is built in code.
+        String[] cat = catalogFor(e.sayadaw);
+        CircleImageView photo = new CircleImageView(this);
+        int px = (int) (44 * d);
+        LinearLayout.LayoutParams pp =
+                new LinearLayout.LayoutParams(px, px);
+        pp.setMargins(0, 0, (int) (8 * d), 0);
+        photo.setLayoutParams(pp);
+        photo.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+        ImageLoader.load(this, cat == null ? "" : cat[2], e.sayadaw, photo);
+        row.addView(photo);
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setGravity(Gravity.CENTER_VERTICAL);
-        col.setPadding(pad, (int) (10 * d), pad, (int) (10 * d));
+        col.setPadding(0, (int) (10 * d), pad, (int) (10 * d));
         TextView tv = new TextView(this);
         // v13.55: the sounding row says so — "▶ " ahead of its title in gold (Talks v4.89/v11.07),
         // for a Room session (URL match), a library session on a URL-form row (dlMap exactly-one
@@ -695,8 +706,11 @@ public class HistoryActivity extends Activity {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
         TextView sv = new TextView(this);
+        // v15.84 (slice 2163): the listened day joins the sub-line — the stored lastMs (the REC line's own stamp, refreshed on every re-listen, v12.82) never rendered anywhere on this screen, so a row said how LONG a talk was heard but never WHEN. HistDay.label reads "" for a pre-timestamp stamp (lastMs <= 0), so legacy rows keep exactly today's sub-line; a real stamp renders "d.M.yyyy" in the device's local day, Myanmar digits in Burmese UI (the num() rule — statsDigitsPure), so the row reads "sayadaw • 25 min • 24.11.2026". No Lang key, no Prefs write, no layout change — the sub-line is built in code.
+        String hsDay63 = HistDay.label(e.lastMs);
         String sub = e.sayadaw.length() > 0
                 ? e.sayadaw + " • " + fmtDur(e.seconds) : fmtDur(e.seconds);
+        if (hsDay63.length() > 0) sub += " • " + (Lang.index(this) == 0 ? Prefs.statsDigitsPure(hsDay63) : hsDay63);
         sv.setText(sub);
         sv.setTextColor(subColor());
         sv.setTextSize(12);

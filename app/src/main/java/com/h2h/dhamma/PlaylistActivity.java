@@ -82,6 +82,8 @@ public class PlaylistActivity extends Activity {
     private String plRowPlayingUrl = null;
     private String plRowPlayingLibUrl = null;
     private boolean plRowEnded = false;
+    // v15.84 (slice 2166): the favourite-star snapshot for the detail rows (History v13.77) — plFavSet is the favTalks set copied once per refresh (never read per row per bind, the v1.59 rule); refreshed on detail open and on the strip tick's change detector, so a star flipped from the notification card rebinds the rows here.
+    private java.util.Set<String> plFavSet = new java.util.HashSet<String>();
     // v14.06 (F4, sixth pass slice 5): rotation-restore track for
     // the open new-list / delete-confirm dialogs - the dialog refs
     // (+ the live EditText) let onSaveInstanceState read what is
@@ -404,6 +406,18 @@ public class PlaylistActivity extends Activity {
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         String title = qe.title.length() > 0 ? qe.title : qe.url;
+        // v15.84 (slice 2165): the sayadaw's photo joins the detail row — the Bookmarks, Favourites, New talks and (since 2164) History rows all carry the 44dp circle photo in their itemRow, but the Playlist detail rows stayed text-only, so the screen read as a ledger beside its photo-led sisters. The photo comes from the same catalogFor cache this Activity already keeps (cat[2] is the photo_url; a null cat — a blank or uncatalogued sayadaw — loads "" and ImageLoader paints its initials fallback, the same rule the sister screens use). The column's left padding drops to 0, the photo's own 8dp right margin carrying the gap; the shared textRows helper keeps its own padding, so the lists screen is untouched — only this detail row overrides it after the call. No Lang key, no Prefs write, no layout change — the row is built in code.
+        float d = getResources().getDisplayMetrics().density;
+        String[] cat = catalogFor(qe.sayadaw);
+        CircleImageView photo = new CircleImageView(this);
+        int px = (int) (44 * d);
+        LinearLayout.LayoutParams pp =
+                new LinearLayout.LayoutParams(px, px);
+        pp.setMargins(0, 0, (int) (8 * d), 0);
+        photo.setLayoutParams(pp);
+        photo.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+        ImageLoader.load(this, cat == null ? "" : cat[2], qe.sayadaw, photo);
+        row.addView(photo);
         // v13.55: the sounding row says so — "▶ " ahead of its title in gold (Talks v4.89/v11.07),
         // for a Room session (URL match) or a library session (dlMap exactly-one claimant); an ended
         // talk is not playing (v11.15 gate), so its mark lifts at once. Rows are built fresh per
@@ -411,7 +425,10 @@ public class PlaylistActivity extends Activity {
         boolean plRowPlaying = !AudioService.liveEnded
                 && ((plPlayingUrl.length() > 0 && SiteHttp.sameTalk(qe.url, plPlayingUrl))
                         || (plPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(qe.url, plPlayingLibUrl)));
-        LinearLayout col = textRows(plRowPlaying ? "▶ " + title : title, qe.sayadaw, plRowPlaying);
+        // v15.84 (slice 2166): a favourited list talk says so — "★ " after the "▶ " playing mark when both apply (History v13.77), gold either way, so the mark reads at a glance. The star reads the plFavSet snapshot (refreshed on detail open and on the strip tick's change detector, the History shape), resolved through plShareUrlFor — a downloaded (path-form) row claims its stream URL through the dlMap reverse lookup, so it stars exactly when its stream twin does. No Lang key, no Prefs write, no layout change — the row is built in code.
+        boolean plRowFav66 = plRowFav(qe);
+        LinearLayout col = textRows((plRowPlaying ? "▶ " : "") + (plRowFav66 ? "★ " : "") + title, qe.sayadaw, plRowPlaying || plRowFav66);
+        col.setPadding(0, (int) (10 * d), (int) (12 * d), (int) (10 * d));
         row.addView(col, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         Button del = new Button(this);
@@ -551,6 +568,7 @@ public class PlaylistActivity extends Activity {
         // btn_no_clear — so the tap never dead-ends).
         Fx.crossfadeStripBtn(plDeleteBtn, true);
         refreshPlaylistPlayingMarks(); // v13.55: mark right on first paint, not one tick late
+        refreshPlFavSet(); // v15.84 (slice 2166): the star snapshot fresh on first paint, beside the playing marks
         // v15.74 (slice 2103): the open list's sounding row is the jump target — refresh it and repaint the button from the new position (the 2063 shape: a fresh detail open can land with the playing row off-screen).
         refreshPlJumpTarget();
         paintPlJumpBtnFromList();
@@ -1925,6 +1943,30 @@ public class PlaylistActivity extends Activity {
                 Toast.LENGTH_SHORT).show();
     }
 
+    // v15.84 (slice 2166): the favourite-star snapshot (History v13.77, verbatim shape) — plFavSetNow copies the favTalks set (migrated first, the v13.66 rule — a pre-migration http URL must star its https twin); refreshPlFavSet adopts it; plRowFav resolves the row's stream URL through plShareUrlFor (a downloaded path-form row claims its stream URL, the 2116 reverse lookup) and tests membership, so a list talk stars exactly when its stream twin does. Null stream names no talk.
+    private java.util.Set<String> plFavSetNow() {
+        try {
+            Prefs.migrateLegacyHttpRows66(this);
+            java.util.Set<String> ft = getSharedPreferences("dhamma", MODE_PRIVATE)
+                    .getStringSet("favTalks", null);
+            return ft == null ? new java.util.HashSet<String>()
+                    : new java.util.HashSet<String>(ft);
+        } catch (Exception ignored) {
+            return new java.util.HashSet<String>();
+        }
+    }
+
+    private void refreshPlFavSet() {
+        plFavSet = plFavSetNow();
+    }
+
+    private boolean plRowFav(QueueEntry qe) {
+        if (qe == null) return false;
+        String stream = plShareUrlFor(qe);
+        return stream != null && stream.length() > 0 && plFavSet != null
+                && plFavSet.contains(stream);
+    }
+
     private void refreshPlaylistPlayingMarks() {
         plPlayingUrl = "";
         plPlayingLibUrl = "";
@@ -2043,12 +2085,17 @@ public class PlaylistActivity extends Activity {
         // never touch the adapter, so scrolling stays undisturbed. Runs before the strip's own early
         // returns, so a dead session clears the mark even while the strip hides.
         refreshPlaylistPlayingMarks();
+        // v15.84 (slice 2166): the star snapshot joins the change detector — a star
+        // flipped from the notification card rebinds the rows here (History v13.77).
+        java.util.Set<String> plFavNow66 = plFavSetNow();
         if (adapter != null && (!plPlayingUrl.equals(plRowPlayingUrl == null ? "" : plRowPlayingUrl)
                 || !plPlayingLibUrl.equals(plRowPlayingLibUrl == null ? "" : plRowPlayingLibUrl)
-                || AudioService.liveEnded != plRowEnded)) {
+                || AudioService.liveEnded != plRowEnded
+                || !plFavNow66.equals(plFavSet))) {
             plRowPlayingUrl = plPlayingUrl;
             plRowPlayingLibUrl = plPlayingLibUrl;
             plRowEnded = AudioService.liveEnded;
+            plFavSet = plFavNow66;
             adapter.notifyDataSetChanged();
             // v15.74 (slice 2103): the sounding change above moves the playing talk (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button.
             refreshPlJumpTarget();
