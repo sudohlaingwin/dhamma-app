@@ -4070,7 +4070,10 @@ public class MainActivity extends Activity {
         // v15.88 (slice 2189): the listened row says so — the tick after the star when both apply (the chooser/library shape), so a finished talk reads as finished at a glance. The row reads the snapshot the dialog filled; a hit whose identity form sits in the set is a listened talk. The playing row never ticks — its live position is on the strip, not a finished mark.
         boolean rowPlayed89 = !rowPlaying87 && e29 != null && e29.url != null && srchPlayedSet89 != null
                 && srchPlayedSet89.contains(SiteHttp.identityUrl(e29.url));
-        title29.setText((rowPlaying87 ? "▶ " : "") + (rowFav88 ? "★ " : "") + (rowPlayed89 ? "✓ " : "") + (e29 == null || e29.title == null ? "" : e29.title));
+        // v15.89 (slice 2192): the downloaded row says so — the badge after the star when both apply (the chooser/library order: play first, star second, badge third, tick fourth), so a hit already on the phone reads as offline at a glance. The row reads the snapshot the dialog filled; a hit whose identity form sits in the set is downloaded. The badge alone does not gold the row — only a sounding or favourited row turns gold, the 2189 tick rule. The sounding row badges too — downloaded is a property of the talk, not a state.
+        boolean rowDl91 = e29 != null && e29.url != null && srchDlSet91 != null
+                && srchDlSet91.contains(SiteHttp.identityUrl(e29.url));
+        title29.setText((rowPlaying87 ? "▶ " : "") + (rowFav88 ? "★ " : "") + (rowDl91 ? "⬇ " : "") + (rowPlayed89 ? "✓ " : "") + (e29 == null || e29.title == null ? "" : e29.title));
         title29.setTextColor((rowPlaying87 || rowFav88) ? android.graphics.Color.parseColor("#C9A227")
                 : cachedNight ? android.graphics.Color.WHITE
                 : android.graphics.Color.parseColor("#3B2314"));
@@ -4199,6 +4202,24 @@ public class MainActivity extends Activity {
         if (srchDurMap90 == null) srchDurMap90 = new java.util.LinkedHashMap<String, Integer>();
     }
 
+    // The downloaded-badge snapshot the search rows read (the identity forms of the current results that are already on the phone, one shared-definition test per result per dialog open and per keystroke rebuild, so a download landing mid-dialog repaints on the next keystroke).
+    private java.util.Set<String> srchDlSet91 = new java.util.HashSet<String>();
+
+    // v15.89 (slice 2192): the search-row downloaded-badge snapshot — the 2024 badge family, now on the search sheet: a hit already on the phone wears its offline mark. The set is built from the current results through the shared downloaded definition (the same call the rail file-share offers make, so the badge and the offer can never disagree about a talk); a null list reads empty, fail-closed. Called before the first build and before every rebuild; the rows never test the store themselves.
+    private void refreshSearchDl91(java.util.List<TalkIndex.Entry> res91) {
+        srchDlSet91 = new java.util.HashSet<String>();
+        if (res91 == null) return;
+        try {
+            for (TalkIndex.Entry e91 : res91) {
+                if (e91 == null || e91.url == null) continue;
+                if (DlLanded.downloadedFileName(MainActivity.this, e91.url, null, null) != null) {
+                    String id91 = SiteHttp.identityUrl(e91.url);
+                    if (id91 != null) srchDlSet91.add(id91);
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
     private void showTalkSearch() {
         final android.widget.LinearLayout root29 = new android.widget.LinearLayout(MainActivity.this);
         root29.setOrientation(android.widget.LinearLayout.VERTICAL);
@@ -4221,6 +4242,8 @@ public class MainActivity extends Activity {
         refreshSearchPlayed89();
         // the rows read the duration snapshot too, so fill it before the first build.
         refreshSearchDur90();
+        // the rows read the downloaded snapshot too, so fill it before the first build.
+        refreshSearchDl91(null);
         final android.widget.ArrayAdapter<TalkIndex.Entry> ad29 = new android.widget.ArrayAdapter<TalkIndex.Entry>(MainActivity.this, 0, 0, new java.util.ArrayList<TalkIndex.Entry>()) {
             @Override public android.view.View getView(int pos, android.view.View cv, android.view.ViewGroup parent) {
                 // v15.88 (slice 2186): the row is built in code now — the 2029 two-line row rendered title + sayadaw as bare text, so a hit read as a ledger line beside the photo-led rows everywhere else; the helper below builds the photo-led row (44dp face + title 16sp over sayadaw 14sp, the full-list row shape), so the constructor passes 0, 0 — no layout is ever inflated, and the recycled view is ignored (a recycled two-line view cannot host a photo row). The tap path is untouched — the same Intent, the same extras.
@@ -4254,6 +4277,8 @@ public class MainActivity extends Activity {
                 refreshSearchPlayed89();
                 // refill before the rebuild, so a duration landing mid-dialog repaints too.
                 refreshSearchDur90();
+                // refill before the rebuild, so a download landing mid-dialog repaints too.
+                refreshSearchDl91(res29);
                 ad29.clear();
                 if (res29 != null) for (TalkIndex.Entry r29 : res29) ad29.add(r29);
                 if (qq29.trim().length() == 0) {

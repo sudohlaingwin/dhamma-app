@@ -98,6 +98,8 @@ public class HistoryActivity extends Activity {
     private java.util.Set<String> histPlayedSet = new java.util.HashSet<String>();
     // v15.86 (slice 2178): the total-length snapshot for the rows — histDurCache is the banked talk lengths (Prefs.talkDurMap, one parse per refresh, never talkDurGet per row per bind, the v13.97 rule); refreshed on refresh() and on the 1s tick's change detector, so a length landing while the list sits open rebinds the rows here.
     private java.util.Map<String, Integer> histDurCache = new java.util.HashMap<String, Integer>();
+    // v15.89 (slice 2193): the downloaded-badge snapshot for the rows — the identity forms of the recent list's stream addresses that are already on the phone, built once per refresh from the unfiltered pick, refreshed on refresh and on the one-second tick's change detector, so a download landing while the list sits open rebinds the rows here.
+    private java.util.Set<String> histDlSet93 = new java.util.HashSet<String>();
     // v15.62 (slice 2030): "Play from here" debounce — its own
     // clock (the chooser's 700ms rule, v12.28: an invalid tap
     // never consumes the window).
@@ -601,6 +603,7 @@ public class HistoryActivity extends Activity {
         refreshHistFavSet(); // v13.77: rows bind their star mark from this snapshot
         refreshHistPlayedSet(); // v15.85 (slice 2172): the tick snapshot fresh on first paint, beside the star snapshot
         refreshHistDurCache(); // v15.86 (slice 2178): the duration snapshot fresh on first paint, beside the tick snapshot — the clocks read the snapshot, never a per-row parse
+        refreshHistDlSet(); // v15.89 (slice 2193): the badge snapshot fresh on first paint, beside the duration snapshot — the rows read the snapshot, never a per-row store test
         if (totalValue != null) {
             meltStat40(totalValue, fmtDur(total));
             totalValue.setTextColor(goldColor());
@@ -704,8 +707,11 @@ public class HistoryActivity extends Activity {
         // either way, so the mark reads at a glance.
         // v15.85 (slice 2172): a finished recent talk says so — "✓ " after the "★ " star when both apply (the library v4.24 order, play first, star second, tick third), gold either way; the tick reads the histPlayedSet snapshot (refreshed on refresh() and on the 1s tick's change detector), resolved through histStreamUrlFor — a downloaded (path-form) row claims its stream URL through the dlMap exactly-one-claimant resolve, so it ticks exactly when its stream twin does. A row stopped early sits in History but NOT in playedTalks (the 2139 mark verb offers Mark there), so the tick distinguishes finished from merely started; the 2163 day stamp says WHEN, this says WHETHER finished. The playing row never ticks — its live position is on the strip, not a finished mark. No Lang key, no Prefs write, no layout change — the row is built in code.
         boolean hsRowPlayed72 = !hsRowPlaying && histRowPlayed(e);
+        // v15.89 (slice 2193): the downloaded row says so — the badge after the star when both apply (the chooser/library order: play first, star second, badge third, tick fourth), so a recent talk already on the phone reads as offline at a glance. The row reads the snapshot the refresh filled; a row whose stream address sits in the set is downloaded. The badge alone does not gold the row — only a sounding or favourited row turns gold. The sounding row badges too — downloaded is a property of the talk, not a state.
+        boolean hsRowDl93 = histRowDl(e);
         String hsPrefix77 = (hsRowPlaying ? "▶ " : "")
                 + (histRowFav(e) ? "★ " : "")
+                + (hsRowDl93 ? "⬇ " : "")
                 + (hsRowPlayed72 ? "✓ " : "");
         tv.setText(hsPrefix77 + (e.title.length() > 0 ? e.title : e.url));
         tv.setTextColor((hsRowPlaying || histRowFav(e)) ? goldColor() : titleColor());
@@ -1575,6 +1581,36 @@ public class HistoryActivity extends Activity {
         return d78 != null && d78.intValue() > 0 ? d78.intValue() : 0;
     }
 
+    // v15.89 (slice 2193): the downloaded-badge snapshot — the set is the recent list's downloaded stream addresses, built from the unfiltered pick through the same gate the row menu's file-share offer reads, so the badge and the offer can never disagree about a talk; the map is parsed once per build, never per row. The refresh adopts it; the row predicate resolves the row to its stream address the same way the tick and the clock do (a downloaded path-form row claims its stream address through the exactly-one-claimant resolve) and tests membership. A null list reads empty; a null entry or an unresolvable stream is skipped; the badge paints on the sounding row too — downloaded is a property of the talk, not a state. The badge alone does not gold the row — only a sounding or favourited row turns gold.
+    private java.util.Set<String> histDlSetNow() {
+        java.util.Set<String> out93 = new java.util.HashSet<String>();
+        if (hsAllItems == null) return out93;
+        try {
+            android.content.SharedPreferences sp93 =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map93 = new org.json.JSONObject(sp93.getString("dlMap", "{}"));
+            for (Prefs.HistEntry e93 : hsAllItems) {
+                if (e93 == null) continue;
+                String stream93 = histStreamUrlFor(e93);
+                if (stream93 == null || stream93.length() == 0) continue;
+                if (histIsDownloaded(stream93, map93)) {
+                    String id93 = SiteHttp.identityUrl(stream93);
+                    if (id93 != null) out93.add(id93);
+                }
+            }
+        } catch (Exception ignored) {}
+        return out93;
+    }
+
+    private void refreshHistDlSet() { histDlSet93 = histDlSetNow(); }
+
+    private boolean histRowDl(Prefs.HistEntry e) {
+        if (e == null) return false;
+        String stream93 = histStreamUrlFor(e);
+        return stream93.length() > 0 && histDlSet93 != null
+                && histDlSet93.contains(SiteHttp.identityUrl(stream93));
+    }
+
     // v13.77: Talks isTalkDownloaded, History-local — the dlMap
     // mapped file with the v13.66 length gate (a 0-byte file is not
     // downloaded), plus the plain basename leg for files the app
@@ -1582,12 +1618,20 @@ public class HistoryActivity extends Activity {
     private boolean histIsDownloaded(String url) {
         if (url == null || url.length() == 0) return false;
         try {
-            java.io.File dir = new java.io.File(android.os.Environment
-                    .getExternalStoragePublicDirectory(
-                            android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
             android.content.SharedPreferences sp =
                     getSharedPreferences("dhamma", MODE_PRIVATE);
             org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            return histIsDownloaded(url, map);
+        } catch (Exception ignored) { return false; }
+    }
+
+    // v15.89 (slice 2193): the same gate with a caller-supplied map — the snapshot builder parses the map once per build and tests every row against it, instead of re-parsing per row; the one-argument form above keeps its exact behaviour (a fresh map per call) for the menu offers.
+    private boolean histIsDownloaded(String url, org.json.JSONObject map) {
+        if (url == null || url.length() == 0 || map == null) return false;
+        try {
+            java.io.File dir = new java.io.File(android.os.Environment
+                    .getExternalStoragePublicDirectory(
+                            android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
             String mapped = map.optString(SiteHttp.identityUrl(url), "");
             if (mapped.length() > 0) {
                 java.io.File f = new java.io.File(dir, mapped);
@@ -2393,13 +2437,16 @@ public class HistoryActivity extends Activity {
         java.util.Set<String> hsPlayedNow72 = histPlayedSetNow();
         // v15.86 (slice 2178): the duration snapshot joins the change detector — a length landing while the list sits open rebinds the rows here (the 2172 tick leg, verbatim).
         java.util.Map<String, Integer> hsDurNow78 = histDurCacheNow();
+        // v15.89 (slice 2193): the badge snapshot joins the change detector — a download landing while the list sits open rebinds the rows here.
+        java.util.Set<String> hsDlNow93 = histDlSetNow();
         if (adapter != null && (!histPlayingUrl.equals(histRowPlayingUrl == null ? "" : histRowPlayingUrl)
                 || !histPlayingLibUrl.equals(histRowPlayingLibUrl == null ? "" : histRowPlayingLibUrl)
                 || !histPlayingLibPath.equals(histRowPlayingLibPath == null ? "" : histRowPlayingLibPath)
                 || AudioService.liveEnded != histRowEnded
                 || !hsFavNow77.equals(histFavSet)
                 || !hsPlayedNow72.equals(histPlayedSet)
-                || !hsDurNow78.equals(histDurCache))) {
+                || !hsDurNow78.equals(histDurCache)
+                || !hsDlNow93.equals(histDlSet93))) {
             histRowPlayingUrl = histPlayingUrl;
             histRowPlayingLibUrl = histPlayingLibUrl;
             histRowPlayingLibPath = histPlayingLibPath;
@@ -2407,6 +2454,7 @@ public class HistoryActivity extends Activity {
             histFavSet = hsFavNow77;
             histPlayedSet = hsPlayedNow72;
             histDurCache = hsDurNow78;
+            histDlSet93 = hsDlNow93;
             adapter.notifyDataSetChanged();
             // v15.67 (slice 2063): the sounding change above moves the playing talk (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button.
             refreshHsJumpTarget();

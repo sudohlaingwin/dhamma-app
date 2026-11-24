@@ -82,6 +82,8 @@ public class BookmarksActivity extends Activity {
     private boolean bmRowEnded = false;
     // v15.85 (slice 2170): the listened-tick snapshot for the rows — bmPlayedSet is the playedTalks set copied once per refresh (never read per row per bind, the v1.59 rule); refreshed on refresh() and on the strip tick's change detector, so a tick flipped from the notification card or the mark verb rebinds the rows here.
     private java.util.Set<String> bmPlayedSet = new java.util.HashSet<String>();
+    // v15.89 (slice 2194): the downloaded-badge snapshot for the rows — the identity forms of the unfiltered pick's stream addresses that are already on the phone, built once per refresh from the unfiltered pick, refreshed on refresh and on the one-second tick's change detector, so a download landing while the list sits open rebinds the rows here.
+    private java.util.Set<String> bmDlSet94 = new java.util.HashSet<String>();
     // v15.85 (slice 2168): the favourite-star snapshot for the rows (History v13.77) — bmFavSet is the favTalks set copied once per refresh (never read per row per bind, the v1.59 rule); refreshed on refresh() and on the strip tick's change detector, so a star flipped from the notification card rebinds the rows here.
     private java.util.Set<String> bmFavSet = new java.util.HashSet<String>();
     // v15.65 (slice 2049): search on this screen — the field, the
@@ -270,6 +272,7 @@ public class BookmarksActivity extends Activity {
         refreshBookmarksPlayingMarks(); // v15.64 (slice 2041): mark right on first paint, not one tick late
         refreshBmFavSet(); // v15.85 (slice 2168): the star snapshot fresh on first paint, beside the playing marks
         refreshBmPlayedSet(); // v15.85 (slice 2170): the tick snapshot fresh on first paint, beside the star snapshot
+        refreshBmDlSet(); // v15.89 (slice 2194): the badge snapshot fresh on first paint, beside the tick snapshot — the rows read the snapshot, never a per-row store test
         applyBmSearch();
     }
 
@@ -625,7 +628,9 @@ public class BookmarksActivity extends Activity {
         boolean bmRowFav68 = bmRowFav(e);
         // v15.85 (slice 2170): a listened bookmark says so — "\u2713 " after the "\u2605 " star when both apply (the library v4.24 order ▶ ★ ✓; the playing row never carries ✓ — v11.08 suppression, its live position is on the strip, not a finished mark). The tick reads the bmPlayedSet snapshot (refreshed on refresh() and on the strip tick's change detector), resolved through streamUrlFor — a downloaded (path-form) row claims its stream URL through the dlMap exactly-one-claimant resolve, so it ticks exactly when its stream twin does. No Lang key, no Prefs write, no layout change — the row is built in code.
         boolean bmRowPlayed70 = !bmRowPlaying && bmRowPlayed(e);
-        tv.setText((bmRowPlaying ? "\u25b6 " : "") + (bmRowFav68 ? "\u2605 " : "") + (bmRowPlayed70 ? "\u2713 " : "") + BmRail.fmtTime(r.posMs) + " \u00b7 " + e.title);
+        // v15.89 (slice 2194): the downloaded row says so — the badge after the star when both apply (the chooser/library order: play first, star second, badge third, tick fourth), so a bookmarked talk already on the phone reads as offline at a glance. The row reads the snapshot the refresh filled; a row whose stream address sits in the set is downloaded. The badge alone does not gold the row — only a sounding or favourited row turns gold. The sounding row badges too — downloaded is a property of the talk, not a state.
+        boolean bmRowDl94 = bmRowDl(e);
+        tv.setText((bmRowPlaying ? "\u25b6 " : "") + (bmRowFav68 ? "\u2605 " : "") + (bmRowDl94 ? "\u2B07 " : "") + (bmRowPlayed70 ? "\u2713 " : "") + BmRail.fmtTime(r.posMs) + " \u00b7 " + e.title);
         tv.setTextColor((bmRowPlaying || bmRowFav68) ? goldColor() : android.graphics.Color.parseColor("#7A6A58"));
         tv.setTextSize(12);
         tv.setMaxLines(1);
@@ -1988,6 +1993,36 @@ public class BookmarksActivity extends Activity {
                     android.widget.Toast.LENGTH_LONG).show();
     }
 
+    // v15.89 (slice 2194): the downloaded-badge snapshot — the set is the unfiltered pick's downloaded stream addresses, built from the unfiltered pick through the same gate the row menu's download offer reads, so the badge and the offer can never disagree about a talk; the map is parsed once per build, never per row. The refresh adopts it; the row predicate resolves the row to its stream address the same way the star and the tick do (a downloaded path-form row claims its stream address through the exactly-one-claimant resolve) and tests membership. A null list reads empty; a null entry or an unresolvable stream is skipped; the badge paints on the sounding row too — downloaded is a property of the talk, not a state. The badge alone does not gold the row — only a sounding or favourited row turns gold.
+    private java.util.Set<String> bmDlSetNow() {
+        java.util.Set<String> out94 = new java.util.HashSet<String>();
+        if (bmAllItems == null) return out94;
+        try {
+            android.content.SharedPreferences sp94 =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map94 = new org.json.JSONObject(sp94.getString("dlMap", "{}"));
+            for (BmAll.Row r94 : bmAllItems) {
+                if (r94 == null || r94.e == null) continue;
+                String stream94 = streamUrlFor(r94.e);
+                if (stream94 == null || stream94.length() == 0) continue;
+                if (bmIsDownloaded(stream94, map94)) {
+                    String id94 = SiteHttp.identityUrl(stream94);
+                    if (id94 != null) out94.add(id94);
+                }
+            }
+        } catch (Exception ignored) {}
+        return out94;
+    }
+
+    private void refreshBmDlSet() { bmDlSet94 = bmDlSetNow(); }
+
+    private boolean bmRowDl(Prefs.HistEntry e) {
+        if (e == null) return false;
+        String stream94 = streamUrlFor(e);
+        return stream94.length() > 0 && bmDlSet94 != null
+                && bmDlSet94.contains(SiteHttp.identityUrl(stream94));
+    }
+
     // v15.72 (slice 2090): History histIsDownloaded (v13.77),
     // Bookmarks-local — the dlMap mapped file with the v13.66
     // length gate (a 0-byte file is not downloaded), plus the
@@ -1998,12 +2033,20 @@ public class BookmarksActivity extends Activity {
     private boolean bmIsDownloaded(String url) {
         if (url == null || url.length() == 0) return false;
         try {
-            java.io.File dir = new java.io.File(android.os.Environment
-                    .getExternalStoragePublicDirectory(
-                            android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
             android.content.SharedPreferences sp =
                     getSharedPreferences("dhamma", MODE_PRIVATE);
             org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            return bmIsDownloaded(url, map);
+        } catch (Exception ignored) { return false; }
+    }
+
+    // v15.89 (slice 2194): the same gate with a caller-supplied map — the snapshot builder parses the map once per build and tests every row against it, instead of re-parsing per row; the one-argument form above keeps its exact behaviour (a fresh map per call) for the menu offers.
+    private boolean bmIsDownloaded(String url, org.json.JSONObject map) {
+        if (url == null || url.length() == 0 || map == null) return false;
+        try {
+            java.io.File dir = new java.io.File(android.os.Environment
+                    .getExternalStoragePublicDirectory(
+                            android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
             String mapped = map.optString(SiteHttp.identityUrl(url), "");
             if (mapped.length() > 0) {
                 java.io.File f = new java.io.File(dir, mapped);
@@ -2362,18 +2405,22 @@ public class BookmarksActivity extends Activity {
         // v15.85 (slice 2170): the tick snapshot joins the change detector — a tick
         // flipped from the notification card or the mark verb rebinds the rows here.
         java.util.Set<String> bmPlayedNow70 = bmPlayedSetNow();
+        // v15.89 (slice 2194): the badge snapshot joins the change detector — a download landing while the list sits open rebinds the rows here.
+        java.util.Set<String> bmDlNow94 = bmDlSetNow();
         if (adapter != null && (!bmPlayingUrl.equals(bmRowPlayingUrl == null ? "" : bmRowPlayingUrl)
                 || !bmPlayingLibUrl.equals(bmRowPlayingLibUrl == null ? "" : bmRowPlayingLibUrl)
                 || !bmPlayingLibPath.equals(bmRowPlayingLibPath == null ? "" : bmRowPlayingLibPath)
                 || AudioService.liveEnded != bmRowEnded
                 || !bmFavNow68.equals(bmFavSet)
-                || !bmPlayedNow70.equals(bmPlayedSet))) {
+                || !bmPlayedNow70.equals(bmPlayedSet)
+                || !bmDlNow94.equals(bmDlSet94))) {
             bmRowPlayingUrl = bmPlayingUrl;
             bmRowPlayingLibUrl = bmPlayingLibUrl;
             bmRowPlayingLibPath = bmPlayingLibPath;
             bmRowEnded = AudioService.liveEnded;
             bmFavSet = bmFavNow68;
             bmPlayedSet = bmPlayedNow70;
+            bmDlSet94 = bmDlNow94;
             adapter.notifyDataSetChanged();
             // v15.67 (slice 2062): the sounding change above moves the playing talk (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button.
             refreshBmJumpTarget();

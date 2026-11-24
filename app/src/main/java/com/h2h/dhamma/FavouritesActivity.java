@@ -87,6 +87,8 @@ public class FavouritesActivity extends Activity {
     private boolean favRowEnded = false;
     // v15.85 (slice 2171): the listened-tick snapshot for the rows — favPlayedSet is the playedTalks set copied once per refresh (never read per row per bind, the v1.59 rule); refreshed on refresh() and on the strip tick's change detector, so a tick flipped from the notification card or the mark verb rebinds the rows here.
     private java.util.Set<String> favPlayedSet = new java.util.HashSet<String>();
+    // v15.89 (slice 2195): the downloaded-badge snapshot for the rows — the identity forms of the unfiltered pick's stream addresses that are already on the phone, built once per refresh from the unfiltered pick, refreshed on refresh and on the one-second tick's change detector, so a download landing while the list sits open rebinds the rows here.
+    private java.util.Set<String> favDlSet95 = new java.util.HashSet<String>();
     // v15.64 (slice 2044): "Play all" on this screen (the chooser's
     // v13.76 Play All + the library's v15.50 play-listened, the third
     // list that deserves the verb) — the starred talks used to play
@@ -280,6 +282,7 @@ public class FavouritesActivity extends Activity {
         favAllItems = FavAll.pickAll(readFavTalks(), Prefs.statsRecent(this), names, readTalkPos());
         refreshFavouritesPlayingMarks(); // v15.64 (slice 2042): mark right on first paint, not one tick late
         refreshFavPlayedSet(); // v15.85 (slice 2171): the tick snapshot fresh on first paint, beside the playing marks
+        refreshFavDlSet(); // v15.89 (slice 2195): the badge snapshot fresh on first paint, beside the tick snapshot — the rows read the snapshot, never a per-row store test
         applyFavSearch();
     }
 
@@ -640,7 +643,9 @@ public class FavouritesActivity extends Activity {
                         || (favPlayingLibPath.length() > 0 && e.url.equals(favPlayingLibPath)));
         // v15.85 (slice 2171): a listened favourite says so — "\u2713 " after the "\u25b6 " playing mark when both apply (the library v4.24 order ▶ ★ ✓, minus the star — every row here IS a favourite; the tick sits before the "\u21ba " resume segment, mirroring the Bookmarks tick before its minute). The tick reads the favPlayedSet snapshot (refreshed on refresh() and on the strip tick's change detector), resolved through favStreamUrlFor — a downloaded (path-form) row claims its stream URL through the dlMap exactly-one-claimant resolve, so it ticks exactly when its stream twin does. A finished talk's spot is cleared on natural completion, so without the tick it would read as never started; a marked-but-unfinished talk keeps its spot, so it reads "✓ ↺ mm:ss · title". No Lang key, no Prefs write, no layout change — the row is built in code.
         boolean favRowPlayed71 = !favRowPlaying && favRowPlayed(e);
-        tv.setText((favRowPlaying ? "\u25b6 " : "") + (favRowPlayed71 ? "\u2713 " : "") + (c.posMs > 0 ? "\u21BA " + FavTalkRail.fmtTime(c.posMs) + " \u00b7 " + e.title : e.title));
+        // v15.89 (slice 2195): the downloaded row says so — the badge after the playing mark when both apply (this screen's order: play first, badge second, tick third — no star on this screen, every row IS a favourite), so a starred talk already on the phone reads as offline at a glance. The row reads the snapshot the refresh filled; a row whose stream address sits in the set is downloaded. The badge alone does not gold the row — only a sounding row turns gold. The sounding row badges too — downloaded is a property of the talk, not a state.
+        boolean favRowDl95 = favRowDl(e);
+        tv.setText((favRowPlaying ? "\u25b6 " : "") + (favRowDl95 ? "\u2B07 " : "") + (favRowPlayed71 ? "\u2713 " : "") + (c.posMs > 0 ? "\u21BA " + FavTalkRail.fmtTime(c.posMs) + " \u00b7 " + e.title : e.title));
         tv.setTextColor(favRowPlaying ? goldColor() : android.graphics.Color.parseColor("#7A6A58"));
         tv.setTextSize(12);
         tv.setMaxLines(1);
@@ -1856,6 +1861,36 @@ public class FavouritesActivity extends Activity {
                 Lang.t(FavouritesActivity.this, "share_talk")));
     }
 
+    // v15.89 (slice 2195): the downloaded-badge snapshot — the set is the unfiltered pick's downloaded stream addresses, built from the unfiltered pick through the same gate the row menu's download offer reads, so the badge and the offer can never disagree about a talk; the map is parsed once per build, never per row. The refresh adopts it; the row predicate resolves the row to its stream address the same way the tick does (a downloaded path-form row claims its stream address through the exactly-one-claimant resolve) and tests membership. A null list reads empty; a null entry or an unresolvable stream is skipped; the badge paints on the sounding row too — downloaded is a property of the talk, not a state. The badge alone does not gold the row — only a sounding row turns gold.
+    private java.util.Set<String> favDlSetNow() {
+        java.util.Set<String> out95 = new java.util.HashSet<String>();
+        if (favAllItems == null) return out95;
+        try {
+            android.content.SharedPreferences sp95 =
+                    getSharedPreferences("dhamma", MODE_PRIVATE);
+            org.json.JSONObject map95 = new org.json.JSONObject(sp95.getString("dlMap", "{}"));
+            for (FavTalkRail.Card r95 : favAllItems) {
+                if (r95 == null || r95.e == null) continue;
+                String stream95 = favStreamUrlFor(r95.e);
+                if (stream95 == null || stream95.length() == 0) continue;
+                if (favIsDownloaded(stream95, map95)) {
+                    String id95 = SiteHttp.identityUrl(stream95);
+                    if (id95 != null) out95.add(id95);
+                }
+            }
+        } catch (Exception ignored) {}
+        return out95;
+    }
+
+    private void refreshFavDlSet() { favDlSet95 = favDlSetNow(); }
+
+    private boolean favRowDl(Prefs.HistEntry e) {
+        if (e == null) return false;
+        String stream95 = favStreamUrlFor(e);
+        return stream95.length() > 0 && favDlSet95 != null
+                && favDlSet95.contains(SiteHttp.identityUrl(stream95));
+    }
+
     // v15.72 (slice 2089): History histIsDownloaded (v13.77),
     // Favourites-local — the dlMap mapped file with the v13.66
     // length gate (a 0-byte file is not downloaded), plus the
@@ -1866,12 +1901,20 @@ public class FavouritesActivity extends Activity {
     private boolean favIsDownloaded(String url) {
         if (url == null || url.length() == 0) return false;
         try {
-            java.io.File dir = new java.io.File(android.os.Environment
-                    .getExternalStoragePublicDirectory(
-                            android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
             android.content.SharedPreferences sp =
                     getSharedPreferences("dhamma", MODE_PRIVATE);
             org.json.JSONObject map = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+            return favIsDownloaded(url, map);
+        } catch (Exception ignored) { return false; }
+    }
+
+    // v15.89 (slice 2195): the same gate with a caller-supplied map — the snapshot builder parses the map once per build and tests every row against it, instead of re-parsing per row; the one-argument form above keeps its exact behaviour (a fresh map per call) for the menu offers.
+    private boolean favIsDownloaded(String url, org.json.JSONObject map) {
+        if (url == null || url.length() == 0 || map == null) return false;
+        try {
+            java.io.File dir = new java.io.File(android.os.Environment
+                    .getExternalStoragePublicDirectory(
+                            android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma");
             String mapped = map.optString(SiteHttp.identityUrl(url), "");
             if (mapped.length() > 0) {
                 java.io.File f = new java.io.File(dir, mapped);
@@ -2335,16 +2378,20 @@ public class FavouritesActivity extends Activity {
         // v15.85 (slice 2171): the tick snapshot joins the change detector — a tick
         // flipped from the notification card or the mark verb rebinds the rows here.
         java.util.Set<String> favPlayedNow71 = favPlayedSetNow();
+        // v15.89 (slice 2195): the badge snapshot joins the change detector — a download landing while the list sits open rebinds the rows here.
+        java.util.Set<String> favDlNow95 = favDlSetNow();
         if (adapter != null && (!favPlayingUrl.equals(favRowPlayingUrl == null ? "" : favRowPlayingUrl)
                 || !favPlayingLibUrl.equals(favRowPlayingLibUrl == null ? "" : favRowPlayingLibUrl)
                 || !favPlayingLibPath.equals(favRowPlayingLibPath == null ? "" : favRowPlayingLibPath)
                 || AudioService.liveEnded != favRowEnded
-                || !favPlayedNow71.equals(favPlayedSet))) {
+                || !favPlayedNow71.equals(favPlayedSet)
+                || !favDlNow95.equals(favDlSet95))) {
             favRowPlayingUrl = favPlayingUrl;
             favRowPlayingLibUrl = favPlayingLibUrl;
             favRowPlayingLibPath = favPlayingLibPath;
             favRowEnded = AudioService.liveEnded;
             favPlayedSet = favPlayedNow71;
+            favDlSet95 = favDlNow95;
             adapter.notifyDataSetChanged();
             // v15.67 (slice 2060): the sounding change above moves the playing talk (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button.
             refreshFavJumpTarget();
