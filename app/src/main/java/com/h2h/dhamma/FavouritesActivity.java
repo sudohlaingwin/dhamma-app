@@ -85,6 +85,8 @@ public class FavouritesActivity extends Activity {
     private String favRowPlayingLibUrl = null;
     private String favRowPlayingLibPath = null;
     private boolean favRowEnded = false;
+    // v15.85 (slice 2171): the listened-tick snapshot for the rows — favPlayedSet is the playedTalks set copied once per refresh (never read per row per bind, the v1.59 rule); refreshed on refresh() and on the strip tick's change detector, so a tick flipped from the notification card or the mark verb rebinds the rows here.
+    private java.util.Set<String> favPlayedSet = new java.util.HashSet<String>();
     // v15.64 (slice 2044): "Play all" on this screen (the chooser's
     // v13.76 Play All + the library's v15.50 play-listened, the third
     // list that deserves the verb) — the starred talks used to play
@@ -277,6 +279,7 @@ public class FavouritesActivity extends Activity {
         // cache files per keystroke.
         favAllItems = FavAll.pickAll(readFavTalks(), Prefs.statsRecent(this), names, readTalkPos());
         refreshFavouritesPlayingMarks(); // v15.64 (slice 2042): mark right on first paint, not one tick late
+        refreshFavPlayedSet(); // v15.85 (slice 2171): the tick snapshot fresh on first paint, beside the playing marks
         applyFavSearch();
     }
 
@@ -635,7 +638,9 @@ public class FavouritesActivity extends Activity {
                 && ((favPlayingUrl.length() > 0 && SiteHttp.sameTalk(e.url, favPlayingUrl))
                         || (favPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(e.url, favPlayingLibUrl))
                         || (favPlayingLibPath.length() > 0 && e.url.equals(favPlayingLibPath)));
-        tv.setText((favRowPlaying ? "\u25b6 " : "") + (c.posMs > 0 ? "\u21BA " + FavTalkRail.fmtTime(c.posMs) + " \u00b7 " + e.title : e.title));
+        // v15.85 (slice 2171): a listened favourite says so — "\u2713 " after the "\u25b6 " playing mark when both apply (the library v4.24 order ▶ ★ ✓, minus the star — every row here IS a favourite; the tick sits before the "\u21ba " resume segment, mirroring the Bookmarks tick before its minute). The tick reads the favPlayedSet snapshot (refreshed on refresh() and on the strip tick's change detector), resolved through favStreamUrlFor — a downloaded (path-form) row claims its stream URL through the dlMap exactly-one-claimant resolve, so it ticks exactly when its stream twin does. A finished talk's spot is cleared on natural completion, so without the tick it would read as never started; a marked-but-unfinished talk keeps its spot, so it reads "✓ ↺ mm:ss · title". No Lang key, no Prefs write, no layout change — the row is built in code.
+        boolean favRowPlayed71 = !favRowPlaying && favRowPlayed(e);
+        tv.setText((favRowPlaying ? "\u25b6 " : "") + (favRowPlayed71 ? "\u2713 " : "") + (c.posMs > 0 ? "\u21BA " + FavTalkRail.fmtTime(c.posMs) + " \u00b7 " + e.title : e.title));
         tv.setTextColor(favRowPlaying ? goldColor() : android.graphics.Color.parseColor("#7A6A58"));
         tv.setTextSize(12);
         tv.setMaxLines(1);
@@ -2200,6 +2205,13 @@ public class FavouritesActivity extends Activity {
     // reverse lookup for URL-form rows (exactly-one claimant, v8.44
     // — a dual-claimed file names no talk rather than the wrong one).
     // Prefs only, never per bind.
+    // v15.85 (slice 2171): the listened-tick snapshot (History v13.77, verbatim shape) — favPlayedSetNow copies the playedTalks set (the SAME set the 2140 mark verb reads, so the tick and the menu label can never disagree); refreshFavPlayedSet adopts it; favRowPlayed resolves the row's stream URL through favStreamUrlFor (a downloaded path-form row claims its stream URL, the 2084 exactly-one-claimant resolve) and tests membership, so a starred talk ticks exactly when its stream twin does. Null stream names no talk.
+    private java.util.Set<String> favPlayedSetNow() { return readPlayedTalksFav(); }
+
+    private void refreshFavPlayedSet() { favPlayedSet = favPlayedSetNow(); }
+
+    private boolean favRowPlayed(Prefs.HistEntry e) { if (e == null) return false; String stream = favStreamUrlFor(e); return stream.length() > 0 && favPlayedSet != null && favPlayedSet.contains(stream); }
+
     private void refreshFavouritesPlayingMarks() {
         favPlayingUrl = "";
         favPlayingLibUrl = "";
@@ -2320,14 +2332,19 @@ public class FavouritesActivity extends Activity {
         // never touch the adapter, so scrolling stays undisturbed. Runs before the strip's own early
         // returns, so a dead session clears the mark even while the strip hides.
         refreshFavouritesPlayingMarks();
+        // v15.85 (slice 2171): the tick snapshot joins the change detector — a tick
+        // flipped from the notification card or the mark verb rebinds the rows here.
+        java.util.Set<String> favPlayedNow71 = favPlayedSetNow();
         if (adapter != null && (!favPlayingUrl.equals(favRowPlayingUrl == null ? "" : favRowPlayingUrl)
                 || !favPlayingLibUrl.equals(favRowPlayingLibUrl == null ? "" : favRowPlayingLibUrl)
                 || !favPlayingLibPath.equals(favRowPlayingLibPath == null ? "" : favRowPlayingLibPath)
-                || AudioService.liveEnded != favRowEnded)) {
+                || AudioService.liveEnded != favRowEnded
+                || !favPlayedNow71.equals(favPlayedSet))) {
             favRowPlayingUrl = favPlayingUrl;
             favRowPlayingLibUrl = favPlayingLibUrl;
             favRowPlayingLibPath = favPlayingLibPath;
             favRowEnded = AudioService.liveEnded;
+            favPlayedSet = favPlayedNow71;
             adapter.notifyDataSetChanged();
             // v15.67 (slice 2060): the sounding change above moves the playing talk (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button.
             refreshFavJumpTarget();

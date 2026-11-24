@@ -86,6 +86,8 @@ public class NewTalksActivity extends Activity {
     private String newRowPlayingLibUrl = null;
     private String newRowPlayingLibPath = null;
     private boolean newRowEnded = false;
+    // v15.85 (slice 2169): the favourite-star snapshot for the rows (History v13.77) — newFavSet is the favTalks set copied once per refresh (never read per row per bind, the v1.59 rule); refreshed on refresh() and on the strip tick's change detector, so a star flipped from the notification card rebinds the rows here.
+    private java.util.Set<String> newFavSet = new java.util.HashSet<String>();
     // v15.64 (slice 2045): search on this screen — the field, the
     // clear ✕, the live query and the keystroke flag (the
     // Downloaded dlSearchField / dlClearBtn / dlQuery /
@@ -283,6 +285,7 @@ public class NewTalksActivity extends Activity {
         newAllItems = NewAll.pickAll(collectNewTalkEntries(played, resumeKeys),
                 played, resumeKeys);
         refreshNewTalksPlayingMarks(); // v15.64 (slice 2043): mark right on first paint, not one tick late
+        refreshNewFavSet(); // v15.85 (slice 2169): the star snapshot fresh on first paint, beside the playing marks
         applyNewSearch();
     }
 
@@ -639,8 +642,10 @@ public class NewTalksActivity extends Activity {
                 && ((newPlayingUrl.length() > 0 && SiteHttp.sameTalk(e.url, newPlayingUrl))
                         || (newPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(e.url, newPlayingLibUrl))
                         || (newPlayingLibPath.length() > 0 && e.url.equals(newPlayingLibPath)));
-        tv.setText((newRowPlaying ? "\u25b6 " : "") + e.title);
-        tv.setTextColor(newRowPlaying ? goldColor() : android.graphics.Color.parseColor("#7A6A58"));
+        // v15.85 (slice 2169): a favourited new talk says so — "\u2605 " after the "\u25b6 " playing mark when both apply (History v13.77), gold either way, so the mark reads at a glance. The star reads the newFavSet snapshot (refreshed on refresh() and on the strip tick's change detector, the History shape), resolved through the existing newStreamUrlFor — a downloaded (path-form) row claims its stream URL through the dlMap exactly-one-claimant resolve, so it stars exactly when its stream twin does. No Lang key, no Prefs write, no layout change — the row is built in code.
+        boolean newRowFav69 = newRowFav(e);
+        tv.setText((newRowPlaying ? "\u25b6 " : "") + (newRowFav69 ? "\u2605 " : "") + e.title);
+        tv.setTextColor((newRowPlaying || newRowFav69) ? goldColor() : android.graphics.Color.parseColor("#7A6A58"));
         tv.setTextSize(12);
         tv.setMaxLines(1);
         tv.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -2213,6 +2218,30 @@ public class NewTalksActivity extends Activity {
     // reverse lookup for URL-form rows (exactly-one claimant, v8.44
     // — a dual-claimed file names no talk rather than the wrong one).
     // Prefs only, never per bind.
+    // v15.85 (slice 2169): the favourite-star snapshot (History v13.77, verbatim shape) — newFavSetNow copies the favTalks set (migrated first, the v13.66 rule — a pre-migration http URL must star its https twin); refreshNewFavSet adopts it; newRowFav resolves the row's stream URL through the existing newStreamUrlFor (a downloaded path-form row claims its stream URL, the 2084 exactly-one-claimant resolve) and tests membership, so a new talk stars exactly when its stream twin does. Null stream names no talk.
+    private java.util.Set<String> newFavSetNow() {
+        try {
+            Prefs.migrateLegacyHttpRows66(this);
+            java.util.Set<String> ft = getSharedPreferences("dhamma", MODE_PRIVATE)
+                    .getStringSet("favTalks", null);
+            return ft == null ? new java.util.HashSet<String>()
+                    : new java.util.HashSet<String>(ft);
+        } catch (Exception ignored) {
+            return new java.util.HashSet<String>();
+        }
+    }
+
+    private void refreshNewFavSet() {
+        newFavSet = newFavSetNow();
+    }
+
+    private boolean newRowFav(Prefs.HistEntry e) {
+        if (e == null) return false;
+        String stream = newStreamUrlFor(e);
+        return stream.length() > 0 && newFavSet != null
+                && newFavSet.contains(stream);
+    }
+
     private void refreshNewTalksPlayingMarks() {
         newPlayingUrl = "";
         newPlayingLibUrl = "";
@@ -2333,14 +2362,19 @@ public class NewTalksActivity extends Activity {
         // never touch the adapter, so scrolling stays undisturbed. Runs before the strip's own early
         // returns, so a dead session clears the mark even while the strip hides.
         refreshNewTalksPlayingMarks();
+        // v15.85 (slice 2169): the star snapshot joins the change detector — a star
+        // flipped from the notification card rebinds the rows here (History v13.77).
+        java.util.Set<String> newFavNow69 = newFavSetNow();
         if (adapter != null && (!newPlayingUrl.equals(newRowPlayingUrl == null ? "" : newRowPlayingUrl)
                 || !newPlayingLibUrl.equals(newRowPlayingLibUrl == null ? "" : newRowPlayingLibUrl)
                 || !newPlayingLibPath.equals(newRowPlayingLibPath == null ? "" : newRowPlayingLibPath)
-                || AudioService.liveEnded != newRowEnded)) {
+                || AudioService.liveEnded != newRowEnded
+                || !newFavNow69.equals(newFavSet))) {
             newRowPlayingUrl = newPlayingUrl;
             newRowPlayingLibUrl = newPlayingLibUrl;
             newRowPlayingLibPath = newPlayingLibPath;
             newRowEnded = AudioService.liveEnded;
+            newFavSet = newFavNow69;
             adapter.notifyDataSetChanged();
             // v15.67 (slice 2061): the sounding change above moves the playing talk (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button.
             refreshNewJumpTarget();

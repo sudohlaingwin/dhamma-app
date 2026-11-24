@@ -94,6 +94,8 @@ public class HistoryActivity extends Activity {
     // (refresh) and re-checked on the 1s tick's change detector, so a
     // star flipped from the notification card shows here too.
     private java.util.Set<String> histFavSet = new java.util.HashSet<String>();
+    // v15.85 (slice 2172): the listened-tick snapshot for the rows — histPlayedSet is the playedTalks set copied once per refresh (never read per row per bind, the v1.59 rule); refreshed on refresh() and on the 1s tick's change detector, so a tick flipped from the notification card or the mark verb rebinds the rows here.
+    private java.util.Set<String> histPlayedSet = new java.util.HashSet<String>();
     // v15.62 (slice 2030): "Play from here" debounce — its own
     // clock (the chooser's 700ms rule, v12.28: an invalid tap
     // never consumes the window).
@@ -595,6 +597,7 @@ public class HistoryActivity extends Activity {
         // stats store per keystroke.
         hsAllItems = Prefs.statsRecent(this);
         refreshHistFavSet(); // v13.77: rows bind their star mark from this snapshot
+        refreshHistPlayedSet(); // v15.85 (slice 2172): the tick snapshot fresh on first paint, beside the star snapshot
         if (totalValue != null) {
             meltStat40(totalValue, fmtDur(total));
             totalValue.setTextColor(goldColor());
@@ -696,8 +699,11 @@ public class HistoryActivity extends Activity {
         // title (the strip star and the Talks star marks read the same
         // set), after the "▶ " playing mark when both apply; gold
         // either way, so the mark reads at a glance.
+        // v15.85 (slice 2172): a finished recent talk says so — "✓ " after the "★ " star when both apply (the library v4.24 order, play first, star second, tick third), gold either way; the tick reads the histPlayedSet snapshot (refreshed on refresh() and on the 1s tick's change detector), resolved through histStreamUrlFor — a downloaded (path-form) row claims its stream URL through the dlMap exactly-one-claimant resolve, so it ticks exactly when its stream twin does. A row stopped early sits in History but NOT in playedTalks (the 2139 mark verb offers Mark there), so the tick distinguishes finished from merely started; the 2163 day stamp says WHEN, this says WHETHER finished. The playing row never ticks — its live position is on the strip, not a finished mark. No Lang key, no Prefs write, no layout change — the row is built in code.
+        boolean hsRowPlayed72 = !hsRowPlaying && histRowPlayed(e);
         String hsPrefix77 = (hsRowPlaying ? "▶ " : "")
-                + (histRowFav(e) ? "★ " : "");
+                + (histRowFav(e) ? "★ " : "")
+                + (hsRowPlayed72 ? "✓ " : "");
         tv.setText(hsPrefix77 + (e.title.length() > 0 ? e.title : e.url));
         tv.setTextColor((hsRowPlaying || histRowFav(e)) ? goldColor() : titleColor());
         tv.setTextSize(16);
@@ -1528,6 +1534,18 @@ public class HistoryActivity extends Activity {
                 && histFavSet.contains(stream);
     }
 
+    // v15.85 (slice 2172): the listened-tick snapshot (the v13.77 star shape, verbatim) — histPlayedSetNow copies the playedTalks set (the SAME set the 2139 mark verb reads, so the tick and the menu label can never disagree); refreshHistPlayedSet adopts it; histRowPlayed resolves the row's stream URL through histStreamUrlFor (a downloaded path-form row claims its stream URL, the 2084 exactly-one-claimant resolve) and tests membership, so a recent talk ticks exactly when its stream twin does. Null stream names no talk.
+    private java.util.Set<String> histPlayedSetNow() { return readPlayedTalksHist(); }
+
+    private void refreshHistPlayedSet() { histPlayedSet = histPlayedSetNow(); }
+
+    private boolean histRowPlayed(Prefs.HistEntry e) {
+        if (e == null) return false;
+        String stream = histStreamUrlFor(e);
+        return stream.length() > 0 && histPlayedSet != null
+                && histPlayedSet.contains(stream);
+    }
+
     // v13.77: Talks isTalkDownloaded, History-local — the dlMap
     // mapped file with the v13.66 length gate (a 0-byte file is not
     // downloaded), plus the plain basename leg for files the app
@@ -2341,16 +2359,21 @@ public class HistoryActivity extends Activity {
         // v13.77: the star snapshot joins the change detector — a star
         // flipped from the notification card rebinds the rows here.
         java.util.Set<String> hsFavNow77 = histFavSetNow();
+        // v15.85 (slice 2172): the tick snapshot joins the change detector — a tick
+        // flipped from the notification card or the mark verb rebinds the rows here.
+        java.util.Set<String> hsPlayedNow72 = histPlayedSetNow();
         if (adapter != null && (!histPlayingUrl.equals(histRowPlayingUrl == null ? "" : histRowPlayingUrl)
                 || !histPlayingLibUrl.equals(histRowPlayingLibUrl == null ? "" : histRowPlayingLibUrl)
                 || !histPlayingLibPath.equals(histRowPlayingLibPath == null ? "" : histRowPlayingLibPath)
                 || AudioService.liveEnded != histRowEnded
-                || !hsFavNow77.equals(histFavSet))) {
+                || !hsFavNow77.equals(histFavSet)
+                || !hsPlayedNow72.equals(histPlayedSet))) {
             histRowPlayingUrl = histPlayingUrl;
             histRowPlayingLibUrl = histPlayingLibUrl;
             histRowPlayingLibPath = histPlayingLibPath;
             histRowEnded = AudioService.liveEnded;
             histFavSet = hsFavNow77;
+            histPlayedSet = hsPlayedNow72;
             adapter.notifyDataSetChanged();
             // v15.67 (slice 2063): the sounding change above moves the playing talk (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button.
             refreshHsJumpTarget();
