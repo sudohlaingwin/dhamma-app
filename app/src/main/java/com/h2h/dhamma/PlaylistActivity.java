@@ -88,6 +88,8 @@ public class PlaylistActivity extends Activity {
     private java.util.Set<String> plPlayedSet = new java.util.HashSet<String>();
     // v15.86 (slice 2175): the total-duration snapshot for the detail rows — plDurCache is the per-talk total durations (Prefs.talkDurMap, one parse per refresh, never talkDurGet per row per bind, the v13.97 rule); refreshed on detail open and on the strip tick's change detector, so a length landing while the list sits open rebinds the rows here.
     private java.util.Map<String, Integer> plDurCache = new java.util.HashMap<String, Integer>();
+    // v15.91 (slice 2205): the resume-spot snapshot for the detail rows — plPosCache is the per-talk resume spots (one parse per refresh, never a per-row store test, the v5.69 rule); refreshed on detail open and on the strip tick's change detector, so a spot landing while the list sits open rebinds the rows here.
+    private java.util.Map<String, Integer> plPosCache = new java.util.HashMap<String, Integer>();
     // v15.90 (slice 2198): the downloaded-badge snapshot for the detail rows — the identity forms of the open list's stream addresses that are already on the phone, built once per refresh from the open list, refreshed on detail open and on the one-second tick's change detector, so a download landing while the list sits open rebinds the rows here.
     private java.util.Set<String> plDlSet97 = new java.util.HashSet<String>();
     // v14.06 (F4, sixth pass slice 5): rotation-restore track for
@@ -440,8 +442,11 @@ public class PlaylistActivity extends Activity {
         boolean plRowFav66 = plRowFav(qe);
         boolean plRowPlayed74 = !plRowPlaying && plRowPlayed(qe);
         // v15.90 (slice 2198): a downloaded list talk says so — the badge after the tick when both apply (this screen's order: play first, star second, tick third, badge fourth), so a list talk already on the phone reads as offline at a glance. The row reads the snapshot the refresh filled; a row whose stream address sits in the set is downloaded. The badge alone does not gold the row — only a sounding or favourited row turns gold. The sounding row badges too — downloaded is a property of the talk, not a state. No Lang key, no Prefs write, no layout change — the row is built in code.
+        // v15.91 (slice 2208): the resume spot joins the title — "↺ 12:34 · title" when the talk was meaningfully heard (spot over 5s, the same gate the progress line under the row uses), the Favourites row's resume segment now on Playlist detail rows: a list talk stopped early stays in its list, so a glance says where to resume without opening the talk. The spot reads the existing per-talk snapshot through the row's own resolver (the line's read, one more map lookup, no new snapshot, no new parse). The playing row shows it too (its spot is where playback will resume if it ends now — the Favourites shape, where the sounding row's resume advances with the saved spot). No Lang key, no Prefs write, no layout change — the row is built in code.
+        int plRowPos08 = plRowPosMs(qe);
+        String plResume08 = plRowPos08 > 5000 ? "↺ " + FavTalkRail.fmtTime(plRowPos08) + " · " : "";
         boolean plRowDl97 = plRowDl(qe);
-        LinearLayout col = textRows((plRowPlaying ? "▶ " : "") + (plRowFav66 ? "★ " : "") + (plRowPlayed74 ? "✓ " : "") + (plRowDl97 ? "⬇ " : "") + title, qe.sayadaw, plRowPlaying || plRowFav66);
+        LinearLayout col = textRows((plRowPlaying ? "▶ " : "") + (plRowFav66 ? "★ " : "") + (plRowPlayed74 ? "✓ " : "") + (plRowDl97 ? "⬇ " : "") + plResume08 + title, qe.sayadaw, plRowPlaying || plRowFav66);
         col.setPadding(0, (int) (10 * d), (int) (12 * d), (int) (10 * d));
         row.addView(col, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
@@ -472,7 +477,33 @@ public class PlaylistActivity extends Activity {
         row.addView(del, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
-        return row;
+        // v15.91 (slice 2205): a partly-heard list talk's listened-progress hairline — the Talks-row line (v13.97, slice 1092) and the rail cards' line (v15.60, slices 2020, 2027) now under this row: 3dp tall, 4dp below the row, faint-gold track (#33C9A227) with a solid-gold fill (#C9A227, @color/gold) split by weight, weightSum 1. The fraction is the talk's RESUME spot from the pos snapshot — never a finished flag (a finished talk's tick is a different mark; a list talk stopped early stays in its list, the 2142 rule) — over the 2175 clock's total (the shared fraction helper — the Talks-row rule verbatim: 0 when never meaningfully heard, spot at or below 5s, or no duration ever stored; clamped to 1, never below a 3% sliver, so a barely-started talk still reads as a visible gold dash). Never the playing row (its live position is on the strip, the 1092 gate). GONE unless a fraction was set — Fx.crossfadeHairline owns the show/hide (on these freshly built rows it seeds instantly, no melt ever plays here, the 2020 rail shape). No Lang key, no Prefs write, no layout change — the row is built in code.
+        int plRowPos05 = plRowPosMs(qe);
+        float plHairFrac05 = plRowPlaying ? 0f : RailHair.fraction(plRowPos05, plRowDur75);
+        LinearLayout plHairTrack05 = new LinearLayout(this);
+        plHairTrack05.setOrientation(LinearLayout.HORIZONTAL);
+        plHairTrack05.setBackgroundColor(android.graphics.Color.parseColor("#33C9A227"));
+        plHairTrack05.setWeightSum(1f);
+        LinearLayout.LayoutParams plHairParams05 = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, (int) (3 * d));
+        plHairParams05.topMargin = (int) (4 * d);
+        plHairTrack05.setLayoutParams(plHairParams05);
+        android.view.View plHairFill05 = new android.view.View(this);
+        plHairFill05.setBackgroundColor(android.graphics.Color.parseColor("#C9A227"));
+        plHairFill05.setLayoutParams(new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.MATCH_PARENT, plHairFrac05));
+        android.view.View plHairSpace05 = new android.view.View(this);
+        plHairSpace05.setLayoutParams(new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.MATCH_PARENT, 1f - plHairFrac05));
+        plHairTrack05.addView(plHairFill05);
+        plHairTrack05.addView(plHairSpace05);
+        Fx.crossfadeHairline(plHairTrack05, plHairFrac05 > 0f);
+        LinearLayout plWrap05 = new LinearLayout(this);
+        plWrap05.setOrientation(LinearLayout.VERTICAL);
+        plWrap05.addView(row, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        plWrap05.addView(plHairTrack05);
+        return plWrap05;
     }
 
     private void refreshEmpty() {
@@ -599,6 +630,7 @@ public class PlaylistActivity extends Activity {
         refreshPlPlayedSet(); // v15.86 (slice 2174): the tick snapshot fresh on first paint, beside the star snapshot
         refreshPlDurCache(); // v15.86 (slice 2175): the duration snapshot fresh on first paint, beside the tick snapshot
         refreshPlDlSet(); // v15.90 (slice 2198): the badge snapshot fresh on first paint, beside the duration snapshot — the rows read the snapshot, never a per-row store test
+        refreshPlPosCache(); // v15.91 (slice 2205): the pos snapshot fresh on first paint, beside the badge snapshot
         // v15.74 (slice 2103): the open list's sounding row is the jump target — refresh it and repaint the button from the new position (the 2063 shape: a fresh detail open can land with the playing row off-screen).
         refreshPlJumpTarget();
         paintPlJumpBtnFromList();
@@ -1567,6 +1599,44 @@ public class PlaylistActivity extends Activity {
                 && plDlSet97.contains(SiteHttp.identityUrl(stream97));
     }
 
+    // v15.91 (slice 2205): the resume-spot snapshot (the one-parse shape the rail refresh uses) — plPosCacheNow parses the saved-spot store once, identity-keyed with the first line per identity winning (the single-lookup first-match rule); refreshPlPosCache adopts it; plRowPosMs resolves the row's stream URL through the row's stream resolver and reads its spot, falling through to the row's own URL when the stream spot is at or below 5s (a downloaded row's spot was banked under its path form), so a list talk lines exactly when its stream twin does. Null stream names no talk; an unknown spot reads 0 — the line hides, never guesses.
+    private java.util.Map<String, Integer> plPosCacheNow() {
+        java.util.Map<String, Integer> out = new java.util.HashMap<String, Integer>();
+        try {
+            String raw = getSharedPreferences("dhamma", MODE_PRIVATE).getString("talkPosMap", "");
+            if (raw != null && raw.length() > 0) {
+                for (String line : raw.split("\n")) {
+                    int t = line.indexOf('\t');
+                    if (t <= 0) continue;
+                    String id = SiteHttp.identityUrl(line.substring(0, t));
+                    if (id == null || out.containsKey(id)) continue;
+                    try {
+                        int pos = Integer.parseInt(line.substring(t + 1));
+                        if (pos > 0) out.put(id, Integer.valueOf(pos));
+                    } catch (Exception ignored) {}
+                }
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    private void refreshPlPosCache() { plPosCache = plPosCacheNow(); }
+
+    private int plRowPosMs(QueueEntry qe) {
+        if (qe == null || plPosCache == null) return 0;
+        int p05 = 0;
+        String stream = plShareUrlFor(qe);
+        if (stream != null && stream.length() > 0) {
+            Integer p = plPosCache.get(SiteHttp.identityUrl(stream));
+            if (p != null) p05 = p.intValue();
+        }
+        if (p05 <= 5000 && qe.url != null) {
+            Integer q = plPosCache.get(qe.url);
+            if (q != null) p05 = q.intValue();
+        }
+        return p05;
+    }
+
     // v15.81 (slice 2144): History histIsDownloaded (v13.77), Playlist-local — the dlMap mapped file + length gate, plus the basename leg, so a streamed-only talk never offers it and a downloaded talk never offers it twice. Fresh prefs read at offer/tap time, so a download landing while the menu sits open is read, never guessed.
     private boolean plIsDownloaded(String url) {
         if (url == null || url.length() == 0) return false;
@@ -2198,13 +2268,16 @@ public class PlaylistActivity extends Activity {
         java.util.Map<String, Integer> plDurNow75 = plDurCacheNow();
         // v15.90 (slice 2198): the badge snapshot joins the change detector — a download landing while the list sits open rebinds the rows here.
         java.util.Set<String> plDlNow97 = plDlSetNow();
+        // v15.91 (slice 2205): the pos snapshot joins the change detector — a spot landing while the list sits open (a list talk just heard banks its spot) rebinds the rows here.
+        java.util.Map<String, Integer> plPosNow05 = plPosCacheNow();
         if (adapter != null && (!plPlayingUrl.equals(plRowPlayingUrl == null ? "" : plRowPlayingUrl)
                 || !plPlayingLibUrl.equals(plRowPlayingLibUrl == null ? "" : plRowPlayingLibUrl)
                 || AudioService.liveEnded != plRowEnded
                 || !plFavNow66.equals(plFavSet)
                 || !plPlayedNow74.equals(plPlayedSet)
                 || !plDurNow75.equals(plDurCache)
-                || !plDlNow97.equals(plDlSet97))) {
+                || !plDlNow97.equals(plDlSet97)
+                || !plPosNow05.equals(plPosCache))) {
             plRowPlayingUrl = plPlayingUrl;
             plRowPlayingLibUrl = plPlayingLibUrl;
             plRowEnded = AudioService.liveEnded;
@@ -2212,6 +2285,7 @@ public class PlaylistActivity extends Activity {
             plPlayedSet = plPlayedNow74;
             plDurCache = plDurNow75;
             plDlSet97 = plDlNow97;
+            plPosCache = plPosNow05;
             adapter.notifyDataSetChanged();
             // v15.74 (slice 2103): the sounding change above moves the playing talk (advance, stop, or a new session while browsing) — refresh the jump button's cached target and repaint it. Change-only: steady ticks never touch the button.
             refreshPlJumpTarget();

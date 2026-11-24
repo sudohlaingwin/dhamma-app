@@ -4102,7 +4102,33 @@ public class MainActivity extends Activity {
         srchDurParams90.setMargins((int) (8 * d29), 0, 0, 0);
         srchDurClock90.setLayoutParams(srchDurParams90);
         row29.addView(srchDurClock90);
-        return row29;
+        // v15.91 (slice 2206): a partly-heard search hit's listened-progress hairline — the Talks-row line (v13.97, slice 1092) and the rail cards' line (v15.60, slices 2020, 2027) now under this row: 3dp tall, 4dp below the row, faint-gold track (#33C9A227) with a solid-gold fill (#C9A227, @color/gold) split by weight, weightSum 1. The fraction is the talk's RESUME spot from the pos snapshot — never a finished flag (a finished talk's tick is a different mark; a hit stopped early stays findable, so it can carry a spot) — over the 2190 clock's total (the shared fraction helper — the Talks-row rule verbatim: 0 when never meaningfully heard, spot at or below 5s, or no duration ever stored; clamped to 1, never below a 3% sliver, so a barely-started talk still reads as a visible gold dash). Never the playing row (its live position is on the strip, the 1092 gate). GONE unless a fraction was set — Fx.crossfadeHairline owns the show/hide (on these freshly built rows it seeds instantly, no melt ever plays here, the 2020 rail shape). No Lang key, no Prefs write, no layout change — the row is built in code.
+        int srchRowPos06 = srchRowPosMs06(srchPosMap06, e29);
+        float srchHairFrac06 = rowPlaying87 ? 0f : RailHair.fraction(srchRowPos06, srchDur90);
+        android.widget.LinearLayout srchHairTrack06 = new android.widget.LinearLayout(this);
+        srchHairTrack06.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        srchHairTrack06.setBackgroundColor(android.graphics.Color.parseColor("#33C9A227"));
+        srchHairTrack06.setWeightSum(1f);
+        android.widget.LinearLayout.LayoutParams srchHairParams06 = new android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT, (int) (3 * d29));
+        srchHairParams06.topMargin = (int) (4 * d29);
+        srchHairTrack06.setLayoutParams(srchHairParams06);
+        android.view.View srchHairFill06 = new android.view.View(this);
+        srchHairFill06.setBackgroundColor(android.graphics.Color.parseColor("#C9A227"));
+        srchHairFill06.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0,
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT, srchHairFrac06));
+        android.view.View srchHairSpace06 = new android.view.View(this);
+        srchHairSpace06.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0,
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1f - srchHairFrac06));
+        srchHairTrack06.addView(srchHairFill06);
+        srchHairTrack06.addView(srchHairSpace06);
+        Fx.crossfadeHairline(srchHairTrack06, srchHairFrac06 > 0f);
+        android.widget.LinearLayout srchWrap06 = new android.widget.LinearLayout(this);
+        srchWrap06.setOrientation(android.widget.LinearLayout.VERTICAL);
+        srchWrap06.addView(row29, new android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT));
+        srchWrap06.addView(srchHairTrack06);
+        return srchWrap06;
     }
 
     // The sounding snapshot the search rows read (room address + library address, blank when nothing sounds).
@@ -4172,6 +4198,8 @@ public class MainActivity extends Activity {
 
     // The total-duration snapshot the search rows read (the durations map, one parse per dialog open and per keystroke rebuild, so a duration landing mid-dialog repaints on the next keystroke).
     private java.util.Map<String, Integer> srchDurMap90 = new java.util.LinkedHashMap<String, Integer>();
+    // v15.91 (slice 2206): the resume-spot snapshot for the search rows — srchPosMap06 is the per-talk resume spots (one parse per refresh, never a per-row store test, the v5.69 rule); refreshed on dialog open and on every keystroke rebuild, so a spot landing while the dialog sits open rebinds the rows here.
+    private java.util.Map<String, Integer> srchPosMap06 = new java.util.HashMap<String, Integer>();
 
     // v15.88 (slice 2190): the search-row total-duration resolver — the 2184 rail-clock shape for a search hit: the stream leg first (the raw url, then the identity form — a pre-migration http twin still clocks its https twin), then the downloaded path leg through the download map's file-name claim (a talk banked under its downloaded path clocks exactly when its stream twin does). Null entry, null url or null map reads 0; an unknown length reads 0 — the clock hides, never guesses.
     private int srchRowDurMs90(java.util.Map<String, Integer> dur90, TalkIndex.Entry e29) {
@@ -4200,6 +4228,46 @@ public class MainActivity extends Activity {
             srchDurMap90 = new java.util.LinkedHashMap<String, Integer>();
         }
         if (srchDurMap90 == null) srchDurMap90 = new java.util.LinkedHashMap<String, Integer>();
+    }
+
+    // v15.91 (slice 2206): the resume-spot snapshot (the one-parse shape the rail refresh uses) — srchPosMapNow06 parses the saved-spot store once, identity-keyed with the first line per identity winning (the single-lookup first-match rule); refreshSearchPos06 adopts it; srchRowPosMs06 resolves the row's stream URL through the clock's own three legs (raw url, then the identity form, then the downloaded path leg through the download map's file-name claim) and reads its spot, falling through to the path form when the stream spot is at or below 5s (a downloaded hit's spot was banked under its path form), so a search hit lines exactly when its stream twin does. Null entry, null url or null map reads 0 — the line hides, never guesses.
+    private java.util.Map<String, Integer> srchPosMapNow06() {
+        java.util.Map<String, Integer> out = new java.util.HashMap<String, Integer>();
+        try {
+            String raw = getSharedPreferences("dhamma", MODE_PRIVATE).getString("talkPosMap", "");
+            if (raw != null && raw.length() > 0) {
+                for (String line : raw.split("\n")) {
+                    int t = line.indexOf('\t');
+                    if (t <= 0) continue;
+                    String id = SiteHttp.identityUrl(line.substring(0, t));
+                    if (id == null || out.containsKey(id)) continue;
+                    try {
+                        int pos = Integer.parseInt(line.substring(t + 1));
+                        if (pos > 0) out.put(id, Integer.valueOf(pos));
+                    } catch (Exception ignored) {}
+                }
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    private void refreshSearchPos06() { srchPosMap06 = srchPosMapNow06(); }
+
+    private int srchRowPosMs06(java.util.Map<String, Integer> pos06, TalkIndex.Entry e29) {
+        if (e29 == null || e29.url == null || pos06 == null) return 0;
+        int p06 = 0;
+        Integer pv06 = pos06.get(SiteHttp.identityUrl(e29.url));
+        if (pv06 != null) p06 = pv06.intValue();
+        if (p06 <= 5000) {
+            String nm06 = DlLanded.downloadedFileName(MainActivity.this, e29.url, null, null);
+            if (nm06 != null) {
+                String path06 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + nm06).getAbsolutePath();
+                Integer q06 = pos06.get(path06);
+                if (q06 != null) p06 = q06.intValue();
+            }
+        }
+        return p06;
     }
 
     // The downloaded-badge snapshot the search rows read (the identity forms of the current results that are already on the phone, one shared-definition test per result per dialog open and per keystroke rebuild, so a download landing mid-dialog repaints on the next keystroke).
@@ -4242,6 +4310,8 @@ public class MainActivity extends Activity {
         refreshSearchPlayed89();
         // the rows read the duration snapshot too, so fill it before the first build.
         refreshSearchDur90();
+        // the rows read the pos snapshot too, so fill it before the first build.
+        refreshSearchPos06();
         // the rows read the downloaded snapshot too, so fill it before the first build.
         refreshSearchDl91(null);
         final android.widget.ArrayAdapter<TalkIndex.Entry> ad29 = new android.widget.ArrayAdapter<TalkIndex.Entry>(MainActivity.this, 0, 0, new java.util.ArrayList<TalkIndex.Entry>()) {
@@ -4277,6 +4347,8 @@ public class MainActivity extends Activity {
                 refreshSearchPlayed89();
                 // refill before the rebuild, so a duration landing mid-dialog repaints too.
                 refreshSearchDur90();
+                // refill before the rebuild, so a spot landing mid-dialog repaints too.
+                refreshSearchPos06();
                 // refill before the rebuild, so a download landing mid-dialog repaints too.
                 refreshSearchDl91(res29);
                 ad29.clear();
