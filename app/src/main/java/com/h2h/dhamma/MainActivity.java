@@ -4073,7 +4073,10 @@ public class MainActivity extends Activity {
         // v15.89 (slice 2192): the downloaded row says so — the badge after the star when both apply (the chooser/library order: play first, star second, badge third, tick fourth), so a hit already on the phone reads as offline at a glance. The row reads the snapshot the dialog filled; a hit whose identity form sits in the set is downloaded. The badge alone does not gold the row — only a sounding or favourited row turns gold, the 2189 tick rule. The sounding row badges too — downloaded is a property of the talk, not a state.
         boolean rowDl91 = e29 != null && e29.url != null && srchDlSet91 != null
                 && srchDlSet91.contains(SiteHttp.identityUrl(e29.url));
-        title29.setText((rowPlaying87 ? "▶ " : "") + (rowFav88 ? "★ " : "") + (rowDl91 ? "⬇ " : "") + (rowPlayed89 ? "✓ " : "") + (e29 == null || e29.title == null ? "" : e29.title));
+        // v15.92 (slice 2210): the resume spot joins the title — "↺ 12:34 · title" when the hit was meaningfully heard (spot over 5s, the same gate the progress line under the row uses), the Favourites row's resume segment now on global search rows: a search hit stopped early stays findable, so a glance says where to resume without opening the talk. The spot reads the existing per-talk snapshot through the row's own resolver (the line's read, one more map lookup, no new snapshot, no new parse). The playing row shows it too (its spot is where playback will resume if it ends now — the Favourites shape, where the sounding row's resume advances with the saved spot). No Lang key, no Prefs write, no layout change — the row is built in code.
+        int srchRowPos10 = srchRowPosMs06(srchPosMap06, e29);
+        String srchResume10 = srchRowPos10 > 5000 ? "↺ " + FavTalkRail.fmtTime(srchRowPos10) + " · " : "";
+        title29.setText((rowPlaying87 ? "▶ " : "") + (rowFav88 ? "★ " : "") + (rowDl91 ? "⬇ " : "") + (rowPlayed89 ? "✓ " : "") + srchResume10 + (e29 == null || e29.title == null ? "" : e29.title));
         title29.setTextColor((rowPlaying87 || rowFav88) ? android.graphics.Color.parseColor("#C9A227")
                 : cachedNight ? android.graphics.Color.WHITE
                 : android.graphics.Color.parseColor("#3B2314"));
@@ -5689,6 +5692,24 @@ public class MainActivity extends Activity {
         return RailHair.fraction(rp20, durI20 == null ? 0 : durI20.intValue());
     }
 
+    // v15.92 (slice 2212): the Recently-played card's resume spot — the History-row cue, now on the first Main rail card (the card showed the sayadaw, the title, the downloaded badge, the total clock and the listened-progress hairline, but never where the talk resumes). Two legs, stream then downloaded path, exactly like the hairline above — a spot written while streaming has no path form when the file was downloaded after the listen, and a spot written from the library has no stream form when the file was never claimed. The map comes from the caller (one parse per refresh). No playing gate is needed — the pick already excludes the sounding talk. Returns 0 when never meaningfully heard; the caller gates on over 5s.
+    private int recentRowPosMs12(java.util.Map<String, Integer> pos20, Prefs.HistEntry e) {
+        if (e == null || e.url == null || pos20 == null) return 0;
+        String id12 = SiteHttp.identityUrl(e.url);
+        Integer rpI12 = id12 == null ? null : pos20.get(id12);
+        int rp12 = rpI12 == null ? 0 : rpI12.intValue();
+        if (rp12 <= 5000) {
+            String fn12 = DlLanded.downloadedFileName(MainActivity.this, e.url, null, null);
+            if (fn12 != null) {
+                String dlPath12 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + fn12).getAbsolutePath();
+                Integer rpP12 = pos20.get(dlPath12);
+                if (rpP12 != null) rp12 = rpP12.intValue();
+            }
+        }
+        return rp12;
+    }
+
     // v15.87 (slice 2180): the Recently-played card's total-duration resolver — the 2175 plRowDurMs shape for a rail card: the duration snapshot (dur20, Prefs.talkDurMap, one parse per refresh) is passed in, never re-parsed per card (the v5.69 rule); the stream leg first (identityUrl-normalised), then the downloaded path leg through DlLanded (talkDurPutBoth banks both forms, the v13.96 rule), so a card clocks exactly when its stream twin does. Null row or null map reads 0; an unknown length reads 0 — the clock hides, never guesses.
     private int recentRowDurMs80(java.util.Map<String, Integer> dur20, Prefs.HistEntry e) {
         if (e == null || e.url == null || dur20 == null) return 0;
@@ -5771,7 +5792,8 @@ public class MainActivity extends Activity {
         // v15.60 (slice 2020): the key carries the painted fraction, not just the URL — a resume spot moves while a talk plays, and the rail repaints only when this key moves, so a spot-only change (same five talks, one heard further, back on Main) must move the key or the line would freeze at its first paint. The fraction is the card's own helper, so key and paint can never disagree; Float.toString is deterministic for the same value, so equal fractions never repaint.
         // v15.61 (slice 2023): the key carries the downloaded badge bit beside the painted fraction — a download landing while Main sits open must move the key or the rail would freeze the card at its first paint (the 2020 lesson). The bit is the card's own helper, so key and paint can never disagree; a badge flip moves the key even when the fraction cannot.
         // v15.87 (slice 2180): the key carries the painted clock, beside the fraction and the badge bit — a duration landing while Main sits open must move the key or the card would freeze clockless at its first paint (the 2020 lesson). The value is the card's own helper, so key and paint can never disagree.
-        for (Prefs.HistEntry e : picked) kb.append('|').append(SiteHttp.identityUrl(e.url)).append(':').append(recentHairFrac20(pos20, dur20, e)).append(':').append(recentDlBadge23(e) ? '1' : '0').append(':').append(recentRowDurMs80(dur20, e));
+        // v15.92 (slice 2212): the key carries the painted resume spot beside the fraction, the badge bit and the clock — a spot landing while Main sits open must move the key or the card would freeze cue-less at its first paint. The value is the card's own helper, so key and paint can never disagree.
+        for (Prefs.HistEntry e : picked) kb.append('|').append(SiteHttp.identityUrl(e.url)).append(':').append(recentHairFrac20(pos20, dur20, e)).append(':').append(recentDlBadge23(e) ? '1' : '0').append(':').append(recentRowDurMs80(dur20, e)).append(':').append(recentRowPosMs12(pos20, e));
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (recentRailWrap.getVisibility() != android.view.View.GONE)
@@ -5828,7 +5850,10 @@ public class MainActivity extends Activity {
             col.addView(name);
             android.widget.TextView title = new android.widget.TextView(this);
             // v15.61 (slice 2023): the downloaded ⬇ badge — the row convention (Room drawer rows, History rows): the U+2B07 glyph as a title prefix, "⬇ title", on a talk already on the phone. Same 12sp #7A6A58 title view, same single line with END ellipsis; the prefix only shortens the visible title by two cells. The gate is the helper below — the same shared DlLanded call the file-share offer on this card makes (slice 2006), so badge and offer can never disagree. No rail card anywhere showed download state before this slice.
-            title.setText(recentDlBadge23(e) ? "\u2B07 " + e.title : e.title);
+            // v15.92 (slice 2212): the resume spot prefix — the saved position ahead of the title when the talk was meaningfully heard (spot over 5s), the row cue now on the first Main rail card: a just-heard talk stays findable, so a glance says where to resume without opening the talk. The badge leg first, the cue second — the download mark outermost, the resume mark directly before the title. No playing gate — the pick already excludes the sounding talk. No Lang key, no Prefs write, no layout change — the card is built in code.
+            int recentPos12 = recentRowPosMs12(pos20, e);
+            String recentResume12 = recentPos12 > 5000 ? "\u21BA " + FavTalkRail.fmtTime(recentPos12) + " · " : "";
+            title.setText((recentDlBadge23(e) ? "\u2B07 " : "") + recentResume12 + e.title);
             title.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
             title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
             title.setMaxLines(1);
@@ -6136,6 +6161,24 @@ public class MainActivity extends Activity {
         return RailHair.fraction(rp21, durI21 == null ? 0 : durI21.intValue());
     }
 
+    // v15.92 (slice 2213): the Downloaded card's resume spot — the row cue, now on the second Main rail card (the card showed the sayadaw, the title, the total clock and the listened-progress hairline, but never where the talk resumes). Two legs, stream then downloaded path, exactly like the hairline above — the path leg is the common case here, the rail's entries are finished downloads, but a spot written while streaming has no path form when the file was downloaded after the listen. The map comes from the caller (one parse per refresh). No playing gate is needed — the pick already excludes the sounding talk. Returns 0 when never meaningfully heard; the caller gates on over 5s.
+    private int dlRecentRowPosMs13(java.util.Map<String, Integer> pos21, Prefs.HistEntry e) {
+        if (e == null || e.url == null || pos21 == null) return 0;
+        String id13 = SiteHttp.identityUrl(e.url);
+        Integer rpI13 = id13 == null ? null : pos21.get(id13);
+        int rp13 = rpI13 == null ? 0 : rpI13.intValue();
+        if (rp13 <= 5000) {
+            String fn13 = DlLanded.downloadedFileName(MainActivity.this, e.url, null, null);
+            if (fn13 != null) {
+                String dlPath13 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + fn13).getAbsolutePath();
+                Integer rpP13 = pos21.get(dlPath13);
+                if (rpP13 != null) rp13 = rpP13.intValue();
+            }
+        }
+        return rp13;
+    }
+
     // v15.87 (slice 2181): the Downloaded card's total-duration resolver — the 2175 plRowDurMs shape for a rail card: the duration snapshot (dur21, Prefs.talkDurMap, one parse per refresh) is passed in, never re-parsed per card (the v5.69 rule); the stream leg first (identityUrl-normalised), then the downloaded path leg through DlLanded (talkDurPutBoth banks both forms, the v13.96 rule), so a card clocks exactly when its stream twin does. The path leg is the common case here — the rail's entries are dlMap-claimed finished .mp3s — but the stream leg stays first. Null row or null map reads 0; an unknown length reads 0 — the clock hides, never guesses.
     private int dlRowDurMs81(java.util.Map<String, Integer> dur21, Prefs.HistEntry e) {
         if (e == null || e.url == null || dur21 == null) return 0;
@@ -6212,7 +6255,8 @@ public class MainActivity extends Activity {
         kb.append(cachedNight ? "N" : "D");
         // v15.60 (slice 2021): the key carries the painted fraction, not just the URL — a resume spot moves while a talk plays, and the rail repaints only when this key moves, so a spot-only change (same five talks, one heard further, back on Main) must move the key or the line would freeze at its first paint. The fraction is the card's own helper, so key and paint can never disagree; Float.toString is deterministic for the same value, so equal fractions never repaint.
         // v15.87 (slice 2181): the key carries the painted clock, beside the fraction — a duration landing while Main sits open must move the key or the card would freeze clockless at its first paint (the 2021 lesson). The value is the card's own helper, so key and paint can never disagree. No badge bit on this rail — every card here IS downloaded, so there is no badge to carry.
-        for (Prefs.HistEntry e : picked) kb.append('|').append(SiteHttp.identityUrl(e.url)).append(':').append(dlRecentHairFrac21(pos21, dur21, e)).append(':').append(dlRowDurMs81(dur21, e));
+        // v15.92 (slice 2213): the key carries the painted resume spot beside the fraction and the clock — a spot landing while Main sits open must move the key or the card would freeze cue-less at its first paint. The value is the card's own helper, so key and paint can never disagree.
+        for (Prefs.HistEntry e : picked) kb.append('|').append(SiteHttp.identityUrl(e.url)).append(':').append(dlRecentHairFrac21(pos21, dur21, e)).append(':').append(dlRowDurMs81(dur21, e)).append(':').append(dlRecentRowPosMs13(pos21, e));
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (dlRecentRailWrap.getVisibility() != android.view.View.GONE)
@@ -6268,7 +6312,10 @@ public class MainActivity extends Activity {
             name.setEllipsize(android.text.TextUtils.TruncateAt.END);
             col.addView(name);
             android.widget.TextView title = new android.widget.TextView(this);
-            title.setText(e.title);
+            // v15.92 (slice 2213): the resume spot prefix — the saved position ahead of the title when the talk was meaningfully heard (spot over 5s), the row cue now on the second Main rail card: a just-downloaded talk stays findable, so a glance says where to resume without opening the talk. No badge leg on this rail — every card here is downloaded, so the cue sits directly before the title. No playing gate — the pick already excludes the sounding talk. No Lang key, no Prefs write, no layout change — the card is built in code.
+            int dlRecentPos13 = dlRecentRowPosMs13(pos21, e);
+            String dlRecentResume13 = dlRecentPos13 > 5000 ? "\u21BA " + FavTalkRail.fmtTime(dlRecentPos13) + " · " : "";
+            title.setText(dlRecentResume13 + e.title);
             title.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
             title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
             title.setMaxLines(1);
@@ -6533,6 +6580,24 @@ public class MainActivity extends Activity {
         return RailHair.fraction(rp27, durI27 == null ? 0 : durI27.intValue());
     }
 
+    // v15.92 (slice 2214): the Bookmarks card's resume spot — the row cue, now on the third Main rail card (the card showed the sayadaw, the mark minute, the downloaded badge, the total clock and the listened-progress hairline, but never where the talk resumes). Two legs, stream then downloaded path, exactly like the line above — the path leg is the rarer case here, the rail's entries are bookmarked talks, only some of them downloaded, but a spot written while streaming has no path form when the file was downloaded after the listen. The map comes from the caller (one parse per refresh). No playing gate is needed — the pick already excludes the sounding talk. Returns 0 when never meaningfully heard; the caller gates on over 5s and away from the mark minute.
+    private int bmRecentRowPosMs14(java.util.Map<String, Integer> pos27, Prefs.HistEntry e) {
+        if (e == null || e.url == null || pos27 == null) return 0;
+        String id14 = SiteHttp.identityUrl(e.url);
+        Integer rpI14 = id14 == null ? null : pos27.get(id14);
+        int rp14 = rpI14 == null ? 0 : rpI14.intValue();
+        if (rp14 <= 5000) {
+            String fn14 = DlLanded.downloadedFileName(MainActivity.this, e.url, null, null);
+            if (fn14 != null) {
+                String dlPath14 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + fn14).getAbsolutePath();
+                Integer rpP14 = pos27.get(dlPath14);
+                if (rpP14 != null) rp14 = rpP14.intValue();
+            }
+        }
+        return rp14;
+    }
+
     // v15.87 (slice 2182): the Bookmarks card's total-duration resolver — the 2175 plRowDurMs shape for a rail card: the duration snapshot (dur27, Prefs.talkDurMap, one parse per refresh) is passed in, never re-parsed per card (the v5.69 rule); the stream leg first (identityUrl-normalised), then the downloaded path leg through DlLanded (talkDurPutBoth banks both forms, the v13.96 rule), so a card clocks exactly when its stream twin does. The path leg is not the common case here — the rail's entries are bookmarked talks, only some of them downloaded — but the stream leg stays first. Null row or null map reads 0; an unknown length reads 0 — the clock hides, never guesses.
     private int bmRowDurMs82(java.util.Map<String, Integer> dur27, Prefs.HistEntry e) {
         if (e == null || e.url == null || dur27 == null) return 0;
@@ -6614,7 +6679,8 @@ public class MainActivity extends Activity {
         // v15.61 (slice 2026): the key carries the downloaded badge bit beside the mark minute — a download landing while Main sits open must move the key or the rail would freeze the card at its first paint (the 2020 lesson). The bit is the card's own helper, so key and paint can never disagree; a badge flip moves the key even when the identity and the mark minute cannot. The key already carried identity + mark minute; the bit rides after the minute.
         // v15.61 (slice 2027): the key carries the painted fraction between the mark minute and the badge bit — the card's title renders the mark minute ("12:34 · title"), so the key must keep c.posMs or a mark-only change would not repaint; and a resume spot moves while a talk plays, so the fraction must ride too or a spot-only change would freeze the line at its first paint (the 2020 lesson). The fraction is the card's own helper, so key and paint can never disagree; Float.toString is deterministic for the same value, so equal fractions never repaint.
         // v15.87 (slice 2182): the key carries the painted clock, after the badge bit — a duration landing while Main sits open must move the key or the card would freeze clockless at its first paint (the 2027 lesson). The value is the card's own helper, so key and paint can never disagree. The clock rides after the badge bit, beside the fraction.
-        for (BmRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(c.posMs).append(':').append(bmHairFrac27(pos27, dur27, c.e)).append(':').append(bmDlBadge26(c.e) ? '1' : '0').append(':').append(bmRowDurMs82(dur27, c.e));
+        // v15.92 (slice 2214): the key carries the painted resume spot beside the fraction, the badge bit and the clock — a spot landing while Main sits open must move the key or the card would freeze cue-less at its first paint. The value is the card's own helper, so key and paint can never disagree.
+        for (BmRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(c.posMs).append(':').append(bmHairFrac27(pos27, dur27, c.e)).append(':').append(bmDlBadge26(c.e) ? '1' : '0').append(':').append(bmRowDurMs82(dur27, c.e)).append(':').append(bmRecentRowPosMs14(pos27, c.e));
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (bmRailWrap.getVisibility() != android.view.View.GONE)
@@ -6671,7 +6737,10 @@ public class MainActivity extends Activity {
             col.addView(name);
             android.widget.TextView title = new android.widget.TextView(this);
             // v15.61 (slice 2026): the downloaded ⬇ badge — the row convention (Room drawer rows, History rows, Recently-played rail cards since slice 2023, New-talks rail cards since slice 2024, Favourite-talks rail cards since slice 2025): the U+2B07 glyph as a title prefix on a talk already on the phone. This rail's title always renders the mark minute first ("12:34 · title" — BmRail.pick guarantees posMs > 0, so there is no bare-title variant), so the badge prefixes the WHOLE rendered title — "⬇ 12:34 · title" — the download mark outermost, the mark-minute rendering untouched byte for byte. Same 12sp #7A6A58 title view, same single line with END ellipsis; the prefix only shortens the visible title by two cells. The gate is the helper below — the same shared DlLanded call the file-share offer on this card makes (slice 2008), so badge and offer can never disagree. No rail card on this shelf showed download state before this slice.
-            title.setText((bmDlBadge26(c.e) ? "\u2B07 " : "") + BmRail.fmtTime(c.posMs) + " · " + c.e.title);
+            // v15.92 (slice 2214): the resume spot prefix — the saved position ahead of the mark minute when the talk was heard past its mark (spot over 5s and more than 5s from the mark minute, so the cue never repeats the minute the card already prints), the row cue now on the third Main rail card: a marked talk heard past its mark stays findable, so a glance says where to resume without opening the talk. The badge stays outermost, the mark minute never moves, never hides. No playing gate — the pick already excludes the sounding talk. No Lang key, no Prefs write, no layout change — the card is built in code.
+            int bmRecentPos14 = bmRecentRowPosMs14(pos27, c.e);
+            String bmRecentResume14 = bmRecentPos14 > 5000 && Math.abs(bmRecentPos14 - c.posMs) > 5000 ? "\u21BA " + FavTalkRail.fmtTime(bmRecentPos14) + " · " : "";
+            title.setText((bmDlBadge26(c.e) ? "\u2B07 " : "") + bmRecentResume14 + BmRail.fmtTime(c.posMs) + " · " + c.e.title);
             title.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
             title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
             title.setMaxLines(1);
