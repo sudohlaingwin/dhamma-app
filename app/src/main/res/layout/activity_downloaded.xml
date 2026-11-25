@@ -161,6 +161,86 @@
         android:layout_marginTop="16dp"
         android:text="◀ ပြန်သွားမယ်"
         android:visibility="gone" />
+    <!-- v16.00 (slice 2267): "Play new" row — one tap queues +
+         plays only the shown unlistened files, in display order,
+         the Downloaded mirror of the Talks chooser's
+         talkPlayNewRow (v15.44) and the visible one-tap form of
+         the hidden menu verb dl_menu_play_shown_new (v6.74). It
+         sits above the Continue row (the chooser's order — the
+         batch action first, the single resume second); GONE
+         unless an unlistened shown file exists
+         (refreshDlPlayNewRow owns it); the label is the
+         chooser's own shipped Burmese, set in XML like the
+         chooser's, so no new Lang key. -->
+    <LinearLayout
+        android:id="@+id/dlPlayNewRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/nav_glass"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:visibility="gone">
+        <TextView
+            android:id="@+id/dlPlayNewLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="▶ အသစ် ဖွင့်မယ်"
+            android:textColor="@color/gold"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/dlPlayNewTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/ink"
+            android:textSize="15sp" />
+    </LinearLayout>
+    <!-- v16.00 (slice 2266): "Continue listening" row — the
+         one-tap return to the most recently listened half-heard
+         file, the Downloaded mirror of the Talks chooser's
+         talkContinueRow (v15.43). It sits above the list, under
+         the Play-new row (the chooser's slot — the scout's
+         above-the-Sort-row sketch would push the whole action
+         stack down whenever the row appears; this slot moves
+         only the list). GONE unless a pick exists
+         (refreshDlContinueRow owns it); the label is the
+         chooser's own shipped Burmese, set in XML like the
+         chooser's, so no new Lang key. -->
+    <LinearLayout
+        android:id="@+id/dlContinueRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/nav_glass"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:visibility="gone">
+        <TextView
+            android:id="@+id/dlContinueLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="↺ ဆက်နားထောင်ရန်"
+            android:textColor="@color/gold"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/dlContinueTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/ink"
+            android:textSize="15sp" />
+    </LinearLayout>
     <!-- v15.57 (slice 2002): the list now sits in a FrameLayout so the jump-to-playing-file button can float over its bottom-end corner (the Talks 1994 shape) — the ListView keeps its id, divider and fast-scroll; the weight + top margin move to the frame, so the strip below still pins the same way. -->
     <FrameLayout
         android:layout_width="match_parent"

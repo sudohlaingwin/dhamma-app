@@ -260,6 +260,16 @@ public class DownloadedActivity extends Activity {
     // never parses prefs/JSON per row (the v2.03 cost class).
     private java.util.Map<String, Integer> libResumeMap =
             new java.util.HashMap<String, Integer>();
+    // v16.00 (slice 2266): identityUrl -> shelf path for the
+    // Continue row — built once per load in refreshLibMarkCache
+    // below, beside libResumeMap, from the same dlMap reverse
+    // lookup (fileToUrl), so the pick never parses prefs/JSON
+    // per tick. Single-claim files only (the v8.43 rule — a
+    // dual-claimed file earns no reverse lookup, like no
+    // stream-form resume); a talk downloaded twice under two
+    // names maps to the last entry in entries order.
+    private java.util.Map<String, String> libUrlToPath =
+            new java.util.HashMap<String, String>();
     // v13.97 (slice 1092): per-file total durations (path -> ms),
     // built once per load in refreshLibMarkCache below, same shape
     // as libResumeMap — path form first, stream form via the dlMap
@@ -310,6 +320,7 @@ public class DownloadedActivity extends Activity {
         libResumePath = null;
         libResumeMs = 0;
         libResumeMap = new java.util.HashMap<String, Integer>();
+        libUrlToPath = new java.util.HashMap<String, String>();
         libDurMap = new java.util.HashMap<String, Integer>();
         libSayadawMap = new java.util.HashMap<String, String>();
         // v15.31 (slice 1825): the state-glyph map re-adopts with the
@@ -357,6 +368,8 @@ public class DownloadedActivity extends Activity {
                 if (played != null && played.contains(SiteHttp.identityUrl(u))) libListenedFiles.add(e.file.getName());
                 String sd = sdMap.optString(u, "");
                 if (sd.length() > 0) libSayadawMap.put(e.file.getName(), sd);
+                String id66 = SiteHttp.identityUrl(u);
+                if (id66 != null) libUrlToPath.put(id66, e.file.getAbsolutePath());
             }
             String savedUrl = pp.getString("lastPosUrl", "");
             int savedPos = pp.getInt("lastPos", 0);
@@ -1907,6 +1920,227 @@ public class DownloadedActivity extends Activity {
                 paintDlUnheardBtn(dlListView.getFirstVisiblePosition(), dlListView.getLastVisiblePosition());
             }
         });
+    }
+
+    // v16.00 (slice 2266): "Continue listening" row — the one-tap
+    // return to this library's most recently listened half-heard
+    // file (saved spot over 5s, not finished, not the sounding
+    // file), the Downloaded mirror of the Talks chooser's
+    // talkContinueRow (v15.43, slice 1932). Rides the 1s tick
+    // beside refreshLibQueuePreview (load / return / tick), after
+    // it — libRowPlayingPath is fresh for the tick by then — and
+    // after refreshLibMarkCache, so libResumeMap + libListenedFiles
+    // + libUrlToPath are fresh. Hidden while a search or filter
+    // narrows the list (dlQuery / dlFilterMode — the picked file
+    // may be hidden) or the queue-only view shows (libQueueOnly);
+    // sort never hides it (sort only reorders, like the chooser).
+    // Change-gated on path + pos, so steady ticks touch no view.
+    // Shows with the chooser row's fade idiom (fadeIn 250 /
+    // fadeOut 200). Tap plays the file in place from its saved
+    // spot — the row tap's own funnel (hideKeyboard + Fx.tap +
+    // Fx.morph + the v11.65/v13.71 exists/length gate + trim +
+    // pending when unbound + toggle when sounding + service.play
+    // with savedPosForFile), never a Room open: the library rows
+    // play in place (v4.22).
+    private android.view.View dlContinueRow = null;
+    private android.widget.TextView dlContinueTitle = null;
+    private String dlContinuePickKey = "";
+    private String dlContinuePickPath = null;
+    private void refreshDlContinueRow() {
+        String path66 = null;
+        int posMs66 = 0;
+        if (dlListLoaded && entries != null && !entries.isEmpty()
+                && !libQueueOnly && dlFilterMode == 0
+                && (dlQuery == null || dlQuery.length() == 0)) {
+            path66 = DlContinuePick.pick(Prefs.statsRecent(DownloadedActivity.this),
+                    libUrlToPath, libResumeMap, libListenedFiles, libRowPlayingPath);
+            if (path66 != null) {
+                Integer ms66 = libResumeMap == null ? null : libResumeMap.get(path66);
+                posMs66 = ms66 == null ? 0 : ms66.intValue();
+            }
+        }
+        String key66 = path66 == null ? "" : path66 + "|" + posMs66;
+        if (key66.equals(dlContinuePickKey)) return;
+        dlContinuePickKey = key66;
+        dlContinuePickPath = path66;
+        if (dlContinueRow == null) return;
+        if (path66 == null) {
+            if (dlContinueRow.getVisibility() == android.view.View.VISIBLE) Fx.fadeOut(dlContinueRow, 200);
+            return;
+        }
+        Entry e66 = null;
+        for (Entry e : entries) if (e != null && e.file != null && e.file.getAbsolutePath().equals(path66)) { e66 = e; break; }
+        if (dlContinueTitle != null && e66 != null)
+            dlContinueTitle.setText(e66.title + " · " + Fx.fmtTime(posMs66));
+        if (dlContinueRow.getVisibility() != android.view.View.VISIBLE) {
+            dlContinueRow.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(dlContinueRow, 250);
+        } else if (dlContinueRow.getAlpha() < 0.999f) {
+            Fx.fadeIn(dlContinueRow, 250);
+        }
+    }
+
+    // v16.00 (slice 2267): "Play new" row — one tap queues +
+    // plays only the shown unlistened files, in display order,
+    // the Downloaded mirror of the Talks chooser's talkPlayNewRow
+    // (v15.44, slice 1933) and the visible one-tap form of the
+    // hidden menu verb dl_menu_play_shown_new (v6.74). The pick
+    // is the unlistened shown set (libEntryAtDisplay over
+    // libDisplayCount, the rows' own caches — unlistened =
+    // absent from libListenedFiles), minus the sounding file
+    // (the chooser's PlayNewPick rule, so the count names only
+    // files the tap will actually start). Rides the 1s tick
+    // beside refreshDlContinueRow (load / return / tick), after
+    // it — soundingLibPath() reads the live session, so the
+    // pick is fresh for the tick by then. Hidden in the
+    // queue-only view (libQueueOnly — the shown set there is
+    // the queue, not the library, and the verb is never offered
+    // there); a search or filter only NARROWS the shown set,
+    // never hides the row (the pick IS the shown set, unlike
+    // the chooser's full-list pick). Change-gated on the
+    // joined picked paths, so steady ticks touch no view.
+    // Shows with the chooser row's fade idiom (fadeIn 250 /
+    // fadeOut 200). The title names the count ("N <word>") from
+    // queue_added_suffix's own word, parsed at runtime (see
+    // dlPlayNewCountWordFromSuffix); the tap re-resolves the
+    // pick fresh (see playDlNewShown), so a state shift between
+    // refresh and tap can never queue a stale set.
+    private android.view.View dlPlayNewRow = null;
+    private android.widget.TextView dlPlayNewTitle = null;
+    private String dlPlayNewPickKey = "";
+    private String dlPlayNewCountWord = null;
+    private long lastDlPlayNewMs = 0;
+    private java.util.List<Entry> computeDlPlayNewEntries() {
+        java.util.ArrayList<Entry> out = new java.util.ArrayList<Entry>();
+        if (!dlListLoaded || entries == null || entries.isEmpty() || libQueueOnly) return out;
+        String cur67 = soundingLibPath();
+        for (int i = 0; i < libDisplayCount(); i++) {
+            Entry e67 = libEntryAtDisplay(i);
+            if (e67 == null || e67.file == null) continue;
+            if (libListenedFiles.contains(e67.file.getName())) continue;
+            if (e67.file.getAbsolutePath().equals(cur67)) continue;
+            out.add(e67);
+        }
+        return out;
+    }
+    private void refreshDlPlayNewRow() {
+        java.util.List<Entry> picked67 = computeDlPlayNewEntries();
+        StringBuilder kb67 = new StringBuilder();
+        for (Entry e67 : picked67) {
+            if (kb67.length() > 0) kb67.append(",");
+            kb67.append(e67 == null || e67.file == null ? "?" : e67.file.getAbsolutePath());
+        }
+        String key67 = kb67.toString();
+        if (key67.equals(dlPlayNewPickKey)) return;
+        dlPlayNewPickKey = key67;
+        if (dlPlayNewRow == null) return;
+        if (picked67.isEmpty()) {
+            if (dlPlayNewRow.getVisibility() == android.view.View.VISIBLE) Fx.fadeOut(dlPlayNewRow, 200);
+            return;
+        }
+        if (dlPlayNewCountWord == null) dlPlayNewCountWord = dlPlayNewCountWordFromSuffix();
+        if (dlPlayNewTitle != null)
+            dlPlayNewTitle.setText(picked67.size() + " " + dlPlayNewCountWord);
+        if (dlPlayNewRow.getVisibility() != android.view.View.VISIBLE) {
+            dlPlayNewRow.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(dlPlayNewRow, 250);
+        } else if (dlPlayNewRow.getAlpha() < 0.999f) {
+            Fx.fadeIn(dlPlayNewRow, 250);
+        }
+    }
+    // v16.00 (slice 2267): the count word for the Play-new title
+    // — queue_added_suffix's own Burmese (" <word> <word>")
+    // parsed at runtime: the middle space-separated token.
+    // Never hand-typed; a suffix that does not parse yields ""
+    // (the title shows a bare number). Parsed once and cached.
+    // The chooser's playNewCountWordFromSuffix (v15.44) shape.
+    private String dlPlayNewCountWordFromSuffix() {
+        try {
+            String s = Lang.t(DownloadedActivity.this, "queue_added_suffix");
+            if (s == null) return "";
+            String[] parts = s.split(" ");
+            if (parts.length == 3 && parts[1] != null && parts[1].length() > 0) return parts[1];
+        } catch (Exception ignored) {}
+        return "";
+    }
+    // v16.00 (slice 2267): play the picked new files — the
+    // v6.74 handler run from the row: same guards (empty list /
+    // no shown file refuse with the same words), same 700ms
+    // debounce on its own clock (an invalid tap never consumes
+    // the window, v12.28 rule), same skips (sounding +
+    // already-queued), same head-queue of the rest in display
+    // order, same saveLibQueue keep-set tail, same count toast,
+    // same glide to the first file. The pick is re-resolved
+    // fresh here (see refreshDlPlayNewRow), so the tap never
+    // trusts a stale refresh. The first file plays with row-tap
+    // semantics (saveLastLibrary anchor, saved-spot resume, glide
+    // to its row; an unbound service queues through pendingDlPath
+    // like a row tap before the bind, so the tap is never
+    // dropped); if the first file is the one already sounding,
+    // nothing restarts — the rest are simply head-queued behind
+    // it, like v6.74's stay-put branch. The queue-ahead trim a
+    // row tap does is deliberately NOT applied, like v6.74.
+    private void playDlNewShown(android.view.View v) {
+        if (!dlListLoaded || entries == null || entries.isEmpty() || libQueueOnly) return;
+        java.util.List<Entry> picked67 = computeDlPlayNewEntries();
+        if (picked67.isEmpty()) {
+            android.widget.Toast.makeText(DownloadedActivity.this,
+                    Lang.t(DownloadedActivity.this, "all_listened"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Entry first67 = picked67.get(0);
+        if (first67 == null || first67.file == null) {
+            android.widget.Toast.makeText(DownloadedActivity.this,
+                    Lang.t(DownloadedActivity.this, "no_search_match"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String firstPath67 = first67.file.getAbsolutePath();
+        String cur67 = soundingLibPath();
+        boolean firstPlaying67 = firstPath67.equals(cur67);
+        long now67 = android.os.SystemClock.uptimeMillis();
+        if (now67 - lastDlPlayNewMs < 700) return;
+        lastDlPlayNewMs = now67;
+        String tag67 = Lang.t(DownloadedActivity.this, "dl_tag_shown_new");
+        int playable67 = 0;
+        for (Entry e67 : picked67)
+            if (!e67.file.getAbsolutePath().equals(cur67)) playable67++;
+        java.util.ArrayList<String> q67 = new java.util.ArrayList<String>(libQueueCache);
+        java.util.ArrayList<String> rest67 = new java.util.ArrayList<String>();
+        for (int k67 = 1; k67 < picked67.size(); k67++) {
+            String u67 = picked67.get(k67).file.getAbsolutePath();
+            if (u67.equals(cur67)) continue;
+            if (q67.contains(u67)) continue;
+            rest67.add(u67);
+        }
+        q67.remove(firstPath67);
+        if (!rest67.isEmpty()) q67.addAll(0, rest67);
+        java.util.Set<String> keep67 = new java.util.HashSet<String>(rest67);
+        saveLibQueue(q67, keep67, true);
+        updateTotal();
+        if (firstPlaying67) {
+            android.widget.Toast.makeText(DownloadedActivity.this,
+                    tag67 + " " + rest67.size() + Lang.t(DownloadedActivity.this, "dl_queued_count_suffix"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+        } else if (service == null) {
+            pendingDlPath = firstPath67;
+            pendingDlTitle = first67.title;
+            pendingDlRestart = false;
+            android.widget.Toast.makeText(DownloadedActivity.this,
+                    tag67 + " " + Lang.t(DownloadedActivity.this, "dl_play_start_mid") + playable67 + Lang.t(DownloadedActivity.this, "dl_count_close"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+        } else {
+            saveLastLibrary(firstPath67, first67.title);
+            clearLibTrail13();
+            service.play(firstPath67, first67.title, savedPosForFile(firstPath67));
+            if (adapter != null) adapter.notifyDataSetChanged();
+            glideToDlPath(firstPath67);
+            android.widget.Toast.makeText(DownloadedActivity.this,
+                    tag67 + " " + Lang.t(DownloadedActivity.this, "dl_play_start_mid") + playable67 + Lang.t(DownloadedActivity.this, "dl_count_close"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+        }
+        Fx.morph(v);
     }
 
     // v15.57 (slice 2003): "Back to top" — the Downloaded list's floating gold ↑ button, the 1940 Talks mirror: the header tap (v4.13) already jumps to the top, but the header is off-screen exactly when the jump is needed, so deep in a long library the listener had to drag all the way back by hand. The button sits at the list's bottom-end corner (16dp, the Talks 1940 slot) and the ▶ jump button moves up to 88dp above it (the Talks stacking). Pure threshold logic lives in ScrollTop; the Activity owns the button, the scroll listener, the glide and the fade.
@@ -4943,6 +5177,8 @@ public class DownloadedActivity extends Activity {
             } catch (Exception ignored) {}
             syncDlStrip(); // v4.40: mini-player rides the existing 1s tick (no new tick)
             refreshLibQueuePreview(); // v4.86: queue preview rides the same tick
+            refreshDlContinueRow(); // v16.00 (slice 2266): the Continue row rides the same tick, after the queue preview — libRowPlayingPath is fresh by then
+            refreshDlPlayNewRow(); // v16.00 (slice 2267): the Play-new row rides the same tick, after the Continue row — the shown set is fresh for the tick by then
             // v1.40: offline continuous play — when a downloaded file
             // ends, move to the next file in the shown list.
             // v1.55: end is the service's real completion flag, not
@@ -6246,6 +6482,60 @@ public class DownloadedActivity extends Activity {
                 adapter.notifyDataSetChanged();
                 glideToDlPath(e.file.getAbsolutePath());
                 return true;
+            }
+        });
+        // v16.00 (slice 2266): wire the Continue row — one tap
+        // plays the picked half-heard file in place from its saved
+        // spot (the row tap's own funnel — see refreshDlContinueRow;
+        // a missing row simply never wires, a stale pick refuses
+        // before any sound or queue touch).
+        dlContinueRow = findViewById(R.id.dlContinueRow);
+        dlContinueTitle = findViewById(R.id.dlContinueTitle);
+        if (dlContinueRow != null) dlContinueRow.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                String path66 = dlContinuePickPath;
+                if (path66 == null || path66.length() == 0) return;
+                Entry e66 = null;
+                if (entries != null) for (Entry e : entries) if (e != null && e.file != null && e.file.getAbsolutePath().equals(path66)) { e66 = e; break; }
+                if (e66 == null) return;
+                hideKeyboard(v);
+                Fx.tap(DownloadedActivity.this);
+                Fx.morph(v);
+                if (service != null && (!e66.file.exists() || e66.file.length() <= 0)) {
+                    Toast.makeText(DownloadedActivity.this, Lang.t(DownloadedActivity.this, "dl_file_gone"), Toast.LENGTH_SHORT).show();
+                    loadList();
+                    return;
+                }
+                if (service == null || !path66.equals(service.getCurrentUrl())) trimLibQueueAhead(path66);
+                if (service == null) {
+                    pendingDlPath = path66;
+                    pendingDlTitle = e66.title;
+                    pendingDlRestart = false;
+                    return;
+                }
+                if (path66.equals(service.getCurrentUrl())) {
+                    service.toggle();
+                    saveLastLibrary(path66, e66.title);
+                } else {
+                    saveLastLibrary(path66, e66.title);
+                    clearLibTrail13();
+                    service.play(path66, e66.title, savedPosForFile(path66));
+                }
+            }
+        });
+        // v16.00 (slice 2267): wire the Play-new row — one tap
+        // queues + plays only the shown unlistened files
+        // (playDlNewShown; the pick is re-resolved fresh at tap
+        // time, the empty case refuses with the all_listened
+        // toast and never consumes the 700ms guard). A missing
+        // id simply never wires.
+        dlPlayNewRow = findViewById(R.id.dlPlayNewRow);
+        dlPlayNewTitle = findViewById(R.id.dlPlayNewTitle);
+        if (dlPlayNewRow != null) dlPlayNewRow.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                hideKeyboard(v);
+                Fx.tap(DownloadedActivity.this);
+                playDlNewShown(v);
             }
         });
         // v1.30: delete the whole offline library at once (confirm
@@ -8047,9 +8337,37 @@ public class DownloadedActivity extends Activity {
         int gold = android.graphics.Color.parseColor("#C9A227");
         int muted = cachedDlNight ? android.graphics.Color.parseColor("#AAAAAA")
                 : android.graphics.Color.parseColor("#7A6A58");
-        chipDlAll.setText(Lang.t(DownloadedActivity.this, "repeat_all"));
-        chipDlStar.setText(Lang.t(DownloadedActivity.this, "filter_btn_star"));
-        chipDlNew.setText(Lang.t(DownloadedActivity.this, "filter_btn_new"));
+        // v16.00 (slice 2265): chip counts — the filter chips read bare
+        // labels today, so the size of each view is invisible until
+        // tapped, while the footer below already counts everything
+        // (count + MB + star + in-progress + queue + listened + resume
+        // + Up Next). Same sources as the footer's own loops
+        // (updateTotal: the fav loop over entries, the played loop
+        // over entries), over the FULL entries list, never shownDl —
+        // a search/filter/sort narrowing the shown list must not
+        // shrink the chip counts; the chips describe the whole shelf,
+        // like the footer counts. New is the filter's own rule
+        // (applyDlFilter: entries NOT in libListenedFiles) — NOT
+        // dlNewFiles, the newly-downloaded-since-last-visit set,
+        // which the New view never shows. Zero hides that chip's
+        // count (the footer idiom — "zero keeps the plain counts");
+        // All shows its total whenever the list is loaded. No new
+        // Lang key (the count is ASCII digits in parens), no Prefs
+        // write; sizes/colours/weights untouched — the v14.40 colour
+        // melt and v15.38 weight melt ride unchanged, the count text
+        // snaps with the label while only colour/weight melt. The
+        // painter runs on create/language/filter-change + chip tap
+        // (the applyDlFilter tail repaints), never on the 1s tick,
+        // so the per-paint scan costs what the footer's own refresh
+        // costs.
+        int chipDlAllN = entries == null ? 0 : entries.size();
+        int chipDlStarN = 0;
+        if (entries != null) for (Entry e : entries) if (libFavFiles.contains(e.file.getName())) chipDlStarN++;
+        int chipDlNewN = 0;
+        if (entries != null) for (Entry e : entries) if (!libListenedFiles.contains(e.file.getName())) chipDlNewN++;
+        chipDlAll.setText(Lang.t(DownloadedActivity.this, "repeat_all") + (chipDlAllN > 0 ? " (" + chipDlAllN + ")" : ""));
+        chipDlStar.setText(Lang.t(DownloadedActivity.this, "filter_btn_star") + (chipDlStarN > 0 ? " (" + chipDlStarN + ")" : ""));
+        chipDlNew.setText(Lang.t(DownloadedActivity.this, "filter_btn_new") + (chipDlNewN > 0 ? " (" + chipDlNewN + ")" : ""));
         chipDlAll.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);
         chipDlStar.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);
         chipDlNew.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);

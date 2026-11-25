@@ -766,6 +766,15 @@ public class RoomActivity extends Activity {
     // download landed from the Room appears on the next rebind
     // after the rescan, with no new pref or set.
     private int drawerFilterMode = 0;
+    // v16.00 (slice 2268): visible drawer filter chips — the four
+    // TextViews of roomDrawerFilterRow, painted by
+    // refreshDrawerFilterChips. Null until onCreate wires them
+    // (applyTheme and the first poll tick both run before that
+    // point, so every painter null-guards).
+    private android.widget.TextView chipDrawerAll = null;
+    private android.widget.TextView chipDrawerStar = null;
+    private android.widget.TextView chipDrawerNew = null;
+    private android.widget.TextView chipDrawerDl = null;
     private int talkIndexForUrl(String u) {
         // v13.63 (F-1018-A-01): identity compare — a talk sounding
         // over the http retry form (or a stored http URL) is the
@@ -788,6 +797,190 @@ public class RoomActivity extends Activity {
         } catch (Exception ignored) {}
         return out;
     }
+    // v16.00 (slice 2268): Room drawer filter chips — the v4.96
+    // filter modes (All / starred / unlistened / downloaded)
+    // finally get an entry point: the chooser gained visible
+    // chips in v13.95 and the library in v13.75, but the drawer
+    // — where the queue itself lives — still showed only the
+    // full list or the queue, and the mode machinery
+    // (drawerFilterMode, drawerFilteredIndices, the rotation
+    // save/restore, the empty-filter auto-reset, the
+    // scroll-position mapping) sat dead. The row sits under
+    // the queue bar, inside the 300dp drawer, the chooser's
+    // shape verbatim (four TextViews, 0dp weight 1, 48dp).
+    // Counts are the size of the view each chip selects, over
+    // the FULL talks list — All = talks.size(), star = favSet,
+    // New = absent from playedSet (the mode-2 rule, not
+    // newTalkUrls — the drawer has no new-talk field and the
+    // filter itself is unlistened-only), downloaded =
+    // isDownloadedFile — so a count names exactly what its tap
+    // shows, like the header counts above. Zero hides that
+    // chip's count (the header idiom); All shows its total
+    // whenever the list is loaded. No new Lang key (the four
+    // chooser keys), no Prefs write; the v14.39 colour melt
+    // and v15.38 weight melt ride unchanged — the count text
+    // snaps with the label while only colour/weight melt. The
+    // painter is change-only (a steady tick touches no view)
+    // and drawer-open-only: it runs on the 500ms poll tick
+    // beside the header write, on drawer open, and on chip tap
+    // — never on a scroll, never while the drawer sits closed.
+    // The row hides on an empty list, in queue-only view, and
+    // while searching (the search base already narrows within
+    // the filter, so the chips must not be tappable
+    // mid-search).
+    private void refreshDrawerFilterChips() {
+        if (!isPlayListPanelOpen()) return;
+        paintDrawerFilterChips(false);
+    }
+
+    // v16.00 (slice 2268): chip-tap entry — same painter,
+    // colours + weight melt (the chooser's v14.39 shape).
+    private void refreshDrawerFilterChipsAnimated() {
+        paintDrawerFilterChips(true);
+    }
+
+    private void paintDrawerFilterChips(boolean animate) {
+        if (chipDrawerAll == null || chipDrawerStar == null || chipDrawerNew == null || chipDrawerDl == null) return;
+        if (talks == null) return;
+        if (playedSet == null || favSet == null) refreshMarkSets();
+        android.view.View row68 = findViewById(R.id.roomDrawerFilterRow);
+        boolean show68 = !talks.isEmpty() && !drawerQueueOnly && !drawerSearching();
+        if (row68 != null && (row68.getVisibility() == android.view.View.VISIBLE) != show68)
+            row68.setVisibility(show68 ? android.view.View.VISIBLE : android.view.View.GONE);
+        if (!show68) return;
+        int f = Prefs.fontSize(RoomActivity.this);
+        float sz = f == 0 ? 12 : (f == 1 ? 14 : 16);
+        int gold = android.graphics.Color.parseColor("#C9A227");
+        int muted = Prefs.isNight(RoomActivity.this)
+                ? android.graphics.Color.parseColor("#AAAAAA")
+                : android.graphics.Color.parseColor("#7A6A58");
+        int chipDrawerAllN = talks.size();
+        int chipDrawerStarN = 0;
+        int chipDrawerNewN = 0;
+        int chipDrawerDlN = 0;
+        for (int i = 0; i < talks.size(); i++) {
+            Talk t68 = talks.get(i);
+            if (t68 == null || t68.url == null) continue;
+            String id68 = SiteHttp.identityUrl(t68.url);
+            if (favSet != null && favSet.contains(id68)) chipDrawerStarN++;
+            if (playedSet == null || !playedSet.contains(id68)) chipDrawerNewN++;
+            try { if (isDownloadedFile(t68.url)) chipDrawerDlN++; } catch (Exception ignored) {}
+        }
+        setDrawerChipText68(chipDrawerAll, Lang.t(RoomActivity.this, "repeat_all"), chipDrawerAllN);
+        setDrawerChipText68(chipDrawerStar, Lang.t(RoomActivity.this, "filter_btn_star"), chipDrawerStarN);
+        setDrawerChipText68(chipDrawerNew, Lang.t(RoomActivity.this, "filter_btn_new"), chipDrawerNewN);
+        setDrawerChipText68(chipDrawerDl, Lang.t(RoomActivity.this, "filter_btn_dl"), chipDrawerDlN);
+        chipDrawerAll.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);
+        chipDrawerStar.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);
+        chipDrawerNew.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);
+        chipDrawerDl.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);
+        paintDrawerChipColor(chipDrawerAll, drawerFilterMode == 0 ? gold : muted, animate);
+        paintDrawerChipColor(chipDrawerStar, drawerFilterMode == 1 ? gold : muted, animate);
+        paintDrawerChipColor(chipDrawerNew, drawerFilterMode == 2 ? gold : muted, animate);
+        paintDrawerChipColor(chipDrawerDl, drawerFilterMode == 3 ? gold : muted, animate);
+        paintDrawerChipWeight(chipDrawerAll, drawerFilterMode == 0, animate);
+        paintDrawerChipWeight(chipDrawerStar, drawerFilterMode == 1, animate);
+        paintDrawerChipWeight(chipDrawerNew, drawerFilterMode == 2, animate);
+        paintDrawerChipWeight(chipDrawerDl, drawerFilterMode == 3, animate);
+    }
+
+    // v16.00 (slice 2268): one writer for a chip's text, change-
+    // only — the painter runs on the 500ms poll tick, so an
+    // unconditional setText would re-layout the row twice a
+    // second and cut any colour/weight melt in flight.
+    private void setDrawerChipText68(android.widget.TextView chip, String label, int n) {
+        String want68 = label + (n > 0 ? " (" + n + ")" : "");
+        if (!want68.equals(chip.getText().toString())) chip.setText(want68);
+    }
+
+    // v16.00 (slice 2268): one writer for a chip's colour, in both
+    // rhythms — melt on tap, instant elsewhere (the chooser's
+    // v14.39 paintChipColor shape, Fx.setTextColorNow for the
+    // instant path).
+    private void paintDrawerChipColor(android.widget.TextView chip, int color, boolean animate) {
+        if (animate) Fx.crossfadeTextColor(chip, color);
+        else Fx.setTextColorNow(chip, color);
+    }
+
+    // v16.00 (slice 2268): one writer for a chip's weight, in both
+    // rhythms — melt on tap, instant elsewhere (the chooser's
+    // v15.38 paintChipWeight shape).
+    private void paintDrawerChipWeight(android.widget.TextView chip, boolean bold, boolean animate) {
+        if (animate) Fx.meltChipWeight(chip, bold);
+        else Fx.setChipWeightNow(chip, bold);
+    }
+
+    // v16.00 (slice 2268): set the drawer filter mode from a chip
+    // tap — the chooser's setTalkFilterMode shape: a tap on the
+    // active chip is a no-op; the rows rebind, jump to the
+    // filtered head, and pour (the v14.27 queue-exit stagger,
+    // settled-drawer guard verbatim); the toast names the mode
+    // with the chooser's own keys. The mode machinery itself
+    // is v4.96 (drawerFilteredIndices + the display mapping +
+    // the empty-filter auto-reset); only the entry point is new.
+    private void setDrawerFilterMode(int mode) {
+        if (mode == drawerFilterMode) return;
+        drawerFilterMode = mode;
+        refreshDrawerFilterChipsAnimated();
+        if (adapter != null) adapter.notifyDataSetChanged();
+        if (roomList != null) roomList.setSelection(0);
+        android.view.View panel68 = findViewById(R.id.roomPlayListPanel);
+        if (isPlayListPanelOpen() && panel68 != null && panel68.getTranslationX() == 0f && roomList != null)
+            Fx.staggerChildren(roomList);
+        android.widget.Toast.makeText(RoomActivity.this,
+                Lang.t(RoomActivity.this,
+                        drawerFilterMode == 1 ? "filter_starred_only"
+                                : (drawerFilterMode == 2 ? "filter_unlistened_only"
+                                        : (drawerFilterMode == 3 ? "filter_downloaded_only"
+                                                : "filter_talks_all"))),
+                android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    // v16.00 (slice 2268): wire the visible filter chips — one
+    // tap sets the mode directly (setDrawerFilterMode); the
+    // cycling button the v4.96 era never built is not built
+    // now either. The chips paint from refreshDrawerFilterChips
+    // below, and setDrawerFilterMode repaints them on every
+    // later change. A filtered view applies to the full list,
+    // and the rows pour when the filtered set actually changes
+    // (the v14.27 stagger, same set-changed rule as the
+    // queue-only toggle exit).
+    private void wireDrawerFilterChips() {
+        chipDrawerAll = findViewById(R.id.chipDrawerAll);
+        chipDrawerStar = findViewById(R.id.chipDrawerStar);
+        chipDrawerNew = findViewById(R.id.chipDrawerNew);
+        chipDrawerDl = findViewById(R.id.chipDrawerDl);
+        if (chipDrawerAll != null) chipDrawerAll.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                Fx.tap(RoomActivity.this);
+                setDrawerFilterMode(0);
+            }
+        });
+        if (chipDrawerStar != null) chipDrawerStar.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                Fx.tap(RoomActivity.this);
+                setDrawerFilterMode(1);
+            }
+        });
+        if (chipDrawerNew != null) chipDrawerNew.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                Fx.tap(RoomActivity.this);
+                setDrawerFilterMode(2);
+            }
+        });
+        if (chipDrawerDl != null) chipDrawerDl.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override public void onClick(android.view.View v) {
+                Fx.tap(RoomActivity.this);
+                setDrawerFilterMode(3);
+            }
+        });
+        if (chipDrawerAll != null) Fx.press(chipDrawerAll);
+        if (chipDrawerStar != null) Fx.press(chipDrawerStar);
+        if (chipDrawerNew != null) Fx.press(chipDrawerNew);
+        if (chipDrawerDl != null) Fx.press(chipDrawerDl);
+        refreshDrawerFilterChips();
+    }
+
     // v7.12: queue-only display lines — the drawer rows in queue
     // order, parsed, not raw. Before this, every queue-only map
     // compared raw lines against the list, so a foreign v2 line
@@ -8482,6 +8675,7 @@ int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
                     }
                     if (headerChanged58) Fx.fadeIn(plT, 250);
                     refreshQueueBar72();
+                    refreshDrawerFilterChips(); // v16.00 (slice 2268): the drawer filter chips ride the same 500ms tick as the header counts above, so a favourite / mark / download landed while the drawer sits open repaints the counts within one tick; the painter is drawer-open-only + change-only, so a closed drawer costs nothing.
                     // v14.58 (slice 1715): first-evaluation adopt
                     // for the header arm — a load / rotation restore
                     // never melts the header on top of the entrance
@@ -8844,6 +9038,7 @@ int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
                     && java.util.Objects.equals(preQueued01, queuedDownloads)
                     && java.util.Objects.equals(preDur01, drawerDurCache);
             if (adapter != null && !sameMarks01) adapter.notifyDataSetChanged();
+            refreshDrawerFilterChips(); // v16.00 (slice 2268): first open is exact — the poll tick would repaint within 500ms, but the chips must read right in the first frame of the pour, like the queue-bar labels beside them.
             if (!midClose) {
                 panel.setTranslationX(off);
                 panel.setAlpha(0f);
@@ -10460,6 +10655,7 @@ if (snd67n >= 0) currentIndex = snd67n;
             }
         });
         wireRoomTopBtn();
+        wireDrawerFilterChips(); // v16.00 (slice 2268): the drawer filter chips wire beside the back-to-top button — same drawer, same onCreate.
         if (roomList != null) roomList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
                 // v7.12: foreign queue row tap — a foreign row has

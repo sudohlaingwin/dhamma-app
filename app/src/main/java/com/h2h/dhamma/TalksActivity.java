@@ -2261,10 +2261,38 @@ public class TalksActivity extends Activity {
         int muted = Prefs.isNight(TalksActivity.this)
                 ? android.graphics.Color.parseColor("#AAAAAA")
                 : android.graphics.Color.parseColor("#7A6A58");
-        chipTalkAll.setText(Lang.t(TalksActivity.this, "repeat_all"));
-        chipTalkStar.setText(Lang.t(TalksActivity.this, "filter_btn_star"));
-        chipTalkNew.setText(Lang.t(TalksActivity.this, "filter_btn_new"));
-        chipTalkDl.setText(Lang.t(TalksActivity.this, "filter_btn_dl"));
+        // v16.00 (slice 2264): chip counts — the filter chips read bare
+        // labels today, so the size of each view is invisible until
+        // tapped, while the header above already counts everything
+        // (star / downloaded / listened / resume / new / remaining).
+        // Same sources as the header's own fresh reads
+        // (refreshFavHeader), over the FULL talks list, never
+        // visibleHits — a search/filter/sort narrowing the shown list
+        // must not shrink the chip counts; the chips describe the
+        // sayadaw's whole list, like the header counts. Zero hides
+        // that chip's count (the header idiom — "zero keeps the plain
+        // counts"); All shows its total whenever the list is loaded.
+        // No new Lang key (the count is ASCII digits in parens), no
+        // Prefs write; sizes/colours/weights untouched — the v14.39
+        // colour melt and v15.38 weight melt ride unchanged, the
+        // count text snaps with the label while only colour/weight
+        // melt. The painter runs on create/theme/language/rotation/
+        // clearFilter + chip tap, never on the 1s tick, so the
+        // per-paint scan costs what the header's own refresh costs.
+        int chipAllN = talks == null ? 0 : talks.size();
+        int chipStarN = 0;
+        try {
+            java.util.Set<String> chipFt = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favTalks", null);
+            if (chipFt != null && talks != null) for (Talk t : talks) if (chipFt.contains(SiteHttp.identityUrl(t.url))) chipStarN++;
+        } catch (Exception ignored) {}
+        int chipNewN = 0;
+        if (newTalkUrls != null && talks != null) for (Talk t : talks) if (newTalkUrls.contains(SiteHttp.identityUrl(t.url))) chipNewN++;
+        int chipDlN = 0;
+        if (talks != null) for (Talk t : talks) try { if (isTalkDownloaded(t.url)) chipDlN++; } catch (Exception ignored) {}
+        chipTalkAll.setText(Lang.t(TalksActivity.this, "repeat_all") + (chipAllN > 0 ? " (" + chipAllN + ")" : ""));
+        chipTalkStar.setText(Lang.t(TalksActivity.this, "filter_btn_star") + (chipStarN > 0 ? " (" + chipStarN + ")" : ""));
+        chipTalkNew.setText(Lang.t(TalksActivity.this, "filter_btn_new") + (chipNewN > 0 ? " (" + chipNewN + ")" : ""));
+        chipTalkDl.setText(Lang.t(TalksActivity.this, "filter_btn_dl") + (chipDlN > 0 ? " (" + chipDlN + ")" : ""));
         chipTalkAll.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);
         chipTalkStar.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);
         chipTalkNew.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sz);

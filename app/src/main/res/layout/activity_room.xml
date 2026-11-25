@@ -368,6 +368,63 @@
                 android:visibility="gone" />
         </LinearLayout>
         
+        <!-- v16.00 (slice 2268): drawer filter chips — the v4.96
+             filter modes (All / starred / unlistened / downloaded)
+             finally get an entry point: the chooser's chips
+             (v13.95) and the library's (v13.75) sit above their
+             lists, but the drawer had none, so the mode machinery
+             sat dead. Same shape as the chooser's talkFilterRow
+             (four TextViews, 0dp weight 1, 48dp, 14sp, muted)
+             under the queue bar; the painter owns the texts
+             (label + " (N)", the chooser's keys) and the
+             visibility (GONE on an empty list, in queue-only
+             view, or while searching). -->
+        <LinearLayout
+            android:id="@+id/roomDrawerFilterRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:layout_marginBottom="2dp"
+            android:orientation="horizontal"
+            android:visibility="gone">
+            <TextView
+                android:id="@+id/chipDrawerAll"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="အားလုံး"
+                android:textColor="@color/muted"
+                android:textSize="14sp" />
+            <TextView
+                android:id="@+id/chipDrawerStar"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="★ သာ"
+                android:textColor="@color/muted"
+                android:textSize="14sp" />
+            <TextView
+                android:id="@+id/chipDrawerNew"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="အသစ်သာ"
+                android:textColor="@color/muted"
+                android:textSize="14sp" />
+            <TextView
+                android:id="@+id/chipDrawerDl"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="⬇ သာ"
+                android:textColor="@color/muted"
+                android:textSize="14sp" />
+        </LinearLayout>
+        
         <!-- v15.99 (slice 2259): back-to-top button — the floating gold up-arrow at the drawer's bottom-end corner (the Talks 1940 / Downloaded 2003 / Bookmarks 2110 shape verbatim: same 56dp oval, same maroon glyph, 16dp off the corner): the header tap (v4.13) already jumps to the top, but v12.93 removed it — an accidental tap must never change state — and the header is off-screen exactly when the jump is needed. GONE until the list has scrolled past eight rows. -->
         <FrameLayout
             android:layout_width="match_parent"
