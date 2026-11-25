@@ -129,4 +129,63 @@ public class DlRecentRail {
         }
         return out;
     }
+
+    // v15.95 (slice 2229): the total behind See-all — the pick's gates WITHOUT the 5-card cap and WITHOUT the sounding skip, so the header count never flickers when a talk starts or stops. The reverse maps are the pick's own rule (URL order, first claim wins); the file order is the scan order, not newest-first — a count does not care about order, and the dedup by canonical identity makes the total order-independent. A null map reads 0; null rows, empty names, non-.mp3 names, zero-length files, unclaimed files, still-arriving files, missing or not-in-catalog sayadaws and empty titles are skipped. No cap, no sounding parameter at all — the sounding talk stays counted, as the library shows it.
+    static int countAll2229(
+            java.util.List<FileRow> files,
+            java.util.Map<String, String> dlMap,
+            java.util.Map<String, String> dlSayadaw,
+            java.util.Set<String> queuedUrls,
+            java.util.Set<String> catalogNames) {
+        int total = 0;
+        if (files == null || dlMap == null || dlSayadaw == null) return 0;
+        java.util.List<String> urls =
+                new java.util.ArrayList<String>(dlMap.keySet());
+        java.util.Collections.sort(urls);
+        java.util.Map<String, String> byName =
+                new java.util.HashMap<String, String>();
+        for (String u : urls) {
+            if (u == null) continue;
+            String f = dlMap.get(u);
+            if (f == null || f.length() == 0) continue;
+            if (!byName.containsKey(f)) byName.put(f, canonical(u));
+        }
+        java.util.List<String> ownerKeys =
+                new java.util.ArrayList<String>(dlSayadaw.keySet());
+        java.util.Collections.sort(ownerKeys);
+        java.util.Map<String, String> owners =
+                new java.util.HashMap<String, String>();
+        for (String k : ownerKeys) {
+            if (k == null) continue;
+            String c = canonical(k);
+            if (c != null && !owners.containsKey(c)) owners.put(c, dlSayadaw.get(k));
+        }
+        java.util.Set<String> queued = new java.util.HashSet<String>();
+        if (queuedUrls != null) for (String q : queuedUrls) {
+            String c = canonical(q);
+            if (c != null) queued.add(c);
+        }
+        java.util.Set<String> seen = new java.util.HashSet<String>();
+        for (FileRow f : files) {
+            if (f == null) continue;
+            if (f.name == null || f.name.length() == 0) continue;
+            if (!f.name.toLowerCase().endsWith(".mp3")) continue;
+            if (f.len <= 0) continue;
+            String url = byName.get(f.name);
+            if (url == null || url.length() == 0) continue;
+            if (queued.contains(url)) continue;
+            String id = canonical(url);
+            if (id == null) continue;
+            if (seen.contains(id)) continue;
+            String sayadaw = owners.get(url);
+            if (sayadaw == null) sayadaw = owners.get(id);
+            if (sayadaw == null || sayadaw.length() == 0) continue;
+            if (catalogNames == null || !catalogNames.contains(sayadaw)) continue;
+            String title = titleFor(f.name);
+            if (title == null || title.trim().length() == 0) continue;
+            seen.add(id);
+            total++;
+        }
+        return total;
+    }
 }

@@ -35,4 +35,26 @@ public class RecentRail {
         }
         return out;
     }
+
+    // v15.95 (slice 2228): the total behind See-all — the pick's gates WITHOUT the 5-card cap and WITHOUT the sounding skip, so the header count never flickers when a talk starts or stops and matches what History opens. A null list reads 0; null entries, empty url/title/sayadaw, not-in-catalog names and duplicate identities (the pick's own identity rule) are skipped. No cap, no sounding parameter at all — the sounding talk stays counted, as History shows it.
+    static int countAll2228(
+            java.util.List<Prefs.HistEntry> recent,
+            java.util.Set<String> catalogNames) {
+        int total = 0;
+        if (recent == null) return 0;
+        java.util.Set<String> seen = new java.util.HashSet<String>();
+        for (Prefs.HistEntry e : recent) {
+            if (e == null) continue;
+            if (e.url == null || e.url.length() == 0) continue;
+            if (e.title == null || e.title.trim().length() == 0) continue;
+            if (e.sayadaw == null || e.sayadaw.length() == 0) continue;
+            if (catalogNames == null || !catalogNames.contains(e.sayadaw)) continue;
+            String id = SiteHttp.identityUrl(e.url);
+            if (id == null) continue;
+            if (seen.contains(id)) continue;
+            seen.add(id);
+            total++;
+        }
+        return total;
+    }
 }

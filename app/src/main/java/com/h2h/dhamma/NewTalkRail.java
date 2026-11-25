@@ -77,4 +77,34 @@ public class NewTalkRail {
         }
         return out;
     }
+
+    // v15.95 (slice 2232): the total behind See-all — the pick's gates WITHOUT the 5-card cap and WITHOUT the sounding skip, so the header count never flickers when a talk starts or stops. A null entries list reads 0; null entries, empty sayadaws, null or empty new-sets, null pair lists, null or short pairs, empty titles, empty URLs, identities outside the new-set, finished talks, started talks and duplicate identities are skipped. No cap, no sounding parameter at all — the sounding talk stays counted, as the full list shows it. The finished and started gates are the pick's own rule — a finished or started talk is not new any more, so it is not counted either.
+    static int countAll2232(
+            java.util.List<Entry> entries,
+            java.util.Set<String> playedIds,
+            java.util.Set<String> resumeKeys) {
+        int total = 0;
+        if (entries == null) return 0;
+        java.util.Set<String> seen = new java.util.HashSet<String>();
+        for (Entry en : entries) {
+            if (en == null) continue;
+            if (en.sayadawName == null || en.sayadawName.length() == 0) continue;
+            if (en.newIds == null || en.newIds.isEmpty()) continue;
+            if (en.pairs == null) continue;
+            for (String[] p : en.pairs) {
+                if (p == null || p.length < 2) continue;
+                if (p[0] == null || p[0].trim().length() == 0) continue;
+                if (p[1] == null || p[1].length() == 0) continue;
+                String id = SiteHttp.identityUrl(p[1]);
+                if (id == null) continue;
+                if (!en.newIds.contains(id)) continue;
+                if (playedIds != null && playedIds.contains(id)) continue;
+                if (resumeKeys != null && resumeKeys.contains(id)) continue;
+                if (seen.contains(id)) continue;
+                seen.add(id);
+                total++;
+            }
+        }
+        return total;
+    }
 }

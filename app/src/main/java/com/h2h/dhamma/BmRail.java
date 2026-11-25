@@ -68,6 +68,46 @@ public class BmRail {
         return out;
     }
 
+    // v15.95 (slice 2230): the total behind See-all — the pick's gates WITHOUT the 5-card cap and WITHOUT the sounding skip, so the header count never flickers when a talk starts or stops. The line order is the store order, most-recent first — a count does not care about order, and the dedup by canonical identity makes the total order-independent. A null list reads 0; null lines, lines without a tab, empty URLs, unparseable or non-positive minutes, lines with no recent match, empty titles, missing or not-in-catalog sayadaws and duplicate identities are skipped. No cap, no sounding parameter at all — the sounding talk stays counted, as the full list shows it.
+    static int countAll2230(
+            java.util.List<String> bookmarkLines,
+            java.util.List<Prefs.HistEntry> recent,
+            java.util.Set<String> catalogNames) {
+        int total = 0;
+        if (bookmarkLines == null || recent == null || catalogNames == null) return 0;
+        java.util.Set<String> seen = new java.util.HashSet<String>();
+        for (String line : bookmarkLines) {
+            if (line == null) continue;
+            int t = line.indexOf('\t');
+            if (t <= 0) continue;
+            String url = line.substring(0, t);
+            if (url.length() == 0) continue;
+            int pos;
+            try {
+                pos = Integer.parseInt(line.substring(t + 1));
+            } catch (Exception ignored) { continue; }
+            if (pos <= 0) continue;
+            Prefs.HistEntry hit = null;
+            for (Prefs.HistEntry h : recent) {
+                if (h == null) continue;
+                if (h.url == null || h.url.length() == 0) continue;
+                if (!SiteHttp.sameTalk(url, h.url)) continue;
+                hit = h;
+                break;
+            }
+            if (hit == null) continue;
+            if (hit.title == null || hit.title.trim().length() == 0) continue;
+            if (hit.sayadaw == null || hit.sayadaw.length() == 0) continue;
+            if (!catalogNames.contains(hit.sayadaw)) continue;
+            String id = SiteHttp.identityUrl(hit.url);
+            if (id == null) continue;
+            if (seen.contains(id)) continue;
+            seen.add(id);
+            total++;
+        }
+        return total;
+    }
+
     // RoomActivity.formatTime verbatim (M:SS, H:MM:SS past the hour).
     static String fmtTime(int ms) {
         int total = Math.max(0, ms / 1000);

@@ -62,6 +62,35 @@ public class FavTalkRail {
         return out;
     }
 
+    // v15.95 (slice 2231): the total behind See-all — the pick's gates WITHOUT the 5-card cap and WITHOUT the sounding skip, so the header count never flickers when a talk starts or stops. The order is the recent order, most-recent first — a count does not care about order, and the dedup by canonical identity makes the total order-independent. A null set reads 0; null entries, empty URLs, unstarred talks, empty titles, missing or not-in-catalog sayadaws and duplicate identities are skipped. No cap, no sounding parameter at all — the sounding talk stays counted, as the full list shows it. The saved spot is not a gate (a starred talk with no spot still counts — the spot defaults to 0 in the pick), so no spot map is taken.
+    static int countAll2231(
+            java.util.Set<String> favUrls,
+            java.util.List<Prefs.HistEntry> recent,
+            java.util.Set<String> catalogNames) {
+        int total = 0;
+        if (favUrls == null || recent == null || catalogNames == null) return 0;
+        java.util.Set<String> seen = new java.util.HashSet<String>();
+        for (Prefs.HistEntry h : recent) {
+            if (h == null) continue;
+            if (h.url == null || h.url.length() == 0) continue;
+            boolean starred = false;
+            for (String f : favUrls) {
+                if (f == null) continue;
+                if (SiteHttp.sameTalk(f, h.url)) { starred = true; break; }
+            }
+            if (!starred) continue;
+            if (h.title == null || h.title.trim().length() == 0) continue;
+            if (h.sayadaw == null || h.sayadaw.length() == 0) continue;
+            if (!catalogNames.contains(h.sayadaw)) continue;
+            String id = SiteHttp.identityUrl(h.url);
+            if (id == null) continue;
+            if (seen.contains(id)) continue;
+            seen.add(id);
+            total++;
+        }
+        return total;
+    }
+
     // RoomActivity.formatTime verbatim (M:SS, H:MM:SS past the hour).
     static String fmtTime(int ms) {
         int total = Math.max(0, ms / 1000);

@@ -5789,12 +5789,16 @@ public class MainActivity extends Activity {
         boolean show = query != null && query.length() == 0 && !favOnly && !newOnly && all != null;
         java.util.List<Prefs.HistEntry> picked =
                 new java.util.ArrayList<Prefs.HistEntry>();
+        // v15.95 (slice 2228): the total behind See-all — declared before the show block, set inside it; the label only paints when the pick is non-empty, and a non-empty pick implies a total of at least 1, so the count never shows (0).
+        int recentTotal28 = 0;
         if (show) {
             java.util.Set<String> names = new java.util.HashSet<String>();
             for (Sayadaw s : all) if (s != null && s.name != null) names.add(s.name);
             String sounding = (AudioService.liveSession && AudioService.liveHasTrack)
                     ? AudioService.liveUrl : null;
-            picked = RecentRail.pick(Prefs.statsRecent(this), names, sounding);
+            java.util.List<Prefs.HistEntry> recent28 = Prefs.statsRecent(this);
+            picked = RecentRail.pick(recent28, names, sounding);
+            recentTotal28 = RecentRail.countAll2228(recent28, names);
         }
         // v15.60 (slice 2020): the hairline's inputs, parsed once for the whole refresh — the v5.69 lesson (never talkPosGet per card, it re-splits the whole map on every lookup; the same reason Prefs.talkDurMap exists as one-parse-for-a-list). readTalkPos1964 is identity-keyed (first line per identity wins, the talkPosGet first-match rule); a downloaded path keeps its own key (identityUrl(path) == path), so the path leg in recentHairFrac20 below reads from the same map. Both parses fail closed to empty maps, so a missing store paints no line, never a crash.
         java.util.Map<String, Integer> pos20 = readTalkPos1964();
@@ -5810,7 +5814,9 @@ public class MainActivity extends Activity {
         // v15.92 (slice 2212): the key carries the painted resume spot beside the fraction, the badge bit and the clock — a spot landing while Main sits open must move the key or the card would freeze cue-less at its first paint. The value is the card's own helper, so key and paint can never disagree.
         // v15.93 (slice 2216): the key carries the finished mark beside the fraction, the badge bit, the clock and the spot — a mark landing while Main sits open must move the key or the card would freeze mark-less at its first paint. The value is the card's own helper, so key and paint can never disagree.
         // v15.93 (slice 2220): the key carries the favourite star beside the fraction, the badge bit, the clock, the spot and the tick bit — a star landing while Main sits open must move the key or the card would freeze star-less at its first paint. The value is the card's own helper, so key and paint can never disagree.
+        // v15.95 (slice 2228): the key carries the total beside the fraction, the badge bit, the clock, the spot, the tick bit and the star bit — a count-only change (a new talk heard, an old one dropping out of the list) must move the key or the header would freeze at its first paint. The value is the header's own helper, so key and paint can never disagree.
         for (Prefs.HistEntry e : picked) kb.append('|').append(SiteHttp.identityUrl(e.url)).append(':').append(recentHairFrac20(pos20, dur20, e)).append(':').append(recentDlBadge23(e) ? '1' : '0').append(':').append(recentRowDurMs80(dur20, e)).append(':').append(recentRowPosMs12(pos20, e)).append(':').append(recentRowPlayed16(played16, e) ? '1' : '0').append(':').append(recentRowFav20(fav20, e) ? '1' : '0');
+        kb.append("|n=").append(recentTotal28);
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (recentRailWrap.getVisibility() != android.view.View.GONE)
@@ -6127,8 +6133,9 @@ public class MainActivity extends Activity {
             return;
         }
         lastRecentRailKey = key;
+        // v15.95 (slice 2228): the header carries its total — the drawer header's own idiom, now on the first Main rail: the count sits inside the label base, so the chevron stays last. ASCII digits, the drawer precedent; no new Lang key, no Prefs write, no layout change.
         if (recentRailLabel != null)
-            recentRailLabel.setText(RailSeeAll.label("\u21BA " + Lang.t(MainActivity.this, "hs_recent")));
+            recentRailLabel.setText(RailSeeAll.label("\u21BA " + Lang.t(MainActivity.this, "hs_recent") + " (" + recentTotal28 + ")"));
         if (recentRailWrap.getVisibility() != android.view.View.VISIBLE) {
             recentRailWrap.setVisibility(android.view.View.VISIBLE);
             Fx.fadeIn(recentRailWrap, 250);
@@ -6271,13 +6278,20 @@ public class MainActivity extends Activity {
         boolean show = query != null && query.length() == 0 && !favOnly && !newOnly && all != null;
         java.util.List<Prefs.HistEntry> picked =
                 new java.util.ArrayList<Prefs.HistEntry>();
+        // v15.95 (slice 2229): the total behind See-all — declared before the show block, set inside it; the label only paints when the pick is non-empty, and a non-empty pick implies a total of at least 1, so the count never shows (0).
+        int dlTotal29 = 0;
         if (show) {
             java.util.Set<String> names = new java.util.HashSet<String>();
             for (Sayadaw s : all) if (s != null && s.name != null) names.add(s.name);
             String sounding = (AudioService.liveSession && AudioService.liveHasTrack)
                     ? AudioService.liveUrl : null;
-            picked = DlRecentRail.pick(scanDlRecentFiles1960(), readDlMap1960(),
-                    readDlSayadaw1960(), readDlQueued1960(), names, sounding);
+            // v15.95 (slice 2229): the four inputs captured once and passed to both the pick and the counter — one directory scan and one prefs parse per refresh, never twice for the same refresh and never per card.
+            java.util.List<DlRecentRail.FileRow> dlFiles29 = scanDlRecentFiles1960();
+            java.util.Map<String, String> dlMap29 = readDlMap1960();
+            java.util.Map<String, String> dlSay29 = readDlSayadaw1960();
+            java.util.Set<String> dlQueued29 = readDlQueued1960();
+            picked = DlRecentRail.pick(dlFiles29, dlMap29, dlSay29, dlQueued29, names, sounding);
+            dlTotal29 = DlRecentRail.countAll2229(dlFiles29, dlMap29, dlSay29, dlQueued29, names);
         }
         // v15.60 (slice 2021): the hairline's inputs, parsed once for the whole refresh — the v5.69 lesson (never talkPosGet per card, it re-splits the whole map on every lookup; the same reason Prefs.talkDurMap exists as one-parse-for-a-list). readTalkPos1964 is identity-keyed (first line per identity wins, the talkPosGet first-match rule); a downloaded path keeps its own key (identityUrl(path) == path), so the path leg in dlRecentHairFrac21 below reads from the same map. Both parses fail closed to empty maps, so a missing store paints no line, never a crash.
         java.util.Map<String, Integer> pos21 = readTalkPos1964();
@@ -6292,7 +6306,9 @@ public class MainActivity extends Activity {
         // v15.92 (slice 2213): the key carries the painted resume spot beside the fraction and the clock — a spot landing while Main sits open must move the key or the card would freeze cue-less at its first paint. The value is the card's own helper, so key and paint can never disagree.
         // v15.93 (slice 2217): the key carries the finished mark beside the fraction, the clock and the spot — a mark landing while Main sits open must move the key or the card would freeze mark-less at its first paint. The value is the card's own helper, so key and paint can never disagree.
         // v15.94 (slice 2222): the key carries the favourite star beside the fraction, the clock, the spot and the tick bit — a star landing while Main sits open must move the key or the card would freeze star-less at its first paint. The value is the card's own helper, so key and paint can never disagree.
+        // v15.95 (slice 2229): the key carries the total beside the fraction, the clock, the spot, the tick bit and the star bit — a count-only change (a new download landing, an old file deleted) must move the key or the header would freeze at its first paint. The value is the header's own helper, so key and paint can never disagree.
         for (Prefs.HistEntry e : picked) kb.append('|').append(SiteHttp.identityUrl(e.url)).append(':').append(dlRecentHairFrac21(pos21, dur21, e)).append(':').append(dlRowDurMs81(dur21, e)).append(':').append(dlRecentRowPosMs13(pos21, e)).append(':').append(dlRecentRowPlayed17(playedDl17, e) ? '1' : '0').append(':').append(dlRecentRowFav22(fav22, e) ? '1' : '0');
+        kb.append("|n=").append(dlTotal29);
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (dlRecentRailWrap.getVisibility() != android.view.View.GONE)
@@ -6562,8 +6578,9 @@ public class MainActivity extends Activity {
             return;
         }
         lastDlRecentRailKey = key;
+        // v15.95 (slice 2229): the header carries its total — the drawer header's own idiom, now on the second Main rail: the count sits inside the label base, so the chevron stays last. ASCII digits, the drawer precedent; no new Lang key, no Prefs write, no layout change.
         if (dlRecentRailLabel != null)
-            dlRecentRailLabel.setText(RailSeeAll.label("\u21BA " + Lang.t(MainActivity.this, "hs_dl_recent")));
+            dlRecentRailLabel.setText(RailSeeAll.label("\u21BA " + Lang.t(MainActivity.this, "hs_dl_recent") + " (" + dlTotal29 + ")"));
         if (dlRecentRailWrap.getVisibility() != android.view.View.VISIBLE) {
             dlRecentRailWrap.setVisibility(android.view.View.VISIBLE);
             Fx.fadeIn(dlRecentRailWrap, 250);
@@ -6714,12 +6731,18 @@ public class MainActivity extends Activity {
         boolean show = query != null && query.length() == 0 && !favOnly && !newOnly && all != null;
         java.util.List<BmRail.Card> picked =
                 new java.util.ArrayList<BmRail.Card>();
+        // v15.95 (slice 2230): the total behind See-all — declared before the show block, set inside it; the label only paints when the pick is non-empty, and a non-empty pick implies a total of at least 1, so the count never shows (0).
+        int bmTotal30 = 0;
         if (show) {
             java.util.Set<String> names = new java.util.HashSet<String>();
             for (Sayadaw s : all) if (s != null && s.name != null) names.add(s.name);
             String sounding = (AudioService.liveSession && AudioService.liveHasTrack)
                     ? AudioService.liveUrl : null;
-            picked = BmRail.pick(readBookmarks1962(), Prefs.statsRecent(this), names, sounding);
+            // v15.95 (slice 2230): the two inputs captured once and passed to both the pick and the counter — one prefs parse per refresh, never twice for the same refresh and never per card.
+            java.util.List<String> bmLines30 = readBookmarks1962();
+            java.util.List<Prefs.HistEntry> bmRecent30 = Prefs.statsRecent(this);
+            picked = BmRail.pick(bmLines30, bmRecent30, names, sounding);
+            bmTotal30 = BmRail.countAll2230(bmLines30, bmRecent30, names);
         }
         StringBuilder kb = new StringBuilder();
         kb.append(cachedNight ? "N" : "D");
@@ -6735,7 +6758,9 @@ public class MainActivity extends Activity {
         // v15.92 (slice 2214): the key carries the painted resume spot beside the fraction, the badge bit and the clock — a spot landing while Main sits open must move the key or the card would freeze cue-less at its first paint. The value is the card's own helper, so key and paint can never disagree.
         // v15.93 (slice 2218): the key carries the finished mark beside the fraction, the badge bit, the clock and the spot — a mark landing while Main sits open must move the key or the card would freeze mark-less at its first paint. The value is the card's own helper, so key and paint can never disagree.
         // v15.94 (slice 2223): the key carries the favourite star beside the fraction, the badge bit, the clock, the spot and the tick bit — a star landing while Main sits open must move the key or the card would freeze star-less at its first paint. The value is the card's own helper, so key and paint can never disagree.
+        // v15.95 (slice 2230): the key carries the total beside the mark minute, the fraction, the badge bit, the clock, the spot, the tick bit and the star bit — a count-only change (a new mark landing, an old mark removed) must move the key or the header would freeze at its first paint. The value is the header's own helper, so key and paint can never disagree.
         for (BmRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(c.posMs).append(':').append(bmHairFrac27(pos27, dur27, c.e)).append(':').append(bmDlBadge26(c.e) ? '1' : '0').append(':').append(bmRowDurMs82(dur27, c.e)).append(':').append(bmRecentRowPosMs14(pos27, c.e)).append(':').append(bmRecentRowPlayed18(playedBm18, c.e) ? '1' : '0').append(':').append(bmRecentRowFav23(fav23, c.e) ? '1' : '0');
+        kb.append("|n=").append(bmTotal30);
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (bmRailWrap.getVisibility() != android.view.View.GONE)
@@ -7098,8 +7123,9 @@ public class MainActivity extends Activity {
             return;
         }
         lastBmRailKey = key;
+        // v15.95 (slice 2230): the header carries its total — the drawer header's own idiom, now on the third Main rail: the count sits inside the label base, so the chevron stays last. ASCII digits, the drawer precedent; no new Lang key, no Prefs write, no layout change.
         if (bmRailLabel != null)
-            bmRailLabel.setText(RailSeeAll.label(Lang.t(MainActivity.this, "bm_list")));
+            bmRailLabel.setText(RailSeeAll.label(Lang.t(MainActivity.this, "bm_list") + " (" + bmTotal30 + ")"));
         if (bmRailWrap.getVisibility() != android.view.View.VISIBLE) {
             bmRailWrap.setVisibility(android.view.View.VISIBLE);
             Fx.fadeIn(bmRailWrap, 250);
@@ -7259,6 +7285,8 @@ public class MainActivity extends Activity {
         boolean show = query != null && query.length() == 0 && !favOnly && !newOnly && all != null;
         java.util.List<FavTalkRail.Card> picked =
                 new java.util.ArrayList<FavTalkRail.Card>();
+        // v15.95 (slice 2231): the total behind See-all — declared before the show block, set inside it; the label only paints when the pick is non-empty, and a non-empty pick implies a total of at least 1, so the count never shows (0).
+        int favTotal31 = 0;
         // v15.60 (slice 2022): the hairline's inputs, parsed once for the whole refresh — the v5.69 lesson (never talkPosGet per card, it re-splits the whole map on every lookup; the same reason Prefs.talkDurMap exists as one-parse-for-a-list). The pos map is parsed once here and shared by the pick (its posById) and the hairline helper below, so the refresh parses it once, not twice. readTalkPos1964 is identity-keyed (first line per identity wins, the talkPosGet first-match rule); a downloaded path keeps its own key (identityUrl(path) == path), so the path leg in favTalkHairFrac22 below reads from the same map. Both parses fail closed to empty maps, so a missing store paints no line, never a crash.
         java.util.Map<String, Integer> pos22 = readTalkPos1964();
         if (show) {
@@ -7266,7 +7294,11 @@ public class MainActivity extends Activity {
             for (Sayadaw s : all) if (s != null && s.name != null) names.add(s.name);
             String sounding = (AudioService.liveSession && AudioService.liveHasTrack)
                     ? AudioService.liveUrl : null;
-            picked = FavTalkRail.pick(readFavTalks1964(), Prefs.statsRecent(this), names, sounding, pos22);
+            // v15.95 (slice 2231): the two inputs captured once and passed to both the pick and the counter — one prefs parse per refresh, never twice for the same refresh and never per card.
+            java.util.Set<String> fav31 = readFavTalks1964();
+            java.util.List<Prefs.HistEntry> favRecent31 = Prefs.statsRecent(this);
+            picked = FavTalkRail.pick(fav31, favRecent31, names, sounding, pos22);
+            favTotal31 = FavTalkRail.countAll2231(fav31, favRecent31, names);
         }
         java.util.Map<String, Integer> dur22 = Prefs.talkDurMap(this);
         java.util.Set<String> playedFav19 = readPlayedTalks1966();
@@ -7276,7 +7308,9 @@ public class MainActivity extends Activity {
         // v15.61 (slice 2025): the key carries the downloaded badge bit beside the painted fraction — a download landing while Main sits open must move the key or the rail would freeze the card at its first paint (the 2020 lesson). The bit is the card's own helper, so key and paint can never disagree; a badge flip moves the key even when the identity, the saved spot and the fraction cannot. The 2022 key already carried identity + saved spot + fraction; the bit rides after the fraction.
         // v15.87 (slice 2183): the key carries the painted clock, after the badge bit — a duration landing while Main sits open must move the key or the card would freeze clockless at its first paint (the 2022 lesson). The value is the card's own helper, so key and paint can never disagree. The clock rides after the badge bit, beside the fraction.
         // v15.93 (slice 2219): the key carries the finished mark beside the fraction, the badge bit, the clock and the spot — a mark landing while Main sits open must move the key or the card would freeze mark-less at its first paint. The value is the card's own helper, so key and paint can never disagree.
+        // v15.95 (slice 2231): the key carries the total beside the saved spot, the fraction, the badge bit, the clock and the tick bit — a count-only change (a new star landing, an old star removed) must move the key or the header would freeze at its first paint. The value is the header's own helper, so key and paint can never disagree.
         for (FavTalkRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(c.posMs).append(':').append(favTalkHairFrac22(pos22, dur22, c.e)).append(':').append(favDlBadge25(c.e) ? '1' : '0').append(':').append(favRowDurMs83(dur22, c.e)).append(':').append(favRecentRowPlayed19(playedFav19, c.e) ? '1' : '0');
+        kb.append("|n=").append(favTotal31);
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (favTalkRailWrap.getVisibility() != android.view.View.GONE)
@@ -7648,8 +7682,9 @@ public class MainActivity extends Activity {
             return;
         }
         lastFavTalkRailKey = key;
+        // v15.95 (slice 2231): the header carries its total — the drawer header's own idiom, now on the fourth Main rail: the count sits inside the label base, so the chevron stays last. ASCII digits, the drawer precedent; no new Lang key, no Prefs write, no layout change.
         if (favTalkRailLabel != null)
-            favTalkRailLabel.setText(RailSeeAll.label(Lang.t(MainActivity.this, "hs_fav_talks")));
+            favTalkRailLabel.setText(RailSeeAll.label(Lang.t(MainActivity.this, "hs_fav_talks") + " (" + favTotal31 + ")"));
         if (favTalkRailWrap.getVisibility() != android.view.View.VISIBLE) {
             favTalkRailWrap.setVisibility(android.view.View.VISIBLE);
             Fx.fadeIn(favTalkRailWrap, 250);
@@ -7943,14 +7978,18 @@ public class MainActivity extends Activity {
         boolean show = query != null && query.length() == 0 && !favOnly && !newOnly && all != null;
         java.util.List<NewTalkRail.Card> picked =
                 new java.util.ArrayList<NewTalkRail.Card>();
+        // v15.95 (slice 2232): the total behind See-all — declared before the show block, set inside it; the label only paints when the pick is non-empty, and a non-empty pick implies a total of at least 1, so the count never shows (0).
+        int newTotal32 = 0;
         if (show) {
             java.util.Set<String> played = readPlayedTalks1966();
             java.util.Set<String> resumeKeys = new java.util.HashSet<String>();
             try { resumeKeys = Prefs.talkPosKeysOver(this, 5000); } catch (Exception ignored) {}
             String sounding = (AudioService.liveSession && AudioService.liveHasTrack)
                     ? AudioService.liveUrl : null;
-            picked = NewTalkRail.pick(collectNewTalkEntries1966(played, resumeKeys),
-                    played, resumeKeys, sounding);
+            // v15.95 (slice 2232): the entries captured once and passed to both the pick and the counter — one cache pass per refresh, never twice for the same refresh and never per card.
+            java.util.List<NewTalkRail.Entry> new32 = collectNewTalkEntries1966(played, resumeKeys);
+            picked = NewTalkRail.pick(new32, played, resumeKeys, sounding);
+            newTotal32 = NewTalkRail.countAll2232(new32, played, resumeKeys);
         }
         // v15.87 (slice 2184): the duration snapshot for this rail's clock — the durations map, one parse per refresh, passed to the resolver per card (the v5.69 rule); the other four rails parse the same way at their key blocks (dur20 Recent, dur21 Downloaded, dur27 Bookmarks, dur22 Favourite-talks) — this rail parsed none until now, because it carried no hairline and no clock. The key below carries the painted clock after the badge bit, so a duration landing while Main sits open moves the key or the card would freeze clockless at its first paint (the 2022 lesson). The value is the card's own helper, so key and paint can never disagree.
         java.util.Map<String, Integer> dur23 = Prefs.talkDurMap(this);
@@ -7960,7 +7999,9 @@ public class MainActivity extends Activity {
         kb.append(cachedNight ? "N" : "D");
         // v15.61 (slice 2024): the key carries the downloaded badge bit beside the identity — a download landing while Main sits open must move the key or the rail would freeze the card at its first paint (the 2020 lesson). The bit is the card's own helper, so key and paint can never disagree; a badge flip moves the key even when the identity cannot. This rail's key carried the identity only (no fraction — no hairline here, per the 2017 adjudication), so the bit rides directly after the identity.
         // v15.94 (slice 2224): the key carries the favourite star beside the badge bit and the clock — a star landing while Main sits open must move the key or the card would freeze star-less at its first paint. The value is the card's own helper, so key and paint can never disagree. The favourite toggle's own refresh call repaints at once now — the key moves on a star flip, so the star lands on the tap itself, not on the next refresh.
+        // v15.95 (slice 2232): the key carries the total after the per-entry legs — a count-only change (a new talk landing, an old one heard) must move the key or the header would freeze at its first paint. The value is the header's own helper, so key and paint can never disagree.
         for (NewTalkRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(newDlBadge24(c.e) ? '1' : '0').append(':').append(newRowDurMs84(dur23, c.e)).append(':').append(newRecentRowFav24(fav24, c.e) ? '1' : '0');
+        kb.append("|n=").append(newTotal32);
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (newTalkRailWrap.getVisibility() != android.view.View.GONE)
@@ -8306,8 +8347,9 @@ public class MainActivity extends Activity {
             return;
         }
         lastNewTalkRailKey = key;
+        // v15.95 (slice 2232): the header carries its total — the drawer header's own idiom, now on the fifth and last Main rail: the count sits inside the label base, so the chevron stays last. ASCII digits, the drawer precedent; no new Lang key, no Prefs write, no layout change.
         if (newTalkRailLabel != null)
-            newTalkRailLabel.setText(RailSeeAll.label("● " + Lang.t(MainActivity.this, "hs_new_talks")));
+            newTalkRailLabel.setText(RailSeeAll.label("● " + Lang.t(MainActivity.this, "hs_new_talks") + " (" + newTotal32 + ")"));
         if (newTalkRailWrap.getVisibility() != android.view.View.VISIBLE) {
             newTalkRailWrap.setVisibility(android.view.View.VISIBLE);
             Fx.fadeIn(newTalkRailWrap, 250);
