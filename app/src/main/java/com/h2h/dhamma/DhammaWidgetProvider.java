@@ -145,6 +145,25 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
         return playing && prepared && sleepActive && !endOfTalk && sleepEndMs != 0;
     }
 
+    // v15.94 (slice 2226): the widget's listened-progress bar — the per-mille the bar paints, -1 when the bar stays hidden. A live track reads its own mirrors (the strips' position + duration, already trusted for the strip clock): visible whenever a duration is known, even at 0 — the bare track says just started. A dead service reads the banked spot over the banked duration for the displayed talk (the rails' rule: a spot at or below 5s paints nothing, a finished talk's spot was cleared on completion, so neither reads as started). Both legs clamp the spot into the duration and quantize to per-mille, so the bar and the rails can never disagree on the same talk.
+    static int widgetProgressPermille2226(boolean hasTrack, int livePosMs, int liveDurMs,
+                                          int bankedPosMs, int bankedDurMs) {
+        if (hasTrack) {
+            if (liveDurMs <= 0) return -1;
+            int pos = Math.max(0, Math.min(livePosMs, liveDurMs));
+            return (int) (1000L * pos / liveDurMs);
+        }
+        if (bankedDurMs <= 0 || bankedPosMs <= 5000) return -1;
+        int pos = Math.max(0, Math.min(bankedPosMs, bankedDurMs));
+        return (int) (1000L * pos / bankedDurMs);
+    }
+
+    // v15.94 (slice 2226): the 15s-tick gate for the widget's progress bar — the widget is push-only (no tick of its own), so a live bar needs a periodic refresh, and the service's 15s tick is the existing one (the notification's elapsed text and the sleep countdown ride the same tick). Gated to a playing track with a known duration: a paused talk's frozen bar rides the pause edge instead, a dead service's banked bar is static, and a trackless or duration-less session has no bar to move.
+    static boolean widgetProgressTickPure(boolean playing, boolean prepared,
+                                          boolean hasTrack, int liveDurMs) {
+        return playing && prepared && hasTrack && liveDurMs > 0;
+    }
+
     // v13.92 (slice 1084): the widget photo's URL — which
     // sayadaw's portrait the widget shows. A library session
     // takes its recorded sayadaw's catalog photo (libPhotoUrl,
@@ -183,6 +202,51 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
     // the buffering window), so it shows the pause icon.
     static String widgetPlayIconPure(boolean playing) {
         return playing ? "pause" : "play";
+    }
+
+    // v15.94 (slice 2226): the widget's banked spot + duration for a dead-service talk — the rails' three-leg resolve, as single lookups (the widget paints ONE talk, so one parse per lookup is the single-talk shape): the exact stored key first, then the identity twin, then the downloaded file's own key. A 0 reads as a miss on every leg (the maps bank only positive spots and durations), so a twin that was never banked never overwrites a real spot. The caller gates on the 5s rule; these helpers only resolve.
+    static int widgetBankedPos2226(android.content.Context context, String url) {
+        if (url == null || url.length() == 0) return 0;
+        int pos = Prefs.talkPosGet(context, url);
+        if (pos <= 5000) {
+            String id = SiteHttp.identityUrl(url);
+            if (id != null && !id.equals(url)) {
+                int ip = Prefs.talkPosGet(context, id);
+                if (ip > 0) pos = ip;
+            }
+        }
+        if (pos <= 5000) {
+            String fn = DlLanded.downloadedFileName(context, url, null, null);
+            if (fn != null) {
+                String path = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + fn).getAbsolutePath();
+                int pp = Prefs.talkPosGet(context, path);
+                if (pp > 0) pos = pp;
+            }
+        }
+        return pos;
+    }
+
+    static int widgetBankedDur2226(android.content.Context context, String url) {
+        if (url == null || url.length() == 0) return 0;
+        int dur = Prefs.talkDurGet(context, url);
+        if (dur <= 0) {
+            String id = SiteHttp.identityUrl(url);
+            if (id != null && !id.equals(url)) {
+                int idu = Prefs.talkDurGet(context, id);
+                if (idu > 0) dur = idu;
+            }
+        }
+        if (dur <= 0) {
+            String fn = DlLanded.downloadedFileName(context, url, null, null);
+            if (fn != null) {
+                String path = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + fn).getAbsolutePath();
+                int dd = Prefs.talkDurGet(context, path);
+                if (dd > 0) dur = dd;
+            }
+        }
+        return dur;
     }
 
     // Live track: toggle in place. Dead service with a stored
@@ -424,6 +488,19 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
                         android.view.View.GONE);
             } catch (Exception ignored2) {}
         }
+
+        // v15.94 (slice 2226): the widget's listened-progress bar — the thin gold line at the widget's bottom edge, the notification seek bar's shape on the home screen: a live track reads the service's own position over its own duration, a dead service reads the banked spot over the banked duration for the displayed talk, and the bar stays gone when there is nothing to show (no duration, never started, finished). The bar only repaints when a refresh lands (state edges + the 15s tick while playing), so a steady session never re-renders it.
+        int bankedPos2226 = 0;
+        int bankedDur2226 = 0;
+        if (!hasTrack) {
+            String deadUrl2226 = isLib ? sp.getString("lastLibPath", "") : sp.getString("lastUrl", "");
+            bankedPos2226 = widgetBankedPos2226(context, deadUrl2226);
+            bankedDur2226 = widgetBankedDur2226(context, deadUrl2226);
+        }
+        int wgPermille2226 = widgetProgressPermille2226(hasTrack, AudioService.livePositionMs,
+                AudioService.liveDurationMs, bankedPos2226, bankedDur2226);
+        views.setProgressBar(R.id.wg_progress, 1000, wgPermille2226 < 0 ? 0 : wgPermille2226, false);
+        views.setViewVisibility(R.id.wg_progress, wgPermille2226 >= 0 ? android.view.View.VISIBLE : android.view.View.GONE);
 
         String icon = widgetPlayIconPure(playing);
         views.setImageViewResource(R.id.wg_play,

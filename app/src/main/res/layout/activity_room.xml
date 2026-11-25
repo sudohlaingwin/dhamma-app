@@ -192,6 +192,13 @@
                         android:layout_gravity="center"
                         android:background="@drawable/glow_ring"
                         android:visibility="gone" />
+                    <!-- v15.94 (slice 2225): the gold progress arc around the Room play button — the thin gold arc that sweeps around the play control as the talk plays, so a glance says how far through the talk. The view paints nothing but its own track and arc; the poll drives it change-only, and it stays gone until a talk has a duration. -->
+                    <com.h2h.dhamma.PlayRingView
+                        android:id="@+id/playRing"
+                        android:layout_width="72dp"
+                        android:layout_height="72dp"
+                        android:layout_gravity="center"
+                        android:visibility="gone" />
                     <ImageButton
                         android:id="@+id/roomPlayPause"
                         android:layout_width="wrap_content"

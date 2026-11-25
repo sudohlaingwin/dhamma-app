@@ -131,4 +131,16 @@
 
     </LinearLayout>
 
+        <!-- v15.94 (slice 2226): the widget's listened-progress bar — the thin gold line at the widget's bottom edge, the notification seek bar's shape on the home screen: 2dp tall with no top margin, the only size that keeps the Large fit (the height budget leaves 2.14dp). Gone by default, so the picker preview shows no bar; the empty state shows no bar either. -->
+    <ProgressBar
+        android:id="@+id/wg_progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="2dp"
+        android:max="1000"
+        android:progress="0"
+        android:progressBackgroundTint="#40C9A227"
+        android:progressTint="#C9A227"
+        android:visibility="gone" />
+
 </LinearLayout>

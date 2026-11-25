@@ -85,6 +85,10 @@ public class RoomActivity extends Activity {
     private android.widget.ImageButton roomSleepBtn;
     // v2.07: premium play motion — gold glow ring + morph bounce.
     private View playGlow;
+    // v15.94 (slice 2225): the gold progress arc around the Room play button — the thin gold arc that sweeps around the play control as the talk plays, so a glance says how far through the talk. The view paints nothing but its own track and arc in the app's gold; the poll drives it change-only, and it stays gone until a talk has a duration. The glow and the morph animators touch the button and the glow only, so no fight.
+    private PlayRingView playRingView;
+    private int lastRingPerMille2225 = -1;
+    private boolean lastRingVisible2225 = false;
     private android.animation.ObjectAnimator glowPulse;
     // v2.20: smooth seek glide + glow scale pulse — the 500ms poll
     // used to jump the seek thumb (and the clock) in 500ms steps,
@@ -5926,6 +5930,19 @@ if (snd65 >= 0) currentIndex = snd65;
         }
     }
 
+    // v15.94 (slice 2225): the gold progress arc around the Room play button — the thin gold arc that sweeps around the play control as the talk plays. The helper owns the visibility and the painted fraction, both change-only, so a steady 500ms poll never re-sets the view or redraws: gone while there is no duration (and the painted memory resets), visible once a talk has one, and the arc follows the sounding talk's own position over its own duration. A paused talk holds its arc; a stopped talk hides the ring.
+    private void updatePlayRing2225(int dur, int pos) {
+        if (playRingView == null) return;
+        boolean visible = dur > 0;
+        if (visible != lastRingVisible2225) {
+            lastRingVisible2225 = visible;
+            playRingView.setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
+        if (!visible) { lastRingPerMille2225 = -1; return; }
+        int pm = (int) (1000L * Math.max(0, Math.min(pos, dur)) / dur);
+        if (pm != lastRingPerMille2225) { lastRingPerMille2225 = pm; playRingView.setFraction(pm / 1000f); }
+    }
+
     private final Runnable pollRunnable = new Runnable() {
         @Override public void run() {
             // v1.69: mid-session download rescan (see pollCount) — a
@@ -7147,6 +7164,8 @@ if (snd65 >= 0) currentIndex = snd65;
                 if (!seeking) {
                     int dur = service.getDuration();
                     int pos = service.getPosition();
+                    // v15.94 (slice 2225): the gold progress arc around the Room play button rides this same tick — the same duration and position that drive the wave below, so the ring can never disagree with the bar. The helper hides the ring when there is no duration and repaints change-only otherwise; a drag in flight freezes it, exactly like the wave.
+                    updatePlayRing2225(dur, pos);
                     if (dur > 0) {
                         // v2.20: smooth seek glide — the thumb and
                         // clock used to jump every 500ms poll. The
@@ -9869,6 +9888,7 @@ if (snd68 >= 0) currentIndex = snd68;
         applyLangLabels();
 
         playGlow = findViewById(R.id.playGlow);
+        playRingView = findViewById(R.id.playRing);
         if (btnPlayPause != null) btnPlayPause.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 // v1.48: before the service binds, this used to do

@@ -1281,9 +1281,13 @@ public class AudioService extends Service {
             // minute countdown while playing only; a sleep-free session
             // pays nothing, a paused remainder rides the pause edge,
             // the one-shot has no countdown to move.
+            // v15.94 (slice 2226): the widget's listened-progress bar rides the same 15s tick — the bar steps with the position mirrors while a track plays with a known duration; a paused bar rides the pause edge, a dead-service bar is static, and a sleep-free session still refreshes when its bar moves. One refresh serves both gates.
             if (DhammaWidgetProvider.widgetSleepTickPure(
                     player != null && prepared && player.isPlaying(), prepared,
-                    liveSleepActive, liveSleepEndOfTalk, sleepEndMs))
+                    liveSleepActive, liveSleepEndOfTalk, sleepEndMs)
+                    || DhammaWidgetProvider.widgetProgressTickPure(
+                    player != null && prepared && player.isPlaying(), prepared,
+                    liveHasTrack, liveDurationMs))
                 DhammaWidgetProvider.refresh(AudioService.this);
             // v1.78: a trackless service used to re-post this tick
             // forever — opening the Room starts the service, and

@@ -6218,6 +6218,12 @@ public class MainActivity extends Activity {
     }
 
     // v15.93 (slice 2217): the Downloaded card's finished mark — the row tick, now on the second Main rail card (the card showed the sayadaw, the title, the total clock, the listened-progress hairline and the resume cue, but never whether the talk was heard to the end). The check is the rail's own menu-time identity rule — the same set the card's mark verb reads, so the mark and the menu label can never disagree — and the service already banks finished marks under the canonical identity, so no second resolve is needed. The set comes from the caller (one parse per refresh). No playing gate is needed — the pick already excludes the sounding talk. A finished card's spot is cleared on completion, so without the mark it would read as never started; a marked-but-unfinished card keeps its cue, so it reads mark-then-cue.
+    // v15.94 (slice 2222): the Downloaded card's favourite star — the row star, now on the second Main rail card (the card showed the sayadaw, the finished tick, the total clock, the listened-progress hairline and the resume cue, but never whether the talk is a favourite). The check is the rail's own menu-time identity rule — the same set the card's favourite toggle reads, so the star and the menu label can never disagree — and the service already banks favourites under the canonical identity, so no second resolve is needed. The set comes from the caller (one parse per refresh). No playing gate is needed — the pick already excludes the sounding talk. A favourited-but-unfinished card keeps its cue, so it reads star-then-cue; a finished favourite reads the full chain. No dual gate — the star says loved, the tick says finished, the cue says where to resume.
+    private boolean dlRecentRowFav22(java.util.Set<String> fav22, Prefs.HistEntry e) {
+        if (e == null || e.url == null || fav22 == null) return false;
+        return RailMenu.isFav(fav22, e.url);
+    }
+
     private boolean dlRecentRowPlayed17(java.util.Set<String> playedDl17, Prefs.HistEntry e) {
         if (e == null || e.url == null || playedDl17 == null) return false;
         return DlMark.isMarked(playedDl17, SiteHttp.identityUrl(e.url));
@@ -6277,13 +6283,16 @@ public class MainActivity extends Activity {
         java.util.Map<String, Integer> pos21 = readTalkPos1964();
         java.util.Map<String, Integer> dur21 = Prefs.talkDurMap(this);
         java.util.Set<String> playedDl17 = readPlayedTalks1966();
+        java.util.Set<String> fav22 = null;
+        try { fav22 = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favTalks", null); } catch (Exception ignored) {}
         StringBuilder kb = new StringBuilder();
         kb.append(cachedNight ? "N" : "D");
         // v15.60 (slice 2021): the key carries the painted fraction, not just the URL — a resume spot moves while a talk plays, and the rail repaints only when this key moves, so a spot-only change (same five talks, one heard further, back on Main) must move the key or the line would freeze at its first paint. The fraction is the card's own helper, so key and paint can never disagree; Float.toString is deterministic for the same value, so equal fractions never repaint.
         // v15.87 (slice 2181): the key carries the painted clock, beside the fraction — a duration landing while Main sits open must move the key or the card would freeze clockless at its first paint (the 2021 lesson). The value is the card's own helper, so key and paint can never disagree. No badge bit on this rail — every card here IS downloaded, so there is no badge to carry.
         // v15.92 (slice 2213): the key carries the painted resume spot beside the fraction and the clock — a spot landing while Main sits open must move the key or the card would freeze cue-less at its first paint. The value is the card's own helper, so key and paint can never disagree.
         // v15.93 (slice 2217): the key carries the finished mark beside the fraction, the clock and the spot — a mark landing while Main sits open must move the key or the card would freeze mark-less at its first paint. The value is the card's own helper, so key and paint can never disagree.
-        for (Prefs.HistEntry e : picked) kb.append('|').append(SiteHttp.identityUrl(e.url)).append(':').append(dlRecentHairFrac21(pos21, dur21, e)).append(':').append(dlRowDurMs81(dur21, e)).append(':').append(dlRecentRowPosMs13(pos21, e)).append(':').append(dlRecentRowPlayed17(playedDl17, e) ? '1' : '0');
+        // v15.94 (slice 2222): the key carries the favourite star beside the fraction, the clock, the spot and the tick bit — a star landing while Main sits open must move the key or the card would freeze star-less at its first paint. The value is the card's own helper, so key and paint can never disagree.
+        for (Prefs.HistEntry e : picked) kb.append('|').append(SiteHttp.identityUrl(e.url)).append(':').append(dlRecentHairFrac21(pos21, dur21, e)).append(':').append(dlRowDurMs81(dur21, e)).append(':').append(dlRecentRowPosMs13(pos21, e)).append(':').append(dlRecentRowPlayed17(playedDl17, e) ? '1' : '0').append(':').append(dlRecentRowFav22(fav22, e) ? '1' : '0');
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (dlRecentRailWrap.getVisibility() != android.view.View.GONE)
@@ -6343,7 +6352,8 @@ public class MainActivity extends Activity {
             int dlRecentPos13 = dlRecentRowPosMs13(pos21, e);
             String dlRecentResume13 = dlRecentPos13 > 5000 ? "\u21BA " + FavTalkRail.fmtTime(dlRecentPos13) + " · " : "";
             // v15.93 (slice 2217): the finished mark — the row tick, now on the second Main rail card: a finished card's title opens with the mark before the resume cue, so a glance says which just-downloaded talks were heard to the end. No badge leg on this rail — every card here is downloaded, so the mark sits outermost. The cue never moves, never hides. No playing gate — the pick already excludes the sounding talk. No Lang key, no Prefs write, no layout change — the card is built in code.
-            title.setText((dlRecentRowPlayed17(playedDl17, e) ? "\u2713 " : "") + dlRecentResume13 + e.title);
+            // v15.94 (slice 2222): the favourite star — the row star, now on the second Main rail card: a favourited card's title opens with the mark before the finished tick and the resume cue, so a glance says which just-downloaded talks are loved. The star sits outermost, the canonical row order; the tick and the cue never move, never hide. No badge leg on this rail — every card here is downloaded. No playing gate — the pick already excludes the sounding talk. No Lang key, no Prefs write, no layout change — the card is built in code.
+            title.setText((dlRecentRowFav22(fav22, e) ? "\u2605 " : "") + (dlRecentRowPlayed17(playedDl17, e) ? "\u2713 " : "") + dlRecentResume13 + e.title);
             title.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
             title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
             title.setMaxLines(1);
@@ -6646,6 +6656,12 @@ public class MainActivity extends Activity {
     }
 
     // v15.93 (slice 2218): the Bookmarks card's finished mark — the row tick, now on the third Main rail card (the card showed the sayadaw, the mark minute, the downloaded badge, the total clock, the listened-progress hairline and the resume cue, but never whether the talk was heard to the end). The check is the rail's own menu-time identity rule — the same set the card's mark verb reads, so the mark and the menu label can never disagree — and the service already banks finished marks under the canonical identity, so no second resolve is needed. The set comes from the caller (one parse per refresh). No playing gate is needed — the pick already excludes the sounding talk. A finished card's spot is cleared on completion, so without the mark it would read as never started; a marked-but-unfinished card keeps its cue, so it reads mark-then-cue. No dual gate — the mark says finished, the minute says where the bookmark sits.
+    // v15.94 (slice 2223): the Bookmarks card's favourite star — the row star, now on the third Main rail card (the card showed the sayadaw, the mark minute, the downloaded badge, the finished tick, the total clock, the listened-progress hairline and the resume cue, but never whether the talk is a favourite). The check is the rail's own menu-time identity rule — the same set the card's favourite toggle reads, so the star and the menu label can never disagree — and the service already banks favourites under the canonical identity, so no second resolve is needed. The set comes from the caller (one parse per refresh). No playing gate is needed — the pick already excludes the sounding talk. A favourited-but-unfinished card keeps its cue, so it reads star-then-cue; a finished favourite reads the full chain. No dual gate — the star says loved, the tick says finished, the cue says where to resume, the minute says where the bookmark sits.
+    private boolean bmRecentRowFav23(java.util.Set<String> fav23, Prefs.HistEntry e) {
+        if (e == null || e.url == null || fav23 == null) return false;
+        return RailMenu.isFav(fav23, e.url);
+    }
+
     private boolean bmRecentRowPlayed18(java.util.Set<String> playedBm18, Prefs.HistEntry e) {
         if (e == null || e.url == null || playedBm18 == null) return false;
         return DlMark.isMarked(playedBm18, SiteHttp.identityUrl(e.url));
@@ -6711,12 +6727,15 @@ public class MainActivity extends Activity {
         java.util.Map<String, Integer> pos27 = readTalkPos1964();
         java.util.Map<String, Integer> dur27 = Prefs.talkDurMap(this);
         java.util.Set<String> playedBm18 = readPlayedTalks1966();
+        java.util.Set<String> fav23 = null;
+        try { fav23 = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favTalks", null); } catch (Exception ignored) {}
         // v15.61 (slice 2026): the key carries the downloaded badge bit beside the mark minute — a download landing while Main sits open must move the key or the rail would freeze the card at its first paint (the 2020 lesson). The bit is the card's own helper, so key and paint can never disagree; a badge flip moves the key even when the identity and the mark minute cannot. The key already carried identity + mark minute; the bit rides after the minute.
         // v15.61 (slice 2027): the key carries the painted fraction between the mark minute and the badge bit — the card's title renders the mark minute ("12:34 · title"), so the key must keep c.posMs or a mark-only change would not repaint; and a resume spot moves while a talk plays, so the fraction must ride too or a spot-only change would freeze the line at its first paint (the 2020 lesson). The fraction is the card's own helper, so key and paint can never disagree; Float.toString is deterministic for the same value, so equal fractions never repaint.
         // v15.87 (slice 2182): the key carries the painted clock, after the badge bit — a duration landing while Main sits open must move the key or the card would freeze clockless at its first paint (the 2027 lesson). The value is the card's own helper, so key and paint can never disagree. The clock rides after the badge bit, beside the fraction.
         // v15.92 (slice 2214): the key carries the painted resume spot beside the fraction, the badge bit and the clock — a spot landing while Main sits open must move the key or the card would freeze cue-less at its first paint. The value is the card's own helper, so key and paint can never disagree.
         // v15.93 (slice 2218): the key carries the finished mark beside the fraction, the badge bit, the clock and the spot — a mark landing while Main sits open must move the key or the card would freeze mark-less at its first paint. The value is the card's own helper, so key and paint can never disagree.
-        for (BmRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(c.posMs).append(':').append(bmHairFrac27(pos27, dur27, c.e)).append(':').append(bmDlBadge26(c.e) ? '1' : '0').append(':').append(bmRowDurMs82(dur27, c.e)).append(':').append(bmRecentRowPosMs14(pos27, c.e)).append(':').append(bmRecentRowPlayed18(playedBm18, c.e) ? '1' : '0');
+        // v15.94 (slice 2223): the key carries the favourite star beside the fraction, the badge bit, the clock, the spot and the tick bit — a star landing while Main sits open must move the key or the card would freeze star-less at its first paint. The value is the card's own helper, so key and paint can never disagree.
+        for (BmRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(c.posMs).append(':').append(bmHairFrac27(pos27, dur27, c.e)).append(':').append(bmDlBadge26(c.e) ? '1' : '0').append(':').append(bmRowDurMs82(dur27, c.e)).append(':').append(bmRecentRowPosMs14(pos27, c.e)).append(':').append(bmRecentRowPlayed18(playedBm18, c.e) ? '1' : '0').append(':').append(bmRecentRowFav23(fav23, c.e) ? '1' : '0');
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (bmRailWrap.getVisibility() != android.view.View.GONE)
@@ -6777,7 +6796,8 @@ public class MainActivity extends Activity {
             int bmRecentPos14 = bmRecentRowPosMs14(pos27, c.e);
             String bmRecentResume14 = bmRecentPos14 > 5000 && Math.abs(bmRecentPos14 - c.posMs) > 5000 ? "\u21BA " + FavTalkRail.fmtTime(bmRecentPos14) + " · " : "";
             // v15.93 (slice 2218): the finished mark — the row tick, now on the third Main rail card: a finished card's title opens with the mark after the downloaded badge and before the resume cue, so a glance says which marked talks were heard to the end. The badge stays outermost, the mark minute never moves, never hides. No playing gate — the pick already excludes the sounding talk. No Lang key, no Prefs write, no layout change — the card is built in code.
-            title.setText((bmDlBadge26(c.e) ? "\u2B07 " : "") + (bmRecentRowPlayed18(playedBm18, c.e) ? "\u2713 " : "") + bmRecentResume14 + BmRail.fmtTime(c.posMs) + " · " + c.e.title);
+            // v15.94 (slice 2223): the favourite star — the row star, now on the third Main rail card: a favourited card's title opens with the mark before the downloaded badge, the finished tick and the resume cue, so a glance says which marked talks are loved. The star sits outermost, the canonical row order; the badge, the tick and the cue never move, never hide. No playing gate — the pick already excludes the sounding talk. No Lang key, no Prefs write, no layout change — the card is built in code.
+            title.setText((bmRecentRowFav23(fav23, c.e) ? "\u2605 " : "") + (bmDlBadge26(c.e) ? "\u2B07 " : "") + (bmRecentRowPlayed18(playedBm18, c.e) ? "\u2713 " : "") + bmRecentResume14 + BmRail.fmtTime(c.posMs) + " · " + c.e.title);
             title.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
             title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
             title.setMaxLines(1);
@@ -7888,6 +7908,12 @@ public class MainActivity extends Activity {
     // 1960/2023 precedent); hides while searching/filtering and
     // while no new talk waits.
     // v15.61 (slice 2024): the "New talks" rail card's downloaded badge — the shared DlLanded definition (v13.69), the exact call the file-share offer on the same card makes (slice 2010, DlLanded.downloadedFileName with the null,null legs), so the badge and the offer can never disagree: a card shows ⬇ exactly when its menu offers the file share. No sounding gate needed — the caller picks through NewTalkRail.pick, which already excludes the sounding talk (the 1921 gate). The (null,null) legs are the menu's reading, not the Talks-row caches' full live-job exclusion: a mid-download partial file reads as landed, so a card can show ⬇ for a few seconds while its file is still arriving, exactly as the file-share verb already offers it. Cost is bounded: at most 5 cards, only on a rebuild (the key gate), one small dlMap JSON parse per card — the v5.69 distinction (a bounded 5-card rail, not an unbounded list).
+    // v15.94 (slice 2224): the New talks card's favourite star — the row star, now on the fourth Main rail card (the card showed the sayadaw, the downloaded badge and the total clock, but never whether the talk is a favourite). The check is the rail's own menu-time identity rule — the same set the card's favourite toggle reads, so the star and the menu label can never disagree — and the service already banks favourites under the canonical identity, so no second resolve is needed. The set comes from the caller (one parse per refresh). No playing gate is needed — the pick already excludes the sounding talk. No tick, no resume cue and no hairline on this card by construction — the pick only ever carries talks nobody started — so the star is the only state mark this card can ever gain, and it never repeats anything the card already prints.
+    private boolean newRecentRowFav24(java.util.Set<String> fav24, Prefs.HistEntry e) {
+        if (e == null || e.url == null || fav24 == null) return false;
+        return RailMenu.isFav(fav24, e.url);
+    }
+
     private boolean newDlBadge24(Prefs.HistEntry e) {
         if (e == null || e.url == null) return false;
         return DlLanded.downloadedFileName(MainActivity.this, e.url, null, null) != null;
@@ -7928,10 +7954,13 @@ public class MainActivity extends Activity {
         }
         // v15.87 (slice 2184): the duration snapshot for this rail's clock — the durations map, one parse per refresh, passed to the resolver per card (the v5.69 rule); the other four rails parse the same way at their key blocks (dur20 Recent, dur21 Downloaded, dur27 Bookmarks, dur22 Favourite-talks) — this rail parsed none until now, because it carried no hairline and no clock. The key below carries the painted clock after the badge bit, so a duration landing while Main sits open moves the key or the card would freeze clockless at its first paint (the 2022 lesson). The value is the card's own helper, so key and paint can never disagree.
         java.util.Map<String, Integer> dur23 = Prefs.talkDurMap(this);
+        java.util.Set<String> fav24 = null;
+        try { fav24 = getSharedPreferences("dhamma", MODE_PRIVATE).getStringSet("favTalks", null); } catch (Exception ignored) {}
         StringBuilder kb = new StringBuilder();
         kb.append(cachedNight ? "N" : "D");
         // v15.61 (slice 2024): the key carries the downloaded badge bit beside the identity — a download landing while Main sits open must move the key or the rail would freeze the card at its first paint (the 2020 lesson). The bit is the card's own helper, so key and paint can never disagree; a badge flip moves the key even when the identity cannot. This rail's key carried the identity only (no fraction — no hairline here, per the 2017 adjudication), so the bit rides directly after the identity.
-        for (NewTalkRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(newDlBadge24(c.e) ? '1' : '0').append(':').append(newRowDurMs84(dur23, c.e));
+        // v15.94 (slice 2224): the key carries the favourite star beside the badge bit and the clock — a star landing while Main sits open must move the key or the card would freeze star-less at its first paint. The value is the card's own helper, so key and paint can never disagree. The favourite toggle's own refresh call repaints at once now — the key moves on a star flip, so the star lands on the tap itself, not on the next refresh.
+        for (NewTalkRail.Card c : picked) kb.append('|').append(SiteHttp.identityUrl(c.e.url)).append(':').append(newDlBadge24(c.e) ? '1' : '0').append(':').append(newRowDurMs84(dur23, c.e)).append(':').append(newRecentRowFav24(fav24, c.e) ? '1' : '0');
         String key = kb.toString();
         if (picked.isEmpty()) {
             if (newTalkRailWrap.getVisibility() != android.view.View.GONE)
@@ -7982,7 +8011,8 @@ public class MainActivity extends Activity {
             col.addView(name);
             android.widget.TextView title = new android.widget.TextView(this);
             // v15.61 (slice 2024): the downloaded ⬇ badge — the row convention (Room drawer rows, History rows, Recently-played rail cards since slice 2023): the U+2B07 glyph as a title prefix, "⬇ title", on a talk already on the phone. Same 12sp #7A6A58 title view, same single line with END ellipsis; the prefix only shortens the visible title by two cells. The gate is the helper below — the same shared DlLanded call the file-share offer on this card makes (slice 2010), so badge and offer can never disagree. No rail card on this shelf showed download state before this slice; the card has no saved-spot prefix (the 1921 gate only ever picks talks nobody started), so the badge sits on the bare title.
-            title.setText(newDlBadge24(c.e) ? "\u2B07 " + c.e.title : c.e.title);
+            // v15.94 (slice 2224): the favourite star — the row star, now on the fourth Main rail card: a favourited card's title opens with the mark before the downloaded badge, so a glance says which brand-new talks are loved. The star sits outermost, the canonical row order; the badge never moves, never hides. No playing gate — the pick already excludes the sounding talk. No Lang key, no Prefs write, no layout change — the card is built in code.
+            title.setText((newRecentRowFav24(fav24, c.e) ? "\u2605 " : "") + (newDlBadge24(c.e) ? "\u2B07 " : "") + c.e.title);
             title.setTextColor(android.graphics.Color.parseColor("#7A6A58"));
             title.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
             title.setMaxLines(1);
