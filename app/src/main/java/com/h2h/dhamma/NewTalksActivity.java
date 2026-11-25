@@ -128,6 +128,18 @@ public class NewTalksActivity extends Activity {
     // v15.75 (slice 2109): "Back to top" on this screen — the Talks 1940 / Downloaded 2003 button, now on the third full-list screen without one: a new-talks list grows with every catalogue refresh, so its header is off-screen exactly when the jump is needed. newTopBtn is the floating gold ↑ button (GONE until ScrollTop.visible — the first visible row passes 8 — the 1940 shape, on the shown list's own scroll, not the sounding row); newTopShown is the last-painted state for the painter's change gate. Back to top landed in slice 2109.
     private android.view.View newTopBtn = null;
     private boolean newTopShown = false;
+    // v15.97 (slice 2245): New talks row swipe — the live drag state for this screen's gesture twin of the shared row swipe: a left drag marks that one talk listened, a right drag adds it to its sayadaw's queue. The row is the DOWN-time row (a rebind can move rows under a held finger, the commit acts on the DOWN row, never a re-resolved one); the stream address and sayadaw are resolved at DOWN time; the mark side is mark-only on this screen — a marked row leaves the list at once, so there is no listened flag to keep. The gesture math stays in the shared core; this activity owns the touch stream, the prefs, the queue and the toasts.
+    private NewTalkRail.Card ntSwipeRow45 = null;
+    private String ntSwipeStream45 = null;
+    private String ntSwipeSd45 = null;
+    private float ntSwipeDownX45 = 0f;
+    private float ntSwipeDownY45 = 0f;
+    private boolean ntSwipeArmed45 = false;
+    private int ntSwipeDir45 = 0;
+    private boolean ntSwipeLeftOk45 = false;
+    private boolean ntSwipeRightOk45 = false;
+    private int ntSwipeSlop45 = -1;
+    private android.animation.ValueAnimator ntSwipeSettle45 = null;
     // v15.65 (slice 2047): "Play all new" on this screen (the
     // chooser's v13.76 Play All + the library's v15.50
     // play-listened + Favourites' v15.64 play-all, the fourth list
@@ -221,6 +233,12 @@ public class NewTalksActivity extends Activity {
                     // v15.75 (slice 2109): the top button paints on the same scroll (the 2003 shape — its only show rule is the first visible row, so no laid-out-window guard; the threshold keeps it hidden until row 8 anyway).
                     paintNewTopBtn(firstVisibleItem);
                     if (visibleItemCount > 0) paintNewJumpBtn(firstVisibleItem, firstVisibleItem + visibleItemCount - 1);
+                }
+            });
+            // v15.97 (slice 2245): the swipe owns this list's touch stream — one listener, so the swipe and the tap / long-press / scroll never fight over it. A swipe DOWN records its candidate and returns false, so the tap, the long-press menu and the scroll still track; a swipe that arms consumes the gesture from there, so the list never scrolls under the travelling card.
+            listView.setOnTouchListener(new View.OnTouchListener() {
+                @Override public boolean onTouch(View v, android.view.MotionEvent ev) {
+                    return ntSwipeOnTouch45(ev);
                 }
             });
         }
@@ -690,7 +708,45 @@ public class NewTalksActivity extends Activity {
         row.addView(go, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
-        return row;
+        // v15.97 (slice 2245): the swipe frame — the row's card gains a gold strip behind it, built in code like the rest of this row: a frame holds the strip first (behind) and the card second (in front), so the strip is invisible at rest and revealed as the card travels. The strip starts hidden and the card starts plain — at rest the row keeps exactly today's look — and the gesture lifts both together when a drag arms. The strip's labels are painted here, where the row is built: the queue word on the left (revealed by a right drag, always the add word — an already-queued row never starts a right drag) and the mark word on the right (revealed by a left drag, always the mark word — this screen lists unplayed talks only). The card carries the bare row, so the photo, the text and the clock travel together.
+        android.widget.FrameLayout swFrame = new android.widget.FrameLayout(this);
+        LinearLayout swUnder = new LinearLayout(this);
+        swUnder.setId(R.id.ntSwipeUnder45);
+        swUnder.setOrientation(LinearLayout.HORIZONTAL);
+        swUnder.setGravity(Gravity.CENTER_VERTICAL);
+        swUnder.setBackgroundResource(R.drawable.dl_swipe_bg);
+        swUnder.setVisibility(android.view.View.GONE);
+        android.widget.TextView swLeft = new android.widget.TextView(this);
+        swLeft.setId(R.id.ntSwipeLeft45);
+        swLeft.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        swLeft.setPadding((int) (20 * d), 0, 0, 0);
+        swLeft.setTextColor(android.graphics.Color.parseColor("#3B2314"));
+        swLeft.setTextSize(15);
+        swLeft.setTypeface(null, android.graphics.Typeface.BOLD);
+        swLeft.setText(Lang.t(this, "menu_queue_add"));
+        android.widget.TextView swRight = new android.widget.TextView(this);
+        swRight.setId(R.id.ntSwipeRight45);
+        swRight.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        swRight.setGravity(Gravity.END);
+        swRight.setPadding(0, 0, (int) (20 * d), 0);
+        swRight.setTextColor(android.graphics.Color.parseColor("#3B2314"));
+        swRight.setTextSize(15);
+        swRight.setTypeface(null, android.graphics.Typeface.BOLD);
+        swRight.setText(Lang.t(this, "dl_menu_mark_one"));
+        swUnder.addView(swLeft);
+        swUnder.addView(swRight);
+        LinearLayout swCard = new LinearLayout(this);
+        swCard.setId(R.id.ntSwipeCard45);
+        swCard.setOrientation(LinearLayout.VERTICAL);
+        swCard.addView(row, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        swFrame.addView(swUnder, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+        swFrame.addView(swCard, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT));
+        return swFrame;
     }
 
     // v15.65 (slice 2047): Play-all visibility — the chooser's
@@ -3178,6 +3234,196 @@ public class NewTalksActivity extends Activity {
             }
         } catch (Exception ignored) {}
         return out;
+    }
+
+    // v15.97 (slice 2245): the New talks row swipe — the gesture twin of the shared row swipe on this screen: a left drag marks that one talk listened, a right drag adds it to its sayadaw's queue, with the gold strip + action label revealed under the card as it travels. The DOWN records the candidate row and both offers and returns false, so the tap, the long-press menu and the scroll still track; the MOVE arms only on a horizontal-dominant drag in an offered direction, lifts the row into its card first, then takes the gesture; the UP commits past the threshold and glides home before firing. Never arms on a row with no stream address to mark or queue, never on the sounding row (both verbs exclude it), never right on an already-queued row or with no sayadaw to queue into or on a path-form row (the queue verb takes the row's own URL and refuses a downloaded file — the menu offers nothing there either), never left on a talk with no address to mark. Rows here are built fresh per bind with no recycling, so the card is re-resolved from the list on every MOVE and at UP — a rebind landing mid-drag replaces the view, and the drag follows the new view instead of a stale one. The left drag is mark-only: this screen lists unplayed talks only, so the row leaves the list the moment it is marked and there is no unmark leg to offer.
+    private boolean ntSwipeOnTouch45(android.view.MotionEvent ev) {
+        if (listView == null) return false;
+        int action = ev.getActionMasked();
+        if (action == android.view.MotionEvent.ACTION_DOWN) {
+            ntSwipeReset45();
+            int pos = listView.pointToPosition((int) ev.getX(), (int) ev.getY());
+            if (pos == android.widget.AdapterView.INVALID_POSITION) return false;
+            if (pos < 0 || pos >= items.size()) return false;
+            NewTalkRail.Card c = items.get(pos);
+            if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return false;
+            String stream = newStreamUrlFor(c.e);
+            if (stream == null || stream.length() == 0) return false;
+            String sd = c.e.sayadaw;
+            refreshNewTalksPlayingMarks();
+            boolean soundingMark = NewPlayAll.isSounding(stream, newPlayingUrl, newPlayingLibUrl, newPlayingLibPath);
+            boolean soundingQueue = NewPlayAll.isSounding(c.e.url, newPlayingUrl, newPlayingLibUrl, newPlayingLibPath);
+            boolean queued = ntSwipeQueueHas45(sd, c.e.url);
+            boolean leftOk = DlMark.canOffer(stream, soundingMark);
+            boolean rightOk = sd != null && sd.length() > 0 && !c.e.url.startsWith("/") && DlSwipe.offerRight(soundingQueue, queued);
+            if (!leftOk && !rightOk) return false;
+            if (ntSwipeSlop45 < 0) ntSwipeSlop45 = android.view.ViewConfiguration.get(NewTalksActivity.this).getScaledTouchSlop();
+            ntSwipeRow45 = c;
+            ntSwipeStream45 = stream;
+            ntSwipeSd45 = sd;
+            ntSwipeDownX45 = ev.getX();
+            ntSwipeDownY45 = ev.getY();
+            return false;
+        }
+        if (ntSwipeRow45 == null) return false;
+        if (action == android.view.MotionEvent.ACTION_MOVE) {
+            float dx = ev.getX() - ntSwipeDownX45;
+            float dy = ev.getY() - ntSwipeDownY45;
+            if (!ntSwipeArmed45) {
+                if (!DlSwipe.dominant(dx, dy, ntSwipeSlop45)) return false;
+                int dir = DlSwipe.direction(dx);
+                if (dir == DlSwipe.LEFT && !ntSwipeLeftOk45) { ntSwipeReset45(); return false; }
+                if (dir == DlSwipe.RIGHT && !ntSwipeRightOk45) { ntSwipeReset45(); return false; }
+                if (dir == DlSwipe.NONE) return false;
+                android.view.View wrap = ntSwipeWrap45();
+                if (wrap == null) { ntSwipeReset45(); return false; }
+                android.view.View under = wrap.findViewById(R.id.ntSwipeUnder45);
+                android.view.View card = wrap.findViewById(R.id.ntSwipeCard45);
+                if (under == null || card == null) { ntSwipeReset45(); return false; }
+                ntSwipeArmed45 = true;
+                ntSwipeDir45 = dir;
+                // The row lifts into its card as the drag starts:
+                // at rest the row is plain text on the gradient,
+                // so the gold strip would show through it — the
+                // strip appears and the card goes opaque together,
+                // and both clear when the gesture ends, so the
+                // screen at rest keeps exactly today's look.
+                under.setVisibility(android.view.View.VISIBLE);
+                card.setBackgroundResource(night ? R.drawable.card_bg_night : R.drawable.card_bg);
+                listView.requestDisallowInterceptTouchEvent(true);
+            }
+            android.view.View wrap = ntSwipeWrap45();
+            if (wrap == null) { ntSwipeReset45(); return true; }
+            android.view.View under = wrap.findViewById(R.id.ntSwipeUnder45);
+            android.view.View card = wrap.findViewById(R.id.ntSwipeCard45);
+            if (card == null) { ntSwipeReset45(); return true; }
+            if (under != null) under.setVisibility(android.view.View.VISIBLE);
+            card.setBackgroundResource(night ? R.drawable.card_bg_night : R.drawable.card_bg);
+            card.setTranslationX(DlSwipe.clampDir(ev.getX() - ntSwipeDownX45, ntSwipeDir45, card.getWidth()));
+            return true;
+        }
+        if (action == android.view.MotionEvent.ACTION_UP) {
+            if (!ntSwipeArmed45) { ntSwipeReset45(); return false; }
+            android.view.View wrap = ntSwipeWrap45();
+            android.view.View card = wrap == null ? null : wrap.findViewById(R.id.ntSwipeCard45);
+            float dx = card == null ? 0f : card.getTranslationX();
+            boolean fire = card != null && DlSwipe.commit(dx, card.getWidth(), ntSwipeMinCommit45());
+            ntSwipeSettle45(card, ntSwipeDir45, ntSwipeRow45, fire);
+            return true;
+        }
+        if (action == android.view.MotionEvent.ACTION_CANCEL
+                || action == android.view.MotionEvent.ACTION_POINTER_DOWN) {
+            if (!ntSwipeArmed45) { ntSwipeReset45(); return false; }
+            android.view.View wrap = ntSwipeWrap45();
+            ntSwipeSettle45(wrap == null ? null : wrap.findViewById(R.id.ntSwipeCard45), ntSwipeDir45, null, false);
+            return true;
+        }
+        return false;
+    }
+
+    // The 96dp commit floor in px — the core takes the floor as
+    // an argument so the pure math never reads a resource.
+    private float ntSwipeMinCommit45() {
+        return 96f * getResources().getDisplayMetrics().density;
+    }
+
+    // v15.97 (slice 2245): glide the card home over 200ms Decelerate (the app's melt rhythm), then fire the verb — the glide is the feedback, the toast follows it. A cancelled settle never fires: the cancel flag is checked on animation end, so a fresh DOWN that cuts a settle short cannot queue a stale verb. The swipe fields stay set until the animation ends, so a rebind landing mid-glide never snaps the card (the fresh row is built at rest, and the reset clears the old one).
+    private void ntSwipeSettle45(final android.view.View card, final int dir, final NewTalkRail.Card c, final boolean fire) {
+        if (ntSwipeSettle45 != null) ntSwipeSettle45.cancel();
+        ntSwipeSettle45 = null;
+        if (card == null) { ntSwipeReset45(); return; }
+        final float start = card.getTranslationX();
+        if (start == 0f) { ntSwipeReset45(); return; }
+        android.animation.ValueAnimator anim = android.animation.ValueAnimator.ofFloat(start, 0f);
+        ntSwipeSettle45 = anim;
+        anim.setDuration(200);
+        anim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        anim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                card.setTranslationX((Float) a.getAnimatedValue());
+            }
+        });
+        final boolean[] cancelled45 = new boolean[1];
+        anim.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationCancel(android.animation.Animator a) {
+                cancelled45[0] = true;
+            }
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                if (ntSwipeSettle45 == anim) ntSwipeSettle45 = null;
+                if (!cancelled45[0] && fire && c != null && dir == DlSwipe.LEFT) applyNtSwipeMark45(c);
+                else if (!cancelled45[0] && fire && c != null && dir == DlSwipe.RIGHT) applyNtSwipeQueueAdd45(c);
+                ntSwipeReset45();
+            }
+        });
+        anim.start();
+    }
+
+    private void ntSwipeReset45() {
+        if (ntSwipeSettle45 != null) {
+            android.animation.ValueAnimator a = ntSwipeSettle45;
+            ntSwipeSettle45 = null;
+            a.cancel();
+        }
+        // A fresh DOWN, a cancel or a settle end clears the live row back to rest: the card glides home on its own, but the strip hides and the card goes plain here, so a row can never keep gold or a card after its gesture ends. The row is found again at the DOWN point (a rebind may have replaced it); a row that scrolled away is already at rest, so there is nothing to clear.
+        android.view.View wrap = ntSwipeWrap45();
+        if (wrap != null) {
+            android.view.View under = wrap.findViewById(R.id.ntSwipeUnder45);
+            if (under != null) under.setVisibility(android.view.View.GONE);
+            android.view.View card = wrap.findViewById(R.id.ntSwipeCard45);
+            if (card != null) {
+                card.setTranslationX(0f);
+                card.setBackground(null);
+            }
+        }
+        ntSwipeRow45 = null;
+        ntSwipeStream45 = null;
+        ntSwipeSd45 = null;
+        ntSwipeArmed45 = false;
+        ntSwipeDir45 = 0;
+        ntSwipeLeftOk45 = false;
+        ntSwipeRightOk45 = false;
+        ntSwipeDownX45 = 0f;
+        ntSwipeDownY45 = 0f;
+    }
+
+    // v15.97 (slice 2245): the swipe-left commit — the mark verb fired by the gesture: the row menu's own mark verb as a twin, so the swipe and the long-press can never disagree. The verb itself re-checks the sounding state at tap time, reads the prefs-fresh set, toasts already-marked on the race, and refreshes the list when the mark lands — so this twin adds no second read of the mark state and no rebind of its own; the row leaves the list through the pick's played gate on that refresh.
+    private void applyNtSwipeMark45(NewTalkRail.Card c) {
+        if (c == null) return;
+        markListenedNew(c);
+    }
+
+    // v15.97 (slice 2245): the swipe-right commit — the queue-add verb fired by the gesture: the row menu's own queue-add branch as a twin, so the swipe and the long-press can never disagree. The verb itself re-checks the sounding state at tap time and toasts already-in-queue or added, so this twin adds only the rebind — queueing changes no row the list renders, but the list rebinds here so the row's queue state reads right at once.
+    private void applyNtSwipeQueueAdd45(NewTalkRail.Card c) {
+        if (c == null) return;
+        queueAddNew(c);
+        if (adapter != null) adapter.notifyDataSetChanged();
+    }
+
+    // The live row, re-resolved from the list at the DOWN point on every call — rows here are built fresh per bind, so a rebind landing mid-drag replaces the view under a held finger. The resolved row must still be the DOWN row (same object), or the drag has moved on and there is nothing to follow.
+    private android.view.View ntSwipeWrap45() {
+        if (listView == null || ntSwipeRow45 == null) return null;
+        int pos = listView.pointToPosition((int) ntSwipeDownX45, (int) ntSwipeDownY45);
+        if (pos == android.widget.AdapterView.INVALID_POSITION) return null;
+        if (pos < 0 || pos >= items.size()) return null;
+        NewTalkRail.Card cur = items.get(pos);
+        if (cur != ntSwipeRow45) return null;
+        return listView.getChildAt(pos - listView.getFirstVisiblePosition());
+    }
+
+    // Whether the DOWN row's talk already sits in its sayadaw's saved queue — the saved lines are read fresh here (the menu reads them the same way per open), and the queue's own membership test answers, so the offer and the menu can never disagree about a queued talk. The test reads the row's own URL, the same address the menu's queue key checks.
+    private boolean ntSwipeQueueHas45(String sd, String url) {
+        if (sd == null || sd.length() == 0 || url == null || url.length() == 0) return false;
+        try {
+            java.util.ArrayList<String> saved45 = new java.util.ArrayList<String>();
+            String raw45 = Prefs.savedQueue(this, sd);
+            if (raw45 != null && raw45.length() > 0) {
+                for (String ln45 : raw45.split("\n")) {
+                    if (ln45.length() == 0) continue;
+                    saved45.add(ln45);
+                }
+            }
+            return NewQueue.isQueued(url, saved45);
+        } catch (Exception ignored) { return false; }
     }
 
     private java.util.Set<String> readPlayedTalks() {

@@ -153,6 +153,18 @@ public class HistoryActivity extends Activity {
     // v15.75 (slice 2107): "Back to top" on this screen — the Talks 1940 / Downloaded 2003 button, now on the first full-list screen without one: a history grows with every listen, so its header is off-screen exactly when the jump is needed. hsTopBtn is the floating gold ↑ button (GONE until ScrollTop.visible — the first visible row passes 8 — the 1940 shape, on the shown list's own scroll, not the sounding row); hsTopShown is the last-painted state for the painter's change gate. Back to top landed in slice 2107.
     private android.view.View hsTopBtn = null;
     private boolean hsTopShown = false;
+    // v15.97 (slice 2242): History row swipe — the live drag state for this screen's gesture twin of the library swipe: a left drag marks (or un-marks) that one talk listened, a right drag adds it to its sayadaw's queue. The entry is the DOWN-time row (a rebind can move rows under a held finger, the commit acts on the DOWN row, never a re-resolved one); the stream address and sayadaw are resolved at DOWN time; the listened flag is the DOWN-time snapshot the row's own tick reads. The gesture math stays in the shared core; this activity owns the touch stream, the prefs, the queue and the toasts.
+    private Prefs.HistEntry hsSwipeEntry42 = null;
+    private String hsSwipeStream42 = null;
+    private String hsSwipeSd42 = null;
+    private float hsSwipeDownX42 = 0f;
+    private float hsSwipeDownY42 = 0f;
+    private boolean hsSwipeArmed42 = false;
+    private int hsSwipeDir42 = 0;
+    private boolean hsSwipeLeftOk42 = false;
+    private boolean hsSwipeRightOk42 = false;
+    private int hsSwipeSlop42 = -1;
+    private android.animation.ValueAnimator hsSwipeSettle42 = null;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -223,6 +235,12 @@ public class HistoryActivity extends Activity {
                     // v15.75 (slice 2107): the top button paints on the same scroll (the 2003 shape — its only show rule is the first visible row, so no laid-out-window guard; the threshold keeps it hidden until row 8 anyway).
                     paintHsTopBtn(firstVisibleItem);
                     if (visibleItemCount > 0) paintHsJumpBtn(firstVisibleItem, firstVisibleItem + visibleItemCount - 1);
+                }
+            });
+            // v15.97 (slice 2242): the swipe owns this list's touch stream — one listener, so the swipe and the tap / long-press / scroll never fight over it. A swipe DOWN records its candidate and returns false, so the tap, the long-press menu and the scroll still track; a swipe that arms consumes the gesture from there, so the list never scrolls under the travelling card.
+            listView.setOnTouchListener(new View.OnTouchListener() {
+                @Override public boolean onTouch(View v, android.view.MotionEvent ev) {
+                    return hsSwipeOnTouch42(ev);
                 }
             });
         }
@@ -788,12 +806,248 @@ public class HistoryActivity extends Activity {
         hsHairTrack04.addView(hsHairFill04);
         hsHairTrack04.addView(hsHairSpace04);
         Fx.crossfadeHairline(hsHairTrack04, hsHairFrac04 > 0f);
+        // v15.97 (slice 2242): the swipe frame — the row's card gains a gold strip behind it, built in code like the rest of this row: a frame holds the strip first (behind) and the card second (in front), so the strip is invisible at rest and revealed as the card travels. The strip starts hidden and the card starts plain — at rest the row keeps exactly today's look — and the gesture lifts both together when a drag arms. The strip's labels are painted here, where the row's listened state is known: the queue word on the left (revealed by a right drag, always the add word — an already-queued row never starts a right drag) and the mark word on the right (revealed by a left drag, flipping with the row's own listened state, the same snapshot the tick reads). The card carries the row and its hairline together, so the progress line travels with the talk it belongs to.
+        android.widget.FrameLayout swFrame = new android.widget.FrameLayout(this);
+        LinearLayout swUnder = new LinearLayout(this);
+        swUnder.setId(R.id.hsSwipeUnder42);
+        swUnder.setOrientation(LinearLayout.HORIZONTAL);
+        swUnder.setGravity(Gravity.CENTER_VERTICAL);
+        swUnder.setBackgroundResource(R.drawable.dl_swipe_bg);
+        swUnder.setVisibility(android.view.View.GONE);
+        android.widget.TextView swLeft = new android.widget.TextView(this);
+        swLeft.setId(R.id.hsSwipeLeft42);
+        swLeft.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        swLeft.setPadding((int) (20 * d), 0, 0, 0);
+        swLeft.setTextColor(android.graphics.Color.parseColor("#3B2314"));
+        swLeft.setTextSize(15);
+        swLeft.setTypeface(null, android.graphics.Typeface.BOLD);
+        swLeft.setText(Lang.t(this, "menu_queue_add"));
+        android.widget.TextView swRight = new android.widget.TextView(this);
+        swRight.setId(R.id.hsSwipeRight42);
+        swRight.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        swRight.setGravity(Gravity.END);
+        swRight.setPadding(0, 0, (int) (20 * d), 0);
+        swRight.setTextColor(android.graphics.Color.parseColor("#3B2314"));
+        swRight.setTextSize(15);
+        swRight.setTypeface(null, android.graphics.Typeface.BOLD);
+        swRight.setText(Lang.t(this, DlSwipe.labelKey(DlSwipe.LEFT, hsRowPlayed72)));
+        swUnder.addView(swLeft);
+        swUnder.addView(swRight);
+        LinearLayout swCard = new LinearLayout(this);
+        swCard.setId(R.id.hsSwipeCard42);
+        swCard.setOrientation(LinearLayout.VERTICAL);
+        swCard.addView(row, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        swCard.addView(hsHairTrack04);
+        swFrame.addView(swUnder, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+        swFrame.addView(swCard, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT));
         LinearLayout hsWrap04 = new LinearLayout(this);
         hsWrap04.setOrientation(LinearLayout.VERTICAL);
-        hsWrap04.addView(row, new LinearLayout.LayoutParams(
+        hsWrap04.addView(swFrame, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-        hsWrap04.addView(hsHairTrack04);
         return hsWrap04;
+    }
+
+    // v15.97 (slice 2242): the History row swipe — the gesture twin of the library swipe on this screen: a left drag marks (or un-marks) that one talk listened, a right drag adds it to its sayadaw's queue, with the gold strip + action label revealed under the card as it travels. The DOWN records the candidate row and both offers and returns false, so the tap, the long-press menu and the scroll still track; the MOVE arms only on a horizontal-dominant drag in an offered direction, lifts the row into its card first, then takes the gesture; the UP commits past the threshold and glides home before firing. Never arms on a row with no stream address to mark or queue, never on the sounding row (both verbs exclude it), never right on an already-queued row or with no sayadaw to queue into, never left on a talk with no address to mark. Rows here are built fresh per bind with no recycling, so the card is re-resolved from the list on every MOVE and at UP — a rebind landing mid-drag replaces the view, and the drag follows the new view instead of a stale one.
+    private boolean hsSwipeOnTouch42(android.view.MotionEvent ev) {
+        if (listView == null) return false;
+        int action = ev.getActionMasked();
+        if (action == android.view.MotionEvent.ACTION_DOWN) {
+            hsSwipeReset42();
+            int pos = listView.pointToPosition((int) ev.getX(), (int) ev.getY());
+            if (pos == android.widget.AdapterView.INVALID_POSITION) return false;
+            if (pos < 0 || pos >= items.size()) return false;
+            Prefs.HistEntry e = items.get(pos);
+            if (e == null || e.url == null || e.url.length() == 0) return false;
+            String stream = histStreamUrlFor(e);
+            if (stream.length() == 0) return false;
+            String sd = histSayadawFor(e);
+            refreshHistoryPlayingMarks();
+            boolean sounding = (histPlayingUrl.length() > 0 && SiteHttp.sameTalk(stream, histPlayingUrl))
+                    || (histPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(stream, histPlayingLibUrl));
+            boolean queued = histQueueHas(sd, stream);
+            boolean leftOk = DlMark.canOffer(stream, sounding);
+            boolean rightOk = sd.length() > 0 && DlSwipe.offerRight(sounding, queued);
+            if (!leftOk && !rightOk) return false;
+            if (hsSwipeSlop42 < 0) hsSwipeSlop42 = android.view.ViewConfiguration.get(HistoryActivity.this).getScaledTouchSlop();
+            hsSwipeEntry42 = e;
+            hsSwipeStream42 = stream;
+            hsSwipeSd42 = sd;
+            hsSwipeDownX42 = ev.getX();
+            hsSwipeDownY42 = ev.getY();
+            return false;
+        }
+        if (hsSwipeEntry42 == null) return false;
+        if (action == android.view.MotionEvent.ACTION_MOVE) {
+            float dx = ev.getX() - hsSwipeDownX42;
+            float dy = ev.getY() - hsSwipeDownY42;
+            if (!hsSwipeArmed42) {
+                if (!DlSwipe.dominant(dx, dy, hsSwipeSlop42)) return false;
+                int dir = DlSwipe.direction(dx);
+                if (dir == DlSwipe.LEFT && !hsSwipeLeftOk42) { hsSwipeReset42(); return false; }
+                if (dir == DlSwipe.RIGHT && !hsSwipeRightOk42) { hsSwipeReset42(); return false; }
+                if (dir == DlSwipe.NONE) return false;
+                android.view.View wrap = hsSwipeWrap42();
+                if (wrap == null) { hsSwipeReset42(); return false; }
+                android.view.View under = wrap.findViewById(R.id.hsSwipeUnder42);
+                android.view.View card = wrap.findViewById(R.id.hsSwipeCard42);
+                if (under == null || card == null) { hsSwipeReset42(); return false; }
+                hsSwipeArmed42 = true;
+                hsSwipeDir42 = dir;
+                // The row lifts into its card as the drag starts:
+                // at rest the row is plain text on the gradient,
+                // so the gold strip would show through it — the
+                // strip appears and the card goes opaque together,
+                // and both clear when the gesture ends, so the
+                // screen at rest keeps exactly today's look.
+                under.setVisibility(android.view.View.VISIBLE);
+                card.setBackgroundResource(night ? R.drawable.card_bg_night : R.drawable.card_bg);
+                listView.requestDisallowInterceptTouchEvent(true);
+            }
+            android.view.View wrap = hsSwipeWrap42();
+            if (wrap == null) { hsSwipeReset42(); return true; }
+            android.view.View under = wrap.findViewById(R.id.hsSwipeUnder42);
+            android.view.View card = wrap.findViewById(R.id.hsSwipeCard42);
+            if (card == null) { hsSwipeReset42(); return true; }
+            if (under != null) under.setVisibility(android.view.View.VISIBLE);
+            card.setBackgroundResource(night ? R.drawable.card_bg_night : R.drawable.card_bg);
+            card.setTranslationX(DlSwipe.clampDir(ev.getX() - hsSwipeDownX42, hsSwipeDir42, card.getWidth()));
+            return true;
+        }
+        if (action == android.view.MotionEvent.ACTION_UP) {
+            if (!hsSwipeArmed42) { hsSwipeReset42(); return false; }
+            android.view.View wrap = hsSwipeWrap42();
+            android.view.View card = wrap == null ? null : wrap.findViewById(R.id.hsSwipeCard42);
+            float dx = card == null ? 0f : card.getTranslationX();
+            boolean fire = card != null && DlSwipe.commit(dx, card.getWidth(), hsSwipeMinCommit42());
+            hsSwipeSettle42(card, hsSwipeDir42, hsSwipeEntry42, fire);
+            return true;
+        }
+        if (action == android.view.MotionEvent.ACTION_CANCEL
+                || action == android.view.MotionEvent.ACTION_POINTER_DOWN) {
+            if (!hsSwipeArmed42) { hsSwipeReset42(); return false; }
+            android.view.View wrap = hsSwipeWrap42();
+            hsSwipeSettle42(wrap == null ? null : wrap.findViewById(R.id.hsSwipeCard42), hsSwipeDir42, null, false);
+            return true;
+        }
+        return false;
+    }
+
+    // The 96dp commit floor in px — the core takes the floor as
+    // an argument so the pure math never reads a resource.
+    private float hsSwipeMinCommit42() {
+        return 96f * getResources().getDisplayMetrics().density;
+    }
+
+    // v15.97 (slice 2242): glide the card home over 200ms Decelerate (the app's melt rhythm), then fire the verb — the glide is the feedback, the toast follows it. A cancelled settle never fires: the cancel flag is checked on animation end, so a fresh DOWN that cuts a settle short cannot queue a stale verb. The swipe fields stay set until the animation ends, so a rebind landing mid-glide never snaps the card (the fresh row is built at rest, and the reset clears the old one).
+    private void hsSwipeSettle42(final android.view.View card, final int dir, final Prefs.HistEntry e, final boolean fire) {
+        if (hsSwipeSettle42 != null) hsSwipeSettle42.cancel();
+        hsSwipeSettle42 = null;
+        if (card == null) { hsSwipeReset42(); return; }
+        final float start = card.getTranslationX();
+        if (start == 0f) { hsSwipeReset42(); return; }
+        android.animation.ValueAnimator anim = android.animation.ValueAnimator.ofFloat(start, 0f);
+        hsSwipeSettle42 = anim;
+        anim.setDuration(200);
+        anim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        anim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                card.setTranslationX((Float) a.getAnimatedValue());
+            }
+        });
+        final boolean[] cancelled42 = new boolean[1];
+        anim.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationCancel(android.animation.Animator a) {
+                cancelled42[0] = true;
+            }
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                if (hsSwipeSettle42 == anim) hsSwipeSettle42 = null;
+                if (!cancelled42[0] && fire && e != null && dir == DlSwipe.LEFT) applyHsSwipeMark42(e);
+                else if (!cancelled42[0] && fire && e != null && dir == DlSwipe.RIGHT) applyHsSwipeQueueAdd42(e);
+                hsSwipeReset42();
+            }
+        });
+        anim.start();
+    }
+
+    private void hsSwipeReset42() {
+        if (hsSwipeSettle42 != null) {
+            android.animation.ValueAnimator a = hsSwipeSettle42;
+            hsSwipeSettle42 = null;
+            a.cancel();
+        }
+        // A fresh DOWN, a cancel or a settle end clears the live row back to rest: the card glides home on its own, but the strip hides and the card goes plain here, so a row can never keep gold or a card after its gesture ends. The row is found again at the DOWN point (a rebind may have replaced it); a row that scrolled away is already at rest, so there is nothing to clear.
+        android.view.View wrap = hsSwipeWrap42();
+        if (wrap != null) {
+            android.view.View under = wrap.findViewById(R.id.hsSwipeUnder42);
+            if (under != null) under.setVisibility(android.view.View.GONE);
+            android.view.View card = wrap.findViewById(R.id.hsSwipeCard42);
+            if (card != null) {
+                card.setTranslationX(0f);
+                card.setBackground(null);
+            }
+        }
+        hsSwipeEntry42 = null;
+        hsSwipeStream42 = null;
+        hsSwipeSd42 = null;
+        hsSwipeArmed42 = false;
+        hsSwipeDir42 = 0;
+        hsSwipeLeftOk42 = false;
+        hsSwipeRightOk42 = false;
+        hsSwipeDownX42 = 0f;
+        hsSwipeDownY42 = 0f;
+    }
+
+    // v15.97 (slice 2242): the swipe-left commit — the mark verb fired by the gesture: the row menu's own mark/un-mark verb as a twin, so the swipe and the long-press can never disagree. The mark state is read fresh at commit time, so a mark that landed while the finger travelled still reads right; the verb itself re-checks the sounding state at tap time and writes the same store the menu writes. The row's tick flips at once (the snapshot is adopted and the list rebinds here — the 1s change detector would catch it within a second anyway, but the swipe's own toast deserves its own tick).
+    private void applyHsSwipeMark42(Prefs.HistEntry e) {
+        if (e == null) return;
+        String stream = histStreamUrlFor(e);
+        if (stream.length() == 0) {
+            android.widget.Toast.makeText(HistoryActivity.this, Lang.t(HistoryActivity.this, "talk_no_longer_in_list"), android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        boolean listened = DlMark.isMarked(readPlayedTalksHist(), SiteHttp.identityUrl(stream));
+        markListenedHist(e, stream, listened);
+        refreshHistPlayedSet();
+        if (adapter != null) adapter.notifyDataSetChanged();
+    }
+
+    // v15.97 (slice 2242): the swipe-right commit — the queue-add verb fired by the gesture: the row menu's own queue-add branch as a twin, so the swipe and the long-press can never disagree. The sounding re-check guards the window while the finger travels; an already-queued talk toasts that it is already in the queue instead of duplicating, and a fresh add rebinds the list at once so the row's queue state reads right.
+    private void applyHsSwipeQueueAdd42(Prefs.HistEntry e) {
+        if (e == null) return;
+        String stream = histStreamUrlFor(e);
+        String sd = histSayadawFor(e);
+        if (stream.length() == 0 || sd.length() == 0) {
+            android.widget.Toast.makeText(HistoryActivity.this, Lang.t(HistoryActivity.this, "talk_no_longer_in_list"), android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        refreshHistoryPlayingMarks();
+        if ((histPlayingUrl.length() > 0 && SiteHttp.sameTalk(stream, histPlayingUrl))
+                || (histPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(stream, histPlayingLibUrl))) {
+            android.widget.Toast.makeText(HistoryActivity.this, Lang.t(HistoryActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (!histQueueAdd(sd, stream, e.title)) {
+            android.widget.Toast.makeText(HistoryActivity.this, Lang.t(HistoryActivity.this, "already_in_queue"), android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (adapter != null) adapter.notifyDataSetChanged();
+        android.widget.Toast.makeText(HistoryActivity.this, Lang.t(HistoryActivity.this, "added_to_queue"), android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    // The live row, re-resolved from the list at the DOWN point on every call — rows here are built fresh per bind, so a rebind landing mid-drag replaces the view under a held finger. The resolved row must still be the DOWN row (same object), or the drag has moved on and there is nothing to follow.
+    private android.view.View hsSwipeWrap42() {
+        if (listView == null || hsSwipeEntry42 == null) return null;
+        int pos = listView.pointToPosition((int) hsSwipeDownX42, (int) hsSwipeDownY42);
+        if (pos == android.widget.AdapterView.INVALID_POSITION) return null;
+        if (pos < 0 || pos >= items.size()) return null;
+        Prefs.HistEntry cur = items.get(pos);
+        if (cur != hsSwipeEntry42) return null;
+        return listView.getChildAt(pos - listView.getFirstVisiblePosition());
     }
 
     private void confirmClear() {

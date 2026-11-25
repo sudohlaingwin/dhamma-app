@@ -617,6 +617,20 @@ public class RoomActivity extends Activity {
         } catch (Exception ignored) {}
     }
     private String moveHeldUrl = null;
+    // v15.97 (slice 2246): Room drawer queue-row swipe — the live drag state for this screen's gesture twin of the shared row swipe: a left drag marks (or un-marks) that one queued talk listened, a right drag removes it from the queue. The card is what translates; the row is what the bind must not reset mid-drag; the talk's address and its owner are the DOWN-time row (a rebind can move rows under a held finger, the commit acts on the DOWN row, never a re-resolved one). The gesture math stays in the shared core; this activity owns the touch stream, the prefs, the queue and the toasts.
+    private android.view.View roomSwipeRow46 = null;
+    private android.view.View roomSwipeCard46 = null;
+    private String roomSwipeUrl46 = null;
+    private String roomSwipeSd46 = null;
+    private boolean roomSwipeForeign46 = false;
+    private float roomSwipeDownX46 = 0f;
+    private float roomSwipeDownY46 = 0f;
+    private boolean roomSwipeArmed46 = false;
+    private int roomSwipeDir46 = 0;
+    private boolean roomSwipeLeftOk46 = false;
+    private boolean roomSwipeRightOk46 = false;
+    private int roomSwipeSlop46 = -1;
+    private android.animation.ValueAnimator roomSwipeSettle46 = null;
     // v14.46 (slice 1703): URL of the talk a pick-up/drop move just
     // landed, waiting for its landing fade (fadeDroppedQueueRow
     // below). Set only on a successful drop, consumed by the
@@ -804,6 +818,210 @@ public class RoomActivity extends Activity {
     // drawerTalkIndex for talk rows (-1 for a foreign row, as
     // before) and this helper for foreign rows, so no existing
     // talk-row site changes meaning.
+    // v15.97 (slice 2246): the Room drawer queue-row swipe — the gesture twin of the shared row swipe on the queue-only drawer view: a left drag marks (or un-marks) that one queued talk listened, a right drag removes it from the queue, with the gold strip + action label revealed under the card as it travels. The DOWN records the candidate row and both offers and returns false, so the tap, the long-press dialog and the scroll still track; the MOVE arms only on a horizontal-dominant drag in an offered direction, then takes the gesture; the UP commits past the threshold and glides home before firing. Never arms outside the queue view or while a search narrows it (a searched row is a list hit, not a queue row), never while a pick-up/drop move is held, never on a stale display slot or a row with no queue line, never left on the sounding row (both mark verbs exclude it). The right drag always removes — a queue row is queued by construction, and the dialog offers the remove on every queue row including the sounding one.
+    private boolean roomSwipeOnTouch46(android.view.MotionEvent ev) {
+        if (roomList == null) return false;
+        int action = ev.getActionMasked();
+        if (action == android.view.MotionEvent.ACTION_DOWN) {
+            roomSwipeReset46();
+            if (!drawerQueueOnly || drawerSearching()) return false;
+            if (moveHeldUrl != null) return false;
+            int pos = roomList.pointToPosition((int) ev.getX(), (int) ev.getY());
+            if (pos == android.widget.AdapterView.INVALID_POSITION) return false;
+            QueueEntry fe = drawerForeignEntry(pos);
+            String url;
+            String sd;
+            boolean foreign;
+            if (fe != null) {
+                if (fe.url == null || fe.url.length() == 0) return false;
+                url = fe.url;
+                sd = fe.sayadaw;
+                foreign = true;
+            } else {
+                int ti = drawerTalkIndex(pos);
+                if (ti < 0 || ti >= talks.size()) return false;
+                Talk t = talks.get(ti);
+                if (t == null || t.url == null || t.url.length() == 0) return false;
+                url = t.url;
+                sd = null;
+                foreign = false;
+            }
+            if (queueLineIndexForUrl(url) < 0) return false;
+            boolean sounding = foreign ? isSoundingForeignTalk(url, sd) : isSoundingTalk(url);
+            boolean leftOk = DlMark.canOffer(url, sounding);
+            boolean rightOk = true;
+            if (!leftOk && !rightOk) return false;
+            if (roomSwipeSlop46 < 0) roomSwipeSlop46 = android.view.ViewConfiguration.get(RoomActivity.this).getScaledTouchSlop();
+            roomSwipeUrl46 = url;
+            roomSwipeSd46 = sd;
+            roomSwipeForeign46 = foreign;
+            roomSwipeDownX46 = ev.getX();
+            roomSwipeDownY46 = ev.getY();
+            roomSwipeLeftOk46 = leftOk;
+            roomSwipeRightOk46 = rightOk;
+            return false;
+        }
+        if (roomSwipeUrl46 == null) return false;
+        if (action == android.view.MotionEvent.ACTION_MOVE) {
+            float dx = ev.getX() - roomSwipeDownX46;
+            float dy = ev.getY() - roomSwipeDownY46;
+            if (!roomSwipeArmed46) {
+                if (!DlSwipe.dominant(dx, dy, roomSwipeSlop46)) return false;
+                int dir = DlSwipe.direction(dx);
+                if (dir == DlSwipe.LEFT && !roomSwipeLeftOk46) { roomSwipeReset46(); return false; }
+                if (dir == DlSwipe.RIGHT && !roomSwipeRightOk46) { roomSwipeReset46(); return false; }
+                if (dir == DlSwipe.NONE) return false;
+                int pos = roomList.pointToPosition((int) roomSwipeDownX46, (int) roomSwipeDownY46);
+                if (pos == android.widget.AdapterView.INVALID_POSITION) { roomSwipeReset46(); return false; }
+                android.view.View row = roomList.getChildAt(pos - roomList.getFirstVisiblePosition());
+                if (row == null) { roomSwipeReset46(); return false; }
+                android.view.View card = row.findViewById(R.id.rowCard);
+                if (card == null) { roomSwipeReset46(); return false; }
+                roomSwipeArmed46 = true;
+                roomSwipeDir46 = dir;
+                roomSwipeRow46 = row;
+                roomSwipeCard46 = card;
+                // The DOWN already started the row's press squash (the v2.08 press); the swipe takes over from here and the row never sees UP, so release the squash now instead of leaving the row stuck at 0.96 until its next rebind.
+                row.animate().cancel();
+                Fx.cancelPress(row);
+                row.setScaleX(1f);
+                row.setScaleY(1f);
+                roomList.requestDisallowInterceptTouchEvent(true);
+            }
+            if (roomSwipeCard46 != null) {
+                roomSwipeCard46.setTranslationX(DlSwipe.clampDir(ev.getX() - roomSwipeDownX46, roomSwipeDir46, roomSwipeCard46.getWidth()));
+            }
+            return true;
+        }
+        if (action == android.view.MotionEvent.ACTION_UP) {
+            if (!roomSwipeArmed46) { roomSwipeReset46(); return false; }
+            final android.view.View card = roomSwipeCard46;
+            final String url = roomSwipeUrl46;
+            final boolean foreign = roomSwipeForeign46;
+            final String sd = roomSwipeSd46;
+            final int dir = roomSwipeDir46;
+            float dx = card == null ? 0f : card.getTranslationX();
+            boolean fire = card != null && DlSwipe.commit(dx, card.getWidth(), roomSwipeMinCommit46());
+            roomSwipeSettle46(card, dir, url, foreign, sd, fire);
+            return true;
+        }
+        if (action == android.view.MotionEvent.ACTION_CANCEL
+                || action == android.view.MotionEvent.ACTION_POINTER_DOWN) {
+            if (!roomSwipeArmed46) { roomSwipeReset46(); return false; }
+            roomSwipeSettle46(roomSwipeCard46, roomSwipeDir46, null, false, null, false);
+            return true;
+        }
+        return false;
+    }
+
+    // The 96dp commit floor in px — the core takes the floor as
+    // an argument so the pure math never reads a resource.
+    private float roomSwipeMinCommit46() {
+        return 96f * getResources().getDisplayMetrics().density;
+    }
+
+    // v15.97 (slice 2246): glide the card home over 200ms Decelerate (the app's melt rhythm), then fire the verb — the glide is the feedback, the toast follows it. A cancelled settle never fires: the cancel flag is checked on animation end, so a fresh DOWN that cuts a settle short cannot queue a stale verb. The swipe fields stay set until the animation ends, so a rebind landing mid-glide never snaps the card (the bind guard).
+    private void roomSwipeSettle46(final android.view.View card, final int dir, final String url, final boolean foreign, final String sd, final boolean fire) {
+        if (roomSwipeSettle46 != null) roomSwipeSettle46.cancel();
+        roomSwipeSettle46 = null;
+        if (card == null) { roomSwipeReset46(); return; }
+        final float start = card.getTranslationX();
+        if (start == 0f) { roomSwipeReset46(); return; }
+        android.animation.ValueAnimator anim = android.animation.ValueAnimator.ofFloat(start, 0f);
+        roomSwipeSettle46 = anim;
+        anim.setDuration(200);
+        anim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        anim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                card.setTranslationX((Float) a.getAnimatedValue());
+            }
+        });
+        final boolean[] cancelled46 = new boolean[1];
+        anim.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationCancel(android.animation.Animator a) {
+                cancelled46[0] = true;
+            }
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                if (roomSwipeSettle46 == anim) roomSwipeSettle46 = null;
+                if (!cancelled46[0] && fire && url != null && dir == DlSwipe.LEFT) applyRoomSwipeMark46(url, foreign, sd);
+                else if (!cancelled46[0] && fire && url != null && dir == DlSwipe.RIGHT) applyRoomSwipeRemove46(url);
+                roomSwipeReset46();
+            }
+        });
+        anim.start();
+    }
+
+    private void roomSwipeReset46() {
+        if (roomSwipeSettle46 != null) {
+            android.animation.ValueAnimator a = roomSwipeSettle46;
+            roomSwipeSettle46 = null;
+            a.cancel();
+        }
+        // A fresh DOWN, a cancel or a settle end clears the live row back to rest: the card glides home on its own, but the offset clears here, so a row can never keep a sideways offset after its gesture ends. The cached card is the view object itself — even if a rebind moved it to another talk, rest is the right state for it.
+        if (roomSwipeCard46 != null) roomSwipeCard46.setTranslationX(0f);
+        roomSwipeRow46 = null;
+        roomSwipeCard46 = null;
+        roomSwipeUrl46 = null;
+        roomSwipeSd46 = null;
+        roomSwipeForeign46 = false;
+        roomSwipeArmed46 = false;
+        roomSwipeDir46 = 0;
+        roomSwipeLeftOk46 = false;
+        roomSwipeRightOk46 = false;
+        roomSwipeDownX46 = 0f;
+        roomSwipeDownY46 = 0f;
+    }
+
+    // v15.97 (slice 2246): the swipe-left commit — the mark verb fired by the gesture: the queue dialog's mark/un-mark branches as a twin, so the swipe and the long-press can never disagree. The tap-time sounding re-check guards the window while the finger travels; the sounding talk earns its mark by finishing, never by this verb. The mark lands in the same set the library, the rails, the chooser and the drawer rows all read; the caches reload in step so the row rebinds with its tick at once, and the row melts in through the menu fade. The toast is the verb; an already-marked tap toasts that it is already heard, never a false count.
+    private void applyRoomSwipeMark46(String url, boolean foreign, String sd) {
+        if (url == null || url.length() == 0) return;
+        boolean sounding = foreign ? isSoundingForeignTalk(url, sd) : isSoundingTalk(url);
+        if (sounding) {
+            android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (playedSet == null || favSet == null) refreshMarkSets();
+        boolean listened = DlMark.isMarked(playedSet, SiteHttp.identityUrl(url));
+        DlMark.Result r46 = null;
+        try {
+            android.content.SharedPreferences sp46 = getSharedPreferences("dhamma", MODE_PRIVATE);
+            java.util.Set<String> cur46 = sp46.getStringSet("playedTalks", new java.util.HashSet<String>());
+            r46 = listened
+                    ? DlMark.unmark(cur46, SiteHttp.identityUrl(url), url)
+                    : DlMark.mark(cur46, SiteHttp.identityUrl(url));
+            sp46.edit().putStringSet("playedTalks", r46.set).apply();
+        } catch (Exception ignored) {}
+        refreshMarkSets();
+        if (adapter != null) adapter.notifyDataSetChanged();
+        if (url != null) { menuMarkFadeUrl77 = url; menuMarkBurstFav41 = null; fadeMenuMarkedDrawerRow77(); }
+        android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this,
+                (r46 != null && r46.changed)
+                        ? (listened ? "dl_menu_unmark_one" : "dl_menu_mark_one")
+                        : (listened ? "nothing_to_unmark" : "already_listened")),
+                android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    // v15.97 (slice 2246): the swipe-right commit — the remove verb fired by the gesture: the queue dialog's own remove branch as a twin, so the swipe and the long-press can never disagree. The line is dropped by address, so a line gone between the drag and the fire toasts that the queue changed instead of dropping the wrong row; a held pick-up/drop arm on this row is cleared, the view leaves the queue-only view when nothing waits, and the remaining rows cascade in with the same pour the dialog's remove uses. The toast is the verb.
+    private void applyRoomSwipeRemove46(String url) {
+        if (url == null || url.length() == 0) return;
+        int qi = queueLineIndexForUrl(url);
+        if (qi < 0) {
+            android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        queueUrls.remove(qi);
+        if (url.equals(moveHeldUrl)) moveHeldUrl = null;
+        boolean wasQueueOnly46 = drawerQueueOnly;
+        exitQueueOnlyIfNothingWaiting();
+        saveQueue(null, true);
+        if (adapter != null) adapter.notifyDataSetChanged();
+        android.view.View panel46 = findViewById(R.id.roomPlayListPanel);
+        if (wasQueueOnly46 && isPlayListPanelOpen() && panel46 != null && panel46.getTranslationX() == 0f && roomList != null)
+            Fx.staggerChildren(roomList);
+        refreshQueueBar72();
+        android.widget.Toast.makeText(RoomActivity.this, Lang.t(RoomActivity.this, "removed_from_queue"), android.widget.Toast.LENGTH_SHORT).show();
+    }
+
     private QueueEntry drawerForeignEntry(int displayPos) {
         if (!drawerQueueOnly || drawerSearching()) return null;
         java.util.ArrayList<String> lines = drawerQueueDisplayLines();
@@ -10132,6 +10350,12 @@ if (snd67n >= 0) currentIndex = snd67n;
         roomList = findViewById(R.id.roomList);
         adapter = new TalkAdapter();
         if (roomList != null) roomList.setAdapter(adapter);
+        // v15.97 (slice 2246): the swipe owns this list's touch stream — one listener, so the swipe and the tap / long-press / scroll never fight over it. A swipe DOWN records its candidate and returns false, so the tap, the long-press dialog and the scroll still track; a swipe that arms consumes the gesture from there, so the list never scrolls under the travelling card.
+        if (roomList != null) roomList.setOnTouchListener(new View.OnTouchListener() {
+            @Override public boolean onTouch(View v, android.view.MotionEvent ev) {
+                return roomSwipeOnTouch46(ev);
+            }
+        });
         if (roomList != null) roomList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
                 // v7.12: foreign queue row tap — a foreign row has
@@ -15735,6 +15959,9 @@ if (snd67q >= 0) currentIndex = snd67q;
             v.setTranslationY(0f);
             v.setScaleX(1f);
             v.setScaleY(1f);
+            // v15.97 (slice 2246): a rebind landing mid-swipe must not snap the dragged card home — the swipe owns its card's sideways offset until the settle ends, and the settle clears the swipe fields itself. Every other row (including a recycled mid-swipe view rebound to a new talk) resets to 0 here, so a stale offset can never leak onto the next talk.
+            android.view.View swipeCard46 = v.findViewById(R.id.rowCard);
+            if (swipeCard46 != null && v != roomSwipeRow46) swipeCard46.setTranslationX(0f);
             // v7.12: foreign queue row — a queued talk of ANOTHER
             // sayadaw, visible at last in the queue-only view
             // (before this it had no row anywhere: only the Up
@@ -15891,6 +16118,11 @@ if (snd67q >= 0) currentIndex = snd67q;
                     // v14.32 (slice 1687): the tile used to snap on a sounding flip — the 500ms poll rebinds the drawer on a resync (currentIndex = resync59 + notifyDataSetChanged) and every open/queue/download rebind re-set the background in one frame, so a talk advancing, ending or handing over with the drawer open flashed the gold tile from one row to the next. It now crossfades through the v14.31 helper (same TransitionDrawable model: 250ms, crossFade on, recorded target, no-op when unchanged, instant seed on a fresh view) — the ▸/★/✓/⬇ marks and the title text stay instant per the v14.16 settled decision (its colour melts, v15.30).
                     android.view.View fRowCard = v.findViewById(R.id.rowCard);
                     if (fRowCard != null) Fx.crossfadeCardTile(fRowCard, fSounding ? R.drawable.drawer_row_playing : R.drawable.drawer_row);
+                    // v15.97 (slice 2246): the swipe strip labels — the words the gold strip shows as the card travels: the remove word on the left (revealed by a right drag, always the remove word — a queue row is queued by construction) and the mark/un-mark word on the right (revealed by a left drag, flipping with the row's own listened state, the same cache the check renders from). Painted on every bind so a recycled row can never keep the previous talk's verb; the labels are invisible at rest (the opaque card covers them) and the touch-time gates decide whether a drag ever starts.
+                    android.widget.TextView swLeft46 = v.findViewById(R.id.roomSwipeLeft46);
+                    if (swLeft46 != null) swLeft46.setText(Lang.t(RoomActivity.this, "menu_queue_remove"));
+                    android.widget.TextView swRight46 = v.findViewById(R.id.roomSwipeRight46);
+                    if (swRight46 != null) swRight46.setText(Lang.t(RoomActivity.this, DlSwipe.labelKey(DlSwipe.LEFT, fPlayed)));
                     // v15.29 (slice 1808): the held wash melts in/out through Fx.crossfadeHeldWash instead of snapping — the ✋ prefix above stays instant per the v14.16 settled decision.
                     Fx.crossfadeHeldWash(v, fHeld);
                     // v15.38 (slice 1888): the listened dim melts
@@ -15985,6 +16217,13 @@ if (snd67q >= 0) currentIndex = snd67q;
                 // v15.26 (slice 1793): the stale-slot grip hide — the v13.73 top-of-bind reset's job, moved here beside the hairline/clock hides: a recycled grip-showing row rebound to a stale slot must never keep its gold ↕ — but through Fx.crossfadeMoveGrip, so the recorded target follows the paint: a bare setVisibility(GONE) here would leave gripShown recording shown while the view hides, and the next show bind would no-op and strand the row gripless while queued. The hide melts out over 250ms on a stale slot; the next tick prunes the slot.
                 android.view.View gripStale73 = v.findViewById(R.id.moveGrip);
                 if (gripStale73 != null) Fx.crossfadeMoveGrip(gripStale73, false);
+                // v15.97 (slice 2246): the swipe offset is row STATE too — a recycled mid-swipe view rebound to a stale slot kept its card translated on an empty row until the next tick prune dropped the slot. The live swipe row can never be stale (its talk is on screen), so no guard is needed here, unlike the normal bind above. Labels cleared with the rest of the content.
+                android.view.View staleCard46 = v.findViewById(R.id.rowCard);
+                if (staleCard46 != null) staleCard46.setTranslationX(0f);
+                android.widget.TextView staleLeft46 = v.findViewById(R.id.roomSwipeLeft46);
+                if (staleLeft46 != null) staleLeft46.setText("");
+                android.widget.TextView staleRight46 = v.findViewById(R.id.roomSwipeRight46);
+                if (staleRight46 != null) staleRight46.setText("");
                 return v;
             }
             Talk t = talks.get(talkIdx);
@@ -16220,6 +16459,11 @@ if (snd67q >= 0) currentIndex = snd67q;
             // v14.32 (slice 1687): same crossfade as the foreign branch above — the tile used to snap on a sounding flip while the drawer sat open; now it melts through Fx.crossfadeCardTile (v14.31 helper: 250ms, crossFade on, recorded target, no-op when unchanged, instant seed on a fresh view). Marks and title text stay instant per the v14.16 settled decision (its colour melts, v15.30).
             android.view.View rowCard = v.findViewById(R.id.rowCard);
             if (rowCard != null) Fx.crossfadeCardTile(rowCard, rowPlaying116 ? R.drawable.drawer_row_playing : R.drawable.drawer_row);
+            // v15.97 (slice 2246): the swipe strip labels — the words the gold strip shows as the card travels: the remove word on the left (revealed by a right drag, always the remove word — a queue row is queued by construction) and the mark/un-mark word on the right (revealed by a left drag, flipping with the row's own listened state, the same cache the check renders from). Painted on every bind so a recycled row can never keep the previous talk's verb; the labels are invisible at rest (the opaque card covers them) and the touch-time gates decide whether a drag ever starts.
+            android.widget.TextView swLeft46 = v.findViewById(R.id.roomSwipeLeft46);
+            if (swLeft46 != null) swLeft46.setText(Lang.t(RoomActivity.this, "menu_queue_remove"));
+            android.widget.TextView swRight46 = v.findViewById(R.id.roomSwipeRight46);
+            if (swRight46 != null) swRight46.setText(Lang.t(RoomActivity.this, DlSwipe.labelKey(DlSwipe.LEFT, played)));
             // v4.92: held-row wash (see the ✋ mark above).
             // v15.29 (slice 1808): the wash melts in/out through Fx.crossfadeHeldWash instead of snapping — the ✋ prefix stays instant per the v14.16 settled decision, like the ▸/★/✓/⬇ marks beside it.
             Fx.crossfadeHeldWash(v, held);

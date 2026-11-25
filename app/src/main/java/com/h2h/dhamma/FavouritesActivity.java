@@ -164,6 +164,18 @@ public class FavouritesActivity extends Activity {
     // v15.75 (slice 2108): "Back to top" on this screen — the Talks 1940 / Downloaded 2003 button, now on the second full-list screen without one: a starred list grows with every favourite tap, so its header is off-screen exactly when the jump is needed. favTopBtn is the floating gold ↑ button (GONE until ScrollTop.visible — the first visible row passes 8 — the 1940 shape, on the shown list's own scroll, not the sounding row); favTopShown is the last-painted state for the painter's change gate. Back to top landed in slice 2108.
     private android.view.View favTopBtn = null;
     private boolean favTopShown = false;
+    // v15.97 (slice 2244): Favourites row swipe — the live drag state for this screen's gesture twin of the shared row swipe: a left drag marks (or un-marks) that one talk listened, a right drag adds it to its sayadaw's queue. The row is the DOWN-time row (a rebind can move rows under a held finger, the commit acts on the DOWN row, never a re-resolved one); the stream address and sayadaw are resolved at DOWN time; the listened flag is the DOWN-time snapshot the row's own tick reads. The gesture math stays in the shared core; this activity owns the touch stream, the prefs, the queue and the toasts.
+    private FavTalkRail.Card favSwipeRow44 = null;
+    private String favSwipeStream44 = null;
+    private String favSwipeSd44 = null;
+    private float favSwipeDownX44 = 0f;
+    private float favSwipeDownY44 = 0f;
+    private boolean favSwipeArmed44 = false;
+    private int favSwipeDir44 = 0;
+    private boolean favSwipeLeftOk44 = false;
+    private boolean favSwipeRightOk44 = false;
+    private int favSwipeSlop44 = -1;
+    private android.animation.ValueAnimator favSwipeSettle44 = null;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -218,6 +230,12 @@ public class FavouritesActivity extends Activity {
                     // v15.75 (slice 2108): the top button paints on the same scroll (the 2003 shape — its only show rule is the first visible row, so no laid-out-window guard; the threshold keeps it hidden until row 8 anyway).
                     paintFavTopBtn(firstVisibleItem);
                     if (visibleItemCount > 0) paintFavJumpBtn(firstVisibleItem, firstVisibleItem + visibleItemCount - 1);
+                }
+            });
+            // v15.97 (slice 2244): the swipe owns this list's touch stream — one listener, so the swipe and the tap / long-press / scroll never fight over it. A swipe DOWN records its candidate and returns false, so the tap, the long-press menu and the scroll still track; a swipe that arms consumes the gesture from there, so the list never scrolls under the travelling card.
+            listView.setOnTouchListener(new View.OnTouchListener() {
+                @Override public boolean onTouch(View v, android.view.MotionEvent ev) {
+                    return favSwipeOnTouch44(ev);
                 }
             });
         }
@@ -706,11 +724,49 @@ public class FavouritesActivity extends Activity {
         favHairTrack98.addView(favHairFill98);
         favHairTrack98.addView(favHairSpace98);
         Fx.crossfadeHairline(favHairTrack98, favHairFrac98 > 0f);
+        // v15.97 (slice 2244): the swipe frame — the row's card gains a gold strip behind it, built in code like the rest of this row: a frame holds the strip first (behind) and the card second (in front), so the strip is invisible at rest and revealed as the card travels. The strip starts hidden and the card starts plain — at rest the row keeps exactly today's look — and the gesture lifts both together when a drag arms. The strip's labels are painted here, where the row's listened state is known: the queue word on the left (revealed by a right drag, always the add word — an already-queued row never starts a right drag) and the mark word on the right (revealed by a left drag, flipping with the row's own listened state, the same snapshot the tick reads). The card carries the row and its hairline together, so the progress line travels with the talk it belongs to.
+        android.widget.FrameLayout swFrame = new android.widget.FrameLayout(this);
+        LinearLayout swUnder = new LinearLayout(this);
+        swUnder.setId(R.id.favSwipeUnder44);
+        swUnder.setOrientation(LinearLayout.HORIZONTAL);
+        swUnder.setGravity(Gravity.CENTER_VERTICAL);
+        swUnder.setBackgroundResource(R.drawable.dl_swipe_bg);
+        swUnder.setVisibility(android.view.View.GONE);
+        android.widget.TextView swLeft = new android.widget.TextView(this);
+        swLeft.setId(R.id.favSwipeLeft44);
+        swLeft.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        swLeft.setPadding((int) (20 * d), 0, 0, 0);
+        swLeft.setTextColor(android.graphics.Color.parseColor("#3B2314"));
+        swLeft.setTextSize(15);
+        swLeft.setTypeface(null, android.graphics.Typeface.BOLD);
+        swLeft.setText(Lang.t(this, "menu_queue_add"));
+        android.widget.TextView swRight = new android.widget.TextView(this);
+        swRight.setId(R.id.favSwipeRight44);
+        swRight.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        swRight.setGravity(Gravity.END);
+        swRight.setPadding(0, 0, (int) (20 * d), 0);
+        swRight.setTextColor(android.graphics.Color.parseColor("#3B2314"));
+        swRight.setTextSize(15);
+        swRight.setTypeface(null, android.graphics.Typeface.BOLD);
+        swRight.setText(Lang.t(this, DlSwipe.labelKey(DlSwipe.LEFT, favRowPlayed71)));
+        swUnder.addView(swLeft);
+        swUnder.addView(swRight);
+        LinearLayout swCard = new LinearLayout(this);
+        swCard.setId(R.id.favSwipeCard44);
+        swCard.setOrientation(LinearLayout.VERTICAL);
+        swCard.addView(row, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        swCard.addView(favHairTrack98);
+        swFrame.addView(swUnder, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+        swFrame.addView(swCard, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT));
         LinearLayout favWrap98 = new LinearLayout(this);
         favWrap98.setOrientation(LinearLayout.VERTICAL);
-        favWrap98.addView(row, new LinearLayout.LayoutParams(
+        favWrap98.addView(swFrame, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-        favWrap98.addView(favHairTrack98);
         return favWrap98;
     }
 
@@ -996,6 +1052,203 @@ public class FavouritesActivity extends Activity {
         android.widget.Toast.makeText(FavouritesActivity.this,
                 Lang.t(FavouritesActivity.this, (res40 != null && res40.changed) ? (unmark ? "dl_menu_unmark_one" : "dl_menu_mark_one") : (unmark ? "nothing_to_unmark" : "already_listened")),
                 android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    // v15.97 (slice 2244): the Favourites row swipe — the gesture twin of the shared row swipe on this screen: a left drag marks (or un-marks) that one talk listened, a right drag adds it to its sayadaw's queue, with the gold strip + action label revealed under the card as it travels. The DOWN records the candidate row and both offers and returns false, so the tap, the long-press menu and the scroll still track; the MOVE arms only on a horizontal-dominant drag in an offered direction, lifts the row into its card first, then takes the gesture; the UP commits past the threshold and glides home before firing. Never arms on a row with no stream address to mark or queue, never on the sounding row (both verbs exclude it), never right on an already-queued row or with no sayadaw to queue into or on a path-form row (the queue verb takes the row's own URL and refuses a downloaded file — the menu offers nothing there either), never left on a talk with no address to mark. Rows here are built fresh per bind with no recycling, so the card is re-resolved from the list on every MOVE and at UP — a rebind landing mid-drag replaces the view, and the drag follows the new view instead of a stale one.
+    private boolean favSwipeOnTouch44(android.view.MotionEvent ev) {
+        if (listView == null) return false;
+        int action = ev.getActionMasked();
+        if (action == android.view.MotionEvent.ACTION_DOWN) {
+            favSwipeReset44();
+            int pos = listView.pointToPosition((int) ev.getX(), (int) ev.getY());
+            if (pos == android.widget.AdapterView.INVALID_POSITION) return false;
+            if (pos < 0 || pos >= items.size()) return false;
+            FavTalkRail.Card c = items.get(pos);
+            if (c == null || c.e == null || c.e.url == null || c.e.url.length() == 0) return false;
+            String stream = favStreamUrlFor(c.e);
+            if (stream == null || stream.length() == 0) return false;
+            String sd = c.e.sayadaw;
+            refreshFavouritesPlayingMarks();
+            boolean sounding = FavPlayAll.isSounding(stream, favPlayingUrl, favPlayingLibUrl);
+            boolean queued = favSwipeQueueHas44(sd, stream);
+            boolean leftOk = DlMark.canOffer(stream, sounding);
+            boolean rightOk = sd != null && sd.length() > 0 && !c.e.url.startsWith("/") && DlSwipe.offerRight(sounding, queued);
+            if (!leftOk && !rightOk) return false;
+            if (favSwipeSlop44 < 0) favSwipeSlop44 = android.view.ViewConfiguration.get(FavouritesActivity.this).getScaledTouchSlop();
+            favSwipeRow44 = c;
+            favSwipeStream44 = stream;
+            favSwipeSd44 = sd;
+            favSwipeDownX44 = ev.getX();
+            favSwipeDownY44 = ev.getY();
+            return false;
+        }
+        if (favSwipeRow44 == null) return false;
+        if (action == android.view.MotionEvent.ACTION_MOVE) {
+            float dx = ev.getX() - favSwipeDownX44;
+            float dy = ev.getY() - favSwipeDownY44;
+            if (!favSwipeArmed44) {
+                if (!DlSwipe.dominant(dx, dy, favSwipeSlop44)) return false;
+                int dir = DlSwipe.direction(dx);
+                if (dir == DlSwipe.LEFT && !favSwipeLeftOk44) { favSwipeReset44(); return false; }
+                if (dir == DlSwipe.RIGHT && !favSwipeRightOk44) { favSwipeReset44(); return false; }
+                if (dir == DlSwipe.NONE) return false;
+                android.view.View wrap = favSwipeWrap44();
+                if (wrap == null) { favSwipeReset44(); return false; }
+                android.view.View under = wrap.findViewById(R.id.favSwipeUnder44);
+                android.view.View card = wrap.findViewById(R.id.favSwipeCard44);
+                if (under == null || card == null) { favSwipeReset44(); return false; }
+                favSwipeArmed44 = true;
+                favSwipeDir44 = dir;
+                // The row lifts into its card as the drag starts:
+                // at rest the row is plain text on the gradient,
+                // so the gold strip would show through it — the
+                // strip appears and the card goes opaque together,
+                // and both clear when the gesture ends, so the
+                // screen at rest keeps exactly today's look.
+                under.setVisibility(android.view.View.VISIBLE);
+                card.setBackgroundResource(night ? R.drawable.card_bg_night : R.drawable.card_bg);
+                listView.requestDisallowInterceptTouchEvent(true);
+            }
+            android.view.View wrap = favSwipeWrap44();
+            if (wrap == null) { favSwipeReset44(); return true; }
+            android.view.View under = wrap.findViewById(R.id.favSwipeUnder44);
+            android.view.View card = wrap.findViewById(R.id.favSwipeCard44);
+            if (card == null) { favSwipeReset44(); return true; }
+            if (under != null) under.setVisibility(android.view.View.VISIBLE);
+            card.setBackgroundResource(night ? R.drawable.card_bg_night : R.drawable.card_bg);
+            card.setTranslationX(DlSwipe.clampDir(ev.getX() - favSwipeDownX44, favSwipeDir44, card.getWidth()));
+            return true;
+        }
+        if (action == android.view.MotionEvent.ACTION_UP) {
+            if (!favSwipeArmed44) { favSwipeReset44(); return false; }
+            android.view.View wrap = favSwipeWrap44();
+            android.view.View card = wrap == null ? null : wrap.findViewById(R.id.favSwipeCard44);
+            float dx = card == null ? 0f : card.getTranslationX();
+            boolean fire = card != null && DlSwipe.commit(dx, card.getWidth(), favSwipeMinCommit44());
+            favSwipeSettle44(card, favSwipeDir44, favSwipeRow44, fire);
+            return true;
+        }
+        if (action == android.view.MotionEvent.ACTION_CANCEL
+                || action == android.view.MotionEvent.ACTION_POINTER_DOWN) {
+            if (!favSwipeArmed44) { favSwipeReset44(); return false; }
+            android.view.View wrap = favSwipeWrap44();
+            favSwipeSettle44(wrap == null ? null : wrap.findViewById(R.id.favSwipeCard44), favSwipeDir44, null, false);
+            return true;
+        }
+        return false;
+    }
+
+    // The 96dp commit floor in px — the core takes the floor as
+    // an argument so the pure math never reads a resource.
+    private float favSwipeMinCommit44() {
+        return 96f * getResources().getDisplayMetrics().density;
+    }
+
+    // v15.97 (slice 2244): glide the card home over 200ms Decelerate (the app's melt rhythm), then fire the verb — the glide is the feedback, the toast follows it. A cancelled settle never fires: the cancel flag is checked on animation end, so a fresh DOWN that cuts a settle short cannot queue a stale verb. The swipe fields stay set until the animation ends, so a rebind landing mid-glide never snaps the card (the fresh row is built at rest, and the reset clears the old one).
+    private void favSwipeSettle44(final android.view.View card, final int dir, final FavTalkRail.Card c, final boolean fire) {
+        if (favSwipeSettle44 != null) favSwipeSettle44.cancel();
+        favSwipeSettle44 = null;
+        if (card == null) { favSwipeReset44(); return; }
+        final float start = card.getTranslationX();
+        if (start == 0f) { favSwipeReset44(); return; }
+        android.animation.ValueAnimator anim = android.animation.ValueAnimator.ofFloat(start, 0f);
+        favSwipeSettle44 = anim;
+        anim.setDuration(200);
+        anim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        anim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                card.setTranslationX((Float) a.getAnimatedValue());
+            }
+        });
+        final boolean[] cancelled44 = new boolean[1];
+        anim.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationCancel(android.animation.Animator a) {
+                cancelled44[0] = true;
+            }
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                if (favSwipeSettle44 == anim) favSwipeSettle44 = null;
+                if (!cancelled44[0] && fire && c != null && dir == DlSwipe.LEFT) applyFavSwipeMark44(c);
+                else if (!cancelled44[0] && fire && c != null && dir == DlSwipe.RIGHT) applyFavSwipeQueueAdd44(c);
+                favSwipeReset44();
+            }
+        });
+        anim.start();
+    }
+
+    private void favSwipeReset44() {
+        if (favSwipeSettle44 != null) {
+            android.animation.ValueAnimator a = favSwipeSettle44;
+            favSwipeSettle44 = null;
+            a.cancel();
+        }
+        // A fresh DOWN, a cancel or a settle end clears the live row back to rest: the card glides home on its own, but the strip hides and the card goes plain here, so a row can never keep gold or a card after its gesture ends. The row is found again at the DOWN point (a rebind may have replaced it); a row that scrolled away is already at rest, so there is nothing to clear.
+        android.view.View wrap = favSwipeWrap44();
+        if (wrap != null) {
+            android.view.View under = wrap.findViewById(R.id.favSwipeUnder44);
+            if (under != null) under.setVisibility(android.view.View.GONE);
+            android.view.View card = wrap.findViewById(R.id.favSwipeCard44);
+            if (card != null) {
+                card.setTranslationX(0f);
+                card.setBackground(null);
+            }
+        }
+        favSwipeRow44 = null;
+        favSwipeStream44 = null;
+        favSwipeSd44 = null;
+        favSwipeArmed44 = false;
+        favSwipeDir44 = 0;
+        favSwipeLeftOk44 = false;
+        favSwipeRightOk44 = false;
+        favSwipeDownX44 = 0f;
+        favSwipeDownY44 = 0f;
+    }
+
+    // v15.97 (slice 2244): the swipe-left commit — the mark verb fired by the gesture: the row menu's own mark/un-mark verb as a twin, so the swipe and the long-press can never disagree. The mark state is read fresh at commit time, so a mark that landed while the finger travelled still reads right; the verb itself re-checks the sounding state at tap time and writes the same store the menu writes. The row's tick flips at once (the snapshot is adopted and the list rebinds here — the 1s change detector would catch it within a second anyway, but the swipe's own toast deserves its own tick).
+    private void applyFavSwipeMark44(FavTalkRail.Card c) {
+        if (c == null) return;
+        String stream = favStreamUrlFor(c.e);
+        if (stream == null || stream.length() == 0) {
+            android.widget.Toast.makeText(FavouritesActivity.this, Lang.t(FavouritesActivity.this, "talk_no_longer_in_list"), android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        boolean listened = DlMark.isMarked(readPlayedTalksFav(), SiteHttp.identityUrl(stream));
+        markListenedFav(c, listened);
+        refreshFavPlayedSet();
+        if (adapter != null) adapter.notifyDataSetChanged();
+    }
+
+    // v15.97 (slice 2244): the swipe-right commit — the queue-add verb fired by the gesture: the row menu's own queue-add branch as a twin, so the swipe and the long-press can never disagree. The verb itself re-checks the sounding state at tap time and toasts already-in-queue or added, so this twin adds only the rebind — queueing changes no row the list renders, but the list rebinds here so the row's queue state reads right at once.
+    private void applyFavSwipeQueueAdd44(FavTalkRail.Card c) {
+        if (c == null) return;
+        queueAddFav(c);
+        if (adapter != null) adapter.notifyDataSetChanged();
+    }
+
+    // The live row, re-resolved from the list at the DOWN point on every call — rows here are built fresh per bind, so a rebind landing mid-drag replaces the view under a held finger. The resolved row must still be the DOWN row (same object), or the drag has moved on and there is nothing to follow.
+    private android.view.View favSwipeWrap44() {
+        if (listView == null || favSwipeRow44 == null) return null;
+        int pos = listView.pointToPosition((int) favSwipeDownX44, (int) favSwipeDownY44);
+        if (pos == android.widget.AdapterView.INVALID_POSITION) return null;
+        if (pos < 0 || pos >= items.size()) return null;
+        FavTalkRail.Card cur = items.get(pos);
+        if (cur != favSwipeRow44) return null;
+        return listView.getChildAt(pos - listView.getFirstVisiblePosition());
+    }
+
+    // Whether the DOWN row's talk already sits in its sayadaw's saved queue — the saved lines are read fresh here (the menu reads them the same way per open), and the queue's own membership test answers, so the offer and the menu can never disagree about a queued talk.
+    private boolean favSwipeQueueHas44(String sd, String stream) {
+        if (sd == null || sd.length() == 0 || stream == null || stream.length() == 0) return false;
+        try {
+            java.util.ArrayList<String> saved44 = new java.util.ArrayList<String>();
+            String raw44 = Prefs.savedQueue(this, sd);
+            if (raw44 != null && raw44.length() > 0) {
+                for (String ln44 : raw44.split("\n")) {
+                    if (ln44.length() == 0) continue;
+                    saved44.add(ln44);
+                }
+            }
+            return FavQueue.isQueued(stream, saved44);
+        } catch (Exception ignored) { return false; }
     }
 
     private java.util.Set<String> readPlayedTalksFav() {

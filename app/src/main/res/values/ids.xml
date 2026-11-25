@@ -35,4 +35,24 @@
          about its file's glyph). -->
     <item name="dlStateGlyphAnim" type="id"/>
     <item name="dlStateGlyphGen" type="id"/>
+    <!-- v15.97 (slice 2242): History row swipe ids — the gold strip, its two labels and the travelling card, built in code in the row builder. The strip sits behind the card; the labels are painted from the language table at bind time, never hardcoded here. -->
+    <item name="hsSwipeUnder42" type="id"/>
+    <item name="hsSwipeCard42" type="id"/>
+    <item name="hsSwipeLeft42" type="id"/>
+    <item name="hsSwipeRight42" type="id"/>
+    <!-- v15.97 (slice 2243): Bookmarks row swipe ids — the gold strip, its two labels and the travelling card, built in code in the row builder. The strip sits behind the card; the labels are painted from the language table at bind time, never hardcoded here. -->
+    <item name="bmSwipeUnder43" type="id"/>
+    <item name="bmSwipeCard43" type="id"/>
+    <item name="bmSwipeLeft43" type="id"/>
+    <item name="bmSwipeRight43" type="id"/>
+    <!-- v15.97 (slice 2244): Favourites row swipe ids — the gold strip, its two labels and the travelling card, built in code in the row builder. The strip sits behind the card; the labels are painted from the language table at bind time, never hardcoded here. -->
+    <item name="favSwipeUnder44" type="id"/>
+    <item name="favSwipeCard44" type="id"/>
+    <item name="favSwipeLeft44" type="id"/>
+    <item name="favSwipeRight44" type="id"/>
+    <!-- v15.97 (slice 2245): New talks row swipe ids — the gold strip, its two labels and the travelling card, built in code in the row builder. The strip sits behind the card; the labels are painted from the language table at bind time, never hardcoded here. -->
+    <item name="ntSwipeUnder45" type="id"/>
+    <item name="ntSwipeCard45" type="id"/>
+    <item name="ntSwipeLeft45" type="id"/>
+    <item name="ntSwipeRight45" type="id"/>
 </resources>
