@@ -2134,6 +2134,41 @@ public class TalksActivity extends Activity {
                 Fx.fadeOut(empty, 200);
             }
         }
+        // v15.99 (slice 2257): search result count — the
+        // talkSearchCount TextView under the search field shows
+        // "N / M" while a search or filter narrows the list.
+        // The gate tests searchHits/filterHits directly:
+        // visibleHits alone is NOT "filtered" — the v15.43 sort
+        // makes it the full reversed index list while sorted
+        // with no search/filter, so a visibleHits-only gate
+        // would show a permanent "N / N". Hidden at 0 matches
+        // (the empty line owns that state) and while unfiltered;
+        // the header counts keep the unfiltered total. Snaps
+        // (plain setVisibility, no fade — the text changes every
+        // keystroke while visible). Sized one step smaller than
+        // the empty line at every font setting (12/13/15 vs
+        // 14/15/18), same colours (#AAAAAA night / #7A6A58 day).
+        android.view.View countView = findViewById(R.id.talkSearchCount);
+        if (countView != null && countView instanceof android.widget.TextView) {
+            int cf = Prefs.fontSize(TalksActivity.this);
+            ((android.widget.TextView) countView).setTextSize(
+                    android.util.TypedValue.COMPLEX_UNIT_SP,
+                    cf == 0 ? 12 : (cf == 1 ? 13 : 15));
+            ((android.widget.TextView) countView).setTextColor(
+                    Prefs.isNight(TalksActivity.this)
+                            ? android.graphics.Color.parseColor("#AAAAAA")
+                            : android.graphics.Color.parseColor("#7A6A58"));
+            boolean isNarrowed = searchHits != null || filterHits != null;
+            boolean showCount = isNarrowed && visibleHits != null
+                    && !visibleHits.isEmpty() && talks != null && !talks.isEmpty();
+            if (showCount) {
+                String countText = visibleHits.size() + " / " + talks.size();
+                ((android.widget.TextView) countView).setText(countText);
+                countView.setVisibility(android.view.View.VISIBLE);
+            } else {
+                countView.setVisibility(android.view.View.GONE);
+            }
+        }
         // v15.45 (slice 1940): a rebuild can land the list deep
         // without a scroll event (load / search / filter / sort)
         // — repaint the back-to-top button from the new position.

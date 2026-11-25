@@ -119,6 +119,19 @@
             android:textColor="@color/muted"
             android:textSize="14sp" />
     </LinearLayout>
+    <!-- v15.99 (slice 2258): search result count — "N / M" under
+         the filter chips while a search or filter narrows the
+         list; GONE while unfiltered, so the chips and the footer
+         never move. -->
+    <TextView
+        android:id="@+id/dlSearchCount"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:gravity="start"
+        android:textColor="@color/muted"
+        android:textSize="13sp"
+        android:visibility="gone" />
     <TextView
         android:id="@+id/totalText"
         android:layout_width="match_parent"

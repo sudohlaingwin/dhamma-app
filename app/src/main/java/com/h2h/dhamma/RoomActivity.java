@@ -42,6 +42,9 @@ public class RoomActivity extends Activity {
     private List<Talk> talks = new ArrayList<Talk>();
     private TalkAdapter adapter;
     private ListView roomList;
+    // v15.99 (slice 2259): the Room drawer back-to-top button — the floating gold up-arrow at the drawer's bottom-end corner (the Talks 1940 / Downloaded 2003 / Bookmarks 2110 shape): the header tap (v4.13) already jumps to the top, but v12.93 removed it — an accidental tap must never change state — and the header is off-screen exactly when the jump is needed. GONE until the list has scrolled past eight rows (ScrollTop.THRESHOLD).
+    private android.view.View roomTopBtn = null;
+    private boolean roomTopShown = false;
     private RoomView roomView;
     private Button btnRetry;
     // v2.78: the retry fade-out animator (see hideRetry) — kept in a
@@ -55,7 +58,7 @@ public class RoomActivity extends Activity {
     // the same field, and onPause must not GONE a button that
     // was gliding back to visible (Talks mirror of this fix).
     private boolean retryFadeHiding = false;
-    private TextView nowPlaying, elapsedText, totalText, sleepText;
+    private TextView nowPlaying, elapsedText, totalText, sleepText, roomUpNext;
     // v4.12: clock display mode — false shows the talk length in the
     // total slot (as always), true shows the time left ("-mm:ss",
     // Spotify-style tap-to-toggle on the clock itself). No new view:
@@ -1321,6 +1324,36 @@ public class RoomActivity extends Activity {
     private void cancelSleepTextMelt() {
         sleepTextMeltGen++;
         if (sleepTextMelt != null) { sleepTextMelt.cancel(); sleepTextMelt = null; }
+    }
+    // v15.99 (slice 2260): the main-screen Up Next line — the drawer
+    // header's Up Next (second line of roomPlayListTitle) restated
+    // under the now-playing title: the listener sees what plays next
+    // without opening the drawer. Same resolution as the drawer
+    // header (foreign queue head first, else peekNextIndex — queued
+    // head, forward top, shuffle pick, list-next), same gate (a valid
+    // current talk + more than one talk), same prefix (next_prefix);
+    // title-only, no marks — the drawer line already carries ⬇/★/✓/↺.
+    // Change-only: a steady tick never rewrites the line, and the text
+    // snaps (the 2257 count rule — the title pour above it owns the
+    // motion). Display-only: ⏭ is the skip, the line never taps.
+    private void refreshRoomUpNext() {
+        if (roomUpNext == null) return;
+        String want = null;
+        if (talks != null && talks.size() > 1 && currentIndex >= 0 && currentIndex < talks.size()) {
+            QueueEntry fxUp = firstWaitingForeignEntry();
+            if (fxUp != null) {
+                want = Lang.t(RoomActivity.this, "next_prefix") + (fxUp.title.length() > 0 ? fxUp.title : fxUp.url) + " · " + fxUp.sayadaw;
+            } else {
+                int nx = peekNextIndex();
+                if (nx >= 0 && nx < talks.size()) want = Lang.t(RoomActivity.this, "next_prefix") + talks.get(nx).title;
+            }
+        }
+        if (want == null) {
+            if (roomUpNext.getVisibility() != android.view.View.GONE) roomUpNext.setVisibility(android.view.View.GONE);
+        } else {
+            if (roomUpNext.getVisibility() != android.view.View.VISIBLE) roomUpNext.setVisibility(android.view.View.VISIBLE);
+            if (!want.equals(roomUpNext.getText().toString())) roomUpNext.setText(want);
+        }
     }
     // v14.57 (slice 1714): melt the new Up Next row in at its display
     // position — the fadeDroppedQueueRow shape above, restated for
@@ -6445,6 +6478,11 @@ if (snd65 >= 0) currentIndex = snd65;
                         }
                     } catch (Exception ignored) {}
                 }
+                // v15.99 (slice 2260): the main-screen Up Next line follows
+                // the poll, like the sleep line above — a talk change, queue
+                // change or shuffle pick lands within one 500ms tick; steady
+                // ticks no-op inside the helper's change-only guard.
+                refreshRoomUpNext();
                 // v5.18: the Room speed label follows the live default
                 // speed pref on this same 500ms poll, change-only, so
                 // a speed change made in Settings or on a strip lands
@@ -6743,6 +6781,23 @@ if (snd65 >= 0) currentIndex = snd65;
                     // clear-favs return clears it the same way.
                     String favMark = (currentIndex >= 0 && currentIndex < talks.size()
                             && favSet.contains(SiteHttp.identityUrl(talks.get(currentIndex).url))) ? "★ " : "";
+                    // v15.99 (slice 2261): listenedMark — the listened tick
+                    // on the now-playing line. The title gained its offline
+                    // mark (v4.15), its favourite star (v4.26) and its
+                    // download progress (v4.27), but never said the sounding
+                    // talk was already listened, even though the drawer rows
+                    // (v1.44), the chooser rows, the library rows (v4.24)
+                    // and the long-press previews (v5.63) all carry its
+                    // tick. Same played set the rows use (refreshed on the
+                    // finish path, so the tick lands within one 500ms poll
+                    // of the talk ending; a replayed listened talk shows it
+                    // from the first poll), same gate as the star, same
+                    // prefix shape — after the star, before the title, the
+                    // drawer rows' mark order. A tick landing is structural,
+                    // so it pours like an offline landing (v14.95 — the
+                    // strip keeps only the download-progress live legs).
+                    String listenedMark = (currentIndex >= 0 && currentIndex < talks.size()
+                            && playedSet.contains(SiteHttp.identityUrl(talks.get(currentIndex).url))) ? "✓ " : "";
                     // v4.27: the sounding talk's own download
                     // progress ("⏳ 42% ") — ⬇ already owns a
                     // saved talk, so this fires only while its
@@ -6784,7 +6839,8 @@ if (snd65 >= 0) currentIndex = snd65;
                             : (playing ? "⏸ "
                                     : (service.isBuffering() && !service.isHoldPaused()
                                             ? Lang.t(RoomActivity.this, "notif_state_buffering") + " " : "▶ ")))
-                            + queuePos + dlMark + progMark + favMark + service.getCurrentTitle() + endedSuf;
+                            // v15.99 (slice 2261): the listened mark joins the line, after the star.
+                            + queuePos + dlMark + progMark + favMark + listenedMark + service.getCurrentTitle() + endedSuf;
                     // v13.40: status-line guards (M9/F5 class, poll/tick +
                     // loadTalks/playTalk/bind) — nowPlaying is a field assigned
                     // from findViewById in onCreate, so a missing roomNowPlaying
@@ -8635,6 +8691,43 @@ int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
         android.view.View p = findViewById(R.id.roomPlayListPanel);
         return p != null && p.getVisibility() == View.VISIBLE;
     }
+
+    // v15.99 (slice 2259): wire the drawer back-to-top button — one tap glides the open list to the top (the Talks 1940 / Downloaded 2003 shape: the tap needs no gate — the button only shows past row 8, so a tap always has somewhere to go; no keyboard to hide — the drawer search box was removed v10.41, so the 2003 hideKeyboard line has nothing to hide from). A missing button simply never wires; a missing list never scrolls.
+    private void wireRoomTopBtn() {
+        roomTopBtn = findViewById(R.id.roomTopBtn);
+        if (roomTopBtn != null) roomTopBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Fx.tap(RoomActivity.this);
+                Fx.morph(v);
+                if (roomList != null) roomList.smoothScrollToPosition(0);
+            }
+        });
+    }
+
+    // v15.99 (slice 2259): the back-to-top state — shown once the first visible row passes ScrollTop's threshold, hidden at the top (the 1940 Talks / 2003 Downloaded shape verbatim: ScrollTop.visible, THRESHOLD 8 — about one screen of rows). The change gate keeps steady scrolls and the open/restore repaints from re-touching the button; the show/hide melts (Fx.fadeIn/fadeOut, 180ms) instead of snapping, and a cancelled fade never strands it half-transparent (the v2.62 gen guard, the 1940 shape).
+    private void paintRoomTopBtn(int firstVisible) {
+        if (roomTopBtn == null) return;
+        boolean want = ScrollTop.visible(firstVisible);
+        if (want == roomTopShown) return;
+        roomTopShown = want;
+        if (want) {
+            roomTopBtn.setVisibility(android.view.View.VISIBLE);
+            Fx.fadeIn(roomTopBtn, 180);
+        } else {
+            Fx.fadeOut(roomTopBtn, 180);
+        }
+    }
+
+    // v15.99 (slice 2259): repaint from the list's own position after a scroll-less change — the drawer open jumps straight to the playing talk (setSelection on a fresh open, smoothScroll on a mid-close reopen) and the rotation restore re-lands the list the same way, so read the position after layout and paint from it. Posted, because the first visible row is only valid once the list has laid out (the 1940 shape).
+    private void paintRoomTopBtnFromList() {
+        if (roomList == null) return;
+        roomList.post(new Runnable() {
+            @Override public void run() {
+                if (roomList == null) return;
+                paintRoomTopBtn(roomList.getFirstVisiblePosition());
+            }
+        });
+    }
     private void setPlayListPanel(boolean show) {
         final android.view.View panel = findViewById(R.id.roomPlayListPanel);
         if (panel == null) return;
@@ -8902,6 +8995,8 @@ if (snd68 >= 0) currentIndex = snd68;
             // and pours, as it did before.
             if (midClose) Fx.staggerChildrenFromCurrent(roomList);
             else Fx.staggerChildren(roomList); // v2.10: rows cascade in
+            // v15.99 (slice 2259): repaint the back-to-top button from the post-open position — the open jumps straight to the playing talk (setSelection on a fresh open, smoothScroll on a mid-close reopen), so the list can land deep without a scroll event; the posted read sees the post-open position.
+            paintRoomTopBtnFromList();
         } else {
             // v3.05: close cascade, mirroring the v2.10 open cascade —
             // the drawer used to slide out as one opaque block while
@@ -9549,6 +9644,7 @@ if (snd68 >= 0) currentIndex = snd68;
                 (sayadawName == null ? "" : sayadawName) + (sayadawGroup == null ? "" : " · " + sayadawGroup));
         refreshSayadawPhoto(); // v5.38: portrait beside the name
         nowPlaying = findViewById(R.id.roomNowPlaying);
+        roomUpNext = findViewById(R.id.roomUpNext);
         // v2.15: premium panel entrance — the bottom panel's rows
         // fade + rise in order on a fresh open only; a rotation
         // restores the panel as-is and never replays it.
@@ -10356,6 +10452,14 @@ if (snd67n >= 0) currentIndex = snd67n;
                 return roomSwipeOnTouch46(ev);
             }
         });
+        // v15.99 (slice 2259): the drawer list's own scroll listener — the back-to-top button paints on the same scroll (the 2003 Downloaded shape: its only show rule is the first visible row, so no laid-out-window guard; the threshold keeps it hidden until row 8 anyway). Beside the swipe's touch listener — the two never fight: touch owns the gesture, scroll owns the position.
+        if (roomList != null) roomList.setOnScrollListener(new android.widget.AbsListView.OnScrollListener() {
+            @Override public void onScrollStateChanged(android.widget.AbsListView v, int state) {}
+            @Override public void onScroll(android.widget.AbsListView v, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
+                paintRoomTopBtn(firstVisibleItem);
+            }
+        });
+        wireRoomTopBtn();
         if (roomList != null) roomList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
                 // v7.12: foreign queue row tap — a foreign row has
@@ -12987,6 +13091,8 @@ if (snd67q >= 0) currentIndex = snd67q;
                             roomList.setSelection(sp);
                     }
                 }
+                // v15.99 (slice 2259): repaint the back-to-top button from the restored position — the restore above re-lands the list on the playing talk (or the saved scroll talk / position) without a scroll event; the posted read sees the post-restore position.
+                paintRoomTopBtnFromList();
                 // v1.69: the data-gate question interrupted by rotation
                 // — ask it again now that the list is back, so the tap
                 // is not silently lost (the old dialog died with the

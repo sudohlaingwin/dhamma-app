@@ -164,6 +164,18 @@
              four modes, same Lang keys) — one tap each, and
              the active mode reads at a glance. -->
     </LinearLayout>
+    <!-- v15.99 (slice 2257): search result count — "N / M" under
+         the search field while a search or filter narrows the
+         list; GONE while unfiltered, so the chips never move. -->
+    <TextView
+        android:id="@+id/talkSearchCount"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:gravity="start"
+        android:textColor="@color/muted"
+        android:textSize="13sp"
+        android:visibility="gone" />
     <!-- v13.95 (slice 1090): chooser filter chips — the four
          filter views (v4.94 all / ★ only / unlistened only,
          v5.13 downloaded only) lived behind one cycling button in

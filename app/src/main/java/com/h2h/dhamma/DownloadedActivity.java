@@ -8635,6 +8635,45 @@ public class DownloadedActivity extends Activity {
             // the truly-empty branch armed them).
             refreshDlEmptyCta(wantBrowse38, fadeBrowse38);
         }
+        // v15.99 (slice 2258): search result count — the
+        // dlSearchCount TextView under the filter chips shows
+        // "N / M" while a search or filter narrows the list.
+        // The gate tests the narrowing inputs directly
+        // (dlQuery non-empty or dlFilterMode != 0): dlSortMode
+        // only reorders, so there is no sort trap here, and
+        // libQueueOnly hides it — the queue is not a search
+        // result (openLibQueueView sets libQueueOnly without
+        // clearing dlQuery/dlFilterMode, so a star filter left
+        // on would otherwise count a queue view). Hidden at 0
+        // matches (the empty word owns that state) and while
+        // unfiltered; totalText keeps the unfiltered total.
+        // Snaps (plain setVisibility, no fade — the text
+        // changes every keystroke while visible). Sized one
+        // step smaller than the empty line at every font
+        // setting (12/13/15 vs 14/15/18), same colours
+        // (#AAAAAA night / #7A6A58 day).
+        android.view.View dlCountView = findViewById(R.id.dlSearchCount);
+        if (dlCountView != null && dlCountView instanceof android.widget.TextView) {
+            int cf = Prefs.fontSize(DownloadedActivity.this);
+            ((android.widget.TextView) dlCountView).setTextSize(
+                    android.util.TypedValue.COMPLEX_UNIT_SP,
+                    cf == 0 ? 12 : (cf == 1 ? 13 : 15));
+            ((android.widget.TextView) dlCountView).setTextColor(
+                    Prefs.isNight(DownloadedActivity.this)
+                            ? android.graphics.Color.parseColor("#AAAAAA")
+                            : android.graphics.Color.parseColor("#7A6A58"));
+            boolean isDlNarrowed = !libQueueOnly
+                    && (dlQuery.length() > 0 || dlFilterMode != 0);
+            boolean showDlCount = isDlNarrowed && !shownDl.isEmpty()
+                    && !entries.isEmpty();
+            if (showDlCount) {
+                String dlCountText = shownDl.size() + " / " + entries.size();
+                ((android.widget.TextView) dlCountView).setText(dlCountText);
+                dlCountView.setVisibility(android.view.View.VISIBLE);
+            } else {
+                dlCountView.setVisibility(android.view.View.GONE);
+            }
+        }
         // v14.40 (slice 1695): consume the chip-melt flag here —
         // the tail is the only repaint on the setDlFilterMode path
         // (the mode change runs through applyDlFilter), so a melt

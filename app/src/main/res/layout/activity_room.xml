@@ -85,6 +85,23 @@
                 android:textColor="#FFFFFF"
                 android:textSize="14sp"
                 android:textStyle="bold" />
+            <!-- v15.99 (slice 2260): Up Next line — the next talk's title under
+                 the now-playing line, the drawer header's Up Next (second line of
+                 roomPlayListTitle) restated on the main screen: the listener sees
+                 what plays next without opening the drawer. GONE until a next talk
+                 resolves (single-talk list, no current talk, empty list); one line,
+                 ellipsised, same secondary treatment as the sleep line (13sp #AAAAAA).
+                 Display-only — ⏭ is the skip. -->
+            <TextView
+                android:id="@+id/roomUpNext"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#AAAAAA"
+                android:textSize="13sp"
+                android:visibility="gone" />
             <!-- v1.42: retry, shown only when the talk list fails to load -->
             <Button
                 android:id="@+id/roomRetry"
@@ -351,15 +368,34 @@
                 android:visibility="gone" />
         </LinearLayout>
         
-        <ListView
-            android:id="@+id/roomList"
+        <!-- v15.99 (slice 2259): back-to-top button — the floating gold up-arrow at the drawer's bottom-end corner (the Talks 1940 / Downloaded 2003 / Bookmarks 2110 shape verbatim: same 56dp oval, same maroon glyph, 16dp off the corner): the header tap (v4.13) already jumps to the top, but v12.93 removed it — an accidental tap must never change state — and the header is off-screen exactly when the jump is needed. GONE until the list has scrolled past eight rows. -->
+        <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1"
-            android:background="@android:color/transparent"
-            android:divider="@android:color/transparent"
-            android:dividerHeight="0dp"
-            android:fastScrollEnabled="true" />
+            android:layout_weight="1">
+            <ListView
+                android:id="@+id/roomList"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@android:color/transparent"
+                android:divider="@android:color/transparent"
+                android:dividerHeight="0dp"
+                android:fastScrollEnabled="true" />
+            <TextView
+                android:id="@+id/roomTopBtn"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_gravity="bottom|end"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="16dp"
+                android:background="@drawable/top_btn_bg"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="↑"
+                android:textColor="@color/maroon"
+                android:textSize="24sp"
+                android:visibility="gone" />
+        </FrameLayout>
         <!-- v12.92 (user order 2026-11-06 ~21:32 +07: drawer bottom "ရုပ်ဆိုးနေတယ်"): a finished bottom edge — gold divider, centre handle, and a full-width glass close button, so the list ends cleanly instead of running off the screen edge. -->
         <View
             android:layout_width="match_parent"
