@@ -44,6 +44,8 @@ public class NewTalksActivity extends Activity {
     // cache files per keystroke.
     private java.util.List<NewTalkRail.Card> newAllItems =
             new java.util.ArrayList<NewTalkRail.Card>();
+    // v15.96 (slice 2237): the total behind the header — the unfiltered pick's size, captured beside the pick in refresh(); the header paints it, the search never touches it.
+    private int newTotal37 = 0;
     private BaseAdapter adapter;
     private boolean night;
     private java.util.Map<String, String[]> catCache;
@@ -288,10 +290,15 @@ public class NewTalksActivity extends Activity {
         // cache files per keystroke.
         newAllItems = NewAll.pickAll(collectNewTalkEntries(played, resumeKeys),
                 played, resumeKeys);
+        // v15.96 (slice 2237): the total captured beside the pick — one parse per refresh, the search never re-reads the store per keystroke, so the total stays the unfiltered pick's size.
+        newTotal37 = newAllItems == null ? 0 : newAllItems.size();
         refreshNewTalksPlayingMarks(); // v15.64 (slice 2043): mark right on first paint, not one tick late
         refreshNewFavSet(); // v15.85 (slice 2169): the star snapshot fresh on first paint, beside the playing marks
         refreshNewDlSet(); // v15.89 (slice 2196): the badge snapshot fresh on first paint, beside the star snapshot — the rows read the snapshot, never a per-row store test
         refreshNewDurCache(); // v15.86 (slice 2176): the duration snapshot fresh on first paint, beside the star snapshot
+        // v15.96 (slice 2237): the header carries its total — the drawer header's own idiom, now on the full-list screen: the count sits beside the title in parens, ASCII digits; an empty list keeps the bare title, so the count never shows (0).
+        if (headerTitle != null)
+            headerTitle.setText(newTotal37 >= 1 ? Lang.t(this, "hs_new_talks") + " (" + newTotal37 + ")" : Lang.t(this, "hs_new_talks"));
         applyNewSearch();
     }
 

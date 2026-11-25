@@ -44,6 +44,8 @@ public class FavouritesActivity extends Activity {
     // cache files per keystroke.
     private java.util.List<FavTalkRail.Card> favAllItems =
             new java.util.ArrayList<FavTalkRail.Card>();
+    // v15.96 (slice 2236): the total behind the header — the unfiltered pick's size, captured beside the pick in refresh(); the header paints it, the search never touches it.
+    private int favTotal36 = 0;
     private BaseAdapter adapter;
     private boolean night;
     private java.util.Map<String, String[]> catCache;
@@ -282,10 +284,15 @@ public class FavouritesActivity extends Activity {
         // Downloaded applyDlFilter shape), never re-reading the
         // cache files per keystroke.
         favAllItems = FavAll.pickAll(readFavTalks(), Prefs.statsRecent(this), names, readTalkPos());
+        // v15.96 (slice 2236): the total captured beside the pick — one parse per refresh, the search never re-reads the store per keystroke, so the total stays the unfiltered pick's size.
+        favTotal36 = favAllItems == null ? 0 : favAllItems.size();
         refreshFavouritesPlayingMarks(); // v15.64 (slice 2042): mark right on first paint, not one tick late
         refreshFavPlayedSet(); // v15.85 (slice 2171): the tick snapshot fresh on first paint, beside the playing marks
         refreshFavDlSet(); // v15.89 (slice 2195): the badge snapshot fresh on first paint, beside the tick snapshot — the rows read the snapshot, never a per-row store test
         refreshFavDurCache(); // v15.90 (slice 2199): the duration snapshot fresh on first paint, beside the badge snapshot
+        // v15.96 (slice 2236): the header carries its total — the drawer header's own idiom, now on the full-list screen: the count sits beside the title in parens, ASCII digits; an empty list keeps the bare title, so the count never shows (0).
+        if (headerTitle != null)
+            headerTitle.setText(favTotal36 >= 1 ? Lang.t(this, "hs_fav_talks") + " (" + favTotal36 + ")" : Lang.t(this, "hs_fav_talks"));
         applyFavSearch();
     }
 

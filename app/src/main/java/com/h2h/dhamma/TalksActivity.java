@@ -3426,6 +3426,19 @@ public class TalksActivity extends Activity {
     private boolean pullArmed = false;
     private boolean pullRefreshing = false;
     private android.animation.ValueAnimator pullHeightAnim;
+    // v15.96 (slice 2239): chooser row swipe — the live drag state for the Talks chooser's gesture twin of the library swipe: a left drag marks (or un-marks) that one talk listened, a right drag sets it as next in the queue. The card is what translates; the row is what the bind must not reset mid-drag; the talk and its URL are the DOWN-time row (a rebind can move rows under a held finger, the commit acts on the DOWN row, never a re-resolved one). The gesture math stays in the shared core; this activity owns the touch stream, the prefs, the queue and the toasts.
+    private android.view.View talkSwipeCard39 = null;
+    private android.view.View talkSwipeRow39 = null;
+    private float talkSwipeDownX39 = 0f;
+    private float talkSwipeDownY39 = 0f;
+    private boolean talkSwipeArmed39 = false;
+    private int talkSwipeDir39 = 0;
+    private Talk talkSwipeTalk39 = null;
+    private String talkSwipeUrl39 = null;
+    private boolean talkSwipeLeftOk39 = false;
+    private boolean talkSwipeRightOk39 = false;
+    private int talkSwipeSlop39 = -1;
+    private android.animation.ValueAnimator talkSwipeSettle39 = null;
     // v4.14: share-chooser guard for the long-press share above —
     // mirrors the Room's suppressBgPause (see there).
     private boolean suppressSharePause = false;
@@ -8164,7 +8177,16 @@ public class TalksActivity extends Activity {
                 v = LayoutInflater.from(TalksActivity.this).inflate(R.layout.row_talk, parent, false);
                 Fx.press(v); // v2.08: press feedback on talk rows
             }
-            if (talkIdx < 0 || talkIdx >= talks.size()) return v;
+            if (talkIdx < 0 || talkIdx >= talks.size()) {
+                // v15.96 (slice 2239): the swipe offset is row STATE too — a recycled mid-swipe view rebound to a stale slot kept its card translated on an empty row until the next tick prune dropped the slot. The live swipe row can never be stale (its talk is on screen), so no guard is needed here, unlike the normal bind above. Labels cleared with the rest of the content.
+                android.view.View staleCard39 = v.findViewById(R.id.cardInner);
+                if (staleCard39 != null) staleCard39.setTranslationX(0f);
+                android.widget.TextView staleLeft39 = v.findViewById(R.id.talkSwipeLeft);
+                if (staleLeft39 != null) staleLeft39.setText("");
+                android.widget.TextView staleRight39 = v.findViewById(R.id.talkSwipeRight);
+                if (staleRight39 != null) staleRight39.setText("");
+                return v;
+            }
             // v3.47: premium recycled-row squash hygiene, the one
             // channel the delivered v3.40 pour hygiene explicitly
             // left untouched — same fix as the Main grid in this
@@ -8200,6 +8222,9 @@ public class TalksActivity extends Activity {
             // neither reads this property; the listened title dim
             // lives on titleView, untouched.
             v.setAlpha(1f);
+            // v15.96 (slice 2239): a rebind landing mid-swipe must not snap the dragged card home — the swipe owns its card's sideways offset until the settle ends, and the settle clears the swipe fields itself. Every other row (including a recycled mid-swipe view rebound to a new talk) resets to 0 here, so a stale offset can never leak onto the next talk.
+            android.view.View swipeCard39 = v.findViewById(R.id.cardInner);
+            if (swipeCard39 != null && v != talkSwipeRow39) swipeCard39.setTranslationX(0f);
             // v1.96: the row number stayed at a fixed 14sp while the
             // title beside it followed the font size — on ကြီး the
             // numbers read a size smaller than the titles they count.
@@ -8424,7 +8449,12 @@ public class TalksActivity extends Activity {
             // (the v7.55 .equals detector), only the query
             // changes, so a rebind can never strand the mark.
             boolean rowListened = !rowPlaying && !rowPlayingLib && talkPlayedCache.contains(SiteHttp.identityUrl(rowUrl));
-            String playedMark = rowListened ? "✓ " : "";
+            String playedMark = rowListened ? "\u2713 " : "";
+            // v15.96 (slice 2239): the swipe underlay labels — the words the gold strip shows as the card travels: the queue-next word on the left (revealed by a right drag, flipping with the row's queued state) and the mark/un-mark word on the right (revealed by a left drag, flipping with the row's own listened state, the same cache the check renders from). Painted on every bind so a recycled row can never keep the previous talk's verb; the labels are invisible at rest (the opaque card covers them) and the touch-time gates decide whether a drag ever starts.
+            android.widget.TextView swLeft39 = v.findViewById(R.id.talkSwipeLeft);
+            if (swLeft39 != null) swLeft39.setText(Lang.t(TalksActivity.this, talkQueueHas(rowUrl) ? "menu_play_next" : "menu_add_next"));
+            android.widget.TextView swRight39 = v.findViewById(R.id.talkSwipeRight);
+            if (swRight39 != null) swRight39.setText(Lang.t(TalksActivity.this, DlSwipe.labelKey(DlSwipe.LEFT, rowListened)));
             // v15.41 (slice 1920): newly-added talk dot — a talk
             // that arrived since the last visit wears a ● before
             // its title (Spotify's new-episode dot, in this app's
@@ -8952,7 +8982,8 @@ public class TalksActivity extends Activity {
         if (talkList == null || pullHeader == null) return;
         talkList.setOnTouchListener(new View.OnTouchListener() {
             @Override public boolean onTouch(View v, android.view.MotionEvent ev) {
-                return pullOnTouch(ev);
+                // v15.96 (slice 2239): the swipe claims horizontal-dominant drags first, the pull claims the rest — one listener owns the list, so the two gestures chain here instead of fighting over it. A swipe DOWN records its candidate and returns false, so the pull still tracks; a swipe that arms stands the pull down first and consumes the gesture, so the pull never sees it.
+                return talkSwipeOnTouch39(ev) || pullOnTouch(ev);
             }
         });
     }
@@ -9085,6 +9116,252 @@ public class TalksActivity extends Activity {
             return false;
         }
         return false;
+    }
+
+    // v15.96 (slice 2239): the chooser row swipe — the gesture twin of the library swipe on the app's most-used list: a left drag marks (or un-marks) that one talk listened, a right drag sets it as next in the queue, with the gold underlay + action label revealed under the card as it travels. The DOWN records the candidate row and both offers and returns false, so the pull still tracks; the MOVE arms only on a horizontal-dominant drag in an offered direction, stands the pull down first, then takes the gesture; the UP commits past the threshold and glides home before firing. Never arms while a pick-up/drop move is held, never on the sounding row (both verbs exclude it), never right on an already-queued row or with no live session, never left on a talk with no URL to mark.
+    private boolean talkSwipeOnTouch39(android.view.MotionEvent ev) {
+        if (talkList == null) return false;
+        int action = ev.getActionMasked();
+        if (action == android.view.MotionEvent.ACTION_DOWN) {
+            talkSwipeReset39();
+            if (moveHeldUrl != null) return false;
+            int pos = talkList.pointToPosition((int) ev.getX(), (int) ev.getY());
+            if (pos == android.widget.AdapterView.INVALID_POSITION) return false;
+            int ti = talkIndexAtDisplay(pos);
+            if (ti < 0 || ti >= talks.size()) return false;
+            Talk t = talks.get(ti);
+            if (t == null || t.url == null || t.url.length() == 0) return false;
+            String url = t.url;
+            boolean playing = (talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(url, talkPlayingUrl))
+                    || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(url, talkPlayingLibUrl));
+            boolean queued = talkQueueHas(url);
+            boolean leftOk = DlMark.canOffer(url, playing);
+            boolean rightOk = DlSwipe.offerRight(playing, queued)
+                    && talkPlayingUrl != null && talkPlayingUrl.length() > 0;
+            if (!leftOk && !rightOk) return false;
+            if (talkSwipeSlop39 < 0) talkSwipeSlop39 = android.view.ViewConfiguration.get(TalksActivity.this).getScaledTouchSlop();
+            talkSwipeTalk39 = t;
+            talkSwipeUrl39 = url;
+            talkSwipeLeftOk39 = leftOk;
+            talkSwipeRightOk39 = rightOk;
+            talkSwipeDownX39 = ev.getX();
+            talkSwipeDownY39 = ev.getY();
+            return false;
+        }
+        if (talkSwipeTalk39 == null) return false;
+        if (action == android.view.MotionEvent.ACTION_MOVE) {
+            float dx = ev.getX() - talkSwipeDownX39;
+            float dy = ev.getY() - talkSwipeDownY39;
+            if (!talkSwipeArmed39) {
+                if (!DlSwipe.dominant(dx, dy, talkSwipeSlop39)) return false;
+                int dir = DlSwipe.direction(dx);
+                if (dir == DlSwipe.LEFT && !talkSwipeLeftOk39) { talkSwipeReset39(); return false; }
+                if (dir == DlSwipe.RIGHT && !talkSwipeRightOk39) { talkSwipeReset39(); return false; }
+                if (dir == DlSwipe.NONE) return false;
+                int pos = talkList.pointToPosition((int) talkSwipeDownX39, (int) talkSwipeDownY39);
+                if (pos == android.widget.AdapterView.INVALID_POSITION) { talkSwipeReset39(); return false; }
+                android.view.View row = talkList.getChildAt(pos - talkList.getFirstVisiblePosition());
+                if (row == null) { talkSwipeReset39(); return false; }
+                android.view.View card = row.findViewById(R.id.cardInner);
+                if (card == null) { talkSwipeReset39(); return false; }
+                talkSwipeArmed39 = true;
+                talkSwipeDir39 = dir;
+                talkSwipeRow39 = row;
+                talkSwipeCard39 = card;
+                // The pull stands down first: a swipe that arms
+                // owns the gesture from here, so the pull header
+                // collapses and its tracking stops instead of
+                // growing under the travelling card.
+                pullTracking = false;
+                pullSetHeight(0);
+                pullSetArmed(false);
+                // The DOWN already started the row's press squash
+                // (the v2.08 press); the swipe takes over from here
+                // and the row never sees UP, so release the squash
+                // now instead of leaving the row stuck at 0.96
+                // until its next rebind.
+                row.animate().cancel();
+                Fx.cancelPress(row);
+                row.setScaleX(1f);
+                row.setScaleY(1f);
+                talkList.requestDisallowInterceptTouchEvent(true);
+            }
+            if (talkSwipeCard39 != null) {
+                talkSwipeCard39.setTranslationX(DlSwipe.clampDir(ev.getX() - talkSwipeDownX39, talkSwipeDir39, talkSwipeCard39.getWidth()));
+            }
+            return true;
+        }
+        if (action == android.view.MotionEvent.ACTION_UP) {
+            if (!talkSwipeArmed39) { talkSwipeReset39(); return false; }
+            final android.view.View card = talkSwipeCard39;
+            final Talk t = talkSwipeTalk39;
+            final int dir = talkSwipeDir39;
+            float dx = card == null ? 0f : card.getTranslationX();
+            boolean fire = card != null && DlSwipe.commit(dx, card.getWidth(), talkSwipeMinCommit39());
+            talkSwipeSettle39(card, dir, t, fire);
+            return true;
+        }
+        if (action == android.view.MotionEvent.ACTION_CANCEL
+                || action == android.view.MotionEvent.ACTION_POINTER_DOWN) {
+            if (!talkSwipeArmed39) { talkSwipeReset39(); return false; }
+            talkSwipeSettle39(talkSwipeCard39, talkSwipeDir39, null, false);
+            return true;
+        }
+        return false;
+    }
+
+    // The 96dp commit floor in px — the core takes the floor as
+    // an argument so the pure math never reads a resource.
+    private float talkSwipeMinCommit39() {
+        return 96f * getResources().getDisplayMetrics().density;
+    }
+
+    // v15.96 (slice 2239): glide the card home over 200ms Decelerate (the app's melt rhythm), then fire the verb — the glide is the feedback, the toast follows it. A cancelled settle never fires: the cancel flag is checked on animation end, so a fresh DOWN that cuts a settle short cannot queue a stale verb. The swipe fields stay set until the animation ends, so a tick rebind landing mid-glide never snaps the card (the bind guard).
+    private void talkSwipeSettle39(final android.view.View card, final int dir, final Talk t, final boolean fire) {
+        if (talkSwipeSettle39 != null) talkSwipeSettle39.cancel();
+        talkSwipeSettle39 = null;
+        if (card == null) { talkSwipeReset39(); return; }
+        final float start = card.getTranslationX();
+        if (start == 0f) { talkSwipeReset39(); return; }
+        android.animation.ValueAnimator anim = android.animation.ValueAnimator.ofFloat(start, 0f);
+        talkSwipeSettle39 = anim;
+        anim.setDuration(200);
+        anim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        anim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                card.setTranslationX((Float) a.getAnimatedValue());
+            }
+        });
+        final boolean[] cancelled39 = new boolean[1];
+        anim.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationCancel(android.animation.Animator a) {
+                cancelled39[0] = true;
+            }
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                if (talkSwipeSettle39 == anim) talkSwipeSettle39 = null;
+                if (!cancelled39[0] && fire && t != null && dir == DlSwipe.LEFT) applyTalkSwipeMark39(t);
+                else if (!cancelled39[0] && fire && t != null && dir == DlSwipe.RIGHT) applyTalkSwipeQueueNext39(t);
+                talkSwipeReset39();
+            }
+        });
+        anim.start();
+    }
+
+    private void talkSwipeReset39() {
+        if (talkSwipeSettle39 != null) {
+            android.animation.ValueAnimator a = talkSwipeSettle39;
+            talkSwipeSettle39 = null;
+            a.cancel();
+        }
+        talkSwipeCard39 = null;
+        talkSwipeRow39 = null;
+        talkSwipeArmed39 = false;
+        talkSwipeDir39 = 0;
+        talkSwipeTalk39 = null;
+        talkSwipeUrl39 = null;
+        talkSwipeLeftOk39 = false;
+        talkSwipeRightOk39 = false;
+        talkSwipeDownX39 = 0f;
+        talkSwipeDownY39 = 0f;
+    }
+
+    // v15.96 (slice 2239): the swipe-left commit — the mark verb fired by the gesture: the dialog's mark/un-mark branches as a twin, so the swipe and the long-press can never disagree. The tap-time sounding re-check guards the window while the finger travels; the sounding talk earns its mark by finishing, never by this verb. The cache grows (or drops) in step so the row rebinds with its tick at once; the header new-count drops, and an unlistened-only view drops (or returns) the row at once. The toast is the verb; an already-marked tap toasts that it is already heard, never a false count.
+    private void applyTalkSwipeMark39(Talk t) {
+        if (t == null || t.url == null || t.url.length() == 0) return;
+        if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(t.url, talkPlayingUrl))
+                || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(t.url, talkPlayingLibUrl))) {
+            android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        boolean listened = DlMark.isMarked(talkPlayedCache, SiteHttp.identityUrl(t.url));
+        DlMark.Result r39 = null;
+        try {
+            android.content.SharedPreferences sp39 = getSharedPreferences("dhamma", MODE_PRIVATE);
+            java.util.Set<String> cur39 = sp39.getStringSet("playedTalks", new java.util.HashSet<String>());
+            r39 = listened
+                    ? DlMark.unmark(cur39, SiteHttp.identityUrl(t.url), t.url)
+                    : DlMark.mark(cur39, SiteHttp.identityUrl(t.url));
+            sp39.edit().putStringSet("playedTalks", r39.set).apply();
+        } catch (Exception ignored) {}
+        if (r39 != null && r39.changed) {
+            if (listened) { talkPlayedCache.remove(SiteHttp.identityUrl(t.url)); talkPlayedCache.remove(t.url); }
+            else talkPlayedCache.add(SiteHttp.identityUrl(t.url));
+        }
+        refreshTalkRowMarks(true);
+        if (!talks.isEmpty() && sayadawName != null) refreshFavHeader();
+        if (filterMode != 0) rebuildFilter();
+        if (adapter != null) adapter.notifyDataSetChanged();
+        if (t.url != null) { menuMarkFadeUrl75 = t.url; fadeMenuMarkedTalkRow(); }
+        android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this,
+                (r39 != null && r39.changed)
+                        ? (listened ? "dl_menu_unmark_one" : "dl_menu_mark_one")
+                        : (listened ? "nothing_to_unmark" : "already_listened")),
+                android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    // v15.96 (slice 2239): the swipe-right commit — the play-next branch fired by the gesture: the dialog's final play-next leg as a twin, so the swipe and the long-press can never disagree. The tap-time sounding re-check guards the window while the finger travels, and the still-playing re-check guards a session that stopped mid-drag: with no live session the talk would land last while the toast claimed next, so the queue stays untouched. Already-next toasts and returns; otherwise the talk is removed first when queued and inserted before the first waiting entry, the foreign-head anchor fix runs, and the header + rows refresh.
+    private void applyTalkSwipeQueueNext39(Talk t) {
+        if (t == null || t.url == null || t.url.length() == 0) return;
+        if ((talkPlayingUrl != null && talkPlayingUrl.length() > 0 && SiteHttp.sameTalk(t.url, talkPlayingUrl))
+                || (talkPlayingLibUrl != null && talkPlayingLibUrl.length() > 0 && SiteHttp.sameTalk(t.url, talkPlayingLibUrl))) {
+            android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (talkPlayingUrl == null || talkPlayingUrl.length() == 0) {
+            android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "queue_changed"), android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        QueueEntry dFxHead39 = foreignQueueHead();
+        String fwBefore39 = null;
+        if (talkPlayingUrl != null && talkPlayingUrl.length() > 0) {
+            for (String q : talkQueue)
+                if (!SiteHttp.sameTalk(q, talkPlayingUrl)) { fwBefore39 = q; break; }
+        }
+        if (fwBefore39 != null && SiteHttp.sameTalk(fwBefore39, t.url)
+                && (dFxHead39 == null || SiteHttp.sameTalk(dFxHead39.url, t.url))) {
+            android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "already_next"), android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        boolean wasQueued39 = talkQueueHas(t.url);
+        if (wasQueued39) talkQueueRemove(t.url);
+        String fw39 = null;
+        if (talkPlayingUrl != null && talkPlayingUrl.length() > 0) {
+            for (String q : talkQueue)
+                if (!SiteHttp.sameTalk(q, talkPlayingUrl)) { fw39 = q; break; }
+        }
+        int target39 = talkQueue.size();
+        if (fw39 != null) {
+            int ti39 = talkQueue.indexOf(fw39);
+            if (ti39 >= 0) target39 = ti39;
+        }
+        talkQueue.add(target39, t.url);
+        saveTalkQueueKeepingForeign(talkQueue, t.url);
+        if (dFxHead39 != null && !SiteHttp.sameTalk(dFxHead39.url, t.url)) {
+            try {
+                String savedQ39 = Prefs.savedQueue(TalksActivity.this, sayadawName);
+                if (savedQ39 != null && savedQ39.length() > 0) {
+                    java.util.ArrayList<String> lines39 = new java.util.ArrayList<String>();
+                    for (String ln39 : savedQ39.split("\n"))
+                        if (ln39.length() > 0) lines39.add(ln39);
+                    int fxIdx39 = -1, dtIdx39 = -1;
+                    for (int i39 = 0; i39 < lines39.size(); i39++) {
+                        QueueEntry e39 = QueueEntry.parse(lines39.get(i39));
+                        if (e39 == null) continue;
+                        if (fxIdx39 < 0 && SiteHttp.sameTalk(e39.url, dFxHead39.url)) fxIdx39 = i39;
+                        if (dtIdx39 < 0 && SiteHttp.sameTalk(e39.url, t.url)) dtIdx39 = i39;
+                    }
+                    if (fxIdx39 >= 0 && dtIdx39 > fxIdx39) {
+                        String mv39 = lines39.remove(dtIdx39);
+                        lines39.add(fxIdx39, mv39);
+                        Prefs.saveQueue(TalksActivity.this, sayadawName, lines39);
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+        refreshQueueMarks();
+        if (!talks.isEmpty() && sayadawName != null) refreshFavHeader();
+        if (adapter != null) adapter.notifyDataSetChanged();
+        android.widget.Toast.makeText(TalksActivity.this, Lang.t(TalksActivity.this, "set_as_next"), android.widget.Toast.LENGTH_SHORT).show();
     }
 
     private void loadTalks() {

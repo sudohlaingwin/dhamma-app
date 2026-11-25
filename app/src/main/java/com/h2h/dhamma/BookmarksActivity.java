@@ -39,6 +39,8 @@ public class BookmarksActivity extends Activity {
     // cache files per keystroke.
     private java.util.List<BmAll.Row> bmAllItems =
             new java.util.ArrayList<BmAll.Row>();
+    // v15.96 (slice 2235): the total behind the header — the unfiltered pick's size, captured beside the pick in refresh(); the header paints it, the search never touches it.
+    private int bmTotal35 = 0;
     private BaseAdapter adapter;
     private boolean night;
     private java.util.Map<String, String[]> catCache;
@@ -273,12 +275,17 @@ public class BookmarksActivity extends Activity {
         // Downloaded applyDlFilter shape), never re-reading the
         // cache files per keystroke.
         bmAllItems = BmAll.pickAll(readBookmarks(), Prefs.statsRecent(this), names);
+        // v15.96 (slice 2235): the total captured beside the pick — one parse per refresh, the search never re-reads the store per keystroke, so the total stays the unfiltered pick's size.
+        bmTotal35 = bmAllItems == null ? 0 : bmAllItems.size();
         refreshBookmarksPlayingMarks(); // v15.64 (slice 2041): mark right on first paint, not one tick late
         refreshBmFavSet(); // v15.85 (slice 2168): the star snapshot fresh on first paint, beside the playing marks
         refreshBmPlayedSet(); // v15.85 (slice 2170): the tick snapshot fresh on first paint, beside the star snapshot
         refreshBmDlSet(); // v15.89 (slice 2194): the badge snapshot fresh on first paint, beside the tick snapshot — the rows read the snapshot, never a per-row store test
         refreshBmDurCache(); // v15.90 (slice 2200): the duration snapshot fresh on first paint, beside the badge snapshot
         refreshBmPosCache(); // v15.90 (slice 2202): the pos snapshot fresh on first paint, beside the duration snapshot
+        // v15.96 (slice 2235): the header carries its total — the drawer header's own idiom, now on the full-list screen: the count sits beside the title in parens, ASCII digits; an empty list keeps the bare title, so the count never shows (0).
+        if (headerTitle != null)
+            headerTitle.setText(bmTotal35 >= 1 ? Lang.t(this, "bm_title") + " (" + bmTotal35 + ")" : Lang.t(this, "bm_title"));
         applyBmSearch();
     }
 

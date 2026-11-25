@@ -57,6 +57,8 @@ public class HistoryActivity extends Activity {
     // stats store per keystroke.
     private java.util.List<Prefs.HistEntry> hsAllItems =
             new java.util.ArrayList<Prefs.HistEntry>();
+    // v15.96 (slice 2234): the total behind the header — the unfiltered pick's size, captured beside the pick in refresh(); the header paints it, the search never touches it.
+    private int hsTotal34 = 0;
     private BaseAdapter adapter;
     private boolean night;
     private java.util.Map<String, String[]> catCache;
@@ -602,6 +604,8 @@ public class HistoryActivity extends Activity {
         // Downloaded applyDlFilter shape), never re-reading the
         // stats store per keystroke.
         hsAllItems = Prefs.statsRecent(this);
+        // v15.96 (slice 2234): the total captured beside the pick — one parse per refresh, the search never re-reads the store per keystroke, so the total stays the unfiltered pick's size.
+        hsTotal34 = hsAllItems == null ? 0 : hsAllItems.size();
         refreshHistFavSet(); // v13.77: rows bind their star mark from this snapshot
         refreshHistPlayedSet(); // v15.85 (slice 2172): the tick snapshot fresh on first paint, beside the star snapshot
         refreshHistDurCache(); // v15.86 (slice 2178): the duration snapshot fresh on first paint, beside the tick snapshot — the clocks read the snapshot, never a per-row parse
@@ -623,6 +627,9 @@ public class HistoryActivity extends Activity {
             meltStat40(topSub, top == null ? "" : fmtDur(Long.parseLong(top[1])));
             topSub.setTextColor(subColor());
         }
+        // v15.96 (slice 2234): the header carries its total — the drawer header's own idiom, now on the full-list screen: the count sits beside the title in parens, ASCII digits; an empty list keeps the bare title, so the count never shows (0).
+        if (headerTitle != null)
+            headerTitle.setText(hsTotal34 >= 1 ? Lang.t(this, "hs_title") + " (" + hsTotal34 + ")" : Lang.t(this, "hs_title"));
         hsStatsKnown40 = true;
         refreshHistoryPlayingMarks(); // v13.55: mark right on first paint, not one tick late
         applyHsSearch();
