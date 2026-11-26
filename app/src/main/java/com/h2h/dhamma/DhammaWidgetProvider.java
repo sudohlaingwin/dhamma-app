@@ -100,11 +100,24 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
     // over loading), from the same liveBuffering mirror — the
     // play()/onPrepared edges already refresh the widget, so the
     // word lands on the loading edge and clears when it sounds.
-    static String widgetTitleMarkedPure(boolean failed, String bufferingWord, String title, String dlMark) {
+    // v16.03 (slice 2286): the widget title's favourite/listened marks —
+    // the strips and cards name a favourited talk with a star and a
+    // listened talk with a tick; the widget named neither, so on the
+    // home screen a favourited talk read exactly like any other talk.
+    // Both marks append AFTER the downloaded suffix, star first then
+    // tick (the strips' star-before-tick order, the downloaded mark
+    // kept where it is); never on the empty state, never before the
+    // title text. The booleans come from buildViews (favTalks /
+    // playedTalks, canonical compare — a legacy-http download key
+    // still matches a canonical https entry).
+    static String widgetTitleMarkedPure(boolean failed, String bufferingWord, String title, String dlMark,
+                                        boolean fav, boolean listened) {
         String t = clean67(title);
         if (t.length() == 0) return "";
         String out = (failed ? "\u26A0 " : (bufferingWord != null && bufferingWord.length() > 0 ? bufferingWord + " " : "")) + t;
         if (" \u2B07".equals(dlMark)) out += dlMark;
+        if (fav) out += " \u2605";
+        if (listened) out += " \u2713";
         return out;
     }
 
@@ -412,8 +425,48 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
             String m = Fx.stripResumeDownloadMark(context, sp, sp.getString("lastUrl", ""));
             if (" \u2B07".equals(m)) widgetDlMark = m;
         }
+        // v16.03 (slice 2286): the widget title's favourite/listened marks —
+        // see widgetTitleMarkedPure. Room kind reads the talk URL
+        // straight (live URL while a track is live, lastUrl when the
+        // service is dead); lib kind resolves it through the dlMap
+        // exactly-one-claimant rule (the 2285 lib precedent — a
+        // dual-claimed file never earns a mark). Both sets are read
+        // against SiteHttp.identityUrl (the 2282 card precedent), so
+        // a legacy-http download key still matches a canonical https
+        // favTalks/playedTalks entry. The provider reads the same
+        // "dhamma" SharedPreferences the Activities read (sp above),
+        // so no new Prefs API is needed.
+        boolean wFav = false;
+        boolean wListened = false;
+        try {
+            java.util.Set<String> wFt = sp.getStringSet("favTalks", null);
+            java.util.Set<String> wPt = sp.getStringSet("playedTalks", null);
+            String wUrl = null;
+            if (isLib) {
+                String wLibPath = hasTrack ? AudioService.liveUrl : sp.getString("lastLibPath", "");
+                if (wLibPath != null && wLibPath.length() > 0) {
+                    String wFn = new java.io.File(wLibPath).getName();
+                    org.json.JSONObject wMap = new org.json.JSONObject(sp.getString("dlMap", "{}"));
+                    java.util.Iterator<String> wKeys = wMap.keys();
+                    int wN = 0;
+                    String wOnly = null;
+                    while (wKeys.hasNext()) {
+                        String u = wKeys.next();
+                        if (wFn.equals(wMap.optString(u, ""))) { wN++; wOnly = u; }
+                    }
+                    if (wN == 1) wUrl = wOnly;
+                }
+            } else {
+                wUrl = hasTrack ? AudioService.liveUrl : sp.getString("lastUrl", "");
+            }
+            if (wUrl != null && wUrl.length() > 0) {
+                String wId = SiteHttp.identityUrl(wUrl);
+                if (wFt != null) wFav = wFt.contains(wId);
+                if (wPt != null) wListened = wPt.contains(wId);
+            }
+        } catch (Exception ignored) {}
         String widgetBuf = AudioService.liveBuffering ? Lang.t(context, "notif_state_buffering") : "";
-        String markedTitle = widgetTitleMarkedPure(widgetFailed, widgetBuf, title, widgetDlMark);
+        String markedTitle = widgetTitleMarkedPure(widgetFailed, widgetBuf, title, widgetDlMark, wFav, wListened);
         // v14.09 (slice 1104): the sleep countdown on the widget title —
         // see widgetSleepSuffixPure. Only onto a real title (never the
         // choose_talk placeholder); the live mirrors are false with a

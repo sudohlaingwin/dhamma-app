@@ -1525,7 +1525,13 @@ public class RoomActivity extends Activity {
     // header (foreign queue head first, else peekNextIndex — queued
     // head, forward top, shuffle pick, list-next), same gate (a valid
     // current talk + more than one talk), same prefix (next_prefix);
-    // title-only, no marks — the drawer line already carries ⬇/★/✓/↺.
+    // v16.03 (slice 2289): the line now carries the drawer header's
+    // full mark set (◈/⬇/⏳/★/✓/↺, same sources, same order) after
+    // the title — foreign branch: title + " · sayadaw" + marks;
+    // in-list branch: title + marks. The drawer line sits one tap
+    // away, invisible from the main screen, and every sibling Up
+    // Next line (drawer header, chooser header, Downloaded footer,
+    // Next toasts) already carries them.
     // Change-only: a steady tick never rewrites the line, and the text
     // snaps (the 2257 count rule — the title pour above it owns the
     // motion). Display-only: ⏭ is the skip, the line never taps.
@@ -1533,12 +1539,73 @@ public class RoomActivity extends Activity {
         if (roomUpNext == null) return;
         String want = null;
         if (talks != null && talks.size() > 1 && currentIndex >= 0 && currentIndex < talks.size()) {
+            if (playedSet == null || favSet == null) refreshMarkSets();
+            String playingUrl = soundingUrlForQueue();
             QueueEntry fxUp = firstWaitingForeignEntry();
             if (fxUp != null) {
-                want = Lang.t(RoomActivity.this, "next_prefix") + (fxUp.title.length() > 0 ? fxUp.title : fxUp.url) + " · " + fxUp.sayadaw;
+                String fxMark = "";
+                try {
+                    if (queueUrls != null) {
+                        int fxQpos = queueLineIndexForUrl(fxUp.url);
+                        if (fxQpos >= 0) {
+                            int fxShown = fxQpos + 1;
+                            // v12.26: playingUrl is the scan-proven sounding URL,
+                            // not the indexed talk.
+                            if (playingUrl != null && playingUrl.length() > 0) {
+                                int fxPlayPos = queueLineIndexForUrl(playingUrl);
+                                if (fxPlayPos >= 0 && fxPlayPos < fxQpos) fxShown--;
+                            }
+                            fxMark = " ◈" + fxShown;
+                        }
+                    }
+                } catch (Exception ignored) {}
+                if (isDownloadedFile(fxUp.url)) fxMark += " ⬇";
+                else if (dlProgress.containsKey(fxUp.url)) fxMark += " ⏳" + dlProgress.get(fxUp.url) + "%";
+                if (favSet.contains(SiteHttp.identityUrl(fxUp.url))) fxMark += " ★";
+                if (playedSet.contains(SiteHttp.identityUrl(fxUp.url))) fxMark += " ✓";
+                int fxRp = Prefs.talkPosGet(RoomActivity.this, fxUp.url);
+                if (fxRp <= 5000 && isDownloadedFile(fxUp.url)) {
+                    String fxDlName = downloadedFileName(fxUp.url);
+                    if (fxDlName != null)
+                        fxRp = Prefs.talkPosGet(RoomActivity.this,
+                                downloadsFile(fxDlName).getAbsolutePath());
+                }
+                if (fxRp > 5000) fxMark += " ↺ " + formatTime(fxRp);
+                want = Lang.t(RoomActivity.this, "next_prefix") + (fxUp.title.length() > 0 ? fxUp.title : fxUp.url) + " · " + fxUp.sayadaw + fxMark;
             } else {
                 int nx = peekNextIndex();
-                if (nx >= 0 && nx < talks.size()) want = Lang.t(RoomActivity.this, "next_prefix") + talks.get(nx).title;
+                if (nx >= 0 && nx < talks.size()) {
+                    Talk nxTalk = talks.get(nx);
+                    String nxMark = "";
+                    try {
+                        if (queueUrls != null) {
+                            int qpos = queueLineIndexForUrl(nxTalk.url);
+                            if (qpos >= 0) {
+                                int shown = qpos + 1;
+                                // v12.26: playingUrl is the scan-proven sounding URL,
+                                // not the indexed talk.
+                                if (playingUrl != null && playingUrl.length() > 0) {
+                                    int playPos = queueLineIndexForUrl(playingUrl);
+                                    if (playPos >= 0 && playPos < qpos) shown--;
+                                }
+                                nxMark = " ◈" + shown;
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                    if (isDownloadedFile(nxTalk.url)) nxMark += " ⬇";
+                    else if (dlProgress.containsKey(nxTalk.url)) nxMark += " ⏳" + dlProgress.get(nxTalk.url) + "%";
+                    if (favSet.contains(SiteHttp.identityUrl(nxTalk.url))) nxMark += " ★";
+                    if (playedSet.contains(SiteHttp.identityUrl(nxTalk.url))) nxMark += " ✓";
+                    int nxRp = Prefs.talkPosGet(RoomActivity.this, nxTalk.url);
+                    if (nxRp <= 5000 && isDownloadedFile(nxTalk.url)) {
+                        String nxDlName = downloadedFileName(nxTalk.url);
+                        if (nxDlName != null)
+                            nxRp = Prefs.talkPosGet(RoomActivity.this,
+                                    downloadsFile(nxDlName).getAbsolutePath());
+                    }
+                    if (nxRp > 5000) nxMark += " ↺ " + formatTime(nxRp);
+                    want = Lang.t(RoomActivity.this, "next_prefix") + nxTalk.title + nxMark;
+                }
             }
         }
         if (want == null) {

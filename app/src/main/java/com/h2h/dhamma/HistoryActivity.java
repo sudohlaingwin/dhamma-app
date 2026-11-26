@@ -2930,19 +2930,39 @@ public class HistoryActivity extends Activity {
                         if (nClaim49 == 1 && onlyClaim49 != null && ft.contains(onlyClaim49)) lFav = true;
                     }
                 } catch (Exception ignored) {}
+                // v16.03 (slice 2285): the resume strip's listened tick, lib branch — the
+                // same exactly-one-claimant resolve as the star above, read against playedTalks
+                // instead of favTalks (canonical compare, the 2282 card precedent); a
+                // dual-claimed file never earns a tick (the v8.49 rule).
+                boolean lListened = false;
+                try {
+                    java.util.Set<String> pt = rsp.getStringSet("playedTalks", null);
+                    if (pt != null) {
+                        String fn = new java.io.File(lPath).getName();
+                        org.json.JSONObject map = new org.json.JSONObject(rsp.getString("dlMap", "{}"));
+                        java.util.Iterator<String> keys = map.keys();
+                        int nClaim49 = 0;
+                        String onlyClaim49 = null;
+                        while (keys.hasNext()) {
+                            String u = keys.next();
+                            if (fn.equals(map.optString(u, ""))) { nClaim49++; onlyClaim49 = u; }
+                        }
+                        if (nClaim49 == 1 && onlyClaim49 != null && pt.contains(SiteHttp.identityUrl(onlyClaim49))) lListened = true;
+                    }
+                } catch (Exception ignored) {}
                 int lSec = rPos / 1000;
                 String lTime = Fx.stripResumeTime(lSec);
                 // v15.40 (slice 1907): the stored duration (v13.96) fills the bar — Main's v14.03 rule; unknown duration still reads empty (stripResumeProgress).
                 int lDur = Fx.stripResumeDuration(HistoryActivity.this, rsp, rSavedUrl, lPath);
                 // v8.52: Main's v7.94 resume mark, mirrored — the proven file is offline, like Main's lib branch.
-                meltResumeStripTitleHs(tx, "↺ " + lTitle + (lFav ? " ★" : "") + (Fx.stripInProgressDlFilenames(HistoryActivity.this, rsp).contains(new java.io.File(lPath).getName()) ? " ⏳" : " ⬇"));
+                meltResumeStripTitleHs(tx, "↺ " + lTitle + (lFav ? " ★" : "") + (Fx.stripInProgressDlFilenames(HistoryActivity.this, rsp).contains(new java.io.File(lPath).getName()) ? " ⏳" : " ⬇") + (lListened ? " ✓" : ""));
                 // v5.46: a dead library strip names its recorded
                 // sayadaw like the live strip since v5.45, in the
                 // Room strip's "name · mm:ss မှ ဆက်နားထောင်ရန်"
                 // shape; an unrecorded download keeps today's
                 // generic line, never a guessed name.
                 String libSd = Fx.stripLibSayadaw(HistoryActivity.this, rsp);
-                if (sb != null) sb.setText(libSd != null ? libSd + " · " + lTime + Lang.t(HistoryActivity.this, "resume_from") : Lang.t(HistoryActivity.this, "downloaded_talk") + " · " + lTime + Lang.t(HistoryActivity.this, "resume_from"));
+                if (sb != null) sb.setText(libSd != null ? libSd + Fx.stripQueuePosSuffix(rsp, rKind) + " · " + lTime + Lang.t(HistoryActivity.this, "resume_from") : Lang.t(HistoryActivity.this, "downloaded_talk") + Fx.stripQueuePosSuffix(rsp, rKind) + " · " + lTime + Lang.t(HistoryActivity.this, "resume_from"));
                 if (tg != null) tg.setText("▶");
                 if (nx != null) Fx.crossfadeStripBtn(nx, false);
                 // v7.31: Previous hides with Next in resume mode
@@ -2972,12 +2992,20 @@ public class HistoryActivity extends Activity {
                 java.util.Set<String> ft = rsp.getStringSet("favTalks", null);
                 if (ft != null) rFav = ft.contains(rUrl);
             } catch (Exception ignored) {}
+            // v16.03 (slice 2285): the resume strip's listened tick — the room branch's talk
+            // earns the tick after the star/download mark when it is in playedTalks (canonical
+            // compare, the 2280 strip order); a not-listened talk reads exactly as today.
+            boolean rListened = false;
+            try {
+                java.util.Set<String> pt = rsp.getStringSet("playedTalks", null);
+                if (pt != null) rListened = pt.contains(SiteHttp.identityUrl(rUrl));
+            } catch (Exception ignored) {}
             int rSec = rPos / 1000;
             String rTime = Fx.stripResumeTime(rSec);
             int rDur = Fx.stripResumeDuration(HistoryActivity.this, rsp, rUrl, null);
             // v8.52: Main's v7.94 resume download mark, mirrored — a ↺ strip here never said whether resuming streams or plays offline.
-            meltResumeStripTitleHs(tx, "↺ " + rTitle + (rFav ? " ★" : "") + Fx.stripResumeDownloadMark(HistoryActivity.this, rsp, rUrl));
-            if (sb != null) sb.setText(rName + " · " + rTime + Lang.t(HistoryActivity.this, "resume_from"));
+            meltResumeStripTitleHs(tx, "↺ " + rTitle + (rFav ? " ★" : "") + Fx.stripResumeDownloadMark(HistoryActivity.this, rsp, rUrl) + (rListened ? " ✓" : ""));
+            if (sb != null) sb.setText(rName + Fx.stripQueuePosSuffix(rsp, rKind) + " · " + rTime + Lang.t(HistoryActivity.this, "resume_from"));
             if (tg != null) tg.setText("▶");
             if (nx != null) Fx.crossfadeStripBtn(nx, false);
             // v7.31: same Previous hide as the library resume
