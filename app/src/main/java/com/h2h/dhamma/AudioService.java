@@ -1838,6 +1838,95 @@ public class AudioService extends Service {
         return (u != null && !u.startsWith("http")) ? "dl_file_gone" : "play_failed_internet";
     }
 
+    // v16.02 (slice 2278): service-side lastQueuePos writer — the Room poll
+    // (v16.01 slice 2271) is the only writer today and it stops on pause
+    // (v1.71), so a background auto-advance while the Room sits paused
+    // leaves every strip one position behind until the Room reopens.
+    // play() is the single point every new talk passes through (v10.69),
+    // so the position rides it: Room-kind only (lastKind == "room" — every
+    // lib play writes "lib" before play(), so the gate reads the true
+    // session kind), from the Room's persisted list (Prefs.playListRaw —
+    // the v7.57 list the advance logic already reads via
+    // soundingLineIndex96; the scout's new lastTalkList key is NOT needed
+    // — the list already exists, written at both Room play points and
+    // rewritten on foreign handover, so no new Room write and no new key).
+    // Index via sameTalk + the offline-file form (the soundingLineIndex96
+    // resolve, against the NEW url here rather than lastUrl/currentUrl,
+    // so a replay/retry reads the same talk); not in the list -> "" (a
+    // blank clears a stale one, the poll's rule, mirrored). Change-only,
+    // like the poll. No new Lang key, no Prefs API change, no layout
+    // change, no Room change.
+    private void writeRoomQueuePos78(String url) {
+        try {
+            android.content.SharedPreferences sp = getSharedPreferences("dhamma", MODE_PRIVATE);
+            if (!"room".equals(sp.getString("lastKind", ""))) return;
+            String raw78 = Prefs.playListRaw(this);
+            String pos78 = "";
+            if (raw78 != null && raw78.length() > 0 && url != null && url.length() > 0) {
+                String[] lines78 = raw78.split("\n");
+                int idx78 = -1;
+                for (int i78 = 0; i78 < lines78.length; i78++) {
+                    String line78 = lines78[i78];
+                    if (line78 == null || line78.length() == 0) continue;
+                    int tab78 = line78.indexOf('\t');
+                    String u78 = tab78 >= 0 ? line78.substring(0, tab78) : line78;
+                    if (SiteHttp.sameTalk(u78, url)) { idx78 = i78; break; }
+                    java.io.File f78 = offlineFileFor(u78);
+                    if (f78 != null && f78.getAbsolutePath().equals(url)) { idx78 = i78; break; }
+                }
+                if (idx78 >= 0) pos78 = (idx78 + 1) + " / " + lines78.length;
+            }
+            if (!pos78.equals(sp.getString("lastQueuePos", "")))
+                sp.edit().putString("lastQueuePos", pos78).apply();
+        } catch (Exception ignored) {}
+    }
+
+    // v16.02 (slice 2279): lib queue position on strips — the
+    // strips read the Room position since v16.01 but a Downloaded-
+    // screen listener playing from the hand queue saw no "N / M"
+    // anywhere, even though the hand queue is an ordered list the
+    // service already reads (card waiting count, strips waiting
+    // mark). play() is the single point every new talk passes
+    // through (v10.69), so the position rides it: lib-kind only
+    // (lastKind == "lib" — every lib play writes "lib" before
+    // play(), so the gate reads the true session kind), from the
+    // shared hand queue (Prefs.savedQueueLib — newline-joined file
+    // paths, the v4.57 list; the Downloaded entries order lives
+    // in DownloadedActivity memory and is NOT the source). First
+    // sameTalk match of the sounding file in the DEDUPED queue
+    // (first occurrence kept, the advance code's :3655 rule);
+    // position = (index+1) + " / " + deduped length, counting the
+    // sounding file (the Room's "3 / 24" counts the full list
+    // incl. the current talk; the card's waiting count excludes
+    // it — different numbers, do NOT reuse that count). Not in
+    // the queue -> "" (a blank clears a stale one, the poll's
+    // rule, mirrored). Change-only, like the poll. No new Lang
+    // key, no Prefs API change, no layout change, no Room change.
+    private void writeLibQueuePos79(String url) {
+        try {
+            android.content.SharedPreferences sp = getSharedPreferences("dhamma", MODE_PRIVATE);
+            if (!"lib".equals(sp.getString("lastKind", ""))) return;
+            String raw79 = Prefs.savedQueueLib(this);
+            String pos79 = "";
+            if (raw79 != null && raw79.length() > 0 && url != null && url.length() > 0) {
+                String[] lines79 = raw79.split("\n");
+                java.util.ArrayList<String> dedup79 = new java.util.ArrayList<String>();
+                for (String line79 : lines79) {
+                    if (line79 == null || line79.length() == 0) continue;
+                    if (dedup79.contains(line79)) continue;
+                    dedup79.add(line79);
+                }
+                int idx79 = -1;
+                for (int i79 = 0; i79 < dedup79.size(); i79++) {
+                    if (SiteHttp.sameTalk(dedup79.get(i79), url)) { idx79 = i79; break; }
+                }
+                if (idx79 >= 0) pos79 = (idx79 + 1) + " / " + dedup79.size();
+            }
+            if (!pos79.equals(sp.getString("lastLibQueuePos", "")))
+                sp.edit().putString("lastLibQueuePos", pos79).apply();
+        } catch (Exception ignored) {}
+    }
+
     public void play(String url, String title) {
         play(url, title, 0);
     }
@@ -2054,6 +2143,17 @@ public class AudioService extends Service {
         posHandler.postDelayed(posRunnable, 15000);
         currentUrl = url;
         currentTitle = title;
+        // v16.02 (slice 2278): service-side lastQueuePos writer — the
+        // Room poll stops on pause (v1.71), so a background advance
+        // leaves the strips one position behind; play() is the single
+        // point every new talk passes through, so the position rides
+        // it (see writeRoomQueuePos78 above).
+        writeRoomQueuePos78(url);
+        // v16.02 (slice 2279): lib queue position on strips — the
+        // hand queue has an order the strips never showed; play()
+        // is the single point every new talk passes through, so the
+        // position rides it (see writeLibQueuePos79 above).
+        writeLibQueuePos79(url);
         liveHasTrack = true; // v10.40: mirror for the no-bind strips
         pendingSeekMs = seekMs;
         trackEnded = false;
@@ -7559,7 +7659,22 @@ public class AudioService extends Service {
         boolean cardFavOn = false;
         try {
             if (resumeOk && lastUrl.length() > 0) {
+                // v16.02 (slice 2282): the card title's listened tick —
+                // the Room line carries it since 2261 and the strips
+                // since 2280, but the shade's card never did, even
+                // though it already stars a favourite (v4.26) in this
+                // very block. Same playedTalks read the star's twin
+                // uses, same raw lastUrl key (banked canonical at
+                // every write site, the v14.81 rule), same prefix
+                // shape — the tick prepends BEFORE the star, so a
+                // favourited listened talk reads "★ ✓ title", the
+                // Room line's mark order. A not-listened talk reads
+                // exactly as today. Rides the card's existing
+                // rebuilds (15s tick + track start), no new timer.
+                // No new Lang key, no layout change.
                 java.util.Set<String> ft = sp.getStringSet("favTalks", null);
+                java.util.Set<String> pt = sp.getStringSet("playedTalks", null);
+                if (pt != null && pt.contains(lastUrl)) title = "✓ " + title;
                 if (ft != null && ft.contains(lastUrl)) title = "★ " + title;
                 if (ft != null && ft.contains(lastUrl)) cardFavOn = true;
             } else if (isLibSession() && currentUrl != null) {
@@ -7574,8 +7689,18 @@ public class AudioService extends Service {
                 // only — the favourite action button stays
                 // Room-only (cardFavShow above), the card gains no
                 // new action.
+                // v16.02 (slice 2282): the lib branch's tick — the
+                // same exactly-one-claimant resolve the star uses
+                // (v8.49, canonicalised v14.81), read against
+                // playedTalks instead of favTalks. The guard widens
+                // to ft-or-pt so a never-favourited listener still
+                // earns the tick; the star line keeps its own
+                // ft-null guard, so its behaviour is unchanged.
+                // Tick prepends before the star, same "★ ✓ title"
+                // order as the Room branch above.
                 java.util.Set<String> ft = sp.getStringSet("favTalks", null);
-                if (ft != null) {
+                java.util.Set<String> pt = sp.getStringSet("playedTalks", null);
+                if (ft != null || pt != null) {
                     String base = new java.io.File(currentUrl).getName();
                     org.json.JSONObject map =
                             new org.json.JSONObject(sp.getString("dlMap", "{}"));
@@ -7599,7 +7724,8 @@ public class AudioService extends Service {
                     // talk. Compare the canonical form; the lastUrl
                     // branch above stays raw BY DESIGN (lastUrl is
                     // banked canonical at every write site).
-                    if (nClaim49 == 1 && onlyClaim49 != null && ft.contains(SiteHttp.identityUrl(onlyClaim49))) title = "★ " + title;
+                    if (nClaim49 == 1 && onlyClaim49 != null && pt != null && pt.contains(SiteHttp.identityUrl(onlyClaim49))) title = "✓ " + title;
+                    if (nClaim49 == 1 && onlyClaim49 != null && ft != null && ft.contains(SiteHttp.identityUrl(onlyClaim49))) title = "★ " + title;
                 }
             }
         } catch (Exception ignored) {}
@@ -7642,10 +7768,24 @@ public class AudioService extends Service {
         // v1.72: elapsed/total on the card itself (M:SS, H:MM:SS for
         // hour+ talks, same rule as the Room) — the card text is the
         // only clock a plain notification has.
-        String sub = who + " · " + stateText;
+        // v16.02 (slice 2281): the notification card's queue
+        // position — the lock-screen card carries the waiting
+        // count (v5.43) but never the sounding talk's place in
+        // its list, while every in-app now-playing surface does
+        // (Room line v4.16, strips v16.01). Same helper the nine
+        // strips use (Fx.stripQueuePosSuffix: room reads
+        // lastQueuePos, lib reads lastLibQueuePos — the service
+        // writers of 2278/2279 keep both fresh on track start),
+        // same " · N / M" shape, same spot: after the sayadaw
+        // name, before the clock. A blank position appends
+        // nothing — the card reads exactly as today. Rides the
+        // card's existing rebuilds (15s tick + track start), no
+        // new timer. No new Lang key, no layout change.
+        String cardQueuePos81 = Fx.stripQueuePosSuffix(sp, sp.getString("lastKind", ""));
+        String sub = who + cardQueuePos81 + " · " + stateText;
         int dur = getDuration();
         int pos = getPosition();
-        if (dur > 0 && pos >= 0) sub = who + " · " + fmtTime(pos) + " / " + fmtTime(dur) + " · " + stateText;
+        if (dur > 0 && pos >= 0) sub = who + cardQueuePos81 + " · " + fmtTime(pos) + " / " + fmtTime(dur) + " · " + stateText;
         // v5.39: sleep countdown on the plain card — the Room line
         // (\"😴 mm:ss\" / \"😴 ⏸ mm:ss\" / end-of-talk) and the strips
         // both show it, but the shade/lock-screen card never did, so

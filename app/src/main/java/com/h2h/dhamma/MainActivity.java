@@ -1610,6 +1610,11 @@ public class MainActivity extends Activity {
                 if (lfLive.isFile() && lfLive.length() > 0) text += " ⬇";
             }
         }
+        // v16.02 (slice 2280): strip listened tick — the Room line
+        // (v15.99) and the rows carry the tick, the strips never
+        // did; it lands after the star and the offline mark, the
+        // strip's own suffix order.
+        text += Fx.stripListenedTick(MainActivity.this, sp);
         // v4.25: the mini strip names a running sleep timer — a
         // listener back on Main had no bedtime cue at all (the
         // countdown lived only in Settings and, now, the Room).

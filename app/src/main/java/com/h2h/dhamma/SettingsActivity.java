@@ -2826,6 +2826,11 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                 if (lfLive.isFile() && lfLive.length() > 0) text += " ⬇";
             }
         }
+        // v16.02 (slice 2280): strip listened tick — the Room line
+        // (v15.99) and the rows carry the tick, the strips never
+        // did; it lands after the star and the offline mark, the
+        // strip's own suffix order.
+        text += Fx.stripListenedTick(SettingsActivity.this, sp);
         // v4.72: the strip's sleep mark gains the live countdown —
         // the Room line and the Settings sleep row already showed
         // it, but every mini-player only said 😴, so a listener

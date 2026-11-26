@@ -3049,15 +3049,24 @@ public class Fx {
     // the sayadaw name on a Room session's strip sub line, before
     // the clock suffix. The Room poll persists the v4.16 position
     // string under "lastQueuePos"; the strips read it from the
-    // same "dhamma" prefs they already read for lastKind. Room
-    // sessions only — a library session has no single list
-    // position, so it keeps today's text; a blank or unknown
-    // position appends nothing, never a stale or guessed one.
+    // same "dhamma" prefs they already read for lastKind. A blank
+    // or unknown position appends nothing, never a stale or
+    // guessed one.
+    // v16.02 (slice 2279): the lib branch — a library session's
+    // strips read "lastLibQueuePos" the same way (the service
+    // writes it on lib track start, from the hand queue); the Room
+    // branch is untouched, and any other kind still reads "".
     public static String stripQueuePosSuffix(android.content.SharedPreferences sp, String kind) {
-        if (!"room".equals(kind)) return "";
         if (sp == null) return "";
-        String p = sp.getString("lastQueuePos", "");
-        return p.length() > 0 ? " · " + p : "";
+        if ("room".equals(kind)) {
+            String p = sp.getString("lastQueuePos", "");
+            return p.length() > 0 ? " · " + p : "";
+        }
+        if ("lib".equals(kind)) {
+            String p = sp.getString("lastLibQueuePos", "");
+            return p.length() > 0 ? " · " + p : "";
+        }
+        return "";
     }
 
     // v14.03 (slice 1098): resume-strip duration — the ↺ strip is the
@@ -3417,6 +3426,32 @@ public class Fx {
             return u.length() > 0 ? u : null;
         } catch (Exception ignored) {
             return null;
+        }
+    }
+
+    // v16.02 (slice 2280): the mini-player's listened tick — the
+    // Room now-playing line has carried the listened tick since
+    // v15.99 (slice 2261) and the rows since v15.85, but no strip
+    // ever did, even though the star (v4.26) and the offline mark
+    // (v14.02) both reached them. Same resolve as the star
+    // (stripFavUrl above: Room lastUrl, library dlMap exactly-one
+    // claimant — never a guessed URL), same canonical comparison
+    // as every playedTalks reader (SiteHttp.identityUrl;
+    // playedTalks holds canonical https since v13.59). " \u2713"
+    // or "" — a suffix, after the star and the offline mark, on
+    // the strip's own 1s tick, so a talk heard to the end gains
+    // its tick within a second of finishing. No new Lang key, no
+    // layout change.
+    public static String stripListenedTick(Context ctx, android.content.SharedPreferences sp) {
+        if (sp == null) return "";
+        try {
+            String url = stripFavUrl(ctx, sp);
+            if (url == null) return "";
+            java.util.Set<String> played = sp.getStringSet("playedTalks", null);
+            if (played == null) return "";
+            return played.contains(SiteHttp.identityUrl(url)) ? " ✓" : "";
+        } catch (Exception ignored) {
+            return "";
         }
     }
 

@@ -2964,6 +2964,11 @@ public class FavouritesActivity extends Activity {
             }
         } catch (Exception ignored) {}
         if (stripFav) text += " ★";
+        // v16.02 (slice 2280): strip listened tick — the Room line
+        // (v15.99) and the rows carry the tick, the strips never
+        // did; it lands after the star (no offline-mark block on
+        // this strip), the strip's own suffix order.
+        text += Fx.stripListenedTick(FavouritesActivity.this, sp);
         // v4.72: the strip's sleep mark gains the live countdown —
         // the Room line and the Settings sleep row already showed
         // it, but every mini-player only said 😴, so a listener
