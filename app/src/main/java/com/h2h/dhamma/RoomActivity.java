@@ -6963,6 +6963,23 @@ if (snd65 >= 0) currentIndex = snd65;
                     // its ▶/⏸ prefixes, and count lines are untouched.
                     String queuePos = (currentIndex >= 0 && !talks.isEmpty())
                             ? (currentIndex + 1) + " / " + talks.size() + " " : "";
+                    // v16.01 (slice 2271): strip queue position — persist
+                    // the Room's queue position ("3 / 24") for the
+                    // mini-player strips: the Room line has printed it
+                    // since v4.16 but no strip ever did, and the strips
+                    // read only prefs/statics, never the Room. The value
+                    // is the v4.16 string trimmed ("3 / 24" or ""),
+                    // written change-only on the 500ms poll, so a steady
+                    // tick touches no prefs; a lib session never writes
+                    // it (the strips gate on lastKind == "room") and a
+                    // blank clears a stale one. A background advance
+                    // while the Room sits paused (v1.71 stops the poll)
+                    // leaves the last polled value until the Room
+                    // reopens — the service-side writer is a later leg.
+                    String queuePos71 = queuePos.trim();
+                    android.content.SharedPreferences sp71 = getSharedPreferences("dhamma", MODE_PRIVATE);
+                    if (!queuePos71.equals(sp71.getString("lastQueuePos", "")))
+                        sp71.edit().putString("lastQueuePos", queuePos71).apply();
                     // v4.26: favourite mark on the now-playing line -
                     // the title gained its offline mark in v4.15 but
                     // never said the sounding talk was a favourite,

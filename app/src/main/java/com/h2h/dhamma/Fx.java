@@ -3045,6 +3045,21 @@ public class Fx {
         return stripClockSuffix(posMs, durMs, remaining);
     }
 
+    // v16.01 (slice 2271): strip queue position — " · 3 / 24" after
+    // the sayadaw name on a Room session's strip sub line, before
+    // the clock suffix. The Room poll persists the v4.16 position
+    // string under "lastQueuePos"; the strips read it from the
+    // same "dhamma" prefs they already read for lastKind. Room
+    // sessions only — a library session has no single list
+    // position, so it keeps today's text; a blank or unknown
+    // position appends nothing, never a stale or guessed one.
+    public static String stripQueuePosSuffix(android.content.SharedPreferences sp, String kind) {
+        if (!"room".equals(kind)) return "";
+        if (sp == null) return "";
+        String p = sp.getString("lastQueuePos", "");
+        return p.length() > 0 ? " · " + p : "";
+    }
+
     // v14.03 (slice 1098): resume-strip duration — the ↺ strip is the
     // only strip surface that never showed a total: it printed the saved
     // position alone and forced its bar to 0, because "no duration

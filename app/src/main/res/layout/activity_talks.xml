@@ -266,10 +266,11 @@
             android:text="🔀 ကျပန်း ဖွင့်ခြင်း" />
         <!-- v15.43 (slice 1931): list sort — a 48dp "↕" beside Play All / Shuffle (the 1926 ● button's shape:
              borderless selectable background, centred, @color/muted default); gold while oldest-first is on.
-             Shares the Play row's GONE-until-a-list-lands gate. -->
+             Shares the Play row's GONE-until-a-list-lands gate.
+             v16.01 (slice 2276): the button now names its mode - wrap_content with the Lang label (tk_sort_recent / tk_sort_oldest), painted by paintTalkSortBtn; the 48dp height + borderless background + colour melt ride unchanged. -->
         <Button
             android:id="@+id/btnTalkSort"
-            android:layout_width="48dp"
+            android:layout_width="wrap_content"
             android:layout_height="48dp"
             android:layout_marginLeft="8dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"

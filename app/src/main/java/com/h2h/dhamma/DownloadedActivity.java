@@ -1959,7 +1959,22 @@ public class DownloadedActivity extends Activity {
                 posMs66 = ms66 == null ? 0 : ms66.intValue();
             }
         }
-        String key66 = path66 == null ? "" : path66 + "|" + posMs66;
+        // v16.01 (slice 2272): Continue row names its sayadaw —
+        // every shelf row names its sayadaw (v5.47 per-load cache
+        // from the dlSayadaw map) but the Continue row (2266)
+        // showed title + " · mm:ss" only, on a multi-sayadaw
+        // screen. The name comes from the same cache, keyed by
+        // DlContinuePick.fileName(path66) — the v5.45 rule: a file
+        // with no record keeps today's text exactly, never a
+        // guessed name. The name rides the change key, so a name
+        // appearing after a fresh loadList rebuilds the row on
+        // the next tick instead of waiting for a new pick.
+        String sd66 = "";
+        if (path66 != null && libSayadawMap != null) {
+            String sd = libSayadawMap.get(DlContinuePick.fileName(path66));
+            if (sd != null) sd66 = sd;
+        }
+        String key66 = path66 == null ? "" : path66 + "|" + posMs66 + "|" + sd66;
         if (key66.equals(dlContinuePickKey)) return;
         dlContinuePickKey = key66;
         dlContinuePickPath = path66;
@@ -1970,8 +1985,12 @@ public class DownloadedActivity extends Activity {
         }
         Entry e66 = null;
         for (Entry e : entries) if (e != null && e.file != null && e.file.getAbsolutePath().equals(path66)) { e66 = e; break; }
+        // v16.01 (slice 2272): the sayadaw prefixes the title in
+        // the same single ellipsized line — "sayadaw · title ·
+        // mm:ss", the v5.48 preview-row order. sd66 is "" when
+        // unknown, so the row keeps today's text exactly.
         if (dlContinueTitle != null && e66 != null)
-            dlContinueTitle.setText(e66.title + " · " + Fx.fmtTime(posMs66));
+            dlContinueTitle.setText((sd66.length() > 0 ? sd66 + " · " : "") + e66.title + " · " + Fx.fmtTime(posMs66));
         if (dlContinueRow.getVisibility() != android.view.View.VISIBLE) {
             dlContinueRow.setVisibility(android.view.View.VISIBLE);
             Fx.fadeIn(dlContinueRow, 250);
@@ -3813,7 +3832,9 @@ public class DownloadedActivity extends Activity {
         if (tx != null) Fx.fadeStripText(tx, text, stripTalkId);
         // v5.32: live clock on the strip — source line + elapsed/total.
         android.widget.ProgressBar pb = findViewById(R.id.nowStripProgress);
-        if (subText != null) subText += Fx.stripClockSuffixForStrip(pb, AudioService.livePositionMs, AudioService.liveDurationMs, Prefs.stripClockRemaining(DownloadedActivity.this));
+        // v16.01 (slice 2271): strip queue position — the Room's
+        // "N / M" lands after the sayadaw name, before the clock.
+        if (subText != null) subText += Fx.stripQueuePosSuffix(sp, kind) + Fx.stripClockSuffixForStrip(pb, AudioService.livePositionMs, AudioService.liveDurationMs, Prefs.stripClockRemaining(DownloadedActivity.this));
         if (sb != null && subText != null) Fx.fadeStripText(sb, subText, stripTalkId);
         Fx.syncStripProgress(pb); // v7.93: skips while a mini-seek drag is in flight
         if (tg != null) Fx.flipStripGlyph(tg, AudioService.livePlaying);
@@ -9121,7 +9142,25 @@ public class DownloadedActivity extends Activity {
     // never eats a structural part. Null-safe, returns "".
     private static String stripDlFooterLive59(String s) {
         if (s == null) return "";
-        return s.replaceAll(" [0-9]+%", "");
+        String t = s.replaceAll(" [0-9]+%", "");
+        // v16.01 (slice 2275): the sleep suffix is live too — the
+        // footer carries " · 😴 M:SS" / " · 😴 ⏸ M:SS" / the
+        // sleep_end word (C02/C03 below), ticking every second, so
+        // a bare compare would melt the footer on every
+        // download-progress refresh while a timer runs. Cut it to
+        // the end of its line, the chooser header's
+        // stripHeaderLivePct cut restated (slice 2274) — the 😴
+        // marker appears nowhere else in the footer, and the Up
+        // Next line below it survives the cut, so a structural
+        // change there still arms. Arming or firing the timer
+        // adds/removes only the stripped suffix, so it never arms
+        // either — the same rule as the chooser header's.
+        int si75 = t.indexOf(" · 😴");
+        if (si75 >= 0) {
+            int nl75 = t.indexOf('\n', si75);
+            t = t.substring(0, si75) + (nl75 >= 0 ? t.substring(nl75) : "");
+        }
+        return t;
     }
 
     private void updateTotal() {
@@ -9249,6 +9288,46 @@ public class DownloadedActivity extends Activity {
             for (Entry e : entries)
                 if (libResumeMap.containsKey(e.file.getAbsolutePath())) resumeCount++;
             if (resumeCount > 0) resumeSuffix = " · ↺ " + resumeCount;
+            // v16.01 (slice 2275): the footer names the sleep
+            // countdown too — the Room drawer header carries it
+            // (v4.25: " · 😴 M:SS" / " · 😴 ⏸ M:SS" / fading) and
+            // the chooser header gained it in slice 2274, but
+            // updateTotal printed counts + Up Next with no
+            // bedtime cue, even though this screen's own strip
+            // shows it. Same no-bind source and shape as the
+            // strips (AudioService.liveSleepActive +
+            // liveSleepRemainingMs + liveSleepEndOfTalk +
+            // livePlaying; the Downloaded strip v4.72):
+            // end-of-talk names the one-shot word (v4.82, no
+            // countdown to show), a running timer shows the live
+            // clock, a pause-suspended timer shows ⏸ + the frozen
+            // clock, and a timer with no remaining shows the bare
+            // mark. The fading state stays drawer-only (bound
+            // service, no no-bind static for it — the strips read
+            // the same three states). After the counts, before the
+            // Up Next line below, so the ▸ mark keeps its place
+            // and shape; the suffix is a snapshot at
+            // footer-refresh granularity, like the ⏳% beside it
+            // — the strip below ticks it live every second.
+            // No new Lang key: sleep_end already exists (Lang :105).
+            // TRAP (the 2271 scout): this suffix rides ONLY the
+            // non-empty branch of the composition below (C03) —
+            // an empty shelf keeps newText "" (or the download
+            // line) so the empty fade-out path runs as today;
+            // the suffix never resurrects a GONE footer.
+            // liveSleepActive clears on cancel/fire/stop, so a
+            // fired timer drops out on the next refresh.
+            String sleepSuffix = "";
+            if (AudioService.liveSleepActive) {
+                long sr75 = AudioService.liveSleepRemainingMs;
+                if (AudioService.liveSleepEndOfTalk) sleepSuffix = AudioService.livePlaying
+                        ? " · 😴 " + Lang.t(DownloadedActivity.this, "sleep_end")
+                        : " · 😴 ⏸ " + Lang.t(DownloadedActivity.this, "sleep_end");
+                else if (sr75 > 0) sleepSuffix = AudioService.livePlaying
+                        ? " · 😴 " + AudioService.sleepClock(sr75)
+                        : " · 😴 ⏸ " + AudioService.sleepClock(sr75);
+                else sleepSuffix = " · 😴";
+            }
             String queueSuffix = "";
             String upNextLine = "";
             // v5.81: the footer's ◈ count skips the file now
@@ -9423,6 +9502,7 @@ public class DownloadedActivity extends Activity {
                     + queueSuffix
                     + playedSuffix
                     + resumeSuffix
+                    + sleepSuffix
                     + upNextLine;
             if (newText.isEmpty() && !oldText.isEmpty()
                     && tv.getVisibility() == android.view.View.VISIBLE) {

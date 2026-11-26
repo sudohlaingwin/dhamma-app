@@ -3079,7 +3079,9 @@ public class FavouritesActivity extends Activity {
         if (tx != null) Fx.fadeStripText(tx, text, stripTalkId);
         // v5.32: live clock on the strip — sayadaw name + elapsed/total.
         android.widget.ProgressBar pb = findViewById(R.id.nowStripProgress);
-        if (subText != null) subText += Fx.stripClockSuffixForStrip(pb, AudioService.livePositionMs, AudioService.liveDurationMs, Prefs.stripClockRemaining(FavouritesActivity.this));
+        // v16.01 (slice 2271): strip queue position — the Room's
+        // "N / M" lands after the sayadaw name, before the clock.
+        if (subText != null) subText += Fx.stripQueuePosSuffix(sp, kind) + Fx.stripClockSuffixForStrip(pb, AudioService.livePositionMs, AudioService.liveDurationMs, Prefs.stripClockRemaining(FavouritesActivity.this));
         if (sb != null && subText != null) Fx.fadeStripText(sb, subText, stripTalkId);
         Fx.syncStripProgress(pb); // v7.93: skips while a mini-seek drag is in flight
         if (tg != null) Fx.flipStripGlyph(tg, AudioService.livePlaying);

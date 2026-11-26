@@ -1012,7 +1012,24 @@ public class TalksActivity extends Activity {
     // a download starting or finishing still arms through the count.
     private static String stripHeaderLivePct(String s) {
         if (s == null) return "";
-        return s.replaceAll("⏳[0-9]+%", "");
+        String t = s.replaceAll("⏳[0-9]+%", "");
+        // v16.01 (slice 2274): the sleep suffix is live too — the
+        // header carries " · 😴 M:SS" / " · 😴 ⏸ M:SS" / the
+        // sleep_end word (C02 below), ticking every second, so a
+        // bare compare would melt the header on every refresh
+        // while a timer runs. Cut it to the end of its line, the
+        // drawer's stripDrawerHeaderLive58 cut restated — the 😴
+        // marker appears nowhere else in the header, and the Up
+        // Next line below it survives the cut, so a structural
+        // change there still arms. Arming or firing the timer
+        // adds/removes only the stripped suffix, so it never arms
+        // either — the same rule as the drawer's.
+        int si74 = t.indexOf(" · 😴");
+        if (si74 >= 0) {
+            int nl74 = t.indexOf('\n', si74);
+            t = t.substring(0, si74) + (nl74 >= 0 ? t.substring(nl74) : "");
+        }
+        return t;
     }
     // v4.89: last playing URL the rows were bound against — the
     // tick detects a change here and rebinds once (below).
@@ -2436,9 +2453,27 @@ public class TalksActivity extends Activity {
     // painter shape: animated melt on the toggle, instant stamp
     // everywhere else (create / return / theme / restore, via
     // refreshTalkPlayAllRow below).
+    // v16.01 (slice 2276): the button also names its mode - the
+    // label is the Lang word for the shown order (tk_sort_recent /
+    // tk_sort_oldest, the bm_sort_* / hs_sort_* wording family
+    // verbatim - the chooser's own pair, since the bm_ keys are
+    // Bookmarks' and the hs_ keys are History's). The label is
+    // change-guarded on the button's own text, the
+    // paintTalkFavBtn glyph gate restated, so a steady
+    // load/return/tick refresh never re-touches it; the colour
+    // melt/stamp rides unchanged, and the instant stamp at
+    // refreshTalkPlayAllRow repaints the label too. The two modes
+    // are the site order and oldest-first (v15.43); on a dated
+    // page the site order IS newest-first, so the recent word
+    // reads exactly - on a series page it names the newest-first
+    // end of the same toggle, the family wording.
     private void paintTalkSortBtn(boolean animate) {
         if (btnTalkSort == null) return;
-        int color = Prefs.talksSortOldest(TalksActivity.this)
+        boolean oldest = Prefs.talksSortOldest(TalksActivity.this);
+        String label = Lang.t(TalksActivity.this, oldest ? "tk_sort_oldest" : "tk_sort_recent");
+        CharSequence cur = btnTalkSort.getText();
+        if (!label.equals(cur == null ? "" : cur.toString())) btnTalkSort.setText(label);
+        int color = oldest
                 ? android.graphics.Color.parseColor("#C9A227")
                 : (cachedNight ? android.graphics.Color.parseColor("#AAAAAA") : android.graphics.Color.parseColor("#7A6A58"));
         if (animate) Fx.crossfadeTextColor(btnTalkSort, color);
@@ -6585,6 +6620,35 @@ public class TalksActivity extends Activity {
         if (waitQ > 0) header += " · ◈ " + waitQ;
         if (playedCount > 0) header += " · ✓ " + playedCount;
         if (resumeCount > 0) header += " · ↺ " + resumeCount;
+        // v16.01 (slice 2274): the chooser header names the sleep
+        // countdown too — the Room drawer header carries it (v4.25:
+        // " · 😴 M:SS" / " · 😴 ⏸ M:SS" / fading) but this header
+        // printed counts + Up Next with no bedtime cue, even though
+        // the chooser's own strip shows it. Same no-bind source and
+        // shape as the strips (AudioService.liveSleepActive +
+        // liveSleepRemainingMs + liveSleepEndOfTalk + livePlaying;
+        // Main :1628-1639 verbatim, the chooser strip :7648-7659):
+        // end-of-talk names the one-shot word (v4.82, no countdown
+        // to show), a running timer shows the live clock, a
+        // pause-suspended timer shows ⏸ + the frozen clock, and a
+        // timer with no remaining shows the bare mark. The fading
+        // state stays drawer-only (bound service, no no-bind
+        // static for it — the strips read the same three states).
+        // After the counts, before the Up Next line below, so the
+        // ▸ mark keeps its place and shape; the suffix is a
+        // snapshot at header-refresh granularity, like the ⏳%
+        // beside it — the strip below ticks it live every second.
+        // No new Lang key: sleep_end already exists (Lang :105).
+        if (AudioService.liveSleepActive) {
+            long sr74 = AudioService.liveSleepRemainingMs;
+            if (AudioService.liveSleepEndOfTalk) header += AudioService.livePlaying
+                    ? " · 😴 " + Lang.t(TalksActivity.this, "sleep_end")
+                    : " · 😴 ⏸ " + Lang.t(TalksActivity.this, "sleep_end");
+            else if (sr74 > 0) header += AudioService.livePlaying
+                    ? " · 😴 " + AudioService.sleepClock(sr74)
+                    : " · 😴 ⏸ " + AudioService.sleepClock(sr74);
+            else header += " · 😴";
+        }
         // v7.22: a foreign queue head outranks the in-list next —
         // the Room's handleNext hands over to it first (v7.08),
         // but this header resolved next from talkQueue only
@@ -7765,7 +7829,9 @@ public class TalksActivity extends Activity {
         if (tx != null) Fx.fadeStripText(tx, text, stripTalkId);
         // v5.32: live clock on the strip — sayadaw name + elapsed/total.
         android.widget.ProgressBar pb = findViewById(R.id.nowStripProgress);
-        if (subText != null) subText += Fx.stripClockSuffixForStrip(pb, AudioService.livePositionMs, AudioService.liveDurationMs, Prefs.stripClockRemaining(TalksActivity.this));
+        // v16.01 (slice 2271): strip queue position — the Room's
+        // "N / M" lands after the sayadaw name, before the clock.
+        if (subText != null) subText += Fx.stripQueuePosSuffix(sp, kind) + Fx.stripClockSuffixForStrip(pb, AudioService.livePositionMs, AudioService.liveDurationMs, Prefs.stripClockRemaining(TalksActivity.this));
         if (sb != null && subText != null) Fx.fadeStripText(sb, subText, stripTalkId);
         Fx.syncStripProgress(pb); // v7.93: skips while a mini-seek drag is in flight
         if (tg != null) Fx.flipStripGlyph(tg, AudioService.livePlaying);
