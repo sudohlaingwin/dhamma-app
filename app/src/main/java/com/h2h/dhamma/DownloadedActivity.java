@@ -9382,6 +9382,39 @@ public class DownloadedActivity extends Activity {
                         : " · 😴 ⏸ " + AudioService.sleepClock(sr75);
                 else sleepSuffix = " · 😴";
             }
+        // v16.05 (slice 2301): the Downloaded footer's Up Next line
+        // carries the shown list's total time too ("· 2h 15m") —
+        // the Room main line gained it in 2298, the drawer header
+        // in 2295 and the chooser header in 2300, but this mirror
+        // line still named the next talk with marks only. Same
+        // bank (libDurMap, built once per load in
+        // refreshLibMarkCache from Prefs.talkDurMap — path form
+        // first, stream form via the dlMap reverse lookup, the
+        // v5.59 legs folded into the bank, so the rows read it
+        // with one get, and so does this sum), same population
+        // (the SHOWN list — libDisplayCount / libEntryAtDisplay,
+        // the same list 2294's Play-all count uses, so a search
+        // filter or queue-only view re-totals with the list),
+        // same qTotalFmtDur idiom, same hidden-when-0 rule. The
+        // total is the shown list's, not the next talk's: a
+        // queued head may sit outside the shown list, exactly
+        // like 2298/2300's foreign head. Snapshot granularity:
+        // updateTotal refreshes on load, return, ⋮ actions,
+        // track changes and after every filter rebuild
+        // (applyDlFilter(); updateTotal();), so the total stays
+        // correct after a search/filter keystroke — like the
+        // counts beside it. Never on the counts line: the 2298
+        // rejection stands there (the MB total is the shelf's
+        // true total; this duration bank is playback-only).
+        String qTotSuf2301 = "";
+        long qTotMs2301 = 0;
+        for (int i = 0; i < libDisplayCount(); i++) {
+            Entry qTotDe2301 = libEntryAtDisplay(i);
+            if (qTotDe2301 == null || qTotDe2301.file == null) continue;
+            Integer qTotDur2301 = libDurMap == null ? null : libDurMap.get(qTotDe2301.file.getAbsolutePath());
+            if (qTotDur2301 != null && qTotDur2301.intValue() > 0) qTotMs2301 += qTotDur2301.intValue();
+        }
+        if (qTotMs2301 > 0) qTotSuf2301 = " · " + qTotalFmtDur2301(qTotMs2301 / 1000);
             String queueSuffix = "";
             String upNextLine = "";
             // v5.81: the footer's ◈ count skips the file now
@@ -9540,7 +9573,7 @@ public class DownloadedActivity extends Activity {
                         upNextLine = "\n" + Lang.t(DownloadedActivity.this, "next_prefix") + nx.title + nxSdSuffix66 + nxQueueMark
                                 + (libFavFiles.contains(nx.file.getName()) ? " ★" : "")
                                 + (libListenedFiles.contains(nx.file.getName()) ? " ✓" : "")
-                                + (nxRp != null ? " ↺ " + fmtDlTime(nxRp) : "");
+                                + (nxRp != null ? " ↺ " + fmtDlTime(nxRp) : "") + qTotSuf2301;
                     }
                 }
             }
@@ -9657,6 +9690,20 @@ public class DownloadedActivity extends Activity {
             int f = Prefs.fontSize(this);
             tv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, f == 0 ? 13 : (f == 1 ? 14 : 17));
         }
+    }
+
+    // v16.05 (slice 2301): the Downloaded footer's list-total formatter — the Room pair (2295) restated here: h/m with Myanmar digits on the Burmese UI, Latin digits otherwise; seconds-only past the minute floor read as seconds, like History.
+    private String qTotalNum2301(long n) {
+        String s = Long.toString(n);
+        return Lang.index(this) == 0 ? Prefs.statsDigitsPure(s) : s;
+    }
+
+    private String qTotalFmtDur2301(long sec) {
+        long h = sec / 3600, m = (sec % 3600) / 60, s = sec % 60;
+        if (h > 0) return qTotalNum2301(h) + " " + Lang.t(this, "hs_hour")
+                + " " + qTotalNum2301(m) + " " + Lang.t(this, "hs_min");
+        if (m > 0) return qTotalNum2301(m) + " " + Lang.t(this, "hs_min");
+        return qTotalNum2301(s) + " " + Lang.t(this, "hs_sec");
     }
 
     // v3.01: the v1.94 search-box sizing, extracted unchanged so

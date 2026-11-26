@@ -2192,7 +2192,7 @@ public class TalksActivity extends Activity {
         // runs on every search/filter/sort change too; without this
         // the count would go stale after a keystroke until the next
         // return. Null-safe before onCreate wires the button.
-        if (btnTalkPlayAll != null) btnTalkPlayAll.setText(Lang.t(TalksActivity.this, "pl_play_all") + " (" + (visibleHits != null ? visibleHits.size() : talks.size()) + ")");
+        if (btnTalkPlayAll != null) btnTalkPlayAll.setText(Lang.t(TalksActivity.this, "pl_play_all") + " (" + (visibleHits != null ? visibleHits.size() : talks.size()) + ")" + qTotalPlayAllSuf2302());
         // v15.45 (slice 1940): a rebuild can land the list deep
         // without a scroll event (load / search / filter / sort)
         // — repaint the back-to-top button from the new position.
@@ -5598,7 +5598,7 @@ public class TalksActivity extends Activity {
             // queues from, so the number is exactly what the tap will play).
             // ASCII digits in parens, the v15.96 header-count idiom; the label
             // stays pl_play_all, no new Lang key.
-            pa76.setText(Lang.t(this, "pl_play_all") + " (" + (visibleHits != null ? visibleHits.size() : talks.size()) + ")");
+            pa76.setText(Lang.t(this, "pl_play_all") + " (" + (visibleHits != null ? visibleHits.size() : talks.size()) + ")" + qTotalPlayAllSuf2302());
             pa76.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,
                     f == 0 ? 14 : (f == 1 ? 16 : 18));
             pa76.setBackgroundResource(night ? R.drawable.glass_btn_night : R.drawable.glass_btn);
@@ -6673,6 +6673,38 @@ public class TalksActivity extends Activity {
                     : " · 😴 ⏸ " + AudioService.sleepClock(sr74);
             else header += " · 😴";
         }
+        // v16.05 (slice 2300): the chooser header's Up Next line
+        // carries the list total time too ("· 2h 15m") — the Room
+        // main line gained it in 2298 and the drawer header in
+        // 2295, but this mirror line still named the next talk
+        // with marks only. Same sum, same population (talks),
+        // same two legs (stream form, then the downloaded path
+        // form — the v5.59 legs, same as the chooser rows),
+        // same qTotalFmtDur idiom, same hidden-when-0 rule. The
+        // total is the same number the Room line and the drawer
+        // header show, so the three lines can never disagree.
+        // Appended to BOTH Up Next branches below (foreign head
+        // and in-list), exactly like 2298 appends after both
+        // Room branches: the number is this list's total, not
+        // the next talk's. Snapshot granularity: the header
+        // refreshes on load, return and queue-menu actions, not
+        // on the strip's 1s tick — like the ⏳% beside it.
+        String qTotSuf2300 = "";
+        long qTotMs2300 = 0;
+        for (int i = 0; i < talks.size(); i++) {
+            String qTotUrl2300 = talks.get(i).url;
+            Integer qTotDur2300 = talkDurCache == null ? null : talkDurCache.get(qTotUrl2300);
+            if (qTotDur2300 == null && talkDurCache != null && talkDlCache.contains(qTotUrl2300)) {
+                String qTotDlFn2300 = talkDlFileCache.get(qTotUrl2300);
+                if (qTotDlFn2300 != null) {
+                    String qTotDlPath2300 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                            android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + qTotDlFn2300).getAbsolutePath();
+                    qTotDur2300 = talkDurCache.get(qTotDlPath2300);
+                }
+            }
+            if (qTotDur2300 != null && qTotDur2300.intValue() > 0) qTotMs2300 += qTotDur2300.intValue();
+        }
+        if (qTotMs2300 > 0) qTotSuf2300 = " · " + qTotalFmtDur2300(qTotMs2300 / 1000);
         // v7.22: a foreign queue head outranks the in-list next —
         // the Room's handleNext hands over to it first (v7.08),
         // but this header resolved next from talkQueue only
@@ -6743,7 +6775,7 @@ public class TalksActivity extends Activity {
             }
             if (fxRp > 5000) fxMark += " ↺ " + Fx.fmtTime(fxRp);
             header += "\n" + Lang.t(TalksActivity.this, "next_prefix") + (fxHead.title.length() > 0 ? fxHead.title : fxHead.url)
-                    + " · " + fxHead.sayadaw + fxMark;
+                    + " · " + fxHead.sayadaw + fxMark + qTotSuf2300;
         } else if (nxTalk != null) {
             // v4.71: the Up Next line gains the offline marks the
             // Room surfaces both carry — ⬇ when the named talk is
@@ -6826,7 +6858,7 @@ public class TalksActivity extends Activity {
             }
             header += "\n" + Lang.t(TalksActivity.this, "next_prefix") + nx.title + nxMark + (nxFav ? " ★" : "")
                     + (nxPlayed ? " ✓" : "")
-                    + (nxRp > 5000 ? " ↺ " + Fx.fmtTime(nxRp) : "");
+                    + (nxRp > 5000 ? " ↺ " + Fx.fmtTime(nxRp) : "") + qTotSuf2300;
         }
         // v15.31 (slice 1824): snapshot the header text BEFORE the
         // rewrite — the v14.56 tick arm's baseline, now owned here.
@@ -6863,6 +6895,59 @@ public class TalksActivity extends Activity {
                 Fx.fadeIn(ht, 250);
         }
         headerFadePrimed = true;
+    }
+
+    // v16.05 (slice 2300): the chooser header's list-total formatter — the Room pair (2295) restated here: h/m with Myanmar digits on the Burmese UI, Latin digits otherwise; seconds-only past the minute floor read as seconds, like History.
+    private String qTotalNum2300(long n) {
+        String s = Long.toString(n);
+        return Lang.index(this) == 0 ? Prefs.statsDigitsPure(s) : s;
+    }
+
+    private String qTotalFmtDur2300(long sec) {
+        long h = sec / 3600, m = (sec % 3600) / 60, s = sec % 60;
+        if (h > 0) return qTotalNum2300(h) + " " + Lang.t(this, "hs_hour")
+                + " " + qTotalNum2300(m) + " " + Lang.t(this, "hs_min");
+        if (m > 0) return qTotalNum2300(m) + " " + Lang.t(this, "hs_min");
+        return qTotalNum2300(s) + " " + Lang.t(this, "hs_sec");
+    }
+
+    // v16.05 (slice 2302): the chooser Play-all button gains the list
+    // total time too (" · 2h 15m") — the same total 2300 puts on the
+    // chooser header, but over the VISIBLE list (visibleHits when a
+    // search/filter is active, else talks) — the same list the count
+    // names and the tap queues, so the button can never disagree
+    // with either. Same bank (talkDurCache, the v5.59 two legs,
+    // same as 2300), same qTotalFmtDur2300 idiom, same
+    // hidden-when-0 rule. One helper, called at BOTH setText sites
+    // (rebuildVisible and playAllShown/applyTheme): 2293 touched
+    // both for the count, and a suffix set at only one site would
+    // go stale after a keystroke/return. The sum walks display
+    // positions through talkIndexAtDisplay — the same mapping
+    // playAllShown queues from — so a sort reversal or a narrowed
+    // search re-totals with the list.
+    private String qTotalPlayAllSuf2302() {
+        if (talks == null || talks.isEmpty()) return "";
+        int qTotDisp2302 = visibleHits != null ? visibleHits.size() : talks.size();
+        long qTotMs2302 = 0;
+        for (int qTotDp2302 = 0; qTotDp2302 < qTotDisp2302; qTotDp2302++) {
+            int qTotTi2302 = talkIndexAtDisplay(qTotDp2302);
+            if (qTotTi2302 < 0 || qTotTi2302 >= talks.size()) continue;
+            Talk qTotTalk2302 = talks.get(qTotTi2302);
+            if (qTotTalk2302 == null || qTotTalk2302.url == null) continue;
+            String qTotUrl2302 = qTotTalk2302.url;
+            Integer qTotDur2302 = talkDurCache == null ? null : talkDurCache.get(qTotUrl2302);
+            if (qTotDur2302 == null && talkDurCache != null && talkDlCache.contains(qTotUrl2302)) {
+                String qTotDlFn2302 = talkDlFileCache.get(qTotUrl2302);
+                if (qTotDlFn2302 != null) {
+                    String qTotDlPath2302 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                            android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + qTotDlFn2302).getAbsolutePath();
+                    qTotDur2302 = talkDurCache.get(qTotDlPath2302);
+                }
+            }
+            if (qTotDur2302 != null && qTotDur2302.intValue() > 0) qTotMs2302 += qTotDur2302.intValue();
+        }
+        if (qTotMs2302 > 0) return " · " + qTotalFmtDur2300(qTotMs2302 / 1000);
+        return "";
     }
 
     private void scrollToPlayingOnReturn() {

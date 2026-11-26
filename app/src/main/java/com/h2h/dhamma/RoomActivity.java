@@ -1619,6 +1619,33 @@ public class RoomActivity extends Activity {
                 }
             }
         }
+        // v16.05 (slice 2298): the Room main Up Next line carries
+        // the queue's total time too ("· 2h 15m") — the drawer header
+        // gained it in 2295, but the drawer sits one tap away,
+        // invisible from the main screen, and the main line restates
+        // the drawer line (2291 fold list). Same sum, same population
+        // (talks), same two legs (stream form, then the downloaded
+        // path form — the v5.59 legs, same as the hairline), same
+        // qTotalFmtDur2295 formatter, same hidden-when-0 rule; rides
+        // the same 500ms poll + change-only guard as the line itself
+        // (v15.99), so the total lands within one tick and steady
+        // ticks no-op. The want != null guard appends only when a
+        // next talk exists (the line is visible); talks != null is
+        // implied by want != null, kept as cheap defence.
+        if (want != null && talks != null) {
+            long qTotMs2298 = 0;
+            for (int i = 0; i < talks.size(); i++) {
+                String qTotUrl2298 = talks.get(i).url;
+                Integer qTotDur2298 = drawerDurCache == null ? null : drawerDurCache.get(qTotUrl2298);
+                if (qTotDur2298 == null && drawerDurCache != null && isDownloadedFile(qTotUrl2298)) {
+                    String qTotDl2298 = downloadedFileName(qTotUrl2298);
+                    if (qTotDl2298 != null)
+                        qTotDur2298 = drawerDurCache.get(downloadsFile(qTotDl2298).getAbsolutePath());
+                }
+                if (qTotDur2298 != null && qTotDur2298.intValue() > 0) qTotMs2298 += qTotDur2298.intValue();
+            }
+            if (qTotMs2298 > 0) want += " · " + qTotalFmtDur2295(qTotMs2298 / 1000);
+        }
         if (want == null) {
             if (roomUpNext.getVisibility() != android.view.View.GONE) roomUpNext.setVisibility(android.view.View.GONE);
         } else {

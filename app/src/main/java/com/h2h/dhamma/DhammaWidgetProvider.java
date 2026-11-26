@@ -492,7 +492,25 @@ public class DhammaWidgetProvider extends AppWidgetProvider {
         boolean sounding = widgetTitleGoldPure(AudioService.liveSession,
                 AudioService.liveHasTrack, AudioService.liveEnded);
         views.setTextColor(R.id.wg_title, sounding ? 0xFFE8C878 : 0xFFFFFFFF);
-        views.setTextViewText(R.id.wg_sayadaw, sayadaw);
+        // v16.05 (slice 2299): the widget's sayadaw line carries
+        // the queue position too ("· 3/12") — the nine strips have
+        // it since v16.01 and the card since 2281, but the home
+        // screen never did. Same helper (Fx.stripQueuePosSuffix:
+        // room reads lastQueuePos, lib reads lastLibQueuePos, the
+        // 2278/2279 service writers keep both fresh on track
+        // start), same " · N / M" shape as the card's sub, same
+        // hidden-when-blank rule. A separate display string: the
+        // bare sayadaw still feeds the photo placeholder and the
+        // GONE-when-empty visibility gate below, so a position can
+        // never leak into the initials or conjure a line from an
+        // empty name. Rides the widget's existing refreshes (state
+        // edges + the 15s tick while playing, the 2226 rule), so
+        // the position lands on the track-start edge like the
+        // card's. No layout change — the v15.94 height budget
+        // leaves 2.14dp, so a new view would break the Large fit;
+        // appending to the existing line costs no height.
+        String wgSayadaw2299 = sayadaw + Fx.stripQueuePosSuffix(sp, isLib ? "lib" : "room");
+        views.setTextViewText(R.id.wg_sayadaw, wgSayadaw2299);
         views.setViewVisibility(R.id.wg_sayadaw,
                 sayadaw.length() > 0 ? android.view.View.VISIBLE : android.view.View.GONE);
 
