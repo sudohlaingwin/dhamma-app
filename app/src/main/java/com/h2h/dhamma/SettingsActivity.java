@@ -3340,6 +3340,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                         ? Lang.t(SettingsActivity.this, "toast_hist_live")
                         : Lang.t(SettingsActivity.this, "toast_hist"),
                 android.widget.Toast.LENGTH_SHORT).show();
+        refreshStatsSection2292(); // v16.04 (slice 2292): the clear wipes listenStats66 but never calls refresh() — without this the section would keep the pre-clear totals until the next return
     }
 
     private void setLabelText(int id, String key) {
@@ -3412,6 +3413,82 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
     // is NOT put on the tick). Same app-scoped rules as before:
     // .mp3 files in Downloads/Dhamma, in-progress = Dhamma/
     // destination or a dlMap source URL; other apps never count.
+    // v16.04 (slice 2292): Settings stats section — the three History
+    // stats (total time, day streak, most-listened sayadaw) on the
+    // reachable Settings screen; the History screen carrying them has
+    // no entry point. Same readers as History.refresh() (the three
+    // public Prefs readers, one store read per reader — the History
+    // shape), same labels (hs_total_label / hs_streak_label /
+    // hs_top_label, no new Lang key), same gold values (0xFFC9A227)
+    // and the same "—" empty top sayadaw, with its time as the muted
+    // note under it (the History topSub idiom). The section title
+    // reuses hs_title (the History screen's own title, 12 languages)
+    // — no new key. Values are set plainly, never melted (the v14.16
+    // settled decision: values, not appearance changes). Called from
+    // refresh() (fresh open, every onResume, every choice tap) and
+    // from the clear path, so a clear reads empty at once instead of
+    // waiting for a return.
+    private String statsNum2292(long n) {
+        String s = Long.toString(n);
+        return Lang.index(this) == 0 ? Prefs.statsDigitsPure(s) : s;
+    }
+
+    private String statsFmtDur2292(long sec) {
+        long h = sec / 3600, m = (sec % 3600) / 60, s = sec % 60;
+        if (h > 0) return statsNum2292(h) + " " + Lang.t(this, "hs_hour")
+                + " " + statsNum2292(m) + " " + Lang.t(this, "hs_min");
+        if (m > 0) return statsNum2292(m) + " " + Lang.t(this, "hs_min");
+        return statsNum2292(s) + " " + Lang.t(this, "hs_sec");
+    }
+
+    private void refreshStatsSection2292() {
+        long total2292 = Prefs.statsTotal(this);
+        int streak2292 = Prefs.statsStreak(this);
+        String[] top2292 = Prefs.statsTopSayadaw(this);
+        int fs2292 = Prefs.fontSize(this);
+        float btn2292 = fs2292 == 0 ? 14 : (fs2292 == 1 ? 16 : 18);
+        float note2292 = fs2292 == 0 ? 12 : (fs2292 == 1 ? 13 : 16);
+        TextView tl2292 = findViewById(R.id.lblStatsTotal);
+        if (tl2292 != null) tl2292.setText(Lang.t(this, "hs_total_label"));
+        TextView tv2292 = findViewById(R.id.statsTotalValue);
+        if (tv2292 != null) {
+            tv2292.setText(statsFmtDur2292(total2292));
+            tv2292.setTextColor(Color.parseColor("#C9A227"));
+            tv2292.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn2292);
+        }
+        TextView sl2292 = findViewById(R.id.lblStatsStreak);
+        if (sl2292 != null) sl2292.setText(Lang.t(this, "hs_streak_label"));
+        TextView sv2292 = findViewById(R.id.statsStreakValue);
+        if (sv2292 != null) {
+            sv2292.setText(statsNum2292(streak2292) + " " + Lang.t(this, "hs_days"));
+            sv2292.setTextColor(Color.parseColor("#C9A227"));
+            sv2292.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn2292);
+        }
+        TextView pl2292 = findViewById(R.id.lblStatsTop);
+        if (pl2292 != null) pl2292.setText(Lang.t(this, "hs_top_label"));
+        TextView pv2292 = findViewById(R.id.statsTopValue);
+        if (pv2292 != null) {
+            pv2292.setText(top2292 == null ? "—" : top2292[0]);
+            pv2292.setTextColor(Color.parseColor("#C9A227"));
+            pv2292.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn2292);
+        }
+        TextView ps2292 = findViewById(R.id.statsTopSub);
+        if (ps2292 != null) {
+            String sub2292 = "";
+            if (top2292 != null) {
+                try { sub2292 = statsFmtDur2292(Long.parseLong(top2292[1])); }
+                catch (Exception ignored) {}
+            }
+            ps2292.setText(sub2292);
+            // muted, like the downloaded-size note under the Downloaded row
+            // (the sub is a note, not a stat value — only the three
+            // values above are gold).
+            ps2292.setTextColor(Prefs.isNight(this)
+                    ? Color.parseColor("#AAAAAA") : Color.parseColor("#7A6A58"));
+            ps2292.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, note2292);
+        }
+    }
+
     private void refreshDownloadedButton53(boolean melt94) {
         try {
             android.widget.TextView dlBtn = findViewById(R.id.btnDownloaded);
@@ -4023,10 +4100,10 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         float note = fs == 0 ? 12 : (fs == 1 ? 13 : 16);
         float btn = fs == 0 ? 14 : (fs == 1 ? 16 : 18);
         if (titleText != null) titleText.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, fs == 0 ? 22 : (fs == 1 ? 26 : 32));
-        int[] labelIds = {R.id.labelLanguage, R.id.labelFont, R.id.labelAltar, R.id.lblRepeat, R.id.lblSleep, R.id.lblClearData, R.id.lblVersion, R.id.btnDownloaded, R.id.btnTeam, R.id.btnPolicy};
+        int[] labelIds = {R.id.labelLanguage, R.id.labelFont, R.id.labelAltar, R.id.lblRepeat, R.id.lblSleep, R.id.lblStatsTotal, R.id.lblStatsStreak, R.id.lblStatsTop, R.id.lblClearData, R.id.lblVersion, R.id.btnDownloaded, R.id.btnTeam, R.id.btnPolicy};
         for (int id : labelIds) { TextView lv = findViewById(id); if (lv != null) { lv.setTextColor(ink); lv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, lbl); } }
         // v12.94: section headers — small muted caps, not card titles.
-        for (int id : new int[]{R.id.secAppearance, R.id.secPlayback, R.id.secNoti, R.id.secData, R.id.secAbout}) { TextView hv = findViewById(id); if (hv != null) { hv.setTextColor(muted); hv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, note); } }
+        for (int id : new int[]{R.id.secAppearance, R.id.secPlayback, R.id.secStats, R.id.secNoti, R.id.secData, R.id.secAbout}) { TextView hv = findViewById(id); if (hv != null) { hv.setTextColor(muted); hv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, note); } }
         for (int id : new int[]{R.id.notiNote, R.id.autoDlNote, R.id.dataSaverNote, R.id.downloadedSizeNote, R.id.aboutSrc}) { TextView nv = findViewById(id); if (nv != null) { nv.setTextColor(muted); nv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, note); } }
         // v13.35: no second Prefs.fontSize read here — fs above is reused below (was int f).
         // v14.69 (slice 1726): refreshBlockedChannelMark88() is now
@@ -4118,6 +4195,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         // runs on create, on return and inside every choice dip).
         setLabelText(R.id.secAppearance, "sec_appearance");
         setLabelText(R.id.secPlayback, "sec_playback");
+        setLabelText(R.id.secStats, "hs_title"); // v16.04 (slice 2292): the stats section title reuses the History screen's own title — no new Lang key
         setLabelText(R.id.secNoti, "sec_noti");
         setLabelText(R.id.secData, "sec_data");
         setLabelText(R.id.secAbout, "sec_about");
@@ -4151,6 +4229,7 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         // flight short on a return refresh, so it is gone.
         setBtnText(R.id.btnDownloaded, "downloaded");
         refreshDownloadedButton53(false); // v14.94: refresh() adopts instantly — themeDip owns the motion on toggle taps (v14.65 rule)
+        refreshStatsSection2292(); // v16.04 (slice 2292): the stats section refreshes with the rest of the screen (fresh open, every onResume, every choice tap)
         setBtnText(R.id.btnResetAll, "reset");
         setLabelText(R.id.aboutSrc, "footer_src");
         setBtnText(R.id.btnTeam, "team_btn");

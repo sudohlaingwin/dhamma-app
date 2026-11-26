@@ -223,6 +223,17 @@ public class RoomActivity extends Activity {
     // handover branch skips it and the settle's end action starts
     // the loop; a pause or a leave clears the flag with the view.
     private boolean roomPulseSettling = false;
+
+    // v16.04 (slice 2296): the live-hairline tick guard — the
+    // (url, fraction) the poll last painted on the sounding row,
+    // so a steady tick never re-writes identical layout weights
+    // (a progress value, not an appearance change — the v15.26
+    // rule). Reset whenever the poll finds no live row (drawer
+    // closed, scrolled out, nothing sounding), so the next
+    // sighting repaints at once; getView stays the bind
+    // authority, the tick is only a refresh.
+    private String lastLiveHairUrl96 = null;
+    private float lastLiveHairFrac96 = -1f;
     private boolean lastPollActive = false;
     // v11.16: ended state the poll last saw — mirrors Main's
     // mainGridEnded / Talks' talkRowEnded (v11.15): the Room
@@ -7712,6 +7723,60 @@ if (snd65 >= 0) currentIndex = snd65;
                         roomPulseView = null;
                     }
                 }
+                // v16.04 (slice 2296): the sounding row's hairline
+                // is LIVE — the 500ms poll rebinds the drawer only
+                // on a resync/track change (v11.16: steady ticks
+                // never touch the adapter), so a getView-only lift
+                // would freeze the fill at the last rebind and jump
+                // on the next one. The poll already reaches the
+                // sounding row's visible child every tick for the
+                // pulse (v2.27, the block above — drawerPosOfTalk
+                // + getChildAt), so this block repaints the
+                // hairline on the same tick, through the same
+                // mapping, for the foreign row too
+                // (drawerPosOfQueueUrl, the fadeDroppedQueueRow
+                // shape). Drawer-open-only; a scrolled-out row has
+                // no child and is skipped (its next bind paints
+                // it); a fraction of 0 melts the track out (seek to
+                // start, unknown duration) through the same
+                // crossfadeHairline the bind uses, which no-ops
+                // when the shown state is unchanged. Change-only
+                // on the weight split (the v15.26 rule: a progress
+                // value, not an appearance change), so a paused
+                // talk never re-lays-out its row. No new timer —
+                // the existing 500ms poll; the position itself
+                // refreshes on the service's 1s livePos tick.
+                {
+                    String liveHairUrl96 = null;
+                    float liveHairFrac96 = 0f;
+                    android.view.View liveHairRow96 = null;
+                    if (isPlayListPanelOpen() && !AudioService.liveEnded && service != null && service.hasTrack()) {
+                        liveHairUrl96 = soundingUrlForQueue();
+                        if (liveHairUrl96 != null && liveHairUrl96.length() > 0) {
+                            liveHairFrac96 = liveHairFrac2296(liveHairUrl96);
+                            if (roomList != null) {
+                                int dp96 = drawerPosOfQueueUrl(liveHairUrl96);
+                                if (dp96 >= 0) liveHairRow96 = roomList.getChildAt(dp96 - roomList.getFirstVisiblePosition());
+                            }
+                        }
+                    }
+                    if (liveHairRow96 != null) {
+                        android.view.View hairTrack96 = liveHairRow96.findViewById(R.id.hairTrack);
+                        android.view.View hairFill96 = liveHairRow96.findViewById(R.id.hairFill);
+                        android.view.View hairSpace96 = liveHairRow96.findViewById(R.id.hairSpace);
+                        if (hairTrack96 != null) Fx.crossfadeHairline(hairTrack96, liveHairFrac96 > 0f);
+                        if (liveHairFrac96 > 0f && hairFill96 != null && hairSpace96 != null
+                                && (!liveHairUrl96.equals(lastLiveHairUrl96) || liveHairFrac96 != lastLiveHairFrac96)) {
+                            lastLiveHairUrl96 = liveHairUrl96;
+                            lastLiveHairFrac96 = liveHairFrac96;
+                            hairFill96.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, liveHairFrac96));
+                            hairSpace96.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1f - liveHairFrac96));
+                        }
+                    } else {
+                        lastLiveHairUrl96 = null;
+                        lastLiveHairFrac96 = -1f;
+                    }
+                }
                 if (!seeking) {
                     int dur = service.getDuration();
                     int pos = service.getPosition();
@@ -8708,6 +8773,33 @@ int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
                         want += "\n" + Lang.t(RoomActivity.this, "next_prefix") + nx.title + nxMark;
                         }
                     }
+                    // v16.04 (slice 2295): the drawer header also carries
+                    // the queue's total time ("· 2h 15m") — the last queue
+                    // surface without a duration: footer counts, chips
+                    // counts and Up Next marks all exist, but the header
+                    // never said how long the queue is. Sum over the
+                    // drawer list (talks — the same population as the
+                    // counts beside it), stream form first then the
+                    // downloaded path form — the v5.59 two legs, same
+                    // as the hairline — unknown durations skipped.
+                    // Hidden when the sum is 0/unknown: blank appends
+                    // nothing, the 2288 precedent. Rides the same
+                    // 500ms tick + change-only rule + header melt as
+                    // the header counts (the sum is structural, so a
+                    // queue change melts; the strip keeps it, unlike
+                    // the ⏳ percent and the sleep countdown).
+                    long qTotMs2295 = 0;
+                    for (int i = 0; i < talks.size(); i++) {
+                        String qTotUrl2295 = talks.get(i).url;
+                        Integer qTotDur2295 = drawerDurCache == null ? null : drawerDurCache.get(qTotUrl2295);
+                        if (qTotDur2295 == null && drawerDurCache != null && isDownloadedFile(qTotUrl2295)) {
+                            String qTotDl2295 = downloadedFileName(qTotUrl2295);
+                            if (qTotDl2295 != null)
+                                qTotDur2295 = drawerDurCache.get(downloadsFile(qTotDl2295).getAbsolutePath());
+                        }
+                        if (qTotDur2295 != null && qTotDur2295.intValue() > 0) qTotMs2295 += qTotDur2295.intValue();
+                    }
+                    if (qTotMs2295 > 0) want += " · " + qTotalFmtDur2295(qTotMs2295 / 1000);
                     // v4.25: the drawer header carries the sleep
                     // countdown too — the clock-row view hides
                     // behind the open drawer, so a queue glance
@@ -8949,6 +9041,65 @@ int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
             return (total / 3600) + ":" + String.format(java.util.Locale.US, "%02d", (total % 3600) / 60)
                     + ":" + String.format(java.util.Locale.US, "%02d", total % 60);
         return (total / 60) + ":" + String.format(java.util.Locale.US, "%02d", total % 60);
+    }
+
+    // v16.04 (slice 2295): the drawer header's queue-total formatter —
+    // the History fmtDur idiom, local to Room (History's method is
+    // instance-bound there): h/m with Myanmar digits on the Burmese
+    // UI, Latin digits otherwise; seconds-only past the minute floor
+    // read as seconds, like History.
+    private String qTotalNum2295(long n) {
+        String s = Long.toString(n);
+        return Lang.index(this) == 0 ? Prefs.statsDigitsPure(s) : s;
+    }
+
+    private String qTotalFmtDur2295(long sec) {
+        long h = sec / 3600, m = (sec % 3600) / 60, s = sec % 60;
+        if (h > 0) return qTotalNum2295(h) + " " + Lang.t(this, "hs_hour")
+                + " " + qTotalNum2295(m) + " " + Lang.t(this, "hs_min");
+        if (m > 0) return qTotalNum2295(m) + " " + Lang.t(this, "hs_min");
+        return qTotalNum2295(s) + " " + Lang.t(this, "hs_sec");
+    }
+
+    // v16.04 (slice 2296): the sounding row's live hairline
+    // fraction — the one helper the two drawer binds (J2/J3) and
+    // the poll's live repaint (J4) share. The sounding row is the
+    // only row whose hairline reads the SERVICE's live position
+    // (AudioService.livePositionMs, the 1s tick the strips read —
+    // Fx.syncStripProgress) instead of the saved spot: the saved
+    // spot is written on pause/checkpoint, so it lags the talk by
+    // seconds, while the live tick advances every second.
+    // Validated against the row: the live URL must name this talk
+    // (SiteHttp.sameTalk, the v13.59 rule) or its downloaded path
+    // form (the isCurrentTalk equivalence — an offline play holds
+    // the local path as the live URL). A stale live position from
+    // another talk, a stopped session (livePositionMs 0) or a
+    // failed track (getEffectivePosition 0, v11.77) all read 0,
+    // so the row shows no line rather than a wrong one. Same
+    // gates as the saved leg: hidden at/below 5s, same
+    // drawerDurCache duration (stream form first, then the
+    // downloaded path form, the v5.59 two legs), same 3% sliver
+    // + 1.0 clamp. No new timer, no service change.
+    private float liveHairFrac2296(String url) {
+        if (url == null) return 0f;
+        String live = AudioService.liveUrl;
+        if (live == null) return 0f;
+        if (!SiteHttp.sameTalk(live, url)) {
+            String local = localPathFor(url);
+            if (local == null || !local.equals(live)) return 0f;
+        }
+        int pos = AudioService.livePositionMs;
+        if (pos <= 5000) return 0f;
+        Integer durI = drawerDurCache == null ? null : drawerDurCache.get(url);
+        if (durI == null && drawerDurCache != null && isDownloadedFile(url)) {
+            String dlFn = downloadedFileName(url);
+            if (dlFn != null)
+                durI = drawerDurCache.get(downloadsFile(dlFn).getAbsolutePath());
+        }
+        if (durI == null || durI.intValue() <= 0) return 0f;
+        float frac = Math.min(1f, (float) pos / (float) durI.intValue());
+        if (frac < 0.03f) frac = 0.03f;
+        return frac;
     }
 
     // v1.51: rotating the phone used to re-randomise the shrine photo
@@ -16450,7 +16601,23 @@ if (snd67q >= 0) currentIndex = snd67q;
                     // has no path form when the file was downloaded
                     // after the listen). Same 3% sliver and 1.0
                     // clamp as the chooser/library hairline.
+                    // v16.04 (slice 2296): the sounding row is the
+                    // ONE exception to the v13.98 gate below — when
+                    // the drawer is open the Room wave and controls
+                    // sit behind the 300dp drawer panel, so this row
+                    // is the live surface the user watches. Its
+                    // hairline fills from the service's live position
+                    // (liveHairFrac2296, beside formatTime) instead
+                    // of the saved spot; every other row keeps the
+                    // saved leg below. The ↺ mark above stays gated
+                    // — the row shows progress, never a resume spot.
+                    // The saved leg's gate is untouched: the two legs
+                    // are mutually exclusive, so a sounding row never
+                    // falls through to the saved fraction.
                     float hairFrac = 0f;
+                    if (fSounding) {
+                        hairFrac = liveHairFrac2296(fe.url);
+                    }
                     if (frp > 5000 && !fSounding) {
                         Integer durI = drawerDurCache.get(fe.url);
                         if (durI == null && fDownloaded) {
@@ -16812,6 +16979,17 @@ if (snd67q >= 0) currentIndex = snd67q;
                         if (hairFrac < 0.03f) hairFrac = 0.03f;
                     }
                 }
+            }
+            // v16.04 (slice 2296): the in-list sounding row —
+            // the same lift as the foreign branch above (the scout
+            // counted only the frp token; first-hand this branch
+            // excludes the sounding row too, as talkIdx !=
+            // playIdx71). Same live fraction, same helper; the
+            // !liveEnded leg matches rowPlaying116 below, so an
+            // ended talk keeps its no-hairline rule and the ↺ mark
+            // above stays suppressed on the sounding row.
+            if (talkIdx == playIdx71 && !AudioService.liveEnded) {
+                hairFrac = liveHairFrac2296(t.url);
             }
             // v11.16: an ended talk is not playing — the v11.15
             // class on the fourth surface: this bind marked the

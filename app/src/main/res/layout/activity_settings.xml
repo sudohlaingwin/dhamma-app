@@ -435,6 +435,126 @@
         android:textSize="16sp" />
 
     <TextView
+        android:id="@+id/secStats"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:letterSpacing="0.06"
+        android:paddingVertical="4dp"
+        android:text="📊 နားထောင်မှု မှတ်တမ်း"
+        android:textColor="@color/muted"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+
+    <!-- v16.04 (slice 2292): Settings stats section — the three History
+         stats (total listening time, day streak, most-listened sayadaw)
+         on the reachable Settings screen; the History screen carrying
+         them has no entry point. Display-only value rows, same shape
+         as the repeat row above (label + value, 14dp padding); values
+         in gold like the History stat values. The top row carries its
+         time as a muted note under it, the History topSub idiom. -->
+    <LinearLayout
+        android:id="@+id/rowStatsTotal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingVertical="14dp">
+        <TextView
+            android:id="@+id/lblStatsTotal"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="နားထောင်ပြီးချိန် စုစုပေါင်း"
+            android:textColor="@color/ink"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/statsTotalValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textColor="#C9A227"
+            android:textSize="16sp" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#26C9A227" />
+
+    <LinearLayout
+        android:id="@+id/rowStatsStreak"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingVertical="14dp">
+        <TextView
+            android:id="@+id/lblStatsStreak"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="ရက် ဆက်တိုက်"
+            android:textColor="@color/ink"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/statsStreakValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textColor="#C9A227"
+            android:textSize="16sp" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#26C9A227" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+    <LinearLayout
+        android:id="@+id/rowStatsTop"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingVertical="14dp">
+        <TextView
+            android:id="@+id/lblStatsTop"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="အများဆုံး နားထောင်ခဲ့သော ဆရာတော်"
+            android:textColor="@color/ink"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/statsTopValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text=""
+            android:textColor="#C9A227"
+            android:textSize="16sp" />
+    </LinearLayout>
+        <TextView
+            android:id="@+id/statsTopSub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingBottom="8dp"
+            android:paddingStart="2dp"
+            android:text=""
+            android:textColor="@color/muted"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <TextView
         android:id="@+id/secNoti"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

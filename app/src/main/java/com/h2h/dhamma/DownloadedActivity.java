@@ -9085,6 +9085,14 @@ public class DownloadedActivity extends Activity {
         paintDlUnheardBtnFromList();
         // v15.57 (slice 2003): a rebuild can also land the list deep (new list, new filter) — repaint the top button from the new position too (the 1940 Talks shape; the same posted read covers the rotation restore, which setSelections right after this filter pass in loadList).
         paintDlTopBtnFromList();
+        // v16.04 (slice 2294): the Play-all button names its count — the
+        // same text the restyle block sets, repainted here because
+        // applyTheme runs only on create/return while applyDlFilter
+        // runs on every search/filter/sort change too; without this
+        // the count would go stale after a keystroke until the next
+        // return. Null-safe before onCreate wires the button.
+        android.widget.Button pb94 = findViewById(R.id.btnDlPlayAll);
+        if (pb94 != null) pb94.setText(Lang.t(DownloadedActivity.this, "dl_play_all_btn") + " (" + libDisplayCount() + ")");
     }
 
     // v15.45 (slice 1938): empty-library Browse button — show it
@@ -9771,7 +9779,14 @@ public class DownloadedActivity extends Activity {
         android.widget.Button rb = findViewById(R.id.btnDlRandom);
         if (rb != null) rb.setText(Lang.t(this, "dl_random_btn"));
         android.widget.Button pb = findViewById(R.id.btnDlPlayAll);
-        if (pb != null) pb.setText(Lang.t(this, "dl_play_all_btn"));
+        // v16.04 (slice 2294): the Play-all button names its count — the
+        // display count it will play through (libDisplayCount: the shown
+        // list, or the queue in queue-only view — the same list
+        // firstDisplayEntry plays from, so the number is exactly what
+        // the tap will play). ASCII digits in parens, the v15.96
+        // header-count idiom; the label stays dl_play_all_btn, no new
+        // Lang key.
+        if (pb != null) pb.setText(Lang.t(this, "dl_play_all_btn") + " (" + libDisplayCount() + ")");
         android.widget.Button db = findViewById(R.id.btnDlDeleteAll);
         if (db != null) db.setText(Lang.t(this, "dl_delete_all_btn"));
         // v15.45 (slice 1938): the empty-library Browse button

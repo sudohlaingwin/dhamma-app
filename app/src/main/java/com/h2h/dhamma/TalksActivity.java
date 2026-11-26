@@ -2186,6 +2186,13 @@ public class TalksActivity extends Activity {
                 countView.setVisibility(android.view.View.GONE);
             }
         }
+        // v16.04 (slice 2293): the Play-all button names its count — the
+        // same text the restyle block sets, repainted here because
+        // applyTheme runs only on create/return while rebuildVisible
+        // runs on every search/filter/sort change too; without this
+        // the count would go stale after a keystroke until the next
+        // return. Null-safe before onCreate wires the button.
+        if (btnTalkPlayAll != null) btnTalkPlayAll.setText(Lang.t(TalksActivity.this, "pl_play_all") + " (" + (visibleHits != null ? visibleHits.size() : talks.size()) + ")");
         // v15.45 (slice 1940): a rebuild can land the list deep
         // without a scroll event (load / search / filter / sort)
         // — repaint the back-to-top button from the new position.
@@ -5585,7 +5592,13 @@ public class TalksActivity extends Activity {
         // Burmese display is byte-identical to the layout text.
         android.widget.Button pa76 = btnTalkPlayAll;
         if (pa76 != null) {
-            pa76.setText(Lang.t(this, "pl_play_all"));
+            // v16.04 (slice 2293): the Play-all button names its count — the
+            // shown-talk count it will queue (visibleHits when a search/filter
+            // is active, else the full list — the same expression playAllShown
+            // queues from, so the number is exactly what the tap will play).
+            // ASCII digits in parens, the v15.96 header-count idiom; the label
+            // stays pl_play_all, no new Lang key.
+            pa76.setText(Lang.t(this, "pl_play_all") + " (" + (visibleHits != null ? visibleHits.size() : talks.size()) + ")");
             pa76.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,
                     f == 0 ? 14 : (f == 1 ? 16 : 18));
             pa76.setBackgroundResource(night ? R.drawable.glass_btn_night : R.drawable.glass_btn);
