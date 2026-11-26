@@ -630,6 +630,12 @@ public class BookmarksActivity extends Activity {
 
     private int goldColor() { return 0xFFC9A227; } // v15.64 (slice 2041): History's gold, the playing-row mark
 
+// v16.07 (slice 2315): the Bookmarks row gains its remaining time — the row already names its resume spot (2211, "↺ 45:00 · 12:34 · title") and its total length (2200, the right-edge clock); this appends the time still to go after the resume prefix ("↺ 45:00 · 29:41 left · 12:34 · title", remaining = total length − resume spot) over the SAME row, resolved through the 2200 resolver (bmRowDurMs, the snapshot read the clock uses — a second map lookup, never a Prefs parse) and formatted by the EXISTING FavTalkRail.fmtTime (the resume prefix's own formatter, mm:ss — the 2305 "2h 15m" idiom is the wrong shape beside "↺ 45:00", and Fx.fmtTime is the clock idiom), so no new formatter and no new Lang key; hidden-when-0, an unknown total, a spot at or below the row's own gate (bmRowPos11 > 5000 AND more than 5s from the mark minute — the 2211 gate), or a remaining <= 0 keeps exactly today's row text — never a guessed time, never "· 0:00", never "left" with no number; never the playing row (its live position is on the strip, the 2202 hairline rule, the 1092 gate — the resume spot itself still shows there, the 2211 shape); one paint site (itemRow(), beside the resume prefix) — the remaining rides the existing change detection (the strip tick rebinds rows when the snapshots move), so no new timer, no new key; the 2305 header total, the 2200 clock, the 2211 resume cue, the 2202 hairline and the 2243 swipe stay untouched.
+    private String qTotalRemainSuf2315(long remMs15) {
+        if (remMs15 > 0) return FavTalkRail.fmtTime((int) remMs15) + " left · ";
+        return "";
+    }
+
     private View itemRow(final int position) {
         final BmAll.Row r = items.get(position);
         final Prefs.HistEntry e = r.e;
@@ -686,7 +692,14 @@ public class BookmarksActivity extends Activity {
         // v15.92 (slice 2211): the resume spot joins the title — "↺ 45:00 · 12:34 · title" when the talk was heard past its mark (resume spot over 5s AND more than 5s from the mark minute — the row already prints the mark minute, so a verbatim cue would print the same time twice whenever listening stopped at the mark; the cue only earns its place when it says something the mark minute does not), the Favourites row's resume segment now on Bookmarks rows: a marked talk heard past its mark stays findable, so a glance says where to resume without opening the talk. The spot reads the existing per-talk snapshot through the row's own resolver (the line's read, one more map lookup, no new snapshot, no new parse). The playing row shows it too (its spot is where playback will resume if it ends now — the Favourites shape, where the sounding row's resume advances with the saved spot). No Lang key, no Prefs write, no layout change — the row is built in code.
         int bmRowPos11 = bmRowPosMs(e);
         String bmResume11 = bmRowPos11 > 5000 && Math.abs(bmRowPos11 - r.posMs) > 5000 ? "\u21ba " + FavTalkRail.fmtTime(bmRowPos11) + " \u00b7 " : "";
-        tv.setText((bmRowPlaying ? "\u25b6 " : "") + (bmRowFav68 ? "\u2605 " : "") + (bmRowDl94 ? "\u2B07 " : "") + (bmRowPlayed70 ? "\u2713 " : "") + bmResume11 + BmRail.fmtTime(r.posMs) + " \u00b7 " + e.title);
+        // v16.07 (slice 2315): the remaining time — total length minus the resume spot, via the 2200 resolver; null/<=0/overrun all read 0, so the row keeps today's text; never the playing row (its live position is on the strip, the 2202 hairline rule, the 1092 gate).
+        long bmRemMs15 = 0;
+        if (!bmRowPlaying && bmRowPos11 > 5000 && Math.abs(bmRowPos11 - r.posMs) > 5000) {
+            int bmRowDur15 = bmRowDurMs(e);
+            if (bmRowDur15 > 0) bmRemMs15 = (long) bmRowDur15 - bmRowPos11;
+            if (bmRemMs15 < 0) bmRemMs15 = 0;
+        }
+        tv.setText((bmRowPlaying ? "\u25b6 " : "") + (bmRowFav68 ? "\u2605 " : "") + (bmRowDl94 ? "\u2B07 " : "") + (bmRowPlayed70 ? "\u2713 " : "") + bmResume11 + qTotalRemainSuf2315(bmRemMs15) + BmRail.fmtTime(r.posMs) + " \u00b7 " + e.title);
         tv.setTextColor((bmRowPlaying || bmRowFav68) ? goldColor() : android.graphics.Color.parseColor("#7A6A58"));
         tv.setTextSize(12);
         tv.setMaxLines(1);

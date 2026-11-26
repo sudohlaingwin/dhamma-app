@@ -3212,6 +3212,32 @@ public class TalksActivity extends Activity {
         return out;
     }
 
+// v16.07 (slice 2311): the chooser Play-new row carries its total time — the 2304/2305/2306/2307/2308 total-time block, now on the chooser Play-new row: the row already names its count (1933), so the total rides beside it over the SAME pick (picked — the unlistened new talks computePlayNewIdxs() returns), summed with the 2302 two-leg idiom (talkDurCache.get(url), downloaded-path fallback via talkDlCache/talkDlFileCache, null/<=0 skipped) and formatted by the EXISTING qTotalFmtDur2300 (the 2300 idiom — "2h 15m" with hs_hour/hs_min/hs_sec, Myanmar digits in Burmese), so no new formatter and no new Lang key; hidden-when-0, an unknown total reads "" and a pick with no banked lengths keeps exactly today's title; one length per picked talk — the count's population, like 2302/2304/2305/2306/2307/2308; one paint site (refreshPlayNewRow(), beside the count) — the pick-key change gate (playNewPickKey) already limits repaints, so the total rides the same gate; the 2302 Play-all total (the whole visible list) stays untouched.
+    private String qTotalPlayNewSuf2311(java.util.List<Integer> picked) {
+        if (picked == null || picked.isEmpty() || talks == null) return "";
+        long qTotMs2311 = 0;
+        for (Integer qTotTi2311 : picked) {
+            if (qTotTi2311 == null) continue;
+            int qTotIx2311 = qTotTi2311.intValue();
+            if (qTotIx2311 < 0 || qTotIx2311 >= talks.size()) continue;
+            Talk qTotTalk2311 = talks.get(qTotIx2311);
+            if (qTotTalk2311 == null || qTotTalk2311.url == null) continue;
+            String qTotUrl2311 = qTotTalk2311.url;
+            Integer qTotDur2311 = talkDurCache == null ? null : talkDurCache.get(qTotUrl2311);
+            if (qTotDur2311 == null && talkDurCache != null && talkDlCache.contains(qTotUrl2311)) {
+                String qTotDlFn2311 = talkDlFileCache.get(qTotUrl2311);
+                if (qTotDlFn2311 != null) {
+                    String qTotDlPath2311 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                            android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + qTotDlFn2311).getAbsolutePath();
+                    qTotDur2311 = talkDurCache.get(qTotDlPath2311);
+                }
+            }
+            if (qTotDur2311 != null && qTotDur2311.intValue() > 0) qTotMs2311 += qTotDur2311.intValue();
+        }
+        if (qTotMs2311 > 0) return " · " + qTotalFmtDur2300(qTotMs2311 / 1000);
+        return "";
+    }
+
     private void refreshPlayNewRow() {
         java.util.List<Integer> picked = computePlayNewIdxs();
         StringBuilder kb33 = new StringBuilder();
@@ -3230,7 +3256,7 @@ public class TalksActivity extends Activity {
         }
         if (playNewCountWord == null) playNewCountWord = playNewCountWordFromSuffix();
         if (talkPlayNewTitle != null)
-            talkPlayNewTitle.setText(picked.size() + " " + playNewCountWord);
+            talkPlayNewTitle.setText(picked.size() + " " + playNewCountWord + qTotalPlayNewSuf2311(picked));
         if (talkPlayNewRow.getVisibility() != android.view.View.VISIBLE) {
             talkPlayNewRow.setVisibility(android.view.View.VISIBLE);
             Fx.fadeIn(talkPlayNewRow, 250);

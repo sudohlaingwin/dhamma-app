@@ -642,6 +642,12 @@ public class FavouritesActivity extends Activity {
 
     private int goldColor() { return 0xFFC9A227; } // v15.64 (slice 2042): History's gold, the playing-row mark
 
+// v16.07 (slice 2314): the Favourites row gains its remaining time — the row already names its resume spot (2207, "↺ 12:34 · title") and its total length (2199, the right-edge clock); this appends the time still to go after the resume prefix ("↺ 12:34 · 29:41 left · ", remaining = total length − resume spot) over the SAME row, resolved through the 2199 resolver (favRowDurMs, the snapshot read the clock uses — a second map lookup, never a Prefs parse) and formatted by the EXISTING FavTalkRail.fmtTime (the resume prefix's own formatter, mm:ss — the 2306 "2h 15m" idiom is the wrong shape beside "↺ 12:34", and Fx.fmtTime is the clock idiom), so no new formatter and no new Lang key; hidden-when-0, an unknown total, a spot at or below the row's own gate (c.posMs > 0 — the prefix itself shows for any positive spot, unlike History's 5000), or a remaining <= 0 keeps exactly today's row text — never a guessed time, never "· 0:00", never "left" with no number; never the playing row (its live position is on the strip, the 2201 hairline rule — the resume spot itself still shows there, the 2207 shape); one paint site (itemRow(), beside the resume prefix) — the remaining rides the existing change detection (the strip tick rebinds rows when the snapshots move), so no new timer, no new key; the 2306 header total, the 2199 clock, the 2171 tick, the 2201 hairline and the 2195 badge stay untouched.
+    private String qTotalRemainSuf2314(long remMs14) {
+        if (remMs14 > 0) return FavTalkRail.fmtTime((int) remMs14) + " left · ";
+        return "";
+    }
+
     private View itemRow(final int position) {
         final FavTalkRail.Card c = items.get(position);
         final Prefs.HistEntry e = c.e;
@@ -695,7 +701,14 @@ public class FavouritesActivity extends Activity {
         boolean favRowPlayed71 = !favRowPlaying && favRowPlayed(e);
         // v15.89 (slice 2195): the downloaded row says so — the badge after the playing mark when both apply (this screen's order: play first, badge second, tick third — no star on this screen, every row IS a favourite), so a starred talk already on the phone reads as offline at a glance. The row reads the snapshot the refresh filled; a row whose stream address sits in the set is downloaded. The badge alone does not gold the row — only a sounding row turns gold. The sounding row badges too — downloaded is a property of the talk, not a state.
         boolean favRowDl95 = favRowDl(e);
-        tv.setText((favRowPlaying ? "\u25b6 " : "") + (favRowDl95 ? "\u2B07 " : "") + (favRowPlayed71 ? "\u2713 " : "") + (c.posMs > 0 ? "\u21BA " + FavTalkRail.fmtTime(c.posMs) + " \u00b7 " + e.title : e.title));
+        // v16.07 (slice 2314): the remaining time — total length minus the resume spot, via the 2199 resolver; null/<=0/overrun all read 0, so the row keeps today's text; never the playing row (its live position is on the strip, the 2201 hairline rule).
+        long favRemMs14 = 0;
+        if (!favRowPlaying && c.posMs > 0) {
+            int favRowDur14 = favRowDurMs(e);
+            if (favRowDur14 > 0) favRemMs14 = (long) favRowDur14 - c.posMs;
+            if (favRemMs14 < 0) favRemMs14 = 0;
+        }
+        tv.setText((favRowPlaying ? "\u25b6 " : "") + (favRowDl95 ? "\u2B07 " : "") + (favRowPlayed71 ? "\u2713 " : "") + (c.posMs > 0 ? "\u21BA " + FavTalkRail.fmtTime(c.posMs) + " \u00b7 " + qTotalRemainSuf2314(favRemMs14) + e.title : e.title));
         tv.setTextColor(favRowPlaying ? goldColor() : android.graphics.Color.parseColor("#7A6A58"));
         tv.setTextSize(12);
         tv.setMaxLines(1);

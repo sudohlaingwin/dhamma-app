@@ -706,6 +706,12 @@ public class HistoryActivity extends Activity {
         refreshHsPlayAllBtn();
     }
 
+// v16.07 (slice 2313): the History row gains its remaining time — the row already names its resume spot (2207, "↺ 12:34 · title") and its total length (2178, the right-edge clock); this appends the time still to go after the resume prefix ("↺ 12:34 · 29:41 left · ", remaining = total length − resume spot) over the SAME row, resolved through the 2178 resolver (histRowDurMs, the snapshot read the clock uses — a second map lookup, never a Prefs parse) and formatted by the EXISTING FavTalkRail.fmtTime (the resume prefix's own formatter, mm:ss — the 2301 "2h 15m" idiom is the wrong shape beside "↺ 12:34", and HistoryActivity's own fmtDur is the heard-time idiom), so no new formatter and no new Lang key; hidden-when-0, an unknown total, a spot at or below 5s, or a remaining <= 0 keeps exactly today's row text — never a guessed time, never "· 0:00", never "left" with no number; never the playing row (its live position is on the strip, the 2204 hairline rule — the resume spot itself still shows there, the 2207 shape); one paint site (itemRow(), beside the resume prefix) — the remaining rides the existing change detection (the 1s tick rebinds rows when the snapshots move), so no new timer, no new key; the 2304 header total, the 2178 clock, the 2172 tick, the 2204 hairline and the 2163 sub-line stay untouched.
+    private String qTotalRemainSuf2313(long remMs13) {
+        if (remMs13 > 0) return FavTalkRail.fmtTime((int) remMs13) + " left · ";
+        return "";
+    }
+
     private View itemRow(final int position) {
         final Prefs.HistEntry e = items.get(position);
         LinearLayout row = new LinearLayout(this);
@@ -748,7 +754,14 @@ public class HistoryActivity extends Activity {
         boolean hsRowDl93 = histRowDl(e);
         // v15.91 (slice 2207): the resume spot joins the title — "↺ 12:34 · title" when the talk was meaningfully heard (spot over 5s, the same gate the progress line under the row uses), the Favourites row's resume segment now on History rows: the sub-line says how LONG it was heard (cumulative) and WHEN, but never WHERE listening stopped — the resume prefix is the cue, so a recent talk reads as "continue from 12:34" at a glance. The spot reads the existing per-talk snapshot through the row's own resolver (the line's read, one more map lookup, no new snapshot, no new parse). The playing row shows it too (its spot is where playback will resume if it ends now — the Favourites shape, where the sounding row's resume advances with the saved spot). No Lang key, no Prefs write, no layout change — the row is built in code.
         int hsRowPos07 = histRowPosMs(e);
-        String hsResume07 = hsRowPos07 > 5000 ? "↺ " + FavTalkRail.fmtTime(hsRowPos07) + " · " : "";
+        // v16.07 (slice 2313): the remaining time — total length minus the resume spot, via the 2178 resolver; null/<=0/overrun all read 0, so the row keeps today's text; never the playing row (its live position is on the strip, the 2204 hairline rule).
+        long hsRemMs13 = 0;
+        if (!hsRowPlaying && hsRowPos07 > 5000) {
+            int hsRowDur13 = histRowDurMs(e);
+            if (hsRowDur13 > 0) hsRemMs13 = (long) hsRowDur13 - hsRowPos07;
+            if (hsRemMs13 < 0) hsRemMs13 = 0;
+        }
+        String hsResume07 = hsRowPos07 > 5000 ? "↺ " + FavTalkRail.fmtTime(hsRowPos07) + " · " + qTotalRemainSuf2313(hsRemMs13) : "";
         String hsPrefix77 = (hsRowPlaying ? "▶ " : "")
                 + (histRowFav(e) ? "★ " : "")
                 + (hsRowDl93 ? "⬇ " : "")

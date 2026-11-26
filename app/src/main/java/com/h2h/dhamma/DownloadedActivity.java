@@ -1946,6 +1946,12 @@ public class DownloadedActivity extends Activity {
     private android.widget.TextView dlContinueTitle = null;
     private String dlContinuePickKey = "";
     private String dlContinuePickPath = null;
+// v16.07 (slice 2312): the Continue row gains its remaining time — the row already names its sayadaw (2272), its star (2287) and its resume position ("sayadaw · title ★ · mm:ss"); this appends the time still to go (" · 1h 20m left", remaining = total length − position) over the SAME pick (path66 — the DlContinuePick pick), resolved with the 2301 single-get idiom (libDurMap.get(path66), null/<=0 skipped — the two-leg resolve is already folded into libDurMap at build time, ~lines 448–461) and formatted by the EXISTING qTotalFmtDur2301 (the 2295 idiom — "2h 15m" with hs_hour/hs_min/hs_sec, Myanmar digits in Burmese), so no new formatter and no new Lang key; hidden-when-0, an unknown length or a remaining <= 0 keeps exactly today's text, never a guessed time, never "· 0:00", never "left" with no number; one paint site (refreshDlContinueRow(), beside the position) — the remaining rides the change key (key66), so a duration arriving after the first paint repaints the row on the next tick instead of waiting for a new pick; the 2301 footer total (the whole shown list) and the 2308 Play-new total stay untouched.
+    private String qTotalRemainSuf2312(long remMs66) {
+        if (remMs66 > 0) return " · " + qTotalFmtDur2301(remMs66 / 1000) + " left";
+        return "";
+    }
+
     private void refreshDlContinueRow() {
         String path66 = null;
         int posMs66 = 0;
@@ -1983,7 +1989,14 @@ public class DownloadedActivity extends Activity {
         // favourite toggle re-renders the row on the next tick
         // instead of waiting for a new pick.
         boolean fav66 = path66 != null && libFavFiles.contains(DlContinuePick.fileName(path66));
-        String key66 = path66 == null ? "" : path66 + "|" + posMs66 + "|" + sd66 + "|" + (fav66 ? "1" : "0");
+        // v16.07 (slice 2312): the remaining time — total length minus the resume position, via the 2301 single-get idiom; null/<=0/overrun all read 0, so the row keeps today's text.
+        long remMs66 = 0;
+        if (path66 != null) {
+            Integer durMs66 = libDurMap == null ? null : libDurMap.get(path66);
+            if (durMs66 != null && durMs66.intValue() > 0) remMs66 = (long) durMs66.intValue() - posMs66;
+            if (remMs66 < 0) remMs66 = 0;
+        }
+        String key66 = path66 == null ? "" : path66 + "|" + posMs66 + "|" + sd66 + "|" + (fav66 ? "1" : "0") + "|" + remMs66;
         if (key66.equals(dlContinuePickKey)) return;
         dlContinuePickKey = key66;
         dlContinuePickPath = path66;
@@ -1999,7 +2012,7 @@ public class DownloadedActivity extends Activity {
         // mm:ss", the v5.48 preview-row order. sd66 is "" when
         // unknown, so the row keeps today's text exactly.
         if (dlContinueTitle != null && e66 != null)
-            dlContinueTitle.setText((sd66.length() > 0 ? sd66 + " · " : "") + e66.title + (fav66 ? " ★" : "") + " · " + Fx.fmtTime(posMs66));
+            dlContinueTitle.setText((sd66.length() > 0 ? sd66 + " · " : "") + e66.title + (fav66 ? " ★" : "") + " · " + Fx.fmtTime(posMs66) + qTotalRemainSuf2312(remMs66));
         if (dlContinueRow.getVisibility() != android.view.View.VISIBLE) {
             dlContinueRow.setVisibility(android.view.View.VISIBLE);
             Fx.fadeIn(dlContinueRow, 250);
