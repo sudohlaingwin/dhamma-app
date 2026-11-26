@@ -295,6 +295,28 @@ public class FavouritesActivity extends Activity {
         GlassBlur.detach(findViewById(R.id.nowStrip));
     }
 
+// v16.06 (slice 2306): the header carries the list total time — the 2298/2300/2301/2304/2305 total-time block, now on the Favourites screen: the header already names its count (2236), so the total rides beside it over the SAME unfiltered pick (favAllItems), summed through the row resolver favRowDurMs (the 2199 two-leg resolve — stream identity URL, then the row's own URL) and formatted by this screen's own qTotalFmtDur2306 (the 2295 idiom verbatim — "2h 15m" with hs_hour/hs_min/hs_sec, Myanmar digits in Burmese), so no new Lang key; hidden-when-0, an unknown total reads "" and a list with no banked lengths keeps exactly today's header; one length per listed card — the count's population, like 2304; one paint site (refresh(), beside the count) — the search never re-totals, the header stays the unfiltered pick's total like the count.
+    private String qTotalNum2306(long n) {
+        String s = Long.toString(n);
+        return Lang.index(this) == 0 ? Prefs.statsDigitsPure(s) : s;
+    }
+
+    private String qTotalFmtDur2306(long sec) {
+        long h = sec / 3600, m = (sec % 3600) / 60, s = sec % 60;
+        if (h > 0) return qTotalNum2306(h) + " " + Lang.t(this, "hs_hour")
+                + " " + qTotalNum2306(m) + " " + Lang.t(this, "hs_min");
+        if (m > 0) return qTotalNum2306(m) + " " + Lang.t(this, "hs_min");
+        return qTotalNum2306(s) + " " + Lang.t(this, "hs_sec");
+    }
+
+    private String qTotalHeaderSuf2306() {
+        if (favAllItems == null || favAllItems.isEmpty()) return "";
+        long qTotMs2306 = 0;
+        for (FavTalkRail.Card qTotR2306 : favAllItems) qTotMs2306 += favRowDurMs(qTotR2306.e);
+        if (qTotMs2306 > 0) return " · " + qTotalFmtDur2306(qTotMs2306 / 1000);
+        return "";
+    }
+
     private void refresh() {
         java.util.Set<String> names = catalogNames();
         // v15.65 (slice 2048): the search keeps its own copy of the
@@ -310,7 +332,7 @@ public class FavouritesActivity extends Activity {
         refreshFavDurCache(); // v15.90 (slice 2199): the duration snapshot fresh on first paint, beside the badge snapshot
         // v15.96 (slice 2236): the header carries its total — the drawer header's own idiom, now on the full-list screen: the count sits beside the title in parens, ASCII digits; an empty list keeps the bare title, so the count never shows (0).
         if (headerTitle != null)
-            headerTitle.setText(favTotal36 >= 1 ? Lang.t(this, "hs_fav_talks") + " (" + favTotal36 + ")" : Lang.t(this, "hs_fav_talks"));
+            headerTitle.setText(favTotal36 >= 1 ? Lang.t(this, "hs_fav_talks") + " (" + favTotal36 + ")" + qTotalHeaderSuf2306() : Lang.t(this, "hs_fav_talks"));
         applyFavSearch();
     }
 

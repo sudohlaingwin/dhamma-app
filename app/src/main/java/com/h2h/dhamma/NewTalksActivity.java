@@ -298,6 +298,28 @@ public class NewTalksActivity extends Activity {
         GlassBlur.detach(findViewById(R.id.nowStrip));
     }
 
+// v16.06 (slice 2307): the header carries the list total time — the 2298/2300/2301/2304/2305/2306 total-time block, now on the New talks screen: the header already names its count (2237), so the total rides beside it over the SAME unfiltered pick (newAllItems), summed through the row resolver newRowDurMs (the 2176 two-leg resolve — stream identity URL, then the row's own URL) and formatted by this screen's own qTotalFmtDur2307 (the 2295 idiom verbatim — "2h 15m" with hs_hour/hs_min/hs_sec, Myanmar digits in Burmese), so no new Lang key; hidden-when-0, an unknown total reads "" and a list with no banked lengths keeps exactly today's header; one length per listed entry — the count's population, like 2304/2305/2306; one paint site (refresh(), beside the count) — the search never re-totals, the header stays the unfiltered pick's total like the count.
+    private String qTotalNum2307(long n) {
+        String s = Long.toString(n);
+        return Lang.index(this) == 0 ? Prefs.statsDigitsPure(s) : s;
+    }
+
+    private String qTotalFmtDur2307(long sec) {
+        long h = sec / 3600, m = (sec % 3600) / 60, s = sec % 60;
+        if (h > 0) return qTotalNum2307(h) + " " + Lang.t(this, "hs_hour")
+                + " " + qTotalNum2307(m) + " " + Lang.t(this, "hs_min");
+        if (m > 0) return qTotalNum2307(m) + " " + Lang.t(this, "hs_min");
+        return qTotalNum2307(s) + " " + Lang.t(this, "hs_sec");
+    }
+
+    private String qTotalHeaderSuf2307() {
+        if (newAllItems == null || newAllItems.isEmpty()) return "";
+        long qTotMs2307 = 0;
+        for (NewTalkRail.Card qTotR2307 : newAllItems) qTotMs2307 += newRowDurMs(qTotR2307.e);
+        if (qTotMs2307 > 0) return " · " + qTotalFmtDur2307(qTotMs2307 / 1000);
+        return "";
+    }
+
     private void refresh() {
         java.util.Set<String> played = readPlayedTalks();
         java.util.Set<String> resumeKeys = new java.util.HashSet<String>();
@@ -316,7 +338,7 @@ public class NewTalksActivity extends Activity {
         refreshNewDurCache(); // v15.86 (slice 2176): the duration snapshot fresh on first paint, beside the star snapshot
         // v15.96 (slice 2237): the header carries its total — the drawer header's own idiom, now on the full-list screen: the count sits beside the title in parens, ASCII digits; an empty list keeps the bare title, so the count never shows (0).
         if (headerTitle != null)
-            headerTitle.setText(newTotal37 >= 1 ? Lang.t(this, "hs_new_talks") + " (" + newTotal37 + ")" : Lang.t(this, "hs_new_talks"));
+            headerTitle.setText(newTotal37 >= 1 ? Lang.t(this, "hs_new_talks") + " (" + newTotal37 + ")" + qTotalHeaderSuf2307() : Lang.t(this, "hs_new_talks"));
         applyNewSearch();
     }
 

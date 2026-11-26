@@ -613,6 +613,15 @@ public class HistoryActivity extends Activity {
         return num(s) + " " + Lang.t(this, "hs_sec");
     }
 
+// v16.06 (slice 2304): the header carries the list total time — the 2298/2300/2301 total-time block, now on the History screen: the header already names its count (2234), so the total rides beside it over the SAME unfiltered pick (hsAllItems), summed through the row resolver histRowDurMs (the 2178 two-leg resolve — stream identity URL, then the row's own URL) and formatted by this screen's own fmtDur (the 2295 idiom verbatim — "2h 15m" with hs_hour/hs_min/hs_sec, Myanmar digits in Burmese), so no new formatter and no new Lang key; hidden-when-0, an unknown total reads "" and a list with no banked lengths keeps exactly today's header; one paint site (refresh(), beside the count) — the search never re-totals, the header stays the unfiltered pick's total like the count.
+    private String qTotalHeaderSuf2304() {
+        if (hsAllItems == null || hsAllItems.isEmpty()) return "";
+        long qTotMs2304 = 0;
+        for (Prefs.HistEntry qTotE2304 : hsAllItems) qTotMs2304 += histRowDurMs(qTotE2304);
+        if (qTotMs2304 > 0) return " · " + fmtDur(qTotMs2304 / 1000);
+        return "";
+    }
+
     private void refresh() {
         long total = Prefs.statsTotal(this);
         int streak = Prefs.statsStreak(this);
@@ -647,7 +656,7 @@ public class HistoryActivity extends Activity {
         }
         // v15.96 (slice 2234): the header carries its total — the drawer header's own idiom, now on the full-list screen: the count sits beside the title in parens, ASCII digits; an empty list keeps the bare title, so the count never shows (0).
         if (headerTitle != null)
-            headerTitle.setText(hsTotal34 >= 1 ? Lang.t(this, "hs_title") + " (" + hsTotal34 + ")" : Lang.t(this, "hs_title"));
+            headerTitle.setText(hsTotal34 >= 1 ? Lang.t(this, "hs_title") + " (" + hsTotal34 + ")" + qTotalHeaderSuf2304() : Lang.t(this, "hs_title"));
         hsStatsKnown40 = true;
         refreshHistoryPlayingMarks(); // v13.55: mark right on first paint, not one tick late
         applyHsSearch();

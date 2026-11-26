@@ -2051,6 +2051,19 @@ public class DownloadedActivity extends Activity {
         }
         return out;
     }
+// v16.06 (slice 2308): the Play-new row carries its total time — the 2304/2305/2306/2307 total-time block, now on the Downloaded Play-new row: the row already names its count (2267), so the total rides beside it over the SAME pick (picked67 — the unlistened, non-sounding shown downloads computeDlPlayNewEntries() returns), summed with the 2301 single-get idiom (libDurMap.get(e.file.getAbsolutePath()), null/<=0 skipped — the two-leg resolve is already folded into libDurMap at build time, ~lines 448–461) and formatted by the EXISTING qTotalFmtDur2301 (the 2295 idiom — "2h 15m" with hs_hour/hs_min/hs_sec, Myanmar digits in Burmese), so no new formatter and no new Lang key; hidden-when-0, an unknown total reads "" and a pick with no banked lengths keeps exactly today's title; one length per picked entry — the count's population, like 2304/2305/2306/2307; one paint site (refreshDlPlayNewRow(), beside the count) — the pick-key change gate (dlPlayNewPickKey) already limits repaints, so the total rides the same gate; the 2301 footer total (the whole shown list) stays untouched.
+    private String qTotalPlayNewSuf2308(java.util.List<Entry> picked67) {
+        if (picked67 == null || picked67.isEmpty()) return "";
+        long qTotMs2308 = 0;
+        for (Entry qTotE2308 : picked67) {
+            if (qTotE2308 == null || qTotE2308.file == null) continue;
+            Integer qTotDur2308 = libDurMap == null ? null : libDurMap.get(qTotE2308.file.getAbsolutePath());
+            if (qTotDur2308 != null && qTotDur2308.intValue() > 0) qTotMs2308 += qTotDur2308.intValue();
+        }
+        if (qTotMs2308 > 0) return " · " + qTotalFmtDur2301(qTotMs2308 / 1000);
+        return "";
+    }
+
     private void refreshDlPlayNewRow() {
         java.util.List<Entry> picked67 = computeDlPlayNewEntries();
         StringBuilder kb67 = new StringBuilder();
@@ -2068,7 +2081,7 @@ public class DownloadedActivity extends Activity {
         }
         if (dlPlayNewCountWord == null) dlPlayNewCountWord = dlPlayNewCountWordFromSuffix();
         if (dlPlayNewTitle != null)
-            dlPlayNewTitle.setText(picked67.size() + " " + dlPlayNewCountWord);
+            dlPlayNewTitle.setText(picked67.size() + " " + dlPlayNewCountWord + qTotalPlayNewSuf2308(picked67));
         if (dlPlayNewRow.getVisibility() != android.view.View.VISIBLE) {
             dlPlayNewRow.setVisibility(android.view.View.VISIBLE);
             Fx.fadeIn(dlPlayNewRow, 250);

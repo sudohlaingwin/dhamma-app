@@ -286,6 +286,28 @@ public class BookmarksActivity extends Activity {
         GlassBlur.detach(findViewById(R.id.nowStrip));
     }
 
+// v16.06 (slice 2305): the header carries the list total time — the 2298/2300/2301/2304 total-time block, now on the Bookmarks screen: the header already names its count (2235), so the total rides beside it over the SAME unfiltered pick (bmAllItems), summed through the row resolver bmRowDurMs (the 2200 two-leg resolve — stream identity URL, then the row's own URL) and formatted by this screen's own qTotalFmtDur2305 (the 2295 idiom verbatim — "2h 15m" with hs_hour/hs_min/hs_sec, Myanmar digits in Burmese), so no new Lang key; hidden-when-0, an unknown total reads "" and a list with no banked lengths keeps exactly today's header; one length per listed mark, so a talk with three marks counts its length three times — the count's population, like 2304; one paint site (refresh(), beside the count) — the search never re-totals, the header stays the unfiltered pick's total like the count.
+    private String qTotalNum2305(long n) {
+        String s = Long.toString(n);
+        return Lang.index(this) == 0 ? Prefs.statsDigitsPure(s) : s;
+    }
+
+    private String qTotalFmtDur2305(long sec) {
+        long h = sec / 3600, m = (sec % 3600) / 60, s = sec % 60;
+        if (h > 0) return qTotalNum2305(h) + " " + Lang.t(this, "hs_hour")
+                + " " + qTotalNum2305(m) + " " + Lang.t(this, "hs_min");
+        if (m > 0) return qTotalNum2305(m) + " " + Lang.t(this, "hs_min");
+        return qTotalNum2305(s) + " " + Lang.t(this, "hs_sec");
+    }
+
+    private String qTotalHeaderSuf2305() {
+        if (bmAllItems == null || bmAllItems.isEmpty()) return "";
+        long qTotMs2305 = 0;
+        for (BmAll.Row qTotR2305 : bmAllItems) qTotMs2305 += bmRowDurMs(qTotR2305.e);
+        if (qTotMs2305 > 0) return " · " + qTotalFmtDur2305(qTotMs2305 / 1000);
+        return "";
+    }
+
     private void refresh() {
         java.util.Set<String> names = catalogNames();
         // v15.65 (slice 2049): the search keeps its own copy of the
@@ -303,7 +325,7 @@ public class BookmarksActivity extends Activity {
         refreshBmPosCache(); // v15.90 (slice 2202): the pos snapshot fresh on first paint, beside the duration snapshot
         // v15.96 (slice 2235): the header carries its total — the drawer header's own idiom, now on the full-list screen: the count sits beside the title in parens, ASCII digits; an empty list keeps the bare title, so the count never shows (0).
         if (headerTitle != null)
-            headerTitle.setText(bmTotal35 >= 1 ? Lang.t(this, "bm_title") + " (" + bmTotal35 + ")" : Lang.t(this, "bm_title"));
+            headerTitle.setText(bmTotal35 >= 1 ? Lang.t(this, "bm_title") + " (" + bmTotal35 + ")" + qTotalHeaderSuf2305() : Lang.t(this, "bm_title"));
         applyBmSearch();
     }
 
