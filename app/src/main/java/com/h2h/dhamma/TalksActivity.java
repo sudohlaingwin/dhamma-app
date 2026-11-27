@@ -6759,6 +6759,33 @@ public class TalksActivity extends Activity {
             if (qTotDur2300 != null && qTotDur2300.intValue() > 0) qTotMs2300 += qTotDur2300.intValue();
         }
         if (qTotMs2300 > 0) qTotSuf2300 = " · " + qTotalFmtDur2300(qTotMs2300 / 1000);
+        // v16.09 (slice 2328): the list's remaining time — same population as the 2300 total above, remaining = total − resume spot per talk (a spot <= 5000ms counts as unstarted and contributes its full duration, the 2320–2323 row rule; unknown duration skipped, a remaining <= 0 contributes 0); the gate lives in qTotalRemainSuf2328 (0 < remaining < total only).
+        long qTotRemMs2328 = 0;
+        for (int i = 0; i < talks.size(); i++) {
+            String qTotUrl2328 = talks.get(i).url;
+            Integer qTotDur2328 = talkDurCache == null ? null : talkDurCache.get(qTotUrl2328);
+            if (qTotDur2328 == null && talkDurCache != null && talkDlCache.contains(qTotUrl2328)) {
+                String qTotDlFn2328 = talkDlFileCache.get(qTotUrl2328);
+                if (qTotDlFn2328 != null) {
+                    String qTotDlPath2328 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                            android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + qTotDlFn2328).getAbsolutePath();
+                    qTotDur2328 = talkDurCache.get(qTotDlPath2328);
+                }
+            }
+            if (qTotDur2328 == null || qTotDur2328.intValue() <= 0) continue;
+            int qTotRp2328 = Prefs.talkPosGet(TalksActivity.this, qTotUrl2328);
+            if (qTotRp2328 <= 5000 && talkDlCache.contains(qTotUrl2328)) {
+                String qTotDlFn2328 = talkDlFileCache.get(qTotUrl2328);
+                if (qTotDlFn2328 != null) {
+                    String qTotDlPath2328 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                            android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + qTotDlFn2328).getAbsolutePath();
+                    qTotRp2328 = Prefs.talkPosGet(TalksActivity.this, qTotDlPath2328);
+                }
+            }
+            if (qTotRp2328 <= 5000) qTotRemMs2328 += qTotDur2328.intValue();
+            else if (qTotDur2328.intValue() > qTotRp2328) qTotRemMs2328 += qTotDur2328.intValue() - qTotRp2328;
+        }
+        String qTotRemSuf2328 = qTotalRemainSuf2328(qTotRemMs2328, qTotMs2300);
         // v7.22: a foreign queue head outranks the in-list next —
         // the Room's handleNext hands over to it first (v7.08),
         // but this header resolved next from talkQueue only
@@ -6829,7 +6856,7 @@ public class TalksActivity extends Activity {
             }
             if (fxRp > 5000) fxMark += " ↺ " + Fx.fmtTime(fxRp);
             header += "\n" + Lang.t(TalksActivity.this, "next_prefix") + (fxHead.title.length() > 0 ? fxHead.title : fxHead.url)
-                    + " · " + fxHead.sayadaw + fxMark + qTotSuf2300;
+                    + " · " + fxHead.sayadaw + fxMark + qTotSuf2300 + qTotRemSuf2328;
         } else if (nxTalk != null) {
             // v4.71: the Up Next line gains the offline marks the
             // Room surfaces both carry — ⬇ when the named talk is
@@ -6912,7 +6939,7 @@ public class TalksActivity extends Activity {
             }
             header += "\n" + Lang.t(TalksActivity.this, "next_prefix") + nx.title + nxMark + (nxFav ? " ★" : "")
                     + (nxPlayed ? " ✓" : "")
-                    + (nxRp > 5000 ? " ↺ " + Fx.fmtTime(nxRp) : "") + qTotSuf2300;
+                    + (nxRp > 5000 ? " ↺ " + Fx.fmtTime(nxRp) : "") + qTotSuf2300 + qTotRemSuf2328;
         }
         // v15.31 (slice 1824): snapshot the header text BEFORE the
         // rewrite — the v14.56 tick arm's baseline, now owned here.
@@ -6963,6 +6990,12 @@ public class TalksActivity extends Activity {
                 + " " + qTotalNum2300(m) + " " + Lang.t(this, "hs_min");
         if (m > 0) return qTotalNum2300(m) + " " + Lang.t(this, "hs_min");
         return qTotalNum2300(s) + " " + Lang.t(this, "hs_sec");
+    }
+
+// v16.09 (slice 2328): the chooser header's Up Next line carries the list's remaining time too (" · 2h 15m left") — the same population as the 2300 total (talks), remaining = total − resume spot per talk, summed with the 2300 two-leg idiom (talkDurCache.get(url), downloaded-path fallback via talkDlCache/talkDlFileCache, null/<=0 skipped; Prefs.talkPosGet(url), downloaded-path fallback when the spot is <= 5000ms, a spot <= 5000ms counts as unstarted and contributes its full duration, the 2320–2323 row rule); unknown duration skipped, a remaining <= 0 contributes 0; hidden unless 0 < remaining < total — when nothing was started the total already says the whole length, and when nothing is left there is nothing to say, never "· 0:00", never "left" with no number; two paint sites (both Up Next branches below, beside qTotSuf2300); the 2300 chooser header total, the 2302 Play-all total, the 2311 Play-new total, the 2320 Continue remaining and the 2322 chooser row remaining stay untouched.
+    private String qTotalRemainSuf2328(long remMs28, long totMs28) {
+        if (remMs28 > 0 && remMs28 < totMs28) return " · " + qTotalFmtDur2300(remMs28 / 1000) + " left";
+        return "";
     }
 
     // v16.05 (slice 2302): the chooser Play-all button gains the list

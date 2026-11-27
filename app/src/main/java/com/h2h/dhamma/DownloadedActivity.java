@@ -9454,6 +9454,19 @@ public class DownloadedActivity extends Activity {
             if (qTotDur2301 != null && qTotDur2301.intValue() > 0) qTotMs2301 += qTotDur2301.intValue();
         }
         if (qTotMs2301 > 0) qTotSuf2301 = " · " + qTotalFmtDur2301(qTotMs2301 / 1000);
+        // v16.09 (slice 2327): the shown list's remaining time — same population as the 2301 total above, remaining = total − resume spot per entry (a spot <= 5000ms counts as unstarted and contributes its full duration, the 2320–2323 row rule; unknown duration skipped, a remaining <= 0 contributes 0); the gate lives in qTotalRemainSuf2327 (0 < remaining < total only).
+        long qTotRemMs2327 = 0;
+        for (int i = 0; i < libDisplayCount(); i++) {
+            Entry qTotDe2327 = libEntryAtDisplay(i);
+            if (qTotDe2327 == null || qTotDe2327.file == null) continue;
+            Integer qTotDur2327 = libDurMap == null ? null : libDurMap.get(qTotDe2327.file.getAbsolutePath());
+            if (qTotDur2327 == null || qTotDur2327.intValue() <= 0) continue;
+            Integer qTotRp2327 = libResumeMap == null ? null : libResumeMap.get(qTotDe2327.file.getAbsolutePath());
+            int qTotSpot2327 = qTotRp2327 == null ? 0 : qTotRp2327.intValue();
+            if (qTotSpot2327 <= 5000) qTotRemMs2327 += qTotDur2327.intValue();
+            else if (qTotDur2327.intValue() > qTotSpot2327) qTotRemMs2327 += qTotDur2327.intValue() - qTotSpot2327;
+        }
+        String qTotRemSuf2327 = qTotalRemainSuf2327(qTotRemMs2327, qTotMs2301);
             String queueSuffix = "";
             String upNextLine = "";
             // v5.81: the footer's ◈ count skips the file now
@@ -9612,7 +9625,7 @@ public class DownloadedActivity extends Activity {
                         upNextLine = "\n" + Lang.t(DownloadedActivity.this, "next_prefix") + nx.title + nxSdSuffix66 + nxQueueMark
                                 + (libFavFiles.contains(nx.file.getName()) ? " ★" : "")
                                 + (libListenedFiles.contains(nx.file.getName()) ? " ✓" : "")
-                                + (nxRp != null ? " ↺ " + fmtDlTime(nxRp) : "") + qTotSuf2301;
+                                + (nxRp != null ? " ↺ " + fmtDlTime(nxRp) : "") + qTotSuf2301 + qTotRemSuf2327;
                     }
                 }
             }
@@ -15571,6 +15584,12 @@ public class DownloadedActivity extends Activity {
 // v16.08 (slice 2321): the Downloaded row gains its remaining time — the row already names its resume spot (v5.35) and its total length (v13.99, durText99); this appends the time still to go (" · 29:41 left", remaining = total length − resume spot) over the SAME bind, resolved from the caches already in scope (durMs99 from libDurMap, resumeMs from libResumeMap) and formatted by the EXISTING static fmtDlTime (the resume hint's own formatter, mm:ss / h:mm:ss — the 2312 precedent, so no new formatter and no new Lang key); hidden-when-0, an unknown total, a spot at or below 5s, or a remaining <= 0 keeps exactly today's text, never a guessed time, never "· 0:00", never "left" with no number; never the playing row (its live clock overwrites this line while it plays, the hairline's own gate); one paint site (getView's size.setText, beside the total + resume hint); the 2301 footer total, the 2308 Play-new total, the 2312 Continue remaining and the 2319 Play-all total stay untouched.
     private String qTotalRemainSuf2321(long remMs99) {
         if (remMs99 > 0) return " · " + fmtDlTime((int) remMs99) + " left";
+        return "";
+    }
+
+// v16.09 (slice 2327): the Downloaded footer's Up Next line carries the shown list's remaining time too (" · 2h 15m left") — the same population as the 2301 total (the SHOWN list — libDisplayCount / libEntryAtDisplay), remaining = total − resume spot per entry, summed with the 2301 single-get idiom (libDurMap.get(path), null/<=0 skipped; libResumeMap.get(path), a spot <= 5000ms counts as unstarted and contributes its full duration, the 2320–2323 row rule); unknown duration skipped, a remaining <= 0 contributes 0; hidden unless 0 < remaining < total — when nothing was started the total already says the whole length, and when nothing is left there is nothing to say, never "· 0:00", never "left" with no number; one paint site (the Up Next line's setText, beside qTotSuf2301); the 2301 footer total, the 2308 Play-new total, the 2312 Continue remaining and the 2319 Play-all total stay untouched.
+    private String qTotalRemainSuf2327(long remMs27, long totMs27) {
+        if (remMs27 > 0 && remMs27 < totMs27) return " · " + qTotalFmtDur2301(remMs27 / 1000) + " left";
         return "";
     }
 

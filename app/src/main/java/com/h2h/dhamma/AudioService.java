@@ -7785,7 +7785,8 @@ public class AudioService extends Service {
         String sub = who + cardQueuePos81 + " · " + stateText;
         int dur = getDuration();
         int pos = getPosition();
-        if (dur > 0 && pos >= 0) sub = who + cardQueuePos81 + " · " + fmtTime(pos) + " / " + fmtTime(dur) + " · " + stateText;
+// v16.09 (slice 2331): the card clock follows the strip remaining mode — the strips already flip on Prefs.stripClockRemaining (tap any strip clock), but the shade/lock-screen card always showed pos/dur, so a listener off the Room could never see the time left there. Remaining mode shows " · −" + fmtTime(dur − pos) (the Room :7902 / Fx.stripClockSuffix idiom, clamped at 0), else today's pos/dur. Rides the card's existing rebuilds — no new timer, no new formatter, no new Lang key, no layout change.
+        if (dur > 0 && pos >= 0) sub = who + cardQueuePos81 + (Prefs.stripClockRemaining(this) ? " · −" + fmtTime(Math.max(0, dur - pos)) : " · " + fmtTime(pos) + " / " + fmtTime(dur)) + " · " + stateText;
         // v5.39: sleep countdown on the plain card — the Room line
         // (\"😴 mm:ss\" / \"😴 ⏸ mm:ss\" / end-of-talk) and the strips
         // both show it, but the shade/lock-screen card never did, so

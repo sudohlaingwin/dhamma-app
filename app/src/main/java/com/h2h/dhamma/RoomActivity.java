@@ -1644,7 +1644,30 @@ public class RoomActivity extends Activity {
                 }
                 if (qTotDur2298 != null && qTotDur2298.intValue() > 0) qTotMs2298 += qTotDur2298.intValue();
             }
-            if (qTotMs2298 > 0) want += " · " + qTotalFmtDur2295(qTotMs2298 / 1000);
+
+            // v16.09 (slice 2330): the queue's remaining time — same population as the 2298 total above, remaining = total − resume spot per talk (a spot <= 5000ms counts as unstarted and contributes its full duration, the 2320–2323 row rule; unknown duration skipped, a remaining <= 0 contributes 0); the gate lives in qTotalRemainSuf2330 (0 < remaining < total only).
+            long qTotRemMs2330 = 0;
+            for (int i = 0; i < talks.size(); i++) {
+                String qTotUrl2330 = talks.get(i).url;
+                Integer qTotDur2330 = drawerDurCache == null ? null : drawerDurCache.get(qTotUrl2330);
+                if (qTotDur2330 == null && drawerDurCache != null && isDownloadedFile(qTotUrl2330)) {
+                    String qTotDl2330 = downloadedFileName(qTotUrl2330);
+                    if (qTotDl2330 != null)
+                        qTotDur2330 = drawerDurCache.get(downloadsFile(qTotDl2330).getAbsolutePath());
+                }
+                if (qTotDur2330 == null || qTotDur2330.intValue() <= 0) continue;
+                int qTotRp2330 = Prefs.talkPosGet(RoomActivity.this, qTotUrl2330);
+                if (qTotRp2330 <= 5000 && isDownloadedFile(qTotUrl2330)) {
+                    String qTotDlName2330 = downloadedFileName(qTotUrl2330);
+                    if (qTotDlName2330 != null)
+                        qTotRp2330 = Prefs.talkPosGet(RoomActivity.this,
+                                downloadsFile(qTotDlName2330).getAbsolutePath());
+                }
+                if (qTotRp2330 <= 5000) qTotRemMs2330 += qTotDur2330.intValue();
+                else if (qTotDur2330.intValue() > qTotRp2330) qTotRemMs2330 += qTotDur2330.intValue() - qTotRp2330;
+            }
+            String qTotRemSuf2330 = qTotalRemainSuf2330(qTotRemMs2330, qTotMs2298);
+            if (qTotMs2298 > 0) want += " · " + qTotalFmtDur2295(qTotMs2298 / 1000) + qTotRemSuf2330;
         }
         if (want == null) {
             if (roomUpNext.getVisibility() != android.view.View.GONE) roomUpNext.setVisibility(android.view.View.GONE);
@@ -8826,7 +8849,30 @@ int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
                         }
                         if (qTotDur2295 != null && qTotDur2295.intValue() > 0) qTotMs2295 += qTotDur2295.intValue();
                     }
-                    if (qTotMs2295 > 0) want += " · " + qTotalFmtDur2295(qTotMs2295 / 1000);
+
+                    // v16.09 (slice 2329): the queue's remaining time — same population as the 2295 total above, remaining = total − resume spot per talk (a spot <= 5000ms counts as unstarted and contributes its full duration, the 2320–2323 row rule; unknown duration skipped, a remaining <= 0 contributes 0); the gate lives in qTotalRemainSuf2329 (0 < remaining < total only).
+                    long qTotRemMs2329 = 0;
+                    for (int i = 0; i < talks.size(); i++) {
+                        String qTotUrl2329 = talks.get(i).url;
+                        Integer qTotDur2329 = drawerDurCache == null ? null : drawerDurCache.get(qTotUrl2329);
+                        if (qTotDur2329 == null && drawerDurCache != null && isDownloadedFile(qTotUrl2329)) {
+                            String qTotDl2329 = downloadedFileName(qTotUrl2329);
+                            if (qTotDl2329 != null)
+                                qTotDur2329 = drawerDurCache.get(downloadsFile(qTotDl2329).getAbsolutePath());
+                        }
+                        if (qTotDur2329 == null || qTotDur2329.intValue() <= 0) continue;
+                        int qTotRp2329 = Prefs.talkPosGet(RoomActivity.this, qTotUrl2329);
+                        if (qTotRp2329 <= 5000 && isDownloadedFile(qTotUrl2329)) {
+                            String qTotDlName2329 = downloadedFileName(qTotUrl2329);
+                            if (qTotDlName2329 != null)
+                                qTotRp2329 = Prefs.talkPosGet(RoomActivity.this,
+                                        downloadsFile(qTotDlName2329).getAbsolutePath());
+                        }
+                        if (qTotRp2329 <= 5000) qTotRemMs2329 += qTotDur2329.intValue();
+                        else if (qTotDur2329.intValue() > qTotRp2329) qTotRemMs2329 += qTotDur2329.intValue() - qTotRp2329;
+                    }
+                    String qTotRemSuf2329 = qTotalRemainSuf2329(qTotRemMs2329, qTotMs2295);
+                    if (qTotMs2295 > 0) want += " · " + qTotalFmtDur2295(qTotMs2295 / 1000) + qTotRemSuf2329;
                     // v4.25: the drawer header carries the sleep
                     // countdown too — the clock-row view hides
                     // behind the open drawer, so a queue glance
@@ -9092,6 +9138,18 @@ int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
                 + " " + qTotalNum2295(m) + " " + Lang.t(this, "hs_min");
         if (m > 0) return qTotalNum2295(m) + " " + Lang.t(this, "hs_min");
         return qTotalNum2295(s) + " " + Lang.t(this, "hs_sec");
+    }
+
+// v16.09 (slice 2329): the drawer header's total line carries the queue's remaining time too (" · 2h 15m left") — the same population as the 2295 total (talks), remaining = total − resume spot per talk, summed with the 2295 two-leg idiom (drawerDurCache.get(url), downloaded-path fallback via isDownloadedFile + downloadedFileName + downloadsFile, null/<=0 skipped; Prefs.talkPosGet(url), downloaded-path fallback when the spot is <= 5000ms, a spot <= 5000ms counts as unstarted and contributes its full duration, the 2320–2323 row rule); unknown duration skipped, a remaining <= 0 contributes 0; hidden unless 0 < remaining < total — when nothing was started the total already says the whole length, and when nothing is left there is nothing to say, never "· 0:00", never "left" with no number; one paint site (the header append below, beside qTotalFmtDur2295); the 2295 drawer header total, the 2298 Room Up Next total and the 2323 drawer rows remaining stay untouched.
+    private String qTotalRemainSuf2329(long remMs29, long totMs29) {
+        if (remMs29 > 0 && remMs29 < totMs29) return " · " + qTotalFmtDur2295(remMs29 / 1000) + " left";
+        return "";
+    }
+
+// v16.09 (slice 2330): the Room Up Next line carries the queue's remaining time too (" · 2h 15m left") — the same population as the 2298 total (talks), remaining = total − resume spot per talk, summed with the 2298 two-leg idiom (drawerDurCache.get(url), downloaded-path fallback via isDownloadedFile + downloadedFileName + downloadsFile, null/<=0 skipped; Prefs.talkPosGet(url), downloaded-path fallback when the spot is <= 5000ms, a spot <= 5000ms counts as unstarted and contributes its full duration, the 2320–2323 row rule); unknown duration skipped, a remaining <= 0 contributes 0; hidden unless 0 < remaining < total — when nothing was started the total already says the whole length, and when nothing is left there is nothing to say, never "· 0:00", never "left" with no number; one paint site (the Up Next append below, beside qTotalFmtDur2295); the 2298 Up Next total, the 2295 drawer header total and the 2323 drawer rows remaining stay untouched.
+    private String qTotalRemainSuf2330(long remMs30, long totMs30) {
+        if (remMs30 > 0 && remMs30 < totMs30) return " · " + qTotalFmtDur2295(remMs30 / 1000) + " left";
+        return "";
     }
 
     // v16.04 (slice 2296): the sounding row's live hairline
