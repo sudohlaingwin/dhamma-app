@@ -648,6 +648,12 @@ public class FavouritesActivity extends Activity {
         return "";
     }
 
+    // v16.11 (slice 2360, C6): the Favourites row gains its "% listened" — the row already paints the listened fraction on the gold hairline (v15.90) and names the time left (the v16.07 remaining suffix); this appends the same fraction as a number ("47%") over the SAME row, computed from the hairline's own fraction (clamped 0.03–1, the hairline's own gate: never the playing row, spot > 5s, known total), so the text and the bar can never disagree; hidden-when-0 (no fraction, unknown total, or a spot at or below 5s keeps exactly today's text — never "0% · "); the remaining suffix ends with " · " (it sits before the title), so this suffix carries the same trailing separator ("47% · ") and NEVER a leading one, which would double the separator — the row reads "↺ mm:ss · 29:41 left · 47% · title"; one paint site (itemRow's title setText, beside the remaining suffix); the remaining suffix, the clock, the tick, the hairline and the header total stay untouched.
+    private String favPctSuf2360(float frac) {
+        if (frac > 0f) return Math.round(frac * 100) + "% · ";
+        return "";
+    }
+
     private View itemRow(final int position) {
         final FavTalkRail.Card c = items.get(position);
         final Prefs.HistEntry e = c.e;
@@ -708,7 +714,10 @@ public class FavouritesActivity extends Activity {
             if (favRowDur14 > 0) favRemMs14 = (long) favRowDur14 - c.posMs;
             if (favRemMs14 < 0) favRemMs14 = 0;
         }
-        tv.setText((favRowPlaying ? "\u25b6 " : "") + (favRowDl95 ? "\u2B07 " : "") + (favRowPlayed71 ? "\u2713 " : "") + (c.posMs > 0 ? "\u21BA " + FavTalkRail.fmtTime(c.posMs) + " \u00b7 " + qTotalRemainSuf2314(favRemMs14) + e.title : e.title));
+        // v16.11 (slice 2360, C6): the "% listened" number rides the hairline's own fraction — computed once here, above the title, from the clock's duration read (hoisted from below so the fraction exists before the title paints; the clock below reuses the same read, so the row gains no extra duration lookup), and reused by the hairline below, so the number and the bar can never disagree.
+        int favRowDur98 = favRowDurMs(e);
+        float favHairFrac98 = favRowPlaying ? 0f : RailHair.fraction(c.posMs, favRowDur98);
+        tv.setText((favRowPlaying ? "\u25b6 " : "") + (favRowDl95 ? "\u2B07 " : "") + (favRowPlayed71 ? "\u2713 " : "") + (c.posMs > 0 ? "\u21BA " + FavTalkRail.fmtTime(c.posMs) + " \u00b7 " + qTotalRemainSuf2314(favRemMs14) + favPctSuf2360(favHairFrac98) + e.title : e.title));
         tv.setTextColor(favRowPlaying ? goldColor() : android.graphics.Color.parseColor("#7A6A58"));
         tv.setTextSize(12);
         tv.setMaxLines(1);
@@ -719,7 +728,6 @@ public class FavouritesActivity extends Activity {
         row.addView(col, new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         // v15.90 (slice 2199): a starred talk's total length clocks on the row's right edge — the chooser's 1094 clock, now on the last full-list screen without any length readout (History rows clock heard time, Bookmarks rows clock the mark minute, Favourites rows clock the resume spot — no Favourites row ever said how long its talk runs). The clock reads favRowDurMs (the duration snapshot, refreshed on refresh() and on the strip tick's change detector), formatted by Fx.fmtTime ("42:15", "1:05:22" past the hour, the chooser's clock shape); the playing row clocks too (its length is a property of the talk, the 1094 rule — its live position is on the strip). Hidden when no duration was ever banked — GONE, never guessed, never "0:00". No Lang key, no Prefs write, no layout change — the row is built in code.
-        int favRowDur98 = favRowDurMs(e);
         TextView favDur98 = new TextView(this);
         favDur98.setText(favRowDur98 > 0 ? Fx.fmtTime(favRowDur98) : "");
         favDur98.setTextColor(night ? android.graphics.Color.parseColor("#AAAAAA")
@@ -740,7 +748,7 @@ public class FavouritesActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
         // v15.90 (slice 2201): a partly-heard favourite's listened-progress hairline — the Talks-row line (v13.97, slice 1092) and the rail cards' line (v15.60, slice 2020) now under this row: 3dp tall, 4dp below the row, faint-gold track (#33C9A227) with a solid-gold fill (#C9A227, @color/gold) split by weight, weightSum 1. The fraction is the card's own resume spot over the 2199 clock's total (the shared fraction helper — the Talks-row rule verbatim: 0 when never meaningfully heard, spot at or below 5s, or no duration ever stored; clamped to 1, never below a 3% sliver, so a barely-started talk still reads as a visible gold dash). Never the playing row (its live position is on the strip, the 1092 gate). GONE unless a fraction was set — Fx.crossfadeHairline owns the show/hide (on these freshly built rows it seeds instantly, no melt ever plays here, the 2020 rail shape). No Lang key, no Prefs write, no layout change — the row is built in code.
-        float favHairFrac98 = favRowPlaying ? 0f : RailHair.fraction(c.posMs, favRowDur98);
+        // v16.11 (slice 2360, C6): the fraction was computed above the title (the "% listened" number reuses this same fraction) — the bar below paints the number's own value.
         LinearLayout favHairTrack98 = new LinearLayout(this);
         favHairTrack98.setOrientation(LinearLayout.HORIZONTAL);
         favHairTrack98.setBackgroundColor(android.graphics.Color.parseColor("#33C9A227"));

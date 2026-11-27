@@ -513,6 +513,39 @@
         android:layout_height="1dp"
         android:background="#26C9A227" />
 
+    <!-- v16.11 (slice 2358, C3): "listened today" — the fourth stat row,
+         same shape as the streak row above (label + gold value); the
+         value is set in refreshStatsSection2292 from the per-day store. -->
+    <LinearLayout
+        android:id="@+id/rowStatsToday"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingVertical="14dp">
+        <TextView
+            android:id="@+id/lblStatsToday"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="ဒီနေ့"
+            android:textColor="@color/ink"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/statsTodayValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textColor="#C9A227"
+            android:textSize="16sp" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#26C9A227" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -553,6 +586,31 @@
             android:textColor="@color/muted"
             android:textSize="13sp" />
     </LinearLayout>
+
+    <!-- v16.11 (slice 2358, C4): last-7-days listening bar chart — the
+         label + the empty 7-column row; refreshStatsSection2292 builds
+         the bars in code (gold, height relative to the week's max) and
+         hides both when the week is empty, so the section never shows
+         an empty chart. -->
+    <TextView
+        android:id="@+id/lblStatsWeek"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:letterSpacing="0.06"
+        android:paddingVertical="4dp"
+        android:text="နောက်ဆုံး ၇ ရက်"
+        android:textColor="@color/muted"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:id="@+id/statsWeekChart"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingBottom="4dp"
+        android:paddingTop="8dp" />
 
     <TextView
         android:id="@+id/secNoti"

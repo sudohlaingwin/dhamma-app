@@ -2910,6 +2910,15 @@ public class Prefs {
         try { return statsTopSayadawPure(statsRaw(c)); }
         catch (Exception ignored) { return null; }
     }
+    // Seconds listened on one "yyyy-MM-dd" day, or 0 for an invalid
+    // day (v16.11, slice 2358: the stats rows read single days through
+    // this, never the raw store — the pure core stays sim-mirrorable
+    // and callers stay on the public readers, the statsTotal /
+    // statsStreak / statsTopSayadaw idiom).
+    public static long statsDaySeconds(Context c, String day) {
+        try { return statsDaySecondsPure(statsRaw(c), day); }
+        catch (Exception ignored) { return 0; }
+    }
 
     public static java.util.List<HistEntry> statsRecent(Context c) {
         try { return statsRecentPure(statsRaw(c)); }

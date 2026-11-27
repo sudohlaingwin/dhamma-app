@@ -82,6 +82,13 @@ public class MainActivity extends Activity {
     // v15.33 (slice 1835): the empty-search view (see refreshNoResults) — the view itself plus the text key of the last shown line, so the fav-aware text is only re-set when it changes and a steady no-match query never rebinds the line.
     private android.widget.TextView noResultsText;
     private String lastNoResultsKey = null;
+    // v16.11 (slice 2353): the global talk search results — today Main search matches sayadaw name + group only (applyFilter), and TalkIndex.search (v15.62) has zero callers; while a query is active and the index returns hits, these hold the hit list and its ListView inside the grid's own FrameLayout (the grid goes GONE, never a new permanent Main rail — Nov 25 cleanup: Main = title + search + grid + strip + nav only). Each hit is a TalkIndex.Entry (talk title + sayadaw name + identity URL); tap jumps to that talk through TalksActivity's existing autoUrl extra, which auto-opens the Room for it after the chooser loads (no new TalksActivity mechanism — autoUrl is the shipped jump-to-talk path). The note line is the TalkIndex.indexedSayadaws honesty note ("indexed N of M"); the sizes follow the font-size setting (the search field's 14/16/20 idiom).
+    private android.widget.ListView talkResultsList2353;
+    private java.util.List<TalkIndex.Entry> talkHits2353 = new java.util.ArrayList<TalkIndex.Entry>();
+    private android.widget.TextView talkNote2353;
+    private android.widget.BaseAdapter talkResultsAdapter2353;
+    private float talkTitleSp2353 = 16f;
+    private float talkSubSp2353 = 13f;
     private Set<String> favs = new HashSet<String>();
     // v15.98 (slice 2254): the jump button is gone on his order.
     // v15.98 (slice 2253): the recent searches are gone on his order.
@@ -165,6 +172,8 @@ public class MainActivity extends Activity {
     // every grid rebind, so getView reads it in O(1) and does
     // no prefs work per card (v1.57/v5.69 one-parse rule).
     private java.util.Set<String> gridNewSayadawUrls = new java.util.HashSet<String>();
+    // v16.11 (slice 2360, C5): Main-grid listened-progress fractions — sayadaw pageUrl -> fraction of its talks listened (0..1, never below the 0.03 sliver, never present when 0 or unknown). Recomputed by refreshGridNewDots() beside the dot set, so getView reads it in O(1) and does no prefs/cache work per card (v1.57/v5.69 one-parse rule). Absent from the map means hidden: an unvisited sayadaw has no cached talk list, so its fraction is unknown — never a guessed bar.
+    private java.util.Map<String, Float> gridListenedFrac2360 = new java.util.HashMap<String, Float>();
     // v4.60: is the mini strip currently showing the resume mode
     // (dead session + saved spot) instead of a live session? The
     // strip's toggle and long-press read it, so a resume tap
@@ -2647,6 +2656,23 @@ public class MainActivity extends Activity {
         // v15.98 (slice 2250): the five rows are gone on his order — no views to bind here.
         // v15.98 (slice 2253): the recent searches are gone on his order — no views to bind here.
         noResultsText = findViewById(R.id.noResultsText);
+        // v16.11 (slice 2353): bind the talk-results list (see the fields above) — the header view carries the honesty note and must be added BEFORE setAdapter; the adapter rows are built in code (two TextViews, title over sayadaw), so no new row layout; a missing list simply never wires, like the guarded noResultsText bind above.
+        talkResultsList2353 = findViewById(R.id.talkResultsList);
+        if (talkResultsList2353 != null) {
+            talkNote2353 = new android.widget.TextView(this);
+            int pad2353 = (int) (12 * getResources().getDisplayMetrics().density + 0.5f);
+            talkNote2353.setPadding(pad2353, pad2353, pad2353, pad2353 / 2);
+            talkResultsList2353.addHeaderView(talkNote2353, null, false);
+            talkResultsAdapter2353 = new TalkResultsAdapter2353();
+            talkResultsList2353.setAdapter(talkResultsAdapter2353);
+            talkResultsList2353.setOnItemClickListener(new android.widget.AdapterView.OnItemClickListener() {
+                @Override public void onItemClick(android.widget.AdapterView<?> p, android.view.View v, int pos, long id) {
+                    int hit2353 = pos - talkResultsList2353.getHeaderViewsCount();
+                    if (hit2353 < 0 || hit2353 >= talkHits2353.size()) return;
+                    openTalkHit2353(talkHits2353.get(hit2353), v);
+                }
+            });
+        }
         // v15.33 (slice 1835): the empty-search view's first text — refreshNoResults re-sets it on every filter pass, but a first paint before any pass must never show a bare view.
         if (noResultsText != null) noResultsText.setText(Lang.t(this, "sayadaw_not_found"));
         adapter = new SayadawAdapter();
@@ -3118,6 +3144,95 @@ public class MainActivity extends Activity {
     }
 
     // v15.33 (slice 1835): the empty-search view — a search matching no sayadaw used to leave a blank grid with only a transient toast (slice 1830); every streaming app names the empty state in place. The view fades in 250ms (the app's settled Fx.fadeIn) when a gesture-driven filter pass empties the grid, and fades out 200ms (the v14.33 sleep-line rhythm) when results return; silent passes (rotation / restore) land instantly, the v1.53 rule. Shown only for a real typed query over a loaded catalogue (the key arrives from applyFilter; null hides) — a still-loading or failed catalogue never reads "not found". The text is re-set only when the key changes, so a steady no-match query never rebinds the line; a mid-fadeOut re-show flows back on from its current alpha (Fx.fadeIn is restart-safe, v3.52, and its gen bump stands the fade-out's end action down, so it can never strand the view GONE), and a silent pass on a mid-fadeOut view parks it at full alpha instead.
+    // v16.11 (slice 2353): the talk-results rows — title over sayadaw name, built in code (no new row layout); sizes follow the font-size setting, colours follow the night theme (the grid bind's own #AAAAAA / #7A6A58 muted pair for the sub-line, WHITE / #3B2314 for the title). Rows are recycled through a two-TextView holder on the row's tag; sizes are re-applied on every bind, so a font-size change on return repaints recycled rows too.
+    private class TalkResultsAdapter2353 extends android.widget.BaseAdapter {
+        @Override public int getCount() { return talkHits2353.size(); }
+        @Override public Object getItem(int p) { return talkHits2353.get(p); }
+        @Override public long getItemId(int p) { return p; }
+        @Override public android.view.View getView(int pos, android.view.View v, android.view.ViewGroup parent) {
+            android.widget.TextView[] holder2353;
+            if (v == null) {
+                android.widget.LinearLayout row2353 = new android.widget.LinearLayout(MainActivity.this);
+                row2353.setOrientation(android.widget.LinearLayout.VERTICAL);
+                int pad2353 = (int) (12 * getResources().getDisplayMetrics().density + 0.5f);
+                row2353.setPadding(pad2353, pad2353 / 2, pad2353, pad2353 / 2);
+                android.widget.TextView title2353 = new android.widget.TextView(MainActivity.this);
+                row2353.addView(title2353);
+                android.widget.TextView sub2353 = new android.widget.TextView(MainActivity.this);
+                row2353.addView(sub2353);
+                holder2353 = new android.widget.TextView[]{title2353, sub2353};
+                row2353.setTag(holder2353);
+                v = row2353;
+            } else {
+                holder2353 = (android.widget.TextView[]) ((android.widget.LinearLayout) v).getTag();
+            }
+            TalkIndex.Entry hit2353 = talkHits2353.get(pos);
+            holder2353[0].setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, talkTitleSp2353);
+            holder2353[0].setText(hit2353.title);
+            holder2353[0].setTextColor(cachedNight ? android.graphics.Color.WHITE : android.graphics.Color.parseColor("#3B2314"));
+            holder2353[1].setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, talkSubSp2353);
+            holder2353[1].setText(hit2353.sayadaw);
+            holder2353[1].setTextColor(cachedNight ? android.graphics.Color.parseColor("#AAAAAA") : android.graphics.Color.parseColor("#7A6A58"));
+            return v;
+        }
+    }
+
+    // v16.11 (slice 2353): show the talk results while a query is active and the index returns hits — the grid goes GONE and the list fades in (the refreshNoResults fade idiom); with no hits the list fades out and the grid returns, exactly as today. The header note is the "indexed N of M" honesty line (TalkIndex.indexedSayadaws vs the catalog size); it only ever paints while hits exist, so N is never 0 here. Sizes follow the font-size setting (the search field's 14/16/20 idiom).
+    private void refreshTalkResults2353(boolean animate) {
+        if (talkResultsList2353 == null) return;
+        int f2353 = Prefs.fontSize(this);
+        talkTitleSp2353 = f2353 == 0 ? 14f : (f2353 == 1 ? 16f : 20f);
+        talkSubSp2353 = f2353 == 0 ? 12f : (f2353 == 1 ? 13f : 16f);
+        boolean show2353 = !talkHits2353.isEmpty();
+        if (talkNote2353 != null) {
+            int indexed2353 = TalkIndex.indexedSayadaws(Prefs.talkIndexRaw(this)).size();
+            talkNote2353.setText(String.format(Lang.t(this, "talk_search_indexed"), indexed2353, all.size()));
+            talkNote2353.setTextColor(cachedNight ? android.graphics.Color.parseColor("#AAAAAA") : android.graphics.Color.parseColor("#7A6A58"));
+            talkNote2353.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, talkSubSp2353);
+        }
+        if (talkResultsAdapter2353 != null) talkResultsAdapter2353.notifyDataSetChanged();
+        if (show2353) {
+            if (talkResultsList2353.getVisibility() != android.view.View.VISIBLE) {
+                talkResultsList2353.setVisibility(android.view.View.VISIBLE);
+                if (animate) Fx.fadeIn(talkResultsList2353, 250);
+                else talkResultsList2353.setAlpha(1f);
+            }
+            if (gridView != null) gridView.setVisibility(android.view.View.GONE);
+        } else {
+            if (talkResultsList2353.getVisibility() == android.view.View.VISIBLE) {
+                if (animate) Fx.fadeOut(talkResultsList2353, 200);
+                else {
+                    talkResultsList2353.animate().cancel();
+                    talkResultsList2353.setVisibility(android.view.View.GONE);
+                    talkResultsList2353.setAlpha(1f);
+                }
+            }
+            if (gridView != null) gridView.setVisibility(android.view.View.VISIBLE);
+        }
+    }
+
+    // v16.11 (slice 2353): a result tap jumps to that talk — the sayadaw is found in the catalog by the index's stored name (the same name Main sent the chooser), and TalksActivity's existing autoUrl extra auto-opens the Room for the talk once the chooser loads (the shipped jump-to-talk path: Room/notification re-opens use it too); a name the catalog no longer holds toasts the chooser's own "no longer in the list" line instead of opening a dead chooser. The chooser itself is never shown first — the tap plays the found talk, the streaming-standard search behaviour.
+    private void openTalkHit2353(TalkIndex.Entry hit2353, android.view.View v) {
+        if (hit2353 == null) return;
+        Sayadaw target2353 = null;
+        for (Sayadaw s : all) {
+            if (s != null && s.name != null && s.name.equals(hit2353.sayadaw)) { target2353 = s; break; }
+        }
+        if (target2353 == null || target2353.url == null || target2353.url.length() == 0) {
+            android.widget.Toast.makeText(this, Lang.t(this, "talk_no_longer_in_list"), android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        android.content.Intent i = new android.content.Intent(MainActivity.this, TalksActivity.class);
+        i.putExtra("name", target2353.name);
+        i.putExtra("group", target2353.group);
+        i.putExtra("url", target2353.url);
+        i.putExtra("photo", target2353.photo == null ? "" : target2353.photo);
+        i.putExtra("autoUrl", hit2353.url);
+        Fx.morph(v);
+        Fx.tap(MainActivity.this);
+        Fx.go(MainActivity.this, i);
+    }
+
     private void refreshNoResults(boolean animate, String key) {
         if (noResultsText == null) return;
         if (key != null) {
@@ -3317,20 +3432,23 @@ public class MainActivity extends Activity {
         // real keystroke — the onCreate/rotation applyFilter stays
         // silent so a rotated no-match search does not nag again.
         // v15.33 (slice 1835): the empty-search text key, computed once per filter pass and shared: the toast keeps its once-per-query guard below, and refreshNoResults takes the same key on every pass. A null key means no empty state (empty query, non-empty results, or an unloaded/failed catalogue — a still-loading grid never reads "not found").
+        // v16.11 (slice 2353): the global talk search — TalkIndex.search over the stored index (Prefs.talkIndexRaw, merged by the Talks chooser load + AutoDownloadJob), Fx.titleMatches rule, blank query matches nothing; the decode runs once per filter pass, so a keystroke re-reads the store (the index is capped at 30,000 entries inside TalkIndex.merge). Hits are shown by refreshTalkResults2353 below; with no hits the grid behaves exactly as today.
+        talkHits2353 = q.length() > 0 ? TalkIndex.search(Prefs.talkIndexRaw(this), query) : new java.util.ArrayList<TalkIndex.Entry>();
         String noResultsKey = null;
-        if (q.length() > 0 && shown.isEmpty() && !all.isEmpty()) {
+        if (q.length() > 0 && shown.isEmpty() && talkHits2353.isEmpty() && !all.isEmpty()) {
             noResultsKey = "sayadaw_not_found";
         }
         if (allowToast && q.length() > 0 && shown.isEmpty()
-                && !q.equals(lastEmptyToastQuery)) {
+                && talkHits2353.isEmpty() && !q.equals(lastEmptyToastQuery)) {
             lastEmptyToastQuery = q;
             Toast.makeText(this, Lang.t(this, noResultsKey == null ? "sayadaw_not_found" : noResultsKey),
                     Toast.LENGTH_SHORT).show();
-        } else if (!shown.isEmpty()) {
+        } else if (!shown.isEmpty() || !talkHits2353.isEmpty()) {
             lastEmptyToastQuery = null;
         }
         // v15.33 (slice 1835): the empty-search view follows every filter pass — it fades in on a gesture-driven pass (keystroke) and lands instantly on silent passes (rotation / restore, the v1.53 rule).
         refreshNoResults(allowToast, noResultsKey);
+        refreshTalkResults2353(allowToast);
     }
 
     // v15.41 (slice 1921): recompute the Main-grid dot set — one
@@ -3375,6 +3493,38 @@ public class MainActivity extends Activity {
 
     private void refreshGridNewDots() {
         gridNewSayadawUrls = computeNewDotUrls(shown);
+        gridListenedFrac2360 = computeGridListenedFrac2360(shown);
+    }
+
+    // v16.11 (slice 2360, C5): the Main-grid listened-progress pass — one pass over the shown sayadaws per rebind cycle, the computeNewDotUrls shape: playedTalks loaded once and the talk-position blob parsed once (Prefs.talkPosKeysOver, the v5.69 shape), one cache load per sayadaw, then plain membership per cached talk. Fraction = listened talks / baked Sayadaw.talks (the 2339 count the card already shows), clamped to 1, never below the RailHair 0.03 sliver, hidden-when-0 (no map entry). A cached talk counts as listened when its identity URL is in playedTalks (finished — AudioService.markPlayedForCurrent banks the canonical identity only on natural completion, so a partly-heard talk is NOT there) OR in the resume-keys set (saved spot over 5s, i.e. started — the leg that catches the partly-heard talk; hasUnseenNew's played ∪ resumeKeys gate, verbatim). Identity-compared both legs: playedTalks holds canonical https (every writer banks SiteHttp.identityUrl, v13.66 migrates legacy http rows) and the resume keys carry both the raw and the identity form (v13.65), so plain membership on the identity URL is exact. A sayadaw with no cached list (unvisited) or talks <= 0 gets no entry — fraction unknown, bar hidden, never guessed.
+    private java.util.Map<String, Float> computeGridListenedFrac2360(java.util.List<Sayadaw> list) {
+        java.util.Map<String, Float> out = new java.util.HashMap<String, Float>();
+        try {
+            java.util.Set<String> played = getSharedPreferences("dhamma", MODE_PRIVATE)
+                    .getStringSet("playedTalks", null);
+            java.util.Set<String> resumeKeys = Prefs.talkPosKeysOver(this, 5000);
+            if (list != null) {
+                for (Sayadaw s : list) {
+                    if (s == null || s.url == null || s.url.length() == 0 || s.talks <= 0) continue;
+                    java.util.List<String[]> cached = TalkListCache.load(this, s.url);
+                    if (cached == null || cached.isEmpty()) continue;
+                    int heard = 0;
+                    for (String[] p : cached) {
+                        if (p == null || p.length < 2 || p[1] == null) continue;
+                        String id = SiteHttp.identityUrl(p[1]);
+                        if (id == null) id = p[1];
+                        if ((played != null && played.contains(id))
+                                || (resumeKeys != null && resumeKeys.contains(id))) heard++;
+                    }
+                    float f = (float) heard / (float) s.talks;
+                    if (f > 1f) f = 1f;
+                    if (f <= 0f) continue;
+                    if (f < RailHair.MIN_SLIVER) f = RailHair.MIN_SLIVER;
+                    out.put(s.url, Float.valueOf(f));
+                }
+            }
+        } catch (Exception ignored) {}
+        return out;
     }
 
     private class SayadawAdapter extends BaseAdapter {
@@ -3514,6 +3664,15 @@ public class MainActivity extends Activity {
             if (groupView != null) groupView.setText(g + (s.talks > 0 ? " · " + s.talks + " talks" : ""));
             if (groupView != null) groupView.setTextColor(night ? Color.parseColor("#AAAAAA") : Color.parseColor("#7A6A58"));
             if (groupView != null) groupView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, GridViewMode.groupSizeSp(false, cachedGroupSize));
+            // v16.11 (slice 2360, C5): the card's listened-progress hairline — the Favourites :743-761 shape: the track (faint gold, XML) holds a solid-gold fill + space split by weight from gridListenedFrac2360, the O(1) map refreshGridNewDots recomputed beside the dot set (no prefs/cache work per card, v1.57/v5.69). Set on every bind, so a recycled card rebinds its weights and its visibility and a bar can never leak onto another sayadaw: fraction present and > 0 shows the track with fill weight = fraction, space weight = 1 - fraction; absent (unvisited sayadaw, fraction unknown) or 0 hides it (GONE). Direct visibility, not a crossfade — the tick rebinds this card on every sounding flip and a melt would replay there. Grid + list modes share this one row layout, so both gain the bar.
+            Float frac2360 = gridListenedFrac2360.get(s.url);
+            float f2360 = frac2360 == null ? 0f : frac2360.floatValue();
+            android.view.View progTrack2360 = v.findViewById(R.id.progTrack);
+            android.view.View progFill2360 = v.findViewById(R.id.progFill);
+            android.view.View progSpace2360 = v.findViewById(R.id.progSpace);
+            if (progTrack2360 != null) progTrack2360.setVisibility(f2360 > 0f ? android.view.View.VISIBLE : android.view.View.GONE);
+            if (progFill2360 != null) progFill2360.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, f2360));
+            if (progSpace2360 != null) progSpace2360.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1f - f2360));
             // v2.07: staggered grid entrance — portraits fade + grow
             // in one after another, cascading across the grid.
             if (pos > lastGridAnimPos) {

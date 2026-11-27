@@ -78,6 +78,12 @@
             android:numColumns="4"
             android:stretchMode="columnWidth"
             android:verticalSpacing="12dp" />
+        <!-- v16.11 (slice 2353): the global talk search results — shown while a query returns index hits, grid GONE; no hits and the grid behaves exactly as today. -->
+        <ListView
+            android:id="@+id/talkResultsList"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone" />
         <TextView
             android:id="@+id/noResultsText"
             android:layout_width="wrap_content"

@@ -61,4 +61,34 @@
         android:maxLines="1"
         android:textColor="@color/muted"
         android:textSize="10sp" />
+    <!-- v16.11 (slice 2360, C5): listened-progress hairline — the
+         Talks-row line (v13.97) / Favourites-row line (v15.90) /
+         rail-card line (v15.60) idiom, now under the card's group
+         line: 3dp tall, faint-gold track #33C9A227 + solid-gold
+         fill #C9A227 split by weight, weightSum 1. getView sets
+         the fill/space weights from gridListenedFrac2360 on every
+         bind and hides the track (GONE) when the fraction is 0
+         or unknown, so a recycled card can never leak a bar onto
+         another sayadaw. -->
+    <LinearLayout
+        android:id="@+id/progTrack"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:layout_marginTop="4dp"
+        android:background="#33C9A227"
+        android:orientation="horizontal"
+        android:visibility="gone"
+        android:weightSum="1">
+        <View
+            android:id="@+id/progFill"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="0"
+            android:background="#C9A227" />
+        <View
+            android:id="@+id/progSpace"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1" />
+    </LinearLayout>
 </LinearLayout>

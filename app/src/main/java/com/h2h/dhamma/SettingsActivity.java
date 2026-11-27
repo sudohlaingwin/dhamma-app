@@ -3464,6 +3464,21 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
             sv2292.setTextColor(Color.parseColor("#C9A227"));
             sv2292.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn2292);
         }
+        // v16.11 (slice 2358, C3): "listened today" — the fourth stat row:
+        // today's seconds from the same per-day store the streak reads
+        // (the public statsDaySeconds reader, no new tracking), formatted
+        // with the section's own statsFmtDur2292; always shown, even at 0
+        // (the total/streak rows show 0 the same way). Read through the
+        // public reader — never the raw store directly.
+        TextView tdL2358 = findViewById(R.id.lblStatsToday);
+        if (tdL2358 != null) tdL2358.setText(Lang.t(this, "hs_today_label"));
+        TextView tdV2358 = findViewById(R.id.statsTodayValue);
+        if (tdV2358 != null) {
+            tdV2358.setText(statsFmtDur2292(Prefs.statsDaySeconds(
+                    this, Prefs.statsDayString())));
+            tdV2358.setTextColor(Color.parseColor("#C9A227"));
+            tdV2358.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, btn2292);
+        }
         TextView pl2292 = findViewById(R.id.lblStatsTop);
         if (pl2292 != null) pl2292.setText(Lang.t(this, "hs_top_label"));
         TextView pv2292 = findViewById(R.id.statsTopValue);
@@ -3487,6 +3502,122 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                     ? Color.parseColor("#AAAAAA") : Color.parseColor("#7A6A58"));
             ps2292.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, note2292);
         }
+        refreshStatsWeekChart2358();
+    }
+
+    // v16.11 (slice 2358, C4): last-7-days listening bar chart — the
+    // only chart in the app (Spotify Replay / Apple Music listening-
+    // history precedent). Seven bars, oldest left, today rightmost;
+    // heights relative to the week's max, gold like the stat values;
+    // day labels are the EEE weekday in the app's own UI language
+    // (not the device locale). Data is the per-day store the streak
+    // already reads (the public statsDaySeconds reader + the pure
+    // statsPrevDayPure step, no new tracking). Hidden-when-empty:
+    // with nothing listened in 7 days the label and the row go GONE,
+    // so the section never shows an empty chart. Rebuilt on every
+    // refresh (fresh open, every onResume, every choice tap, clear).
+    private void refreshStatsWeekChart2358() {
+        android.widget.TextView wl2358 = findViewById(R.id.lblStatsWeek);
+        android.widget.LinearLayout wc2358 = findViewById(R.id.statsWeekChart);
+        if (wl2358 == null || wc2358 == null) return;
+        String[] days2358 = new String[7];
+        long[] secs2358 = new long[7];
+        long max2358 = 0;
+        String d2358 = Prefs.statsDayString();
+        for (int i = 6; i >= 0; i--) {
+            days2358[i] = d2358;
+            long s2358 = (d2358 == null || d2358.length() == 0) ? 0
+                    : Prefs.statsDaySeconds(this, d2358);
+            secs2358[i] = s2358;
+            if (s2358 > max2358) max2358 = s2358;
+            if (d2358 == null) break;
+            d2358 = Prefs.statsPrevDayPure(d2358);
+        }
+        if (max2358 <= 0) {
+            wl2358.setVisibility(android.view.View.GONE);
+            wc2358.setVisibility(android.view.View.GONE);
+            return;
+        }
+        wl2358.setVisibility(android.view.View.VISIBLE);
+        wl2358.setText(Lang.t(this, "hs_week_label"));
+        wc2358.setVisibility(android.view.View.VISIBLE);
+        wc2358.removeAllViews();
+        int fs2358 = Prefs.fontSize(this);
+        float note2358 = fs2358 == 0 ? 12 : (fs2358 == 1 ? 13 : 16);
+        int muted2358 = Prefs.isNight(this)
+                ? Color.parseColor("#AAAAAA") : Color.parseColor("#7A6A58");
+        java.util.Locale loc2358 = statsWeekLocale2358();
+        for (int i = 0; i < 7; i++) {
+            if (days2358[i] == null) continue;
+            android.widget.LinearLayout col2358 =
+                    new android.widget.LinearLayout(this);
+            col2358.setOrientation(android.widget.LinearLayout.VERTICAL);
+            col2358.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+            col2358.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
+                    0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            android.widget.FrameLayout zone2358 =
+                    new android.widget.FrameLayout(this);
+            zone2358.setLayoutParams(
+                    new android.widget.LinearLayout.LayoutParams(
+                            android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                            dp2358(64f)));
+            android.view.View bar2358 = new android.view.View(this);
+            float h2358 = secs2358[i] * 64f / (float) max2358;
+            int barPx2358 = Math.max(dp2358(2f), dp2358(h2358));
+            bar2358.setLayoutParams(new android.widget.FrameLayout.LayoutParams(
+                    dp2358(20f), barPx2358,
+                    android.view.Gravity.BOTTOM
+                            | android.view.Gravity.CENTER_HORIZONTAL));
+            bar2358.setBackgroundColor(Color.parseColor("#C9A227"));
+            zone2358.addView(bar2358);
+            col2358.addView(zone2358);
+            android.widget.TextView lab2358 = new android.widget.TextView(this);
+            lab2358.setText(statsWeekDay2358(days2358[i], loc2358));
+            lab2358.setTextColor(muted2358);
+            lab2358.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, note2358);
+            lab2358.setGravity(android.view.Gravity.CENTER);
+            lab2358.setMaxLines(1);
+            lab2358.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            lab2358.setPadding(0, dp2358(4f), 0, 0);
+            col2358.addView(lab2358);
+            wc2358.addView(col2358);
+        }
+    }
+
+    // The EEE weekday for one "yyyy-MM-dd" day in the given locale;
+    // "" when the day cannot be parsed (never a crash on a bad store).
+    private String statsWeekDay2358(String day, java.util.Locale loc) {
+        try {
+            java.util.Date dt2358 = new java.text.SimpleDateFormat("yyyy-MM-dd",
+                    java.util.Locale.US).parse(day);
+            return new java.text.SimpleDateFormat("EEE", loc).format(dt2358);
+        } catch (Exception ignored) { return ""; }
+    }
+
+    // The weekday locale follows the app's own UI language (Lang.LANGS
+    // order), not the device locale — a Burmese-UI phone with an
+    // English device locale still shows Burmese day names.
+    private java.util.Locale statsWeekLocale2358() {
+        switch (Lang.index(this)) {
+            case 1: return java.util.Locale.ENGLISH;
+            case 2: return new java.util.Locale("th");
+            case 3: return java.util.Locale.CHINESE;
+            case 4: return new java.util.Locale("vi");
+            case 5: return new java.util.Locale("lo");
+            case 6: return new java.util.Locale("km");
+            case 7: return new java.util.Locale("ms");
+            case 8: return java.util.Locale.JAPANESE;
+            case 9: return java.util.Locale.KOREAN;
+            case 10: return new java.util.Locale("hi");
+            case 11: return new java.util.Locale("es");
+            default: return new java.util.Locale("my");
+        }
+    }
+
+    private int dp2358(float dp) {
+        return Math.round(android.util.TypedValue.applyDimension(
+                android.util.TypedValue.COMPLEX_UNIT_DIP, dp,
+                getResources().getDisplayMetrics()));
     }
 
     private void refreshDownloadedButton53(boolean melt94) {
