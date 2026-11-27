@@ -3089,6 +3089,12 @@ public class TalksActivity extends Activity {
         return "";
     }
 
+    // v16.10 (slice 2336): the Talks chooser row gains its "% listened" — the row already paints the listened fraction on the gold hairline (v13.97) and names the time left (v16.08 slice 2322); this appends the same fraction as a number (" · 47%") over the SAME bind, computed from the hairline's own hairFrac (clamped 0.03–1, the hairline's own gate: never the playing row, spot > 5s, known total), so the text and the bar can never disagree; hidden-when-0 (no fraction, unknown total, or a spot at or below 5s keeps exactly today's text — never " · 0%"); one paint site (getView's title setText, beside the remaining suffix); the 2322 remaining, the 2300 chooser header total, the 2302 Play-all total, the 2311 Play-new total and the 2320 Continue remaining stay untouched.
+    private String qTotalPctSuf2336(float frac) {
+        if (frac > 0f) return " · " + Math.round(frac * 100) + "%";
+        return "";
+    }
+
     // v15.43 (slice 1932): "Continue listening" row — the one-tap
     // return to this sayadaw's in-progress talk (saved spot over
     // 5s, not finished, not the sounding talk). Rides
@@ -8694,6 +8700,7 @@ public class TalksActivity extends Activity {
             // entry from marking a deleted file.
             String resumeMark = "";
             String remSuf2322 = "";
+            String pctSuf2336 = "";
             // v11.06: a library-sounding row is a playing row for
             // ↺ purposes too — its checkpoint spot is stale the
             // moment it plays, so it must not read as half-heard
@@ -8749,6 +8756,8 @@ public class TalksActivity extends Activity {
                         long remMs2322 = (long) durI.intValue() - rp;
                         if (remMs2322 < 0) remMs2322 = 0;
                         remSuf2322 = qTotalRemainSuf2322(remMs2322);
+                        // v16.10 (slice 2336): the "% listened" text — the hairline's own fraction as a number, beside the remaining time.
+                        pctSuf2336 = qTotalPctSuf2336(hairFrac);
                     }
                 }
                 // v15.43 (slice 1928): a live download paints its
@@ -8830,7 +8839,7 @@ public class TalksActivity extends Activity {
             // no label fade (v14.16 idiom).
             String newMark = (!rowPlaying && !rowPlayingLib && !rowListened && resumeMark.length() == 0
                     && newTalkUrls != null && newTalkUrls.contains(SiteHttp.identityUrl(rowUrl))) ? "● " : "";
-            if (titleView != null) titleView.setText((held ? "✋ " : "") + Fx.soundingRowMark(rowPlaying || rowPlayingLib, AudioService.liveTrackError, AudioService.liveBuffering ? Lang.t(TalksActivity.this, "notif_state_buffering") : "", "\u25B6") + qMark + favMark + offMark + playedMark + newMark + talks.get(talkIdx).title + resumeMark + remSuf2322);
+            if (titleView != null) titleView.setText((held ? "✋ " : "") + Fx.soundingRowMark(rowPlaying || rowPlayingLib, AudioService.liveTrackError, AudioService.liveBuffering ? Lang.t(TalksActivity.this, "notif_state_buffering") : "", "\u25B6") + qMark + favMark + offMark + playedMark + newMark + talks.get(talkIdx).title + resumeMark + remSuf2322 + pctSuf2336);
             // v1.52: rows fade + rise in once when first shown
             if (pos > lastAnimPos) {
                 lastAnimPos = pos;

@@ -15587,6 +15587,12 @@ public class DownloadedActivity extends Activity {
         return "";
     }
 
+    // v16.10 (slice 2337): the Downloaded row gains its "% listened" — the row already paints the listened fraction on the gold hairline (v13.97, slice 1092) and names the time left (v16.08 slice 2321); this appends the same fraction as a number (" · 47%") over the SAME bind, computed from the hairline's own hairFrac (clamped 0.03–1, the hairline's own gate: never the playing row, spot > 5s, known total), so the text and the bar can never disagree; hidden-when-0 (no fraction, unknown total, or a spot at or below 5s keeps exactly today's text — never " · 0%"); one paint site (getView's size setText, beside the remaining suffix); the 2321 remaining, the 2301 footer total, the 2308 Play-new total, the 2312 Continue remaining and the 2319 Play-all total stay untouched.
+    private String qTotalPctSuf2337(float frac) {
+        if (frac > 0f) return " · " + Math.round(frac * 100) + "%";
+        return "";
+    }
+
 // v16.09 (slice 2327): the Downloaded footer's Up Next line carries the shown list's remaining time too (" · 2h 15m left") — the same population as the 2301 total (the SHOWN list — libDisplayCount / libEntryAtDisplay), remaining = total − resume spot per entry, summed with the 2301 single-get idiom (libDurMap.get(path), null/<=0 skipped; libResumeMap.get(path), a spot <= 5000ms counts as unstarted and contributes its full duration, the 2320–2323 row rule); unknown duration skipped, a remaining <= 0 contributes 0; hidden unless 0 < remaining < total — when nothing was started the total already says the whole length, and when nothing is left there is nothing to say, never "· 0:00", never "left" with no number; one paint site (the Up Next line's setText, beside qTotSuf2301); the 2301 footer total, the 2308 Play-new total, the 2312 Continue remaining and the 2319 Play-all total stay untouched.
     private String qTotalRemainSuf2327(long remMs27, long totMs27) {
         if (remMs27 > 0 && remMs27 < totMs27) return " · " + qTotalFmtDur2301(remMs27 / 1000) + " left";
@@ -15964,14 +15970,17 @@ public class DownloadedActivity extends Activity {
                 durText99 = " · " + fmtDlTime(durMs99.intValue());
             // v16.08 (slice 2321): the remaining time — total length minus the resume spot, the hairline's own gate (!rowPlaying, spot > 5s); unknown total / overrun read 0, so the row keeps today's text.
             long remMs99 = 0;
+            String pctSuf2337 = "";
             if (!rowPlaying && resumeMs != null && resumeMs.intValue() > 5000
                     && durMs99 != null && durMs99.intValue() > 0) {
                 remMs99 = (long) durMs99.intValue() - resumeMs.intValue();
                 if (remMs99 < 0) remMs99 = 0;
             }
+            // v16.10 (slice 2337): the "% listened" text — the hairline's own fraction as a number, beside the remaining time.
+            pctSuf2337 = qTotalPctSuf2337(hairFrac);
             if (size != null) size.setText((rowSd != null ? rowSd + " · " : "")
                     + String.format("%.1f MB · %s", mb,
-                    android.text.format.DateFormat.format("dd/MM/yyyy", e.mod)) + durText99 + resumeHint + qTotalRemainSuf2321(remMs99));
+                    android.text.format.DateFormat.format("dd/MM/yyyy", e.mod)) + durText99 + resumeHint + qTotalRemainSuf2321(remMs99) + pctSuf2337);
             if (size != null) size.setTextColor(night ? android.graphics.Color.parseColor("#AAAAAA")
                     : android.graphics.Color.parseColor("#7A6A58"));
             // v1.96: the size+date line stayed at a fixed 13sp while

@@ -29,8 +29,10 @@ import java.util.Set;
 public class MainActivity extends Activity {
 
     public static class Sayadaw {
+        // v16.10 (slice 2339): the Main grid card gains its talk count — the 2335 crawl baked talk_count into every sayadaws.json entry (total 25,591); the field rides the single loadCatalog construction below, and the group line paints " · N talks" when talks > 0, hidden-when-0 (a null page_url entry has talk_count 0 and shows no suffix, never " · 0 talks"); no layout change, no new Lang key, no speed-row touch.
         String name, group, url, photo;
-        Sayadaw(String n, String g, String u, String p) { name = n; group = g; url = u; photo = p; }
+        int talks;
+        Sayadaw(String n, String g, String u, String p, int t) { name = n; group = g; url = u; photo = p; talks = t; }
     }
 
     private List<Sayadaw> all = new ArrayList<Sayadaw>();
@@ -2946,7 +2948,8 @@ public class MainActivity extends Activity {
                 String photo = "";
                 if (!o.isNull("photo_url")) photo = o.optString("photo_url", "");
                 if (photo.length() == 0 && !o.isNull("photo")) photo = o.optString("photo", "");
-                all.add(new Sayadaw(o.optString("name", ""), o.optString("group", ""), url, photo));
+                // v16.10 (slice 2339): the 5th arg carries the baked talk_count — 0 when the entry has none (a null page_url).
+                all.add(new Sayadaw(o.optString("name", ""), o.optString("group", ""), url, photo, o.optInt("talk_count", 0)));
             }
         } catch (Exception e) {
             Toast.makeText(this, Lang.t(this, "catalog_open_failed") + Fx.errDetail(e), Toast.LENGTH_LONG).show();
@@ -3507,7 +3510,8 @@ public class MainActivity extends Activity {
             // refused with no visible reason. Same condition both places.
             if (s.url == null || s.url.length() == 0 || "null".equals(s.url)) g += Lang.t(MainActivity.this, "sayadaw_no_link_suffix");
             TextView groupView = v.findViewById(R.id.group);
-            if (groupView != null) groupView.setText(g);
+            // v16.10 (slice 2339): the group line gains the talk count — " · 59 talks" when talks > 0, else exactly today's text.
+            if (groupView != null) groupView.setText(g + (s.talks > 0 ? " · " + s.talks + " talks" : ""));
             if (groupView != null) groupView.setTextColor(night ? Color.parseColor("#AAAAAA") : Color.parseColor("#7A6A58"));
             if (groupView != null) groupView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, GridViewMode.groupSizeSp(false, cachedGroupSize));
             // v2.07: staggered grid entrance — portraits fade + grow

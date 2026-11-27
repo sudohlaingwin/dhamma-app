@@ -2618,6 +2618,15 @@ public class RoomActivity extends Activity {
         if (marks.isEmpty() && dlgBox[0] != null) dlgBox[0].dismiss();
     }
 
+    // v16.10 (slice 2346): the marks dialog rows gain the mark's position as % of the talk — today each row is a bare minute ("🔖 45:00"), so a mark in a 50-minute talk and one in a 2-hour talk read identically; this appends the same fraction as a number (" · 47%") over the SAME dialog, computed from the talk's duration captured once at open (the onBookmarkAdd / onBookmarkAddAt idiom for the same bookmarkTalkUrl() talk: service.getDuration(), the service URL wins inside bookmarkTalkUrl); hidden-when-0 (dur <= 0 or a mark outside [0, dur] keeps exactly today's text — never a guessed %); clamped 0–100; one paint site (getView's tv.setText); no new formatter (plain arithmetic + Latin digits, the 2336–2338 "%" rendering), no new Lang key, no layout change, no speed-row touch.
+    private String bmPctSuf2346(int ms, int dur) {
+        if (dur <= 0 || ms < 0 || ms > dur) return "";
+        int pct = Math.round((float) ms * 100 / dur);
+        if (pct < 0) pct = 0;
+        if (pct > 100) pct = 100;
+        return " · " + pct + "%";
+    }
+
     private void showBookmarkList() {
         final String url = bookmarkTalkUrl();
         if (url == null || url.length() == 0) {
@@ -2632,6 +2641,8 @@ public class RoomActivity extends Activity {
                     android.widget.Toast.LENGTH_SHORT).show();
             return;
         }
+        // v16.10 (slice 2346): the talk's duration, captured once at dialog open (the onBookmarkAdd / onBookmarkAddAt idiom for the same bookmarkTalkUrl() talk) — the % suffix below reads it, never a fresh lookup per row.
+        final int bmDur2346 = service == null ? 0 : service.getDuration();
         final android.app.AlertDialog[] dlgBox = new android.app.AlertDialog[1];
         // v15.33 (slice 1834): one row-delete animation at a time — a second ✕ tap mid-collapse would rebind the list under the running animator and snap its row back to full alpha (the rebind discards the old view, the fresh one is full-alpha). 220ms window; the tap can be retried right after.
         final boolean[] bmDelBusy = new boolean[1];
@@ -2650,7 +2661,7 @@ public class RoomActivity extends Activity {
                 int pad = (int) (12 * d);
                 row.setPadding(pad, (int) (10 * d), pad, (int) (10 * d));
                 android.widget.TextView tv = new android.widget.TextView(RoomActivity.this);
-                tv.setText("🔖 " + formatTime(marks.get(position)));
+                tv.setText("🔖 " + formatTime(marks.get(position)) + bmPctSuf2346(marks.get(position), bmDur2346));
                 tv.setTextColor(0xFFFFFFFF);
                 tv.setTextSize(16);
                 row.addView(tv, new android.widget.LinearLayout.LayoutParams(
@@ -9111,6 +9122,12 @@ int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
 // v16.08 (slice 2323): the Room drawer queue rows gain their remaining time — the rows already name their resume spot (v5.34, "↺ mm:ss") and their total length (v13.99/14.00, the right-edge talkDur clock); this appends the time still to go (" · 29:41 left", remaining = total length − resume spot) over the SAME binds, resolved from the duration already in scope (durI, the hairline's two-leg idiom: drawerDurCache.get(url), downloaded-path fallback via downloadedFileName + downloadsFile, null/<=0 skipped) and formatted by the EXISTING formatTime (the resume mark's own formatter, mm:ss — the 2313 precedent, so no new formatter and no new Lang key); hidden-when-0, an unknown total, a spot at or below 5s, or a remaining <= 0 keeps exactly today's text, never a guessed time, never "· 0:00", never "left" with no number; never the sounding row (its live position is on the strip, the hairline's own gate); two paint sites (the foreign bind's title setText, beside fResume, and the in-list bind's title setText, beside resumeMark); the 2295 drawer header total, the 2298 Room Up Next total, the hairlines and the clocks stay untouched.
     private String qTotalRemainSuf2323(long remMs) {
         if (remMs > 0) return " · " + formatTime((int) remMs) + " left";
+        return "";
+    }
+
+    // v16.10 (slice 2338): the Room drawer queue rows gain their "% listened" — the rows already paint the listened fraction on the gold hairline (v13.97/13.98) and name the time left (v16.08 slice 2323); this appends the same fraction as a number (" · 47%") over the SAME binds, computed from the hairline's own hairFrac (clamped 0.03–1, the hairline's own gate: never the sounding row, spot > 5s, known total), so the text and the bar can never disagree; hidden-when-0 (no fraction, unknown total, or a spot at or below 5s keeps exactly today's text — never " · 0%"); two paint sites (the foreign bind's title setText, beside fResume, and the in-list bind's title setText, beside resumeMark); the 2323 remaining, the 2295 drawer header total, the 2298 Room Up Next total, the hairlines and the clocks stay untouched.
+    private String qTotalPctSuf2338(float frac) {
+        if (frac > 0f) return " · " + Math.round(frac * 100) + "%";
         return "";
     }
 
@@ -16674,6 +16691,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                             && !AudioService.liveEnded;
                     String fResume = "";
                     String remSuf2323 = "";
+                    String pctSuf2338 = "";
                     int frp = Prefs.talkPosGet(RoomActivity.this, fe.url);
                     if (frp <= 5000 && fDownloaded) {
                         String dlName = downloadedFileName(fe.url);
@@ -16724,6 +16742,8 @@ if (snd67q >= 0) currentIndex = snd67q;
                             long remMs2323 = (long) durI.intValue() - frp;
                             if (remMs2323 < 0) remMs2323 = 0;
                             remSuf2323 = qTotalRemainSuf2323(remMs2323);
+                            // v16.10 (slice 2338): the "% listened" text — the hairline's own fraction as a number, beside the remaining time.
+                            pctSuf2338 = qTotalPctSuf2338(hairFrac);
                         }
                     }
                     String fHand = "";
@@ -16758,7 +16778,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                             + (fDownloaded ? "⬇ " : "") + fQueueMark
                             + (fPlayed && !fSounding ? "✓ " : "") + fNewMark
                             + (fe.title.length() > 0 ? fe.title : fe.url)
-                            + fResume + remSuf2323 + " · " + fe.sayadaw);
+                            + fResume + remSuf2323 + pctSuf2338 + " · " + fe.sayadaw);
                     // v15.30 (slice 1820): the foreign-head row's title colour melts on the flip instead of snapping — the same last snap as the main drawer branch below (card v14.32, held wash v15.29): the 500ms poll rebinds the drawer on a resync, and this branch swapped the title colour in one frame (bare setTextColor) while the card beside it crossfades. Fx.crossfadeTextColor (v14.34 helper: 250ms ValueAnimator.ofArgb, recorded target, no-op when unchanged) owns the colour from here. The v14.16 settled decision does NOT bar this — no label is faded, only the text colour is interpolated (alpha stays 1, text unchanged), so the row cannot flash — the same distinction v14.34 drew for the sleep text and v14.62 for the nav tint. The ▸/★/✓/⬇ marks + title text stay instant.
                     if (fTitle != null) Fx.crossfadeTextColor(fTitle, fSounding
                             ? android.graphics.Color.parseColor("#C9A227")
@@ -17042,6 +17062,7 @@ if (snd67q >= 0) currentIndex = snd67q;
             float hairFrac = 0f;
             String resumeMark = "";
             String remSuf2323 = "";
+            String pctSuf2338 = "";
             if (talkIdx != playIdx71) {
                 int rp = Prefs.talkPosGet(RoomActivity.this, t.url);
                 if (rp <= 5000 && downloaded) {
@@ -17078,6 +17099,8 @@ if (snd67q >= 0) currentIndex = snd67q;
                         long remMs2323 = (long) durI.intValue() - rp;
                         if (remMs2323 < 0) remMs2323 = 0;
                         remSuf2323 = qTotalRemainSuf2323(remMs2323);
+                        // v16.10 (slice 2338): the "% listened" text — the hairline's own fraction as a number, beside the remaining time.
+                        pctSuf2338 = qTotalPctSuf2338(hairFrac);
                     }
                 }
             }
@@ -17115,7 +17138,7 @@ if (snd67q >= 0) currentIndex = snd67q;
             // no label fade).
             String newMark41 = (!rowPlaying116 && !played && resumeMark.length() == 0
                     && drawerNewTalkUrls != null && drawerNewTalkUrls.contains(SiteHttp.identityUrl(t.url))) ? "● " : "";
-            if (titleView != null) titleView.setText((held ? "✋ " : "") + Fx.soundingRowMark(rowPlaying116, AudioService.liveTrackError, service != null && service.isBuffering() && !service.isHoldPaused() ? Lang.t(RoomActivity.this, "notif_state_buffering") : "", "\u23F8") + handMark + (fav ? "★ " : "") + (downloaded ? "⬇ " : "") + queueMark + (played && !rowPlaying116 ? "✓ " : "") + newMark41 + t.title + resumeMark + remSuf2323);
+            if (titleView != null) titleView.setText((held ? "✋ " : "") + Fx.soundingRowMark(rowPlaying116, AudioService.liveTrackError, service != null && service.isBuffering() && !service.isHoldPaused() ? Lang.t(RoomActivity.this, "notif_state_buffering") : "", "\u23F8") + handMark + (fav ? "★ " : "") + (downloaded ? "⬇ " : "") + queueMark + (played && !rowPlaying116 ? "✓ " : "") + newMark41 + t.title + resumeMark + remSuf2323 + pctSuf2338);
             // v15.30 (slice 1820): the sounding-row title colour melts on the flip instead of snapping — the last snap in the sounding-row transition (card v14.32, hairline v15.26, clock v15.26, held wash v15.29): the 500ms poll rebinds the drawer on a resync, and getView swapped the title colour in one frame (bare setTextColor), so a talk advancing, ending or handing over with the drawer open flashed the gold name in or out while the card beside it crossfades. Fx.crossfadeTextColor (v14.34 helper: 250ms ValueAnimator.ofArgb, recorded target, no-op when unchanged) owns the colour from here. The v14.16 settled decision does NOT bar this — its reason was that fading the whole label to ease a 2-char mark would flash the row; here no label is faded, only the text colour is interpolated (alpha stays 1, text unchanged), so the row cannot flash — the same distinction v14.34 drew for the sleep text and v14.62 for the nav tint. The ▶/★/✓/⬇ marks + title text stay instant; the listened dim (alpha, below) now melts (v15.38, slice 1888).
             if (titleView != null) Fx.crossfadeTextColor(titleView, rowPlaying116
                     ? android.graphics.Color.parseColor("#C9A227")
