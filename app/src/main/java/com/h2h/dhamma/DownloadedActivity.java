@@ -2077,6 +2077,19 @@ public class DownloadedActivity extends Activity {
         return "";
     }
 
+// v16.08 (slice 2319): the Downloaded Play-all button names its total time — the button already names its count (2294, "(N)"); this appends the same list's total (" · 2h 15m") over the SAME population the count names (the shown list — libDisplayCount / libEntryAtDisplay, the same list firstDisplayEntry plays from, so a search filter or queue-only view re-totals with the list), summed with the 2301 single-get idiom (libDurMap.get(e.file.getAbsolutePath()), null/<=0 skipped — the two-leg resolve is already folded into libDurMap at build time, ~lines 448–461) and formatted by the EXISTING qTotalFmtDur2301 (the 2295 idiom — "2h 15m" with hs_hour/hs_min/hs_sec, Myanmar digits in Burmese), so no new formatter and no new Lang key; hidden-when-0, an unknown total reads "" and a list with no banked lengths keeps exactly today's button text; one length per shown entry — the count's population, like 2301/2308; two paint sites (the restyle block's pb94 and applyTheme's pb, both 2294 sites) — both repaint on every filter rebuild / return, so the total rides the same repaints; the 2301 footer total (the whole shown list) and the 2308 Play-new total stay untouched.
+    private String qTotalPlayAllSuf2319() {
+        long qTotMs2319 = 0;
+        for (int i = 0; i < libDisplayCount(); i++) {
+            Entry qTotDe2319 = libEntryAtDisplay(i);
+            if (qTotDe2319 == null || qTotDe2319.file == null) continue;
+            Integer qTotDur2319 = libDurMap == null ? null : libDurMap.get(qTotDe2319.file.getAbsolutePath());
+            if (qTotDur2319 != null && qTotDur2319.intValue() > 0) qTotMs2319 += qTotDur2319.intValue();
+        }
+        if (qTotMs2319 > 0) return " · " + qTotalFmtDur2301(qTotMs2319 / 1000);
+        return "";
+    }
+
     private void refreshDlPlayNewRow() {
         java.util.List<Entry> picked67 = computeDlPlayNewEntries();
         StringBuilder kb67 = new StringBuilder();
@@ -9118,7 +9131,7 @@ public class DownloadedActivity extends Activity {
         // the count would go stale after a keystroke until the next
         // return. Null-safe before onCreate wires the button.
         android.widget.Button pb94 = findViewById(R.id.btnDlPlayAll);
-        if (pb94 != null) pb94.setText(Lang.t(DownloadedActivity.this, "dl_play_all_btn") + " (" + libDisplayCount() + ")");
+        if (pb94 != null) pb94.setText(Lang.t(DownloadedActivity.this, "dl_play_all_btn") + " (" + libDisplayCount() + ")" + qTotalPlayAllSuf2319());
     }
 
     // v15.45 (slice 1938): empty-library Browse button — show it
@@ -9859,7 +9872,7 @@ public class DownloadedActivity extends Activity {
         // the tap will play). ASCII digits in parens, the v15.96
         // header-count idiom; the label stays dl_play_all_btn, no new
         // Lang key.
-        if (pb != null) pb.setText(Lang.t(this, "dl_play_all_btn") + " (" + libDisplayCount() + ")");
+        if (pb != null) pb.setText(Lang.t(this, "dl_play_all_btn") + " (" + libDisplayCount() + ")" + qTotalPlayAllSuf2319());
         android.widget.Button db = findViewById(R.id.btnDlDeleteAll);
         if (db != null) db.setText(Lang.t(this, "dl_delete_all_btn"));
         // v15.45 (slice 1938): the empty-library Browse button
@@ -15555,6 +15568,12 @@ public class DownloadedActivity extends Activity {
                 .show();
     }
 
+// v16.08 (slice 2321): the Downloaded row gains its remaining time — the row already names its resume spot (v5.35) and its total length (v13.99, durText99); this appends the time still to go (" · 29:41 left", remaining = total length − resume spot) over the SAME bind, resolved from the caches already in scope (durMs99 from libDurMap, resumeMs from libResumeMap) and formatted by the EXISTING static fmtDlTime (the resume hint's own formatter, mm:ss / h:mm:ss — the 2312 precedent, so no new formatter and no new Lang key); hidden-when-0, an unknown total, a spot at or below 5s, or a remaining <= 0 keeps exactly today's text, never a guessed time, never "· 0:00", never "left" with no number; never the playing row (its live clock overwrites this line while it plays, the hairline's own gate); one paint site (getView's size.setText, beside the total + resume hint); the 2301 footer total, the 2308 Play-new total, the 2312 Continue remaining and the 2319 Play-all total stay untouched.
+    private String qTotalRemainSuf2321(long remMs99) {
+        if (remMs99 > 0) return " · " + fmtDlTime((int) remMs99) + " left";
+        return "";
+    }
+
     private class DlAdapter extends BaseAdapter {
         @Override public int getCount() {
             // v4.58: queue-only self-heal, mirroring the chooser's
@@ -15924,9 +15943,16 @@ public class DownloadedActivity extends Activity {
             Integer durMs99 = libDurMap.get(e.file.getAbsolutePath());
             if (durMs99 != null && durMs99.intValue() > 0)
                 durText99 = " · " + fmtDlTime(durMs99.intValue());
+            // v16.08 (slice 2321): the remaining time — total length minus the resume spot, the hairline's own gate (!rowPlaying, spot > 5s); unknown total / overrun read 0, so the row keeps today's text.
+            long remMs99 = 0;
+            if (!rowPlaying && resumeMs != null && resumeMs.intValue() > 5000
+                    && durMs99 != null && durMs99.intValue() > 0) {
+                remMs99 = (long) durMs99.intValue() - resumeMs.intValue();
+                if (remMs99 < 0) remMs99 = 0;
+            }
             if (size != null) size.setText((rowSd != null ? rowSd + " · " : "")
                     + String.format("%.1f MB · %s", mb,
-                    android.text.format.DateFormat.format("dd/MM/yyyy", e.mod)) + durText99 + resumeHint);
+                    android.text.format.DateFormat.format("dd/MM/yyyy", e.mod)) + durText99 + resumeHint + qTotalRemainSuf2321(remMs99));
             if (size != null) size.setTextColor(night ? android.graphics.Color.parseColor("#AAAAAA")
                     : android.graphics.Color.parseColor("#7A6A58"));
             // v1.96: the size+date line stayed at a fixed 13sp while

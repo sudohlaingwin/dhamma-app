@@ -3077,6 +3077,18 @@ public class TalksActivity extends Activity {
     // helper — the refresh body sits beside the filter-mode
     // setter because it reads the same visibleHits gate.
 
+// v16.08 (slice 2320): the Talks Continue row gains its remaining time — the row already names its resume spot (1932, "title ★ · 12:34"); this appends the time still to go (" · 29:41 left", remaining = total length − position) over the SAME pick (ContinuePick.pick — the in-progress talk), resolved with the 2302 two-leg idiom (talkDurCache.get(url), downloaded-path fallback via talkDlCache/talkDlFileCache, null/<=0 skipped) and formatted by the EXISTING Fx.fmtTime (the resume spot's own formatter, mm:ss — the 2313 precedent, so no new formatter and no new Lang key); hidden-when-0, an unknown length or a remaining <= 0 keeps exactly today's text, never a guessed time, never "· 0:00", never "left" with no number; one paint site (refreshContinueRow(), beside the position) — the remaining rides the change key (key32, remMs32 in it, the 2312 precedent), so a duration banking after the first paint repaints the row on the next tick instead of waiting for a new pick; the 2302 Play-all total and the 2311 Play-new total stay untouched.
+    private String qTotalRemainSuf2320(long remMs32) {
+        if (remMs32 > 0) return " · " + Fx.fmtTime((int) remMs32) + " left";
+        return "";
+    }
+
+// v16.08 (slice 2322): the Talks chooser row gains its remaining time — the row already names its resume spot (v5.34, "↺ mm:ss") and its total length (v13.99, the right-edge talkDur clock); this appends the time still to go (" · 29:41 left", remaining = total length − resume spot) over the SAME bind, resolved from the duration already in scope (durI, the hairline's two-leg idiom: talkDurCache.get(url), downloaded-path fallback via talkDlCache/talkDlFileCache, null/<=0 skipped) and formatted by the EXISTING Fx.fmtTime (the resume mark's own formatter, mm:ss — the 2313 precedent, so no new formatter and no new Lang key); hidden-when-0, an unknown total, a spot at or below 5s, or a remaining <= 0 keeps exactly today's text, never a guessed time, never "· 0:00", never "left" with no number; never the playing row (its live position is on the strip, the hairline's own gate); one paint site (getView's title setText, beside the resume mark); the 2300 chooser header total, the 2302 Play-all total, the 2311 Play-new total and the 2320 Continue remaining stay untouched.
+    private String qTotalRemainSuf2322(long remMs) {
+        if (remMs > 0) return " · " + Fx.fmtTime((int) remMs) + " left";
+        return "";
+    }
+
     // v15.43 (slice 1932): "Continue listening" row — the one-tap
     // return to this sayadaw's in-progress talk (saved spot over
     // 5s, not finished, not the sounding talk). Rides
@@ -3093,6 +3105,7 @@ public class TalksActivity extends Activity {
     private void refreshContinueRow() {
         int idx = -1;
         int posMs = 0;
+        long remMs32 = 0;
         String key32 = "";
         boolean fav32 = false;
         if (talks != null && !talks.isEmpty() && visibleHits == null) {
@@ -3125,7 +3138,22 @@ public class TalksActivity extends Activity {
                 // so a favourite toggle re-renders the row on the
                 // next tick instead of waiting for a new pick.
                 fav32 = talkFavCache != null && id32 != null && talkFavCache.contains(id32);
-                key32 = id32 + "|" + posMs + "|" + (fav32 ? "1" : "0");
+                // v16.08 (slice 2320): the remaining time — total length minus the resume position, via the 2302 two-leg idiom; null/<=0/overrun all read 0, so the row keeps today's text.
+                Talk t32 = talks.get(idx);
+                if (t32 != null && t32.url != null) {
+                    Integer durMs32 = talkDurCache == null ? null : talkDurCache.get(t32.url);
+                    if (durMs32 == null && talkDurCache != null && talkDlCache.contains(t32.url)) {
+                        String dlFn32 = talkDlFileCache.get(t32.url);
+                        if (dlFn32 != null) {
+                            String dlPath32 = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(
+                                    android.os.Environment.DIRECTORY_DOWNLOADS), "Dhamma/" + dlFn32).getAbsolutePath();
+                            durMs32 = talkDurCache.get(dlPath32);
+                        }
+                    }
+                    if (durMs32 != null && durMs32.intValue() > 0) remMs32 = (long) durMs32.intValue() - posMs;
+                    if (remMs32 < 0) remMs32 = 0;
+                }
+                key32 = id32 + "|" + posMs + "|" + (fav32 ? "1" : "0") + "|" + remMs32;
             }
         }
         if (key32.equals(continuePickKey)) return;
@@ -3138,7 +3166,7 @@ public class TalksActivity extends Activity {
         }
         Talk t = talks.get(idx);
         if (talkContinueTitle != null && t != null)
-            talkContinueTitle.setText(t.title + (fav32 ? " ★" : "") + " · " + Fx.fmtTime(posMs));
+            talkContinueTitle.setText(t.title + (fav32 ? " ★" : "") + " · " + Fx.fmtTime(posMs) + qTotalRemainSuf2320(remMs32));
         if (talkContinueRow.getVisibility() != android.view.View.VISIBLE) {
             talkContinueRow.setVisibility(android.view.View.VISIBLE);
             Fx.fadeIn(talkContinueRow, 250);
@@ -8632,6 +8660,7 @@ public class TalksActivity extends Activity {
             // talkDlCache membership guard keeps a stale cache
             // entry from marking a deleted file.
             String resumeMark = "";
+            String remSuf2322 = "";
             // v11.06: a library-sounding row is a playing row for
             // ↺ purposes too — its checkpoint spot is stale the
             // moment it plays, so it must not read as half-heard
@@ -8683,6 +8712,10 @@ public class TalksActivity extends Activity {
                     if (durI != null && durI.intValue() > 0) {
                         hairFrac = Math.min(1f, (float) rp / (float) durI.intValue());
                         if (hairFrac < 0.03f) hairFrac = 0.03f;
+                        // v16.08 (slice 2322): the remaining time — total length minus the resume spot, the hairline's own gate (never the playing row, spot > 5s); unknown total / overrun read 0, so the row keeps today's text.
+                        long remMs2322 = (long) durI.intValue() - rp;
+                        if (remMs2322 < 0) remMs2322 = 0;
+                        remSuf2322 = qTotalRemainSuf2322(remMs2322);
                     }
                 }
                 // v15.43 (slice 1928): a live download paints its
@@ -8764,7 +8797,7 @@ public class TalksActivity extends Activity {
             // no label fade (v14.16 idiom).
             String newMark = (!rowPlaying && !rowPlayingLib && !rowListened && resumeMark.length() == 0
                     && newTalkUrls != null && newTalkUrls.contains(SiteHttp.identityUrl(rowUrl))) ? "● " : "";
-            if (titleView != null) titleView.setText((held ? "✋ " : "") + Fx.soundingRowMark(rowPlaying || rowPlayingLib, AudioService.liveTrackError, AudioService.liveBuffering ? Lang.t(TalksActivity.this, "notif_state_buffering") : "", "\u25B6") + qMark + favMark + offMark + playedMark + newMark + talks.get(talkIdx).title + resumeMark);
+            if (titleView != null) titleView.setText((held ? "✋ " : "") + Fx.soundingRowMark(rowPlaying || rowPlayingLib, AudioService.liveTrackError, AudioService.liveBuffering ? Lang.t(TalksActivity.this, "notif_state_buffering") : "", "\u25B6") + qMark + favMark + offMark + playedMark + newMark + talks.get(talkIdx).title + resumeMark + remSuf2322);
             // v1.52: rows fade + rise in once when first shown
             if (pos > lastAnimPos) {
                 lastAnimPos = pos;

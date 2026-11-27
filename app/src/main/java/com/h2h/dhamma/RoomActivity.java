@@ -9062,6 +9062,12 @@ int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
     // reads "1:05:23" like a clock, so a long talk's length is clear.
     // v13.51: Locale.US on the %02d calls — same Burmese-phone
     // mixed-digit defect as Fx.fmtTime.
+// v16.08 (slice 2323): the Room drawer queue rows gain their remaining time — the rows already name their resume spot (v5.34, "↺ mm:ss") and their total length (v13.99/14.00, the right-edge talkDur clock); this appends the time still to go (" · 29:41 left", remaining = total length − resume spot) over the SAME binds, resolved from the duration already in scope (durI, the hairline's two-leg idiom: drawerDurCache.get(url), downloaded-path fallback via downloadedFileName + downloadsFile, null/<=0 skipped) and formatted by the EXISTING formatTime (the resume mark's own formatter, mm:ss — the 2313 precedent, so no new formatter and no new Lang key); hidden-when-0, an unknown total, a spot at or below 5s, or a remaining <= 0 keeps exactly today's text, never a guessed time, never "· 0:00", never "left" with no number; never the sounding row (its live position is on the strip, the hairline's own gate); two paint sites (the foreign bind's title setText, beside fResume, and the in-list bind's title setText, beside resumeMark); the 2295 drawer header total, the 2298 Room Up Next total, the hairlines and the clocks stay untouched.
+    private String qTotalRemainSuf2323(long remMs) {
+        if (remMs > 0) return " · " + formatTime((int) remMs) + " left";
+        return "";
+    }
+
     private static String formatTime(int ms) {
         int total = Math.max(0, ms / 1000);
         if (total >= 3600)
@@ -16609,6 +16615,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                     boolean fSounding = isSoundingForeignTalk(fe.url, fe.sayadaw)
                             && !AudioService.liveEnded;
                     String fResume = "";
+                    String remSuf2323 = "";
                     int frp = Prefs.talkPosGet(RoomActivity.this, fe.url);
                     if (frp <= 5000 && fDownloaded) {
                         String dlName = downloadedFileName(fe.url);
@@ -16655,6 +16662,10 @@ if (snd67q >= 0) currentIndex = snd67q;
                         if (durI != null && durI.intValue() > 0) {
                             hairFrac = Math.min(1f, (float) frp / (float) durI.intValue());
                             if (hairFrac < 0.03f) hairFrac = 0.03f;
+                            // v16.08 (slice 2323): the remaining time — total length minus the resume spot, the hairline's own gate (never the sounding row, spot > 5s); unknown total / overrun read 0, so the row keeps today's text.
+                            long remMs2323 = (long) durI.intValue() - frp;
+                            if (remMs2323 < 0) remMs2323 = 0;
+                            remSuf2323 = qTotalRemainSuf2323(remMs2323);
                         }
                     }
                     String fHand = "";
@@ -16689,7 +16700,7 @@ if (snd67q >= 0) currentIndex = snd67q;
                             + (fDownloaded ? "⬇ " : "") + fQueueMark
                             + (fPlayed && !fSounding ? "✓ " : "") + fNewMark
                             + (fe.title.length() > 0 ? fe.title : fe.url)
-                            + fResume + " · " + fe.sayadaw);
+                            + fResume + remSuf2323 + " · " + fe.sayadaw);
                     // v15.30 (slice 1820): the foreign-head row's title colour melts on the flip instead of snapping — the same last snap as the main drawer branch below (card v14.32, held wash v15.29): the 500ms poll rebinds the drawer on a resync, and this branch swapped the title colour in one frame (bare setTextColor) while the card beside it crossfades. Fx.crossfadeTextColor (v14.34 helper: 250ms ValueAnimator.ofArgb, recorded target, no-op when unchanged) owns the colour from here. The v14.16 settled decision does NOT bar this — no label is faded, only the text colour is interpolated (alpha stays 1, text unchanged), so the row cannot flash — the same distinction v14.34 drew for the sleep text and v14.62 for the nav tint. The ▸/★/✓/⬇ marks + title text stay instant.
                     if (fTitle != null) Fx.crossfadeTextColor(fTitle, fSounding
                             ? android.graphics.Color.parseColor("#C9A227")
@@ -16972,6 +16983,7 @@ if (snd67q >= 0) currentIndex = snd67q;
             // strip), painted before the grip bind below.
             float hairFrac = 0f;
             String resumeMark = "";
+            String remSuf2323 = "";
             if (talkIdx != playIdx71) {
                 int rp = Prefs.talkPosGet(RoomActivity.this, t.url);
                 if (rp <= 5000 && downloaded) {
@@ -17004,6 +17016,10 @@ if (snd67q >= 0) currentIndex = snd67q;
                     if (durI != null && durI.intValue() > 0) {
                         hairFrac = Math.min(1f, (float) rp / (float) durI.intValue());
                         if (hairFrac < 0.03f) hairFrac = 0.03f;
+                        // v16.08 (slice 2323): the remaining time — total length minus the resume spot, the hairline's own gate (never the playing row, spot > 5s); unknown total / overrun read 0, so the row keeps today's text.
+                        long remMs2323 = (long) durI.intValue() - rp;
+                        if (remMs2323 < 0) remMs2323 = 0;
+                        remSuf2323 = qTotalRemainSuf2323(remMs2323);
                     }
                 }
             }
@@ -17041,7 +17057,7 @@ if (snd67q >= 0) currentIndex = snd67q;
             // no label fade).
             String newMark41 = (!rowPlaying116 && !played && resumeMark.length() == 0
                     && drawerNewTalkUrls != null && drawerNewTalkUrls.contains(SiteHttp.identityUrl(t.url))) ? "● " : "";
-            if (titleView != null) titleView.setText((held ? "✋ " : "") + Fx.soundingRowMark(rowPlaying116, AudioService.liveTrackError, service != null && service.isBuffering() && !service.isHoldPaused() ? Lang.t(RoomActivity.this, "notif_state_buffering") : "", "\u23F8") + handMark + (fav ? "★ " : "") + (downloaded ? "⬇ " : "") + queueMark + (played && !rowPlaying116 ? "✓ " : "") + newMark41 + t.title + resumeMark);
+            if (titleView != null) titleView.setText((held ? "✋ " : "") + Fx.soundingRowMark(rowPlaying116, AudioService.liveTrackError, service != null && service.isBuffering() && !service.isHoldPaused() ? Lang.t(RoomActivity.this, "notif_state_buffering") : "", "\u23F8") + handMark + (fav ? "★ " : "") + (downloaded ? "⬇ " : "") + queueMark + (played && !rowPlaying116 ? "✓ " : "") + newMark41 + t.title + resumeMark + remSuf2323);
             // v15.30 (slice 1820): the sounding-row title colour melts on the flip instead of snapping — the last snap in the sounding-row transition (card v14.32, hairline v15.26, clock v15.26, held wash v15.29): the 500ms poll rebinds the drawer on a resync, and getView swapped the title colour in one frame (bare setTextColor), so a talk advancing, ending or handing over with the drawer open flashed the gold name in or out while the card beside it crossfades. Fx.crossfadeTextColor (v14.34 helper: 250ms ValueAnimator.ofArgb, recorded target, no-op when unchanged) owns the colour from here. The v14.16 settled decision does NOT bar this — its reason was that fading the whole label to ease a 2-char mark would flash the row; here no label is faded, only the text colour is interpolated (alpha stays 1, text unchanged), so the row cannot flash — the same distinction v14.34 drew for the sleep text and v14.62 for the nav tint. The ▶/★/✓/⬇ marks + title text stay instant; the listened dim (alpha, below) now melts (v15.38, slice 1888).
             if (titleView != null) Fx.crossfadeTextColor(titleView, rowPlaying116
                     ? android.graphics.Color.parseColor("#C9A227")
