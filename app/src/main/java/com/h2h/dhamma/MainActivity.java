@@ -172,8 +172,23 @@ public class MainActivity extends Activity {
     // every grid rebind, so getView reads it in O(1) and does
     // no prefs work per card (v1.57/v5.69 one-parse rule).
     private java.util.Set<String> gridNewSayadawUrls = new java.util.HashSet<String>();
+    // v16.12 (slice 2385, D3): the unseen-new counts the v15.41 dot
+    // hides — sayadaw pageUrl -> number of new talks nobody started
+    // or finished (the hasUnseenNew gate, counted). Same lifecycle
+    // as the dot set: recomputed by refreshGridNewDots() in the
+    // same computeNewDotUrls pass, entry present exactly when the
+    // dot is present, absent means hidden (0 or unknown — never a
+    // guessed count).
+    private java.util.Map<String, Integer> gridNewCount2385 = new java.util.HashMap<String, Integer>();
     // v16.11 (slice 2360, C5): Main-grid listened-progress fractions — sayadaw pageUrl -> fraction of its talks listened (0..1, never below the 0.03 sliver, never present when 0 or unknown). Recomputed by refreshGridNewDots() beside the dot set, so getView reads it in O(1) and does no prefs/cache work per card (v1.57/v5.69 one-parse rule). Absent from the map means hidden: an unvisited sayadaw has no cached talk list, so its fraction is unknown — never a guessed bar.
     private java.util.Map<String, Float> gridListenedFrac2360 = new java.util.HashMap<String, Float>();
+    // v16.12 (slice 2384, D2): the heard integers the C5 pass counts
+    // then discards — sayadaw pageUrl -> talks heard (played ∪
+    // resumeKeys>5s, the same gate as the fraction). Same lifecycle
+    // as the fraction map: recomputed by refreshGridNewDots(), entry
+    // present exactly when the fraction entry is present, absent
+    // means hidden (0 or unknown — never a guessed count).
+    private java.util.Map<String, Integer> gridHeardCount2384 = new java.util.HashMap<String, Integer>();
     // v4.60: is the mini strip currently showing the resume mode
     // (dead session + saved spot) instead of a live session? The
     // strip's toggle and long-press read it, so a resume tap
@@ -3476,6 +3491,7 @@ public class MainActivity extends Activity {
     // never per row.
     private java.util.Set<String> computeNewDotUrls(java.util.List<Sayadaw> list) {
         java.util.Set<String> dots = new java.util.HashSet<String>();
+        gridNewCount2385.clear();
         try {
             java.util.Set<String> played = getSharedPreferences("dhamma", MODE_PRIVATE)
                     .getStringSet("playedTalks", null);
@@ -3484,7 +3500,18 @@ public class MainActivity extends Activity {
                 for (Sayadaw s : list) {
                     if (s == null || s.url == null || s.url.length() == 0) continue;
                     java.util.Set<String> news = TalkListCache.loadNewSet(this, s.url);
-                    if (TalkListCache.hasUnseenNew(news, played, resumeKeys)) dots.add(s.url);
+                    // v16.12 (slice 2385, D3): count the unseen-new the dot gate tests — the hasUnseenNew membership test, counted instead of short-circuited, so count > 0 <=> dot present and the number can never disagree with its own dot. (The Talks sheet's PlayNewPick gate additionally excludes the sounding talk — the grid count deliberately follows the DOT gate, not the sheet's, so card number and card dot always agree.)
+                    int newCount2385 = 0;
+                    for (String id2385 : news) {
+                        if (id2385 == null) continue;
+                        if (played != null && played.contains(id2385)) continue;
+                        if (resumeKeys != null && resumeKeys.contains(id2385)) continue;
+                        newCount2385++;
+                    }
+                    if (newCount2385 > 0) {
+                        dots.add(s.url);
+                        gridNewCount2385.put(s.url, Integer.valueOf(newCount2385));
+                    }
                 }
             }
         } catch (Exception ignored) {}
@@ -3499,6 +3526,7 @@ public class MainActivity extends Activity {
     // v16.11 (slice 2360, C5): the Main-grid listened-progress pass — one pass over the shown sayadaws per rebind cycle, the computeNewDotUrls shape: playedTalks loaded once and the talk-position blob parsed once (Prefs.talkPosKeysOver, the v5.69 shape), one cache load per sayadaw, then plain membership per cached talk. Fraction = listened talks / baked Sayadaw.talks (the 2339 count the card already shows), clamped to 1, never below the RailHair 0.03 sliver, hidden-when-0 (no map entry). A cached talk counts as listened when its identity URL is in playedTalks (finished — AudioService.markPlayedForCurrent banks the canonical identity only on natural completion, so a partly-heard talk is NOT there) OR in the resume-keys set (saved spot over 5s, i.e. started — the leg that catches the partly-heard talk; hasUnseenNew's played ∪ resumeKeys gate, verbatim). Identity-compared both legs: playedTalks holds canonical https (every writer banks SiteHttp.identityUrl, v13.66 migrates legacy http rows) and the resume keys carry both the raw and the identity form (v13.65), so plain membership on the identity URL is exact. A sayadaw with no cached list (unvisited) or talks <= 0 gets no entry — fraction unknown, bar hidden, never guessed.
     private java.util.Map<String, Float> computeGridListenedFrac2360(java.util.List<Sayadaw> list) {
         java.util.Map<String, Float> out = new java.util.HashMap<String, Float>();
+        gridHeardCount2384.clear();
         try {
             java.util.Set<String> played = getSharedPreferences("dhamma", MODE_PRIVATE)
                     .getStringSet("playedTalks", null);
@@ -3521,6 +3549,7 @@ public class MainActivity extends Activity {
                     if (f <= 0f) continue;
                     if (f < RailHair.MIN_SLIVER) f = RailHair.MIN_SLIVER;
                     out.put(s.url, Float.valueOf(f));
+                    gridHeardCount2384.put(s.url, Integer.valueOf(heard));
                 }
             }
         } catch (Exception ignored) {}
@@ -3626,7 +3655,11 @@ public class MainActivity extends Activity {
             // every other text mark (v14.16 idiom); rebound on
             // every bind, so a recycled card can never carry
             // the dot onto another sayadaw.
-            String newDot = gridNewSayadawUrls.contains(s.url) ? "● " : "";
+            // v16.12 (slice 2385, D3): the new-talk count the ● hid — "● 3 new " before the name, the number the dot never said. Count from gridNewCount2385, the same computeNewDotUrls pass that owns the dot (one loadNewSet load per sayadaw, count > 0 <=> dot present). The dot-only fallback keeps today's ● if the count entry is ever missing; hidden when 0/unknown (no map entry). The name view is maxLines=2 + ellipsize=end, so the longer prefix rides safely at large text sizes — the name ellipsizes, the count never wraps off. No new view, no layout change, no new Lang key (" new" rides the card's existing English number words, like "· 59 talks" and "12 heard"). Set on every bind, so a recycled card rebinds its prefix and a count can never leak onto another sayadaw.
+            Integer newCount2385 = gridNewCount2385.get(s.url);
+            String newDot = (newCount2385 != null && newCount2385.intValue() > 0)
+                    ? "● " + newCount2385.intValue() + " new "
+                    : (gridNewSayadawUrls.contains(s.url) ? "● " : "");
             if (nameView != null) nameView.setText(gridMark + newDot + s.name);
             // v15.31 (slice 1822): the card name colour melts
             // gold<->plain through Fx.crossfadeTextColor (250ms,
@@ -3673,6 +3706,21 @@ public class MainActivity extends Activity {
             if (progTrack2360 != null) progTrack2360.setVisibility(f2360 > 0f ? android.view.View.VISIBLE : android.view.View.GONE);
             if (progFill2360 != null) progFill2360.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, f2360));
             if (progSpace2360 != null) progSpace2360.setLayoutParams(new android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1f - f2360));
+            // v16.12 (slice 2384, D2): the heard count the C5 bar hides — "12 heard" under the hairline, same gate as the bar (fraction present and > 0, so the count map entry exists); the group line above already carries the total ("· 59 talks"), so the two lines read as "heard X of Y". Change-only text (the tick rebinds this card on every sounding flip); set on every bind, so a recycled card rebinds its text and visibility and a count can never leak onto another sayadaw. Colour follows the group line (night #AAAAAA / day #7A6A58), size stays the XML 9sp sub-caption.
+            TextView heardCount2384 = v.findViewById(R.id.heardCount);
+            Integer heard2384 = gridHeardCount2384.get(s.url);
+            if (heardCount2384 != null) {
+                if (heard2384 != null && heard2384.intValue() > 0 && f2360 > 0f) {
+                    String heardWant2384 = heard2384.intValue() + " heard";
+                    if (!heardWant2384.equals(heardCount2384.getText().toString()))
+                        heardCount2384.setText(heardWant2384);
+                    heardCount2384.setTextColor(night ? Color.parseColor("#AAAAAA") : Color.parseColor("#7A6A58"));
+                    if (heardCount2384.getVisibility() != android.view.View.VISIBLE)
+                        heardCount2384.setVisibility(android.view.View.VISIBLE);
+                } else if (heardCount2384.getVisibility() != android.view.View.GONE) {
+                    heardCount2384.setVisibility(android.view.View.GONE);
+                }
+            }
             // v2.07: staggered grid entrance — portraits fade + grow
             // in one after another, cascading across the grid.
             if (pos > lastGridAnimPos) {

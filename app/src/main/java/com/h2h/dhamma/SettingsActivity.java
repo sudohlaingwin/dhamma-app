@@ -3505,6 +3505,14 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         refreshStatsWeekChart2358();
     }
 
+    // v16.12 (slice 2387, D5): the live 7-day bar grow-in animators —
+    // cancelled at the top of the next chart refresh (over a copy:
+    // cancelling fires onAnimationEnd, which removes from the list),
+    // so a stale animator can never write a height into a detached
+    // bar after the removeAllViews rebuild.
+    private java.util.List<android.animation.ValueAnimator> weekBarAnims2387 =
+            new java.util.ArrayList<android.animation.ValueAnimator>();
+
     // v16.11 (slice 2358, C4): last-7-days listening bar chart — the
     // only chart in the app (Spotify Replay / Apple Music listening-
     // history precedent). Seven bars, oldest left, today rightmost;
@@ -3541,6 +3549,9 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
         wl2358.setVisibility(android.view.View.VISIBLE);
         wl2358.setText(Lang.t(this, "hs_week_label"));
         wc2358.setVisibility(android.view.View.VISIBLE);
+        for (android.animation.ValueAnimator a2387
+                : new java.util.ArrayList<android.animation.ValueAnimator>(weekBarAnims2387)) a2387.cancel();
+        weekBarAnims2387.clear();
         wc2358.removeAllViews();
         int fs2358 = Prefs.fontSize(this);
         float note2358 = fs2358 == 0 ? 12 : (fs2358 == 1 ? 13 : 16);
@@ -3563,12 +3574,14 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
                             dp2358(64f)));
             android.view.View bar2358 = new android.view.View(this);
             float h2358 = secs2358[i] * 64f / (float) max2358;
-            int barPx2358 = Math.max(dp2358(2f), dp2358(h2358));
+            int minPx2387 = dp2358(2f);
+            int barPx2358 = Math.max(minPx2387, dp2358(h2358));
             bar2358.setLayoutParams(new android.widget.FrameLayout.LayoutParams(
-                    dp2358(20f), barPx2358,
+                    dp2358(20f), minPx2387,
                     android.view.Gravity.BOTTOM
                             | android.view.Gravity.CENTER_HORIZONTAL));
             bar2358.setBackgroundColor(Color.parseColor("#C9A227"));
+            growWeekBar2387(bar2358, minPx2387, barPx2358, i);
             zone2358.addView(bar2358);
             col2358.addView(zone2358);
             android.widget.TextView lab2358 = new android.widget.TextView(this);
@@ -3582,6 +3595,36 @@ new android.app.AlertDialog.Builder(SettingsActivity.this)
             col2358.addView(lab2358);
             wc2358.addView(col2358);
         }
+    }
+
+    // v16.12 (slice 2387, D5): grow one chart bar from the 2dp floor
+    // to its final height — 300ms Decelerate (the app's melt rhythm),
+    // ~40ms stagger per day (oldest first), so opening Settings plays
+    // the chart instead of flashing it static. A zero-second day sits
+    // at the floor already and gets no animator; the height is written
+    // through layoutParams + requestLayout each frame, so the bar
+    // keeps its BOTTOM|CENTER_HORIZONTAL gravity while it grows.
+    private void growWeekBar2387(final android.view.View bar,
+            int fromPx, int toPx, int dayIndex) {
+        if (bar == null || toPx <= fromPx) return;
+        final android.animation.ValueAnimator anim =
+                android.animation.ValueAnimator.ofInt(fromPx, toPx);
+        anim.setDuration(300);
+        anim.setStartDelay(dayIndex * 40);
+        anim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        anim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                bar.getLayoutParams().height = (Integer) a.getAnimatedValue();
+                bar.requestLayout();
+            }
+        });
+        anim.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator a) {
+                weekBarAnims2387.remove(a);
+            }
+        });
+        weekBarAnims2387.add(anim);
+        anim.start();
     }
 
     // The EEE weekday for one "yyyy-MM-dd" day in the given locale;

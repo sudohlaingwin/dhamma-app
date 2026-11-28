@@ -91,4 +91,21 @@
             android:layout_height="match_parent"
             android:layout_weight="1" />
     </LinearLayout>
+    <!-- v16.12 (slice 2384, D2): heard count — the number the C5 bar
+         hides: "12 heard" under the hairline, muted 9sp, gone when
+         nothing heard yet (same gate as the bar). The group line
+         above already carries the total ("· 59 talks"), so this
+         line is the numerator only — "heard X of Y" reads across
+         the two. Grid + list modes share this row layout. -->
+    <TextView
+        android:id="@+id/heardCount"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:maxLines="1"
+        android:textColor="@color/muted"
+        android:textSize="9sp"
+        android:visibility="gone" />
 </LinearLayout>

@@ -58,7 +58,7 @@ public class RoomActivity extends Activity {
     // the same field, and onPause must not GONE a button that
     // was gliding back to visible (Talks mirror of this fix).
     private boolean retryFadeHiding = false;
-    private TextView nowPlaying, elapsedText, totalText, sleepText, roomUpNext;
+    private TextView nowPlaying, elapsedText, totalText, sleepText, roomUpNext, remainText;
     // v4.12: clock display mode — false shows the talk length in the
     // total slot (as always), true shows the time left ("-mm:ss",
     // Spotify-style tap-to-toggle on the clock itself). No new view:
@@ -1582,7 +1582,7 @@ public class RoomActivity extends Activity {
                                 downloadsFile(fxDlName).getAbsolutePath());
                 }
                 if (fxRp > 5000) fxMark += " ↺ " + formatTime(fxRp);
-                want = Lang.t(RoomActivity.this, "next_prefix") + (fxUp.title.length() > 0 ? fxUp.title : fxUp.url) + " · " + fxUp.sayadaw + fxMark;
+                want = Lang.t(RoomActivity.this, "next_prefix") + (fxUp.title.length() > 0 ? fxUp.title : fxUp.url) + " · " + fxUp.sayadaw + fxMark + upNextDurSuf2386(fxUp.url);
             } else {
                 int nx = peekNextIndex();
                 if (nx >= 0 && nx < talks.size()) {
@@ -1615,7 +1615,7 @@ public class RoomActivity extends Activity {
                                     downloadsFile(nxDlName).getAbsolutePath());
                     }
                     if (nxRp > 5000) nxMark += " ↺ " + formatTime(nxRp);
-                    want = Lang.t(RoomActivity.this, "next_prefix") + nxTalk.title + nxMark;
+                    want = Lang.t(RoomActivity.this, "next_prefix") + nxTalk.title + nxMark + upNextDurSuf2386(nxTalk.url);
                 }
             }
         }
@@ -4917,6 +4917,7 @@ if (snd65 >= 0) currentIndex = snd65;
                     }
                     if (elapsedText != null) elapsedText.setText("0:00");
                     if (totalText != null) totalText.setText("0:00");
+                    if (remainText != null) remainText.setVisibility(android.view.View.GONE);
                 }
             }
             if (snd73 >= 0) currentIndex = snd73;
@@ -5228,6 +5229,8 @@ if (snd65 >= 0) currentIndex = snd65;
             totalText.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, clock);
         if (sleepText != null)
             sleepText.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, clock);
+        if (remainText != null)
+            remainText.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, clock);
         // v1.98: the Room's retry button (shown only on load
         // failure, v1.42) kept its default size while the header /
         // now-playing / clocks scaled in v1.95 — same button step
@@ -7916,6 +7919,33 @@ if (snd65 >= 0) currentIndex = snd65;
                             totalText.setText(newTotal);
                             if (!showRemaining) Fx.fadeIn(totalText, 250);
                         }
+                        // v16.12 (slice 2383, D1): the centre slot of the
+                        // clock row shows the remaining time
+                        // persistently — same U+2212 + formatTime(dur -
+                        // pos) the right slot paints in remaining mode,
+                        // so the listener always sees the time left
+                        // without tapping the clock. Change-only (the
+                        // 500ms poll must not rewrite a steady line
+                        // every tick); hidden while the duration is
+                        // unknown, and the sleep countdown keeps the
+                        // centre slot while armed, so the two never
+                        // share it. The right slot keeps its total +
+                        // tap-toggle untouched.
+                        if (remainText != null) {
+                            boolean sleepArmed = sleepText != null
+                                    && sleepText.getVisibility() == android.view.View.VISIBLE;
+                            String remainWant = (!sleepArmed && dur > 0)
+                                    ? "−" + formatTime(Math.max(0, dur - pos)) : null;
+                            if (remainWant == null) {
+                                if (remainText.getVisibility() != android.view.View.GONE)
+                                    remainText.setVisibility(android.view.View.GONE);
+                            } else {
+                                if (!remainWant.equals(remainText.getText().toString()))
+                                    remainText.setText(remainWant);
+                                if (remainText.getVisibility() != android.view.View.VISIBLE)
+                                    remainText.setVisibility(android.view.View.VISIBLE);
+                            }
+                        }
                         int cur = seekBar == null ? 0 : seekBar.getProgress();
                         // v3.26: seek-settle hold — while a user seek
                         // is still landing (service position behind
@@ -8017,6 +8047,9 @@ if (snd65 >= 0) currentIndex = snd65;
                                         Math.max(0, dur - lastUserSeekPos));
                                 if (totalText != null && !heldTotal.equals(totalText.getText().toString()))
                                     totalText.setText(heldTotal);
+                                if (remainText != null && remainText.getVisibility() == android.view.View.VISIBLE
+                                        && !heldTotal.equals(remainText.getText().toString()))
+                                    remainText.setText(heldTotal);
                             }
                         } else if ((freshTrack && !resumeGlide) || pos == cur) {
                             if (seekGlide != null) { seekGlide.cancel(); seekGlide = null; }
@@ -8755,7 +8788,7 @@ if (snd65 >= 0) currentIndex = snd65;
                                             downloadsFile(fxDlName).getAbsolutePath());
                             }
                             if (fxRp > 5000) fxMark += " ↺ " + formatTime(fxRp);
-                            want += "\n" + Lang.t(RoomActivity.this, "next_prefix") + (fxUp.title.length() > 0 ? fxUp.title : fxUp.url) + " · " + fxUp.sayadaw + fxMark;
+                            want += "\n" + Lang.t(RoomActivity.this, "next_prefix") + (fxUp.title.length() > 0 ? fxUp.title : fxUp.url) + " · " + fxUp.sayadaw + fxMark + upNextDurSuf2386(fxUp.url);
                         } else {
 int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
                         Talk nx = talks.get(nxIdx >= 0 ? nxIdx : (currentIndex + 1) % talks.size());
@@ -8831,7 +8864,7 @@ int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
                                         downloadsFile(nxDlName).getAbsolutePath());
                         }
                         if (nxRp > 5000) nxMark += " ↺ " + formatTime(nxRp);
-                        want += "\n" + Lang.t(RoomActivity.this, "next_prefix") + nx.title + nxMark;
+                        want += "\n" + Lang.t(RoomActivity.this, "next_prefix") + nx.title + nxMark + upNextDurSuf2386(nx.url);
                         }
                     }
                     // v16.04 (slice 2295): the drawer header also carries
@@ -9129,6 +9162,18 @@ int nxIdx = peekNextIndex(); // v4.32: Up Next names the queued head first
     private String qTotalPctSuf2338(float frac) {
         if (frac > 0f) return " · " + Math.round(frac * 100) + "%";
         return "";
+    }
+
+    // v16.12 (slice 2386, D4): the Up Next lines gain the next talk's OWN duration — the lines named the next talk + its marks (◈/⬇/⏳/★/✓/↺) + the QUEUE totals (· 2h 15m, · X left) but never the next talk's own length, the one number a listener wants before tapping Next. The drawer rows already carry each talk's duration (drawerDurCache, the v13.99/14.00 right-edge clock), so the source exists; the line just never asked for it. Resolved with the v5.59 two-leg idiom (drawerDurCache.get(url), downloaded-path fallback via downloadedFileName + downloadsFile) and formatted by the EXISTING formatTime (mm:ss, h:mm:ss past the hour — the rows' formatter, the 2313 precedent), so the line and the rows can never disagree on a talk's length. Hidden when unknown (null or <= 0 returns "") — never "· 0:00", never a guessed time. No % on the line (the rows already carry it). Four paint sites, one piece: the drawer header line (foreign-head + in-list) and its main-screen restatement (refreshRoomUpNext, foreign + in-list) — the main line restates the drawer line by definition (v15.99), and the v16.03/v16.05 precedents keep the two in lockstep, so a duration on one and not the other would leave the lines disagreeing. The suffix rides AFTER the marks in all four lines (the marks describe the talk; the length is its last attribute, before the queue-wide totals that follow the line). The change-only guards on both sites own the write, so a duration landing from a probe appears within one 500ms tick and steady ticks no-op.
+    private String upNextDurSuf2386(String url) {
+        if (url == null) return "";
+        Integer d2386 = drawerDurCache == null ? null : drawerDurCache.get(url);
+        if (d2386 == null && drawerDurCache != null && isDownloadedFile(url)) {
+            String dl2386 = downloadedFileName(url);
+            if (dl2386 != null) d2386 = drawerDurCache.get(downloadsFile(dl2386).getAbsolutePath());
+        }
+        if (d2386 == null || d2386.intValue() <= 0) return "";
+        return " · " + formatTime(d2386.intValue());
     }
 
     private static String formatTime(int ms) {
@@ -10243,6 +10288,7 @@ if (snd68 >= 0) currentIndex = snd68;
         elapsedText = findViewById(R.id.roomElapsed);
         totalText = findViewById(R.id.roomTotal);
         sleepText = findViewById(R.id.roomSleep);
+        remainText = findViewById(R.id.roomRemaining);
         // v4.25: the sleep countdown lives in the clock row (see the
         // poll below) — tapping it opens Settings, where the timer
         // is set, and long-pressing cancels it at once, mirroring

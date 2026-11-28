@@ -151,6 +151,14 @@
                         android:textColor="#AAAAAA"
                         android:textSize="13sp"
                         android:visibility="gone" />
+                    <!-- v16.12 (slice 2383, D1): persistent remaining time — centre slot, same grey as the sleep line; the poll paints it, sleep keeps precedence while armed. -->
+                    <TextView
+                        android:id="@+id/roomRemaining"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="#AAAAAA"
+                        android:textSize="13sp"
+                        android:visibility="gone" />
                     <View
                         android:layout_width="0dp"
                         android:layout_height="0dp"
